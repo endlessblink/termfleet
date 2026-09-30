@@ -11,7 +11,7 @@ use crate::pty::{
     AgentRecoveryManifestUpdate, PersistedSessionSummary, PtyManager, PtyOutputChunk,
     PtySessionEvent, PtySessionSummary,
 };
-use crate::vt_grid::{GridManager, DEFAULT_COLS, DEFAULT_ROWS};
+use crate::vt_grid::{GridManager, Osc52ClipboardCopy, DEFAULT_COLS, DEFAULT_ROWS};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -707,6 +707,7 @@ struct DaemonInputEvent {
 pub const DAEMON_INPUT_EVENT: &str = "terminal-workspace-daemon-input";
 pub const TERMINAL_LATENCY_TRACE_EVENT: &str = "terminal-workspace-latency-trace";
 static DAEMON_INPUT_SENDER: OnceLock<Sender<DaemonInputEvent>> = OnceLock::new();
+static LATENCY_TRACE_RETENTION_CLEANUP: OnceLock<()> = OnceLock::new();
 
 pub fn start_daemon_input_worker() {
     let _ = DAEMON_INPUT_SENDER.get_or_init(|| {
@@ -789,7 +790,6 @@ fn open_daemon_input_stream(id: &str) -> Result<LocalStream, String> {
 }
 
 pub fn handle_daemon_input_event(payload: &str) {
-    trace_terminal_latency("tauri.daemon.input.event.receive", payload);
     let payload = match serde_json::from_str::<DaemonInputEvent>(payload) {
         Ok(payload) => payload,
         Err(error) => {
@@ -797,6 +797,11 @@ pub fn handle_daemon_input_event(payload: &str) {
             return;
         }
     };
+
+    trace_terminal_latency(
+        "tauri.daemon.input.event.receive",
+        &daemon_input_trace_details(&payload),
+    );
 
     if let Some(sender) = DAEMON_INPUT_SENDER.get() {
         trace_terminal_latency(
@@ -817,6 +822,15 @@ pub fn handle_daemon_input_event(payload: &str) {
     eprintln!("terminal workspace daemon input worker is unavailable");
 }
 
+fn daemon_input_trace_details(payload: &DaemonInputEvent) -> String {
+    format!(
+        "id={} bytes={} seq_ids={:?}",
+        payload.id,
+        payload.data.len(),
+        payload.seq_ids
+    )
+}
+
 pub fn handle_terminal_latency_trace_event(payload: &str) {
     if !terminal_latency_trace_enabled() {
         return;
@@ -830,24 +844,45 @@ pub fn handle_terminal_latency_trace_event(payload: &str) {
         }
     };
 
+    sanitize_latency_trace_value(&mut value);
     if let Some(object) = value.as_object_mut() {
         object.insert("rustEpochMs".to_string(), serde_json::json!(epoch_ms()));
-        if let Some(data) = object
-            .get("data")
-            .and_then(|value| value.as_str())
-            .map(str::to_string)
-        {
-            object.insert("dataLength".to_string(), serde_json::json!(data.len()));
-            object.insert(
-                "dataPreview".to_string(),
-                serde_json::json!(truncate_trace_detail(&data)),
-            );
-            object.remove("data");
-        }
     }
 
     if let Ok(line) = serde_json::to_string(&value) {
         append_latency_trace_line(&line);
+    }
+}
+
+fn sanitize_latency_trace_value(value: &mut serde_json::Value) {
+    if let Some(object) = value.as_object_mut() {
+        let names = object.keys().cloned().collect::<Vec<_>>();
+        for name in names {
+            let field = name.to_ascii_lowercase();
+            if matches!(field.as_str(), "data" | "datapreview" | "text" | "output" | "command" | "paste" | "payload" | "key")
+                || field.ends_with("preview")
+                || field.ends_with("payload")
+            {
+                if field == "data" {
+                    if let Some(data) = object.get(&name).and_then(serde_json::Value::as_str) {
+                        object.insert("dataLength".into(), serde_json::json!(data.len()));
+                    }
+                } else if field == "key" {
+                    if let Some(key) = object.get(&name).and_then(serde_json::Value::as_str) {
+                        object.insert("keyCategory".into(), serde_json::json!(
+                            if key.chars().count() == 1 { "printable" } else { "named" }
+                        ));
+                    }
+                }
+                object.remove(&name);
+            } else if let Some(nested) = object.get_mut(&name) {
+                sanitize_latency_trace_value(nested);
+            }
+        }
+    } else if let Some(items) = value.as_array_mut() {
+        for item in items {
+            sanitize_latency_trace_value(item);
+        }
     }
 }
 
@@ -879,14 +914,65 @@ fn truncate_trace_detail(details: &str) -> String {
 }
 
 fn append_latency_trace_line(line: &str) {
+    const MAX_TRACE_FILE_BYTES: u64 = 1024 * 1024;
+    const TRACE_TAIL_BYTES: usize = 512 * 1024;
+    cleanup_stale_latency_trace_files();
+    let path = platform_paths::latency_trace_path(
+        std::process::id(),
+        &current_thread_trace_id(),
+    );
+    if let Ok(metadata) = fs::metadata(&path) {
+        if metadata.len() >= MAX_TRACE_FILE_BYTES {
+            let _ = trim_latency_trace_file(&path, TRACE_TAIL_BYTES);
+        }
+    }
     let _ = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(platform_paths::latency_trace_path(
-            std::process::id(),
-            &current_thread_trace_id(),
-        ))
+        .open(path)
         .and_then(|mut file| writeln!(file, "{line}"));
+}
+
+fn trim_latency_trace_file(path: &std::path::Path, keep_bytes: usize) -> std::io::Result<()> {
+    let contents = fs::read(path)?;
+    let start = contents.len().saturating_sub(keep_bytes);
+    let start = contents[start..]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map(|offset| start + offset + 1)
+        .unwrap_or(contents.len());
+    fs::write(path, &contents[start..])
+}
+
+fn cleanup_stale_latency_trace_files() {
+    LATENCY_TRACE_RETENTION_CLEANUP.get_or_init(|| {
+        const RETENTION: std::time::Duration = std::time::Duration::from_secs(2 * 24 * 60 * 60);
+        let directory = std::env::temp_dir();
+        let Ok(entries) = fs::read_dir(directory) else {
+            return;
+        };
+        let now = std::time::SystemTime::now();
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !name.starts_with("terminal-workspace-latency-trace-")
+                || !name.ends_with(".jsonl")
+            {
+                continue;
+            }
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            if metadata
+                .modified()
+                .ok()
+                .and_then(|modified| now.duration_since(modified).ok())
+                .is_some_and(|age| age > RETENTION)
+            {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    });
 }
 
 fn current_thread_trace_id() -> String {
@@ -914,6 +1000,28 @@ const GEOMETRY_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
 /// file dropped the live key-routing records mid-session, and the newest lines are the
 /// ones being diagnosed.
 const GEOMETRY_LOG_KEEP_BYTES: usize = 1024 * 1024;
+const GEOMETRY_LOG_RETENTION: std::time::Duration = std::time::Duration::from_secs(2 * 24 * 60 * 60);
+static GEOMETRY_LOG_RETENTION_CLEANUP: OnceLock<()> = OnceLock::new();
+
+fn log_is_expired(modified: std::time::SystemTime, now: std::time::SystemTime) -> bool {
+    now.duration_since(modified)
+        .map(|age| age >= GEOMETRY_LOG_RETENTION)
+        .unwrap_or(false)
+}
+
+fn cleanup_expired_geometry_log(path: &std::path::Path) {
+    GEOMETRY_LOG_RETENTION_CLEANUP.get_or_init(|| {
+        if let Ok(metadata) = fs::metadata(path) {
+            if metadata
+                .modified()
+                .map(|modified| log_is_expired(modified, std::time::SystemTime::now()))
+                .unwrap_or(false)
+            {
+                let _ = fs::remove_file(path);
+            }
+        }
+    });
+}
 
 /// The tail of `data` starting on a whole line, keeping at most `keep` bytes.
 fn keep_log_tail(data: &[u8], keep: usize) -> &[u8] {
@@ -938,6 +1046,7 @@ fn keep_log_tail(data: &[u8], keep: usize) -> &[u8] {
 pub fn terminal_geometry_log(line: String) {
     use std::io::Write;
     let path = crate::platform_paths::terminal_geometry_log_path();
+    cleanup_expired_geometry_log(&path);
     if let Ok(meta) = std::fs::metadata(&path) {
         if meta.len() > GEOMETRY_LOG_MAX_BYTES {
             if let Ok(data) = std::fs::read(&path) {
@@ -1201,11 +1310,12 @@ pub fn grid_attach(
     cols: Option<usize>,
     rows: Option<usize>,
     attach_token: Option<String>,
+    on_clipboard_copy: Channel<Osc52ClipboardCopy>,
 ) -> Result<(), String> {
     let cols = cols.filter(|value| *value > 0).unwrap_or(DEFAULT_COLS);
     let rows = rows.filter(|value| *value > 0).unwrap_or(DEFAULT_ROWS);
     crate::daemon::trace_pty("grid.attach", format!("id={id} cols={cols} rows={rows}"));
-    grids.attach(&id, cols, rows, attach_token)
+    grids.attach_with_clipboard(&id, cols, rows, attach_token, Some(on_clipboard_copy))
 }
 
 #[tauri::command]
@@ -1764,6 +1874,66 @@ pub fn agent_status_read_sidecar(file_name: String) -> Result<Option<String>, St
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(format!("read {}: {error}", path.display())),
     }
+}
+
+// FEATURE-64: a parent agent's CLI drops `<id>.request.json` here; the app takes
+// each request once and writes `<id>.result.json` back for the CLI to read.
+fn child_requests_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("terminal-workspace")
+        .join("child-requests")
+}
+
+fn valid_child_request_id(id: &str) -> bool {
+    (8..=64).contains(&id.len()) && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// Take (read and remove) pending child-terminal requests, oldest name first.
+#[tauri::command(async)]
+pub fn child_requests_take() -> Result<Vec<String>, String> {
+    const MAX_REQUESTS: usize = 16;
+    const MAX_BYTES: u64 = 16 * 1024;
+    let entries = match fs::read_dir(child_requests_dir()) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.strip_suffix(".request.json"))
+                .is_some_and(valid_child_request_id)
+        })
+        .collect();
+    paths.sort();
+    let mut taken = Vec::new();
+    for path in paths.into_iter().take(MAX_REQUESTS) {
+        let small = fs::metadata(&path).map(|meta| meta.len() <= MAX_BYTES).unwrap_or(false);
+        let text = if small { fs::read_to_string(&path).ok() } else { None };
+        // Remove even an unreadable/oversized request so it cannot wedge the queue.
+        let _ = fs::remove_file(&path);
+        if let Some(text) = text {
+            taken.push(text);
+        }
+    }
+    Ok(taken)
+}
+
+/// Record the outcome of a child-terminal request for the waiting CLI.
+#[tauri::command(async)]
+pub fn child_request_complete(request_id: String, result: String) -> Result<(), String> {
+    if !valid_child_request_id(&request_id) {
+        return Err("invalid child request id".into());
+    }
+    let dir = child_requests_dir();
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let tmp = dir.join(format!("{request_id}.result.json.tmp"));
+    fs::write(&tmp, result).map_err(|error| error.to_string())?;
+    fs::rename(&tmp, dir.join(format!("{request_id}.result.json"))).map_err(|error| error.to_string())
 }
 
 /// Return the contents of pane status sidecars for the one-time recovery
@@ -2630,7 +2800,8 @@ mod tests {
         live_session_root_pid_with, normalize_selected_folder, parse_meminfo_bytes,
         parse_pressure_avg10, sanitize_paste_log_line, shell_quote,
         workstream_prepare_dedicated_worktree, workstream_remove_dedicated_worktree,
-        worktree_branch_for, worktree_target_for, DaemonPaneRoot,
+        worktree_branch_for, worktree_target_for, sanitize_latency_trace_value,
+        daemon_input_trace_details, trim_latency_trace_file, DaemonInputEvent, DaemonPaneRoot,
     };
     use crate::pane_process::{PaneAgentProviderOwner, PaneAgentRuntimeOwner};
     use crate::pty::{PersistedSessionSummary, PtyExitStatus, PtySessionSummary, SessionLifecycle};
@@ -2638,6 +2809,49 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn latency_trace_sanitizer_removes_terminal_contents_recursively() {
+        let mut trace = serde_json::json!({
+            "data": "typed-secret",
+            "key": "x",
+            "nested": { "output": "private-output", "durationMs": 12 }
+        });
+        sanitize_latency_trace_value(&mut trace);
+        assert_eq!(trace["dataLength"], "typed-secret".len());
+        assert_eq!(trace["keyCategory"], "printable");
+        assert_eq!(trace["nested"]["durationMs"], 12);
+        assert!(trace.get("data").is_none());
+        assert!(trace["nested"].get("output").is_none());
+        assert!(!trace.to_string().contains("typed-secret"));
+        assert!(!trace.to_string().contains("private-output"));
+    }
+
+    #[test]
+    fn daemon_input_latency_trace_keeps_metadata_without_typed_text() {
+        let event: DaemonInputEvent = serde_json::from_str(
+            r#"{"id":"pane-1","data":"private-typed-text","seqIds":[4,5]}"#,
+        )
+        .unwrap();
+        let details = daemon_input_trace_details(&event);
+        assert!(details.contains("id=pane-1"));
+        assert!(details.contains("bytes=18"));
+        assert!(details.contains("seq_ids=Some([4, 5])"));
+        assert!(!details.contains("private-typed-text"));
+    }
+
+    #[test]
+    fn latency_trace_rotation_keeps_recent_complete_lines() {
+        let path = std::env::temp_dir().join(format!(
+            "termfleet-latency-rotation-test-{}.jsonl",
+            std::process::id()
+        ));
+        fs::write(&path, "old line\nkeep one\nkeep two\n").unwrap();
+        trim_latency_trace_file(&path, 20).unwrap();
+        let contents = fs::read_to_string(&path).unwrap();
+        let _ = fs::remove_file(path);
+        assert_eq!(contents, "keep one\nkeep two\n");
+    }
 
     fn session_summary(
         id: &str,
@@ -3198,6 +3412,20 @@ pub fn session_transcript_read(
     }
 }
 
+/// A larger tail for "Copy last reply": the newest agent message can be long and sit
+/// behind big tool output, which the 32 KiB status tail would cut off.
+#[tauri::command(async)]
+pub fn session_transcript_reply_read(
+    provider: String,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    const REPLY_TAIL_BYTES: usize = 4 * 1024 * 1024;
+    match session_transcript_path(&provider, &session_id)? {
+        Some(path) => Ok(Some(read_tail(&path, REPLY_TAIL_BYTES)?)),
+        None => Ok(None),
+    }
+}
+
 /// Bounded request history from across the record. This recovers concrete goals that
 /// verbose tool output pushed out of both the opening and tail windows.
 // Off the main thread (TF-044): a sync Tauri command runs on the UI thread, so one
@@ -3667,5 +3895,14 @@ mod tc060_tests {
         assert_eq!(keep_log_tail(data, 12), b"third\n");
         // No newline inside the window: keep what we have rather than nothing.
         assert_eq!(keep_log_tail(b"no-newlines-here", 4), b"no-newlines-here");
+    }
+
+    #[test]
+    fn geometry_log_expires_at_two_days_but_not_for_future_timestamps() {
+        let now = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        let two_days = GEOMETRY_LOG_RETENTION;
+        assert!(log_is_expired(now - two_days, now));
+        assert!(!log_is_expired(now - (two_days - std::time::Duration::from_secs(1)), now));
+        assert!(!log_is_expired(now + std::time::Duration::from_secs(1), now));
     }
 }

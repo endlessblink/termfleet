@@ -250,3 +250,58 @@ export function countCanvasLanes(
   const projects = resolveCanvasNodeProjects(nodes, tabs);
   return new Set(projects.values()).size;
 }
+
+/**
+ * Nearest empty spot next to `anchor` for a new card of `size`. Only the new card
+ * gets a position: existing cards are never moved, so the map does not jiggle
+ * when something is added. Candidates sit on a grid around the anchor, nearest
+ * first, preferring right, then below, and a spot is free only when it keeps
+ * `gap` clear of every card (of any type). Deterministic for a given map.
+ */
+export function findFreeCanvasSpot(
+  anchor: ArrangeableNode,
+  size: { width: number; height: number },
+  nodes: readonly ArrangeableNode[],
+  gap = CANVAS_ROW_ITEM_GAP,
+): CanvasPosition {
+  const occupied = nodes.map(rectOf);
+  const isFree = (x: number, y: number) => {
+    const rect = {
+      left: x - gap,
+      top: y - gap,
+      right: x + size.width + gap,
+      bottom: y + size.height + gap,
+    };
+    return occupied.every((other) => overlapArea(rect, other) === 0);
+  };
+  const stepX = size.width + gap;
+  const stepY = size.height + gap;
+  const originX = anchor.x + anchor.width + gap;
+  const originY = anchor.y;
+  const maxRing = 24;
+  for (let ring = 0; ring <= maxRing; ring += 1) {
+    const candidates: Array<{ col: number; row: number }> = [];
+    for (let col = -ring - 1; col <= ring; col += 1) {
+      for (let row = -ring; row <= ring; row += 1) {
+        if (Math.max(Math.abs(col + 0.5) - 0.5, Math.abs(row)) !== ring) continue;
+        candidates.push({ col, row });
+      }
+    }
+    candidates.sort(
+      (a, b) =>
+        Math.hypot(a.col, a.row) - Math.hypot(b.col, b.row) ||
+        Number(a.col < 0) - Number(b.col < 0) ||
+        Number(a.row < 0) - Number(b.row < 0) ||
+        a.row - b.row ||
+        a.col - b.col,
+    );
+    for (const { col, row } of candidates) {
+      const x = originX + col * stepX;
+      const y = originY + row * stepY;
+      if (isFree(x, y)) return { x, y };
+    }
+  }
+  // A map full in every direction: go below everything rather than cover a card.
+  const bottom = occupied.reduce((max, rect) => Math.max(max, rect.bottom), anchor.y);
+  return { x: anchor.x, y: bottom + gap };
+}

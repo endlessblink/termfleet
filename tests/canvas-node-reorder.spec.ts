@@ -8,9 +8,8 @@ test.use({
   },
 });
 
-// Regression coverage for the Map sidebar's drag-reorder: it must change the
-// persisted project order and rotate those terminals through their existing map slots.
-test("sidebar reordering rotates terminal map slots inside one project", async ({
+// Sidebar display order must not change a terminal's physical map position.
+test("manual sidebar reordering preserves terminal map positions", async ({
   page,
 }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
@@ -46,6 +45,7 @@ test("sidebar reordering rotates terminal map slots inside one project", async (
 
     const seed = () =>
       useWorkspaceStore.setState({
+        hydrating: false,
         canvasState: {
           selectedNodeId: "a",
           selectedNodeIds: ["a"],
@@ -79,7 +79,7 @@ test("sidebar reordering rotates terminal map slots inside one project", async (
     };
 
     seed();
-    // Move the first row after the last. B, C, A inherit A, B, C's prior slots.
+    // Move the first row after the last without moving any map cards.
     useWorkspaceStore.getState().reorderCanvasSidebarNodes("a", "c", "after");
     const movedToEnd = sidebarOrder();
     const mapOrderAfterEndMove = canvasOrder();
@@ -127,15 +127,15 @@ test("sidebar reordering rotates terminal map slots inside one project", async (
   expect(result.movedToEnd).toEqual(["b", "c", "a", "other"]);
   expect(result.mapOrderAfterEndMove).toEqual(["a", "b", "c", "other"]);
   expect(result.movedToFront).toEqual(["c", "a", "b", "other"]);
-  // C moves into A's previous slot; the other project remains untouched.
-  expect(result.movedNodeX).toBe(10);
+  // C stays in its own map slot; the other project remains untouched.
+  expect(result.movedNodeX).toBe(30);
   expect(result.movedNodeY).toBe(7);
   expect(result.selfDrop).toEqual(["a", "b", "c", "other"]);
   expect(result.persistedManualOrder).toEqual(["b", "c", "a", "other"]);
   expect(result.persistedPositions).toEqual([
-    { id: "a", x: 30, y: 7 },
-    { id: "b", x: 10, y: 7 },
-    { id: "c", x: 20, y: 7 },
+    { id: "a", x: 10, y: 7 },
+    { id: "b", x: 20, y: 7 },
+    { id: "c", x: 30, y: 7 },
     { id: "other", x: 90, y: 7 },
   ]);
   expect(result.crossProjectDropWasNoop).toBe(true);
