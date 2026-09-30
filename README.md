@@ -10,10 +10,10 @@ It is **not** trying to be another terminal emulator skin. The preview goal is a
 local-first operations cockpit: many terminals, local services, task-bound map
 nodes, recovery state, and agent runs stay visible as one workspace.
 
-> **Early preview, Linux only.** v0.2.1 is usable daily but unsigned and still
+> **Early preview, Linux only.** v0.2.2 is usable daily but unsigned and still
 > rough in places. Terminals and agent conversations survive app restarts,
 > crashes, and reboots; the known issues are listed in the
-> [v0.2.1 release notes](docs/release-notes-v0.2.1.md). Experimental parts
+> [v0.2.2 release notes](docs/release-notes-v0.2.2.md). Experimental parts
 > (Workstream Quest, the TermControl phone companion) are off or unadvertised.
 
 ## What It Is
