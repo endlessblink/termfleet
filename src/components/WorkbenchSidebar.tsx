@@ -1361,7 +1361,7 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background:
-      "linear-gradient(180deg, var(--surface-wash), var(--surface-base))",
+      "var(--surface-wash)",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.025)",
     animation: "workbench-surface-in var(--motion-med)",
   },

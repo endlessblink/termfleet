@@ -902,7 +902,7 @@ function MeasuringFallback() {
           padding: "0 8px",
           borderBottom: "1px solid var(--border-subtle)",
           background:
-            "linear-gradient(180deg, var(--surface-raised), var(--surface-wash))",
+            "var(--surface-raised)" /* TF-015: solid, gradients repaint slowly in software */,
         }}
       >
         <span

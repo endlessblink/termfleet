@@ -24,7 +24,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     borderLeft: "1px solid var(--border-strong)",
     background:
-      "radial-gradient(circle at 62% -18%, rgba(255, 255, 255, 0.04), transparent 28%), linear-gradient(180deg, #1f2325, #171b1d 72%)",
+      "#1b1f21" /* TF-015: solid, gradients repaint slowly in software */,
   },
   surfacePane: {
     position: "absolute",
@@ -64,7 +64,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     padding: "0 8px",
     borderBottom: "1px solid var(--border-subtle)",
-    background: "linear-gradient(180deg, var(--surface-raised), var(--surface-wash))",
+    background: "var(--surface-raised)" /* TF-015: solid, gradients repaint slowly in software */,
   },
   terminalFrameDot: {
     width: 7,
@@ -86,7 +86,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 9,
     padding: "12px 10px",
     background:
-      "linear-gradient(180deg, rgba(217, 154, 69, 0.025), transparent 120px), var(--surface-sunken)",
+      "var(--surface-sunken)",
   },
   terminalLine: {
     height: 10,

@@ -6875,3 +6875,75 @@ test("card shadow stays blur-free (TF-015 software repaint cost)", () => {
     expect(parseFloat(lengths[2] ?? "0"), `blur in "${layer.trim()}"`).toBe(0);
   }
 });
+
+test("dragging a map card applies at most one move per frame and lands on the release point (TF-015)", async ({ page }) => {
+  // Every mousemove used to commit a store update that re-rendered the map,
+  // sidebar and headers; with slow software repaints those updates queued and
+  // the card trailed the pointer.
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.evaluate(() => {
+    const store = (window as unknown as { __termfleetWorkspaceStore: { getState: () => Record<string, unknown>; setState: (s: Record<string, unknown>) => void } }).__termfleetWorkspaceStore;
+    const tab = { id: "drag-tab", title: "Drag me", emoji: "[]", color: "#7aa2f7", groupId: null, initialCwd: "/tmp/drag",
+      terminals: [{ id: "pty-drag", paneId: "pane-drag", cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: "pane-drag", type: "terminal" }, activePaneId: "pane-drag" };
+    store.setState({
+      workspaceUiState: { ...(store.getState().workspaceUiState as object), workspaceMode: "canvas", primarySidebarPanel: "map" },
+      tabs: [tab], activeTabId: "drag-tab",
+      canvasState: { nodes: [{ id: "drag-node", type: "terminal", title: "Drag me", terminalTabId: "drag-tab", x: 40, y: 80, width: 820, height: 460 }],
+        selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 } },
+    });
+  });
+  const result = await page.evaluate(async () => {
+    const store = (window as unknown as { __termfleetWorkspaceStore: { getState: () => { canvasState: { nodes: Array<{ id: string; x: number; y: number }> } }; subscribe: (fn: (s: unknown, p: unknown) => void) => () => void } }).__termfleetWorkspaceStore;
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    // The card's header row starts a card drag (the map background pans instead).
+    const findHandle = () =>
+      document.querySelector<HTMLElement>('[data-node-id="drag-node"] [data-header-version]') ??
+      document.querySelector<HTMLElement>('[data-node-id="drag-node"] [data-testid="canvas-agent-status-block"]');
+    for (let i = 0; i < 60 && !findHandle(); i += 1) await nextFrame();
+    const handle = findHandle();
+    if (!handle) throw new Error("no card drag handle");
+    const box = handle.getBoundingClientRect();
+    const x0 = box.left + 60, y0 = box.top + box.height / 2;
+    const startX = store.getState().canvasState.nodes[0].x;
+    handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, clientX: x0, clientY: y0, button: 0, buttons: 1 }));
+    let moves = 0;
+    let lastNodes = store.getState().canvasState.nodes;
+    const unsubscribe = store.subscribe((state) => {
+      const nodes = (state as { canvasState: { nodes: unknown } }).canvasState.nodes;
+      if (nodes !== lastNodes) { moves += 1; lastNodes = nodes as typeof lastNodes; }
+    });
+    // 50 pointer moves inside one task, as a queued-up burst would arrive.
+    for (let i = 1; i <= 50; i += 1) {
+      document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: x0 + i * 5, clientY: y0, buttons: 1 }));
+    }
+    const movesInBurst = moves;
+    await nextFrame(); await nextFrame();
+    const movesAfterFrame = moves;
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: x0 + 250, clientY: y0 }));
+    unsubscribe();
+    return { movesInBurst, movesAfterFrame, moved: store.getState().canvasState.nodes[0].x - startX };
+  });
+  expect(result.movesInBurst).toBe(0);
+  // One coalesced move, plus at most one bring-to-front reorder from the click.
+  expect(result.movesAfterFrame).toBeLessThanOrEqual(2);
+  expect(Math.abs(result.moved - 250)).toBeLessThanOrEqual(8);
+});
+
+test("large app surfaces stay solid, not gradients (TF-015 software repaint cost)", () => {
+  // Real-app lab with the operator's map layout: removing big-surface gradients
+  // cut the slowest full-window repaints from ~240 ms to ~55 ms (median of 6).
+  const read = (file: string) => readFileSync(path.join(process.cwd(), file), "utf8");
+  const bigSurface = "linear-gradient(180deg, var(--surface-raised), var(--surface-wash))";
+  for (const file of ["src/components/WorkspaceSurface.tsx", "src/components/MagicCanvas.tsx", "src/components/SplitPane.tsx"]) {
+    expect(read(file), file).not.toContain(bigSurface);
+  }
+  expect(read("src/components/WorkspaceSurface.tsx")).not.toContain("radial-gradient(circle at 62% -18%");
+  const terminalArea = read("src/styles/global.css").match(/\.terminal-area \{[^}]*\}/)?.[0] ?? "";
+  expect(terminalArea).not.toContain("gradient(");
+});

@@ -1589,9 +1589,9 @@ button:active {
   flex: 1;
   overflow: hidden;
   position: relative;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 54px),
-    linear-gradient(180deg, #202426, #171b1d 58%);
+  /* TF-015: solid. Large gradients are re-rasterized on every software repaint
+     and made map-card drags stutter (real-app lab: drag p95 50-134 ms -> 20-27 ms). */
+  background: #1b1f21;
   padding: 0;
 }
 

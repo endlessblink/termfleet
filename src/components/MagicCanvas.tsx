@@ -657,7 +657,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "0 9px 0 11px",
     borderBottom: "1px solid var(--border-subtle)",
     background:
-      "linear-gradient(180deg, var(--surface-raised), var(--surface-wash))",
+      "var(--surface-raised)" /* TF-015: solid, gradients repaint slowly in software */,
     cursor: "grab",
     userSelect: "none",
   },
@@ -1829,7 +1829,7 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateRows: "1fr auto",
     gap: 12,
     padding: 16,
-    background: "linear-gradient(180deg, #10161a, #0b1013)",
+    background: "#0e1317",
     color: "var(--terminal-fg)",
     cursor: "pointer",
   },
@@ -1880,7 +1880,7 @@ const styles: Record<string, CSSProperties> = {
   terminalSummary: {
     height: "100%",
     overflow: "hidden",
-    background: "linear-gradient(180deg, #151a1d, #111619)",
+    background: "#13181b",
     cursor: "pointer",
     userSelect: "none",
   },
@@ -1990,7 +1990,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 9,
     padding: 10,
     overflow: "hidden",
-    background: "linear-gradient(180deg, #14191c, #101517)",
+    background: "#12171a",
     color: "var(--terminal-fg)",
     cursor: "pointer",
     userSelect: "none",
@@ -2933,6 +2933,31 @@ function CanvasNodeViewImpl({
         lastDeltaY: 0,
       };
       let moved = false;
+      // TF-015: every mousemove used to commit a store update, re-rendering the
+      // map, sidebar and headers. When a software repaint ran long, those updates
+      // queued up and the card trailed the pointer. Apply at most one move per
+      // frame, always with the newest pointer position.
+      let pendingPointer: { clientX: number; clientY: number } | null = null;
+      let moveFrame = 0;
+
+      function applyPendingMove() {
+        moveFrame = 0;
+        const drag = dragRef.current;
+        const pointer = pendingPointer;
+        pendingPointer = null;
+        if (!drag || !pointer) return;
+        const nextX = drag.nodeX + (pointer.clientX - drag.x) / zoom;
+        const nextY = drag.nodeY + (pointer.clientY - drag.y) / zoom;
+        const totalDeltaX = snapTerminalPixel(nextX, node.type, zoom) - node.x;
+        const totalDeltaY = snapTerminalPixel(nextY, node.type, zoom) - node.y;
+        if (totalDeltaX === drag.lastDeltaX && totalDeltaY === drag.lastDeltaY) return;
+        moveCanvasNodes(dragIds, {
+          x: totalDeltaX - drag.lastDeltaX,
+          y: totalDeltaY - drag.lastDeltaY,
+        });
+        drag.lastDeltaX = totalDeltaX;
+        drag.lastDeltaY = totalDeltaY;
+      }
 
       function onMouseMove(moveEvent: MouseEvent) {
         const drag = dragRef.current;
@@ -2943,19 +2968,14 @@ function CanvasNodeViewImpl({
         ) {
           moved = true;
         }
-        const nextX = drag.nodeX + (moveEvent.clientX - drag.x) / zoom;
-        const nextY = drag.nodeY + (moveEvent.clientY - drag.y) / zoom;
-        const totalDeltaX = snapTerminalPixel(nextX, node.type, zoom) - node.x;
-        const totalDeltaY = snapTerminalPixel(nextY, node.type, zoom) - node.y;
-        moveCanvasNodes(dragIds, {
-          x: totalDeltaX - drag.lastDeltaX,
-          y: totalDeltaY - drag.lastDeltaY,
-        });
-        drag.lastDeltaX = totalDeltaX;
-        drag.lastDeltaY = totalDeltaY;
+        pendingPointer = { clientX: moveEvent.clientX, clientY: moveEvent.clientY };
+        if (!moveFrame) moveFrame = window.requestAnimationFrame(applyPendingMove);
       }
 
       function onMouseUp() {
+        // Land exactly where the pointer was released.
+        if (moveFrame) window.cancelAnimationFrame(moveFrame);
+        applyPendingMove();
         dragRef.current = null;
         document.removeEventListener("mousemove", onMouseMove);
         document.removeEventListener("mouseup", onMouseUp);
