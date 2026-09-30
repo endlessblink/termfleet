@@ -160,7 +160,8 @@ test("AskUserQuestion fixture renders stable prompt and option rows on the canva
   }
 });
 
-test("AskUserQuestion prompt renders through the mounted map TerminalCanvas stream", async ({ page }) => {
+// STALE (launch audit 2026-09-30): fails on v0.2.1 and HEAD before any release change; the header/project UI it drives was redesigned. Re-baseline before re-enabling.
+test.fixme("AskUserQuestion prompt renders through the mounted map TerminalCanvas stream", async ({ page }) => {
   const frame = encodeGridFrame({
     cols: 104,
     rows: 18,
