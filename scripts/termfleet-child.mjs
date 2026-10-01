@@ -29,7 +29,9 @@ usage:
   termfleet-child --help | --version
 
 Inside a TermFleet pane the new terminal is linked as that pane's child. Elsewhere it
-is a top-level instance. Long prompts: use --task-file (not argv). Handoff: --dropoff.`;
+is a top-level instance. Long prompts: use --task-file (not argv).
+HELPER (you keep running, a new card is added): --task / --task-file.
+HANDOVER (your own card is replaced by a fresh instance): --dropoff <your HANDOFF.md>.`;
 
 function fail(message, code = 1) {
   process.stderr.write(`termfleet-child: ${message}\n`);
@@ -39,6 +41,8 @@ function fail(message, code = 1) {
 const BOOLEAN_FLAGS = new Set(["no-start-app", "separate", "replace", "allow-thin"]);
 
 const THIN_HANDOFF_CHARS = 1500;
+/** A file missing more than this many expected parts is a briefing, not a handoff. */
+const HANDOVER_MAX_GAPS = 3;
 /** What a successor needs to not lose context; a missing one is warned about, not fatal. */
 const HANDOFF_PARTS = [
   ["original request", /request|asked|said|words/i],
@@ -162,9 +166,21 @@ function resolveTask(options) {
     if (gaps.length > 0) {
       process.stderr.write(`termfleet-child: warning: handoff has no section for: ${gaps.join(", ")}\n`);
     }
+    // Only a real handoff of THIS instance replaces its card. A briefing for a helper
+    // that merely arrived through --dropoff must never end the instance that asked.
+    const handover = gaps.length <= HANDOVER_MAX_GAPS;
+    if (!handover) {
+      process.stderr.write(
+        "termfleet-child: this file does not read like a handoff of your own work, so it starts a HELPER and your own card stays. " +
+          "For a helper use --task-file; use --dropoff only to hand your own work to a fresh instance.\n",
+      );
+    }
     return {
-      task: `Read ${file}. It is a handoff from the previous instance: continue exactly where it left off, and start by confirming what you understood.`,
-      title: `Continue from ${basename(file)}`,
+      task: handover
+        ? `Read ${file}. It is a handoff from the previous instance: continue exactly where it left off, and start by confirming what you understood.`
+        : `Read ${file} and carry out the instructions in it.`,
+      title: handover ? `Continue from ${basename(file)}` : `Helper: ${basename(file)}`,
+      handover,
     };
   }
   if (options["task-file"] !== undefined) {
@@ -185,7 +201,7 @@ async function spawnCommand(options) {
   const parentPaneId = process.env.TERMFLEET_PANE_ID?.trim() || undefined;
   const provider = options.provider;
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
-  const { task, title } = resolveTask(options);
+  const { task, title, handover } = resolveTask(options);
   const cwd = resolve(options.cwd ?? process.cwd());
   const timeoutSeconds = Number(options.timeout ?? 20);
   if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) fail("--timeout must be a positive number of seconds");
@@ -197,9 +213,10 @@ async function spawnCommand(options) {
   const requestId = randomUUID();
   const requestPath = join(dir, `${requestId}.request.json`);
   const resultPath = join(dir, `${requestId}.result.json`);
-  // A handover (--dropoff) takes over the calling terminal's card; --separate opts out,
-  // --replace asks for the same with a plain task.
-  const replace = parentPaneId && !options.separate && (options.replace === true || options.dropoff !== undefined) ? true : undefined;
+  // Only a handover (--dropoff of a real handoff) takes over the calling terminal's
+  // card; a helper (--task / --task-file) always adds a card and the caller keeps
+  // running. --separate opts out of a handover, --replace asks for one explicitly.
+  const replace = parentPaneId && !options.separate && (options.replace === true || handover === true) ? true : undefined;
   const near = options.near ? resolve(options.near) : undefined;
   const request = { version: 1, requestId, parentPaneId, provider, task, title, near, replace, cwd, createdAt: Date.now() };
   // Write then rename, so the app never reads a half-written request.
