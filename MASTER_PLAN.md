@@ -10082,5 +10082,9 @@ Status:
   project it does not belong to. Check first: the successor's project folder
   (`projectCwd`, then start folder) versus the group the sidebar actually shows, and
   whether older saved cards still carry a stale group. Reproduce in the real app.
+- NEW request: "subagents should have a distinct color". Helpers are created with a
+  shared teal (`HELPER_TERMINAL_COLOR`), but it does not show distinctly in the
+  sidebar or on the map; make every helper card visibly its own colour there, and
+  prove it with a screenshot of the real app.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?
