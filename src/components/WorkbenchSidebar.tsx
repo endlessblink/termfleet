@@ -5369,6 +5369,15 @@ function MapPanel({
     }, "sidebar-focus");
   };
 
+  // Every way of opening a card from this sidebar (a row, a pending-approval card)
+  // does the same thing: select that exact card, show the map, bring it into view.
+  const openCard = (node: CanvasNode) => {
+    selectCard(node.id);
+    setWorkspaceMode("canvas");
+    focusCanvasNode(node);
+    recordSidebarClick(node.id, node.terminalTabId, node.terminalTabId);
+  };
+
   const groupVisibleNodes = canvasState.nodes;
   const nodeTab = (node: CanvasNode) => tabForMapNode(node, tabs);
   const filterCounts = useMemo(
@@ -5781,7 +5790,7 @@ function MapPanel({
       </div>
       <PendingApprovalsSection
         approvals={pendingApprovals}
-        onSelect={focusCanvasNode}
+        onSelect={openCard}
       />
       <div style={styles.mapFilterBar} aria-label="Arrange terminals">
         {(
@@ -8027,12 +8036,7 @@ function MapPanel({
                     onMouseDown={(event) => {
                       if (!draggable) event.preventDefault();
                     }}
-                    onClick={() => {
-                      selectCard(node.id);
-                      setWorkspaceMode("canvas");
-                      focusCanvasNode(node);
-                      recordSidebarClick(node.id, node.terminalTabId, linkedTab?.id);
-                    }}
+                    onClick={() => openCard(node)}
                     onDoubleClick={() => {
                       if (!node.terminalTabId || !linkedTab) return;
                       setActiveTab(linkedTab.id);
