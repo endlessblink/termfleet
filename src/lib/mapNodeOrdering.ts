@@ -88,13 +88,10 @@ export function projectBucketsByManualOrder(
     else buckets.set(key, { key, label, nodes: [node] });
   }
 
-  // Groups keep their saved slot whether they hold 0, 1 or 5 terminals; groups
-  // not saved yet follow in the order they already appeared (new ones at the end).
-  for (const group of groups) {
-    if (!buckets.has(group.id)) {
-      buckets.set(group.id, { key: group.id, label: group.name, nodes: [] });
-    }
-  }
+  // Only groups that hold a terminal are listed (an empty group is not a row). The
+  // saved order is by group id, so a group keeps its slot even while it is empty
+  // and returns to it when a terminal comes back; groups not saved yet follow in
+  // the order they already appeared (new ones at the end).
   const saved = options.groupOrder ?? [];
   const slot = (key: string) => {
     const index = saved.indexOf(key);
