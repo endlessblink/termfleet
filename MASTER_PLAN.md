@@ -10134,5 +10134,11 @@ Status:
 - Reports still open: clicking cards moved them / changed their emoji (suspected
   same cause: group flipping when the live folder arrived on click); helper cards
   show nested under the card that started them (by design, "↳") — confirm it is wanted.
+- Earlier sessions "no saved text any more" (operator screenshot): a handover now
+  saves the old chat's text on the spot (up to 300K characters, cleaned of colour
+  codes) inside the earlier-session record, and the viewer shows that copy with
+  Copy all. Only affects handovers made after the next build; the three already
+  shown are empty. Still wanted: a structured (You / Assistant) copy built from the
+  provider's own session record.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?

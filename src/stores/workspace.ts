@@ -391,7 +391,7 @@ interface WorkspaceState {
   removeTab: (id: string) => void;
   closeTerminalSession: (id: string, reason?: TerminalCloseReason) => Promise<void>;
   /** Handover: move a finished session off the map and under its successor's card. */
-  archivePredecessor: (predecessorTabId: string, successorTabId: string) => void;
+  archivePredecessor: (predecessorTabId: string, successorTabId: string, savedText?: string) => void;
   clearEarlierSession: (tabId: string, index: number) => Promise<void>;
   clearAllEarlierSessions: (tabId: string) => Promise<void>;
   restoreRecoverySession: (id: string) => Promise<void>;
@@ -3487,7 +3487,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  archivePredecessor: (predecessorTabId: string, successorTabId: string) => {
+  archivePredecessor: (predecessorTabId: string, successorTabId: string, savedText?: string) => {
     const predecessor = get().tabs.find((tab) => tab.id === predecessorTabId);
     if (!predecessor || predecessorTabId === successorTabId) return;
     const ptyIds = predecessor.terminals.map((terminal) => terminal.id);
@@ -3498,7 +3498,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       if (!successor) return state;
       const merged = mergeEarlierSessions(
         [...(successor.earlierSessions ?? []), ...(predecessor.earlierSessions ?? [])],
-        { ptyIds, title: predecessor.title, endedAt: Date.now() },
+        { ptyIds, title: predecessor.title, endedAt: Date.now(), ...(savedText ? { savedText } : {}) },
       );
       for (const session of merged.dropped) dropped.push(...session.ptyIds);
       const updated = state.tabs.map((tab) =>

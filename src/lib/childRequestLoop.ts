@@ -124,7 +124,18 @@ async function handle(raw: string) {
 
   if (predecessor) {
     // Handover: the old session leaves the map but is kept (not killed) under the new card.
-    after.archivePredecessor(predecessor.id, tab.id);
+    // Save the old chat's text now, while its session is still alive.
+    const { plainTerminalText, clipEarlierSessionText } = await import("./plainTerminalText");
+    const { invoke: snapshot } = await import("@tauri-apps/api/core");
+    const pieces: string[] = [];
+    for (const terminal of predecessor.terminals) {
+      try {
+        pieces.push(plainTerminalText(await snapshot<string>("daemon_snapshot_session", { id: terminal.id })));
+      } catch {
+        /* nothing to save for a session that is already gone */
+      }
+    }
+    after.archivePredecessor(predecessor.id, tab.id, clipEarlierSessionText(pieces.join("\n")) || undefined);
   }
   const childPaneId = `terminal-${tab.id}-${tab.activePaneId}`;
   // Start it now in the daemon; the card attaches to this same session later.

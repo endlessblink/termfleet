@@ -27,6 +27,7 @@ function plainText(raw: string) {
 }
 
 async function loadSessionText(session: EarlierSession) {
+  if (session.savedText) return session.savedText;
   const { invoke } = await import("@tauri-apps/api/core");
   const parts: string[] = [];
   for (const id of session.ptyIds) {

@@ -172,6 +172,8 @@ export interface EarlierSession {
   ptyIds: string[];
   title: string;
   endedAt: number;
+  /** The session's text, saved at the moment of handover so it never depends on the old terminal. */
+  savedText?: string;
 }
 
 export type WorkstreamKind = "terminal" | "agent";
