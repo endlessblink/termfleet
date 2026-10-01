@@ -30,6 +30,29 @@ test("the status hook records how each session started and the reason it ended",
   rmSync(home, { recursive: true, force: true });
 });
 
+test("every helper file the installed hooks import is copied to the installed hook folder", () => {
+  // The hooks run from a copy under ~/.local/share/termfleet/agent-hooks. A helper that
+  // is imported but not copied makes every hook event crash (caught live, TF-069).
+  const connect = readFileSync("scripts/termfleet-connect-agents.mjs", "utf8");
+  const copied = new Set([...connect.matchAll(/^\s+"((?:lib\/)?[\w.-]+\.(?:mjs|js))",$/gm)].map((m) => m[1]));
+  const imported = (file: string) =>
+    [...readFileSync(join("scripts", file), "utf8").matchAll(/from "\.\/((?:lib\/)?[\w.-]+\.mjs)"/g)].map((m) => m[1]);
+  const seen = new Set<string>();
+  const queue = ["termfleet-claude-status-hook.mjs", "termfleet-codex-status-hook.mjs"];
+  while (queue.length) {
+    const file = queue.pop()!;
+    for (const dep of imported(file.startsWith("lib/") ? file : file)) {
+      const rel = file.startsWith("lib/") ? `lib/${dep.replace(/^\.?\/?/, "").replace(/^lib\//, "")}` : dep;
+      if (!seen.has(rel)) {
+        seen.add(rel);
+        queue.push(rel);
+      }
+    }
+  }
+  const missing = [...seen].filter((file) => !copied.has(file));
+  expect(missing).toEqual([]);
+});
+
 const start = { event: "session-start", at: "2026-10-01T10:00:00Z", sessionId: "s1", paneId: "terminal-p1", cwd: "/work/freelance-desk", source: "resume", agentPid: 4242 };
 
 test("an agent that ended by itself is reported with its own reason", () => {
