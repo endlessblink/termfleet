@@ -128,6 +128,51 @@ test("a handover from a Claude session continues in Claude", async () => {
   rmSync(dataHome, { recursive: true, force: true });
 });
 
+test("a handover keeps the typed agent when the app does not know what the caller runs", async () => {
+  const { dataHome, dir, file } = setup();
+  // no record at all
+  const none = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "codex");
+  expect(none.code).toBe(0);
+  expect(none.request.provider).toBe("codex");
+  // a record without an agent (shells and not-yet-identified panes look like this)
+  const statusDir = join(dataHome, "terminal-workspace", "agent-status");
+  mkdirSync(statusDir, { recursive: true });
+  writeFileSync(join(statusDir, `pane-${fnv(parentPaneId)}.json`), JSON.stringify({ paneId: parentPaneId, provider: null }));
+  const unknown = await spawnAndReadRequest(["--dropoff", file("HANDOFF2.md", REAL_HANDOFF)], dataHome, dir, "claude");
+  expect(unknown.code).toBe(0);
+  expect(unknown.request.provider).toBe("claude");
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+test("a handover from a Codex card that only carries its real record fields still continues in Codex", async () => {
+  const { dataHome, dir, file } = setup();
+  const statusDir = join(dataHome, "terminal-workspace", "agent-status");
+  mkdirSync(statusDir, { recursive: true });
+  // the shape the status hook really writes for a Codex pane
+  writeFileSync(
+    join(statusDir, `pane-${fnv(parentPaneId)}.json`),
+    JSON.stringify({
+      cwd: "/work",
+      mainTask: "Fixing the sidebar",
+      mainTaskSource: "opening-request",
+      narration: "",
+      now: "Idle",
+      paneId: parentPaneId,
+      provider: "codex",
+      recent: [],
+      sessionId: "00000000-0000-4000-8000-000000000001",
+      source: "hook",
+      todos: [],
+      turn: "idle",
+      updatedAt: 1,
+    }),
+  );
+  const { request, code } = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "claude");
+  expect(code).toBe(0);
+  expect(request.provider).toBe("codex");
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
 test("a helper may still be a different agent than the one that asked for it", async () => {
   const { dataHome, dir } = setup();
   recordCallerAgent(dataHome, "codex");
