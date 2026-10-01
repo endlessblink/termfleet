@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error — plain ESM helper shared with the status hooks
 import { fnv } from "../scripts/lib/agent-status-paths.mjs";
+// @ts-expect-error — plain ESM script that also exports its caller detection
+import { resolveCaller } from "../scripts/termfleet-child.mjs";
 
 // A helper adds a card and the caller keeps running. Only a real handoff of the
 // caller's own work replaces the caller's card (TF-069). A helper briefing that
@@ -37,9 +39,17 @@ function setup() {
   return { dataHome, dir, file };
 }
 
-async function spawnAndReadRequest(args: string[], dataHome: string, dir: string, provider = "claude") {
+async function spawnAndReadRequest(
+  args: string[],
+  dataHome: string,
+  dir: string,
+  provider = "claude",
+  extraEnv: Record<string, string | undefined> = { TERMFLEET_PANE_ID: parentPaneId },
+) {
+  const env: Record<string, string | undefined> = { ...process.env, XDG_DATA_HOME: dataHome, ...extraEnv };
+  for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key];
   const child = spawn(process.execPath, [CLI, "spawn", "--provider", provider, "--timeout", "10", ...args], {
-    env: { ...process.env, XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: parentPaneId },
+    env: env as NodeJS.ProcessEnv,
   });
   let stderr = "";
   child.stderr.on("data", (chunk) => (stderr += chunk));
@@ -184,4 +194,91 @@ test("a helper may still be a different agent than the one that asked for it", a
   expect(request.provider).toBe("claude");
   expect(request.replace).toBeUndefined();
   rmSync(dataHome, { recursive: true, force: true });
+});
+
+// Codex runs commands from one shared background service: its command shell carries the
+// chat's id (CODEX_THREAD_ID) but NOT the card's id. A Codex handover must still find its
+// card and continue in Codex (live 2026-10-01: it continued in Claude).
+function bindChatToCard(dataHome: string, threadId: string, paneId: string) {
+  const statusDir = join(dataHome, "terminal-workspace", "agent-status");
+  mkdirSync(statusDir, { recursive: true });
+  writeFileSync(join(statusDir, "codex-chat-panes.json"), JSON.stringify({ [threadId]: { paneId, at: Date.now() } }));
+}
+
+test("a Codex command shell with no card id still hands over in Codex, replacing its own card", async () => {
+  const { dataHome, dir, file } = setup();
+  bindChatToCard(dataHome, "thread-codex-1", parentPaneId);
+  const { request, code, stderr } = await spawnAndReadRequest(
+    ["--dropoff", file("HANDOFF.md", REAL_HANDOFF)],
+    dataHome,
+    dir,
+    "claude", // what an old instruction would have typed
+    { TERMFLEET_PANE_ID: undefined, CODEX_THREAD_ID: "thread-codex-1" },
+  );
+  expect(code).toBe(0);
+  expect(request.provider).toBe("codex");
+  expect(request.parentPaneId).toBe(parentPaneId);
+  expect(request.replace).toBe(true);
+  expect(stderr).toContain("same agent as you (codex)");
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+test("a stale card id inherited from the shared Codex service never wins over the chat's own card", async () => {
+  const { dataHome, dir, file } = setup();
+  const staleClaudePane = "terminal-99999999-9999-4999-8999-999999999999-88888888-8888-4888-8888-888888888888";
+  bindChatToCard(dataHome, "thread-codex-2", parentPaneId);
+  const { request, code } = await spawnAndReadRequest(
+    ["--dropoff", file("HANDOFF.md", REAL_HANDOFF)],
+    dataHome,
+    dir,
+    "claude",
+    { TERMFLEET_PANE_ID: staleClaudePane, CODEX_THREAD_ID: "thread-codex-2" },
+  );
+  expect(code).toBe(0);
+  expect(request.provider).toBe("codex");
+  expect(request.parentPaneId).toBe(parentPaneId);
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+test("a Codex caller whose card is not known yet still gets a Codex successor (as a new card)", async () => {
+  const { dataHome, dir, file } = setup();
+  const { request, code } = await spawnAndReadRequest(
+    ["--dropoff", file("HANDOFF.md", REAL_HANDOFF)],
+    dataHome,
+    dir,
+    "claude",
+    { TERMFLEET_PANE_ID: undefined, CODEX_THREAD_ID: "thread-unbound" },
+  );
+  expect(code).toBe(0);
+  expect(request.provider).toBe("codex");
+  expect(request.replace).toBeUndefined();
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+function fakeProc(procs: Array<{ pid: number; ppid: number; args: string[] }>) {
+  const root = mkdtempSync(join(tmpdir(), "tf-proc-"));
+  for (const proc of procs) {
+    const dir = join(root, String(proc.pid));
+    mkdirSync(join(dir, "fd"), { recursive: true });
+    writeFileSync(join(dir, "cmdline"), proc.args.join("\0") + "\0");
+    writeFileSync(join(dir, "environ"), "HOME=/x\0");
+    writeFileSync(join(dir, "stat"), `${proc.pid} (${proc.args[0].split("/").pop()}) S ${proc.ppid} 1 1`);
+  }
+  return root;
+}
+
+test("a command running under the shared Codex service is recognised as a Codex caller", () => {
+  // the shape found on the real machine: bash <- codex app-server --managed-daemon (no terminal)
+  const root = fakeProc([
+    { pid: 800, ppid: 1, args: ["/home/u/.codex/packages/app-server-daemon/releases/0.159.3/bin/codex", "app-server", "--listen", "unix://", "--managed-daemon"] },
+    { pid: 900, ppid: 800, args: ["/bin/bash", "-c", "termfleet-child spawn --dropoff HANDOFF.md"] },
+  ]);
+  expect(resolveCaller({}, root, 900)).toEqual({ provider: "codex", paneId: undefined });
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("a command that is neither under Codex nor in a card has no caller", () => {
+  const root = fakeProc([{ pid: 900, ppid: 1, args: ["/bin/bash"] }]);
+  expect(resolveCaller({}, root, 900)).toEqual({ provider: undefined, paneId: undefined });
+  rmSync(root, { recursive: true, force: true });
 });

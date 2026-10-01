@@ -12,10 +12,13 @@
 // terminal and writes a result that this command prints as JSON (pane id etc).
 import { spawn as launch, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { paneSidecarPath } from "./lib/agent-status-paths.mjs";
+import { paneSidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
+import { ancestors, argv as procArgv, isProviderProcess } from "./lib/single-chat-owner.mjs";
+import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -209,20 +212,52 @@ export function callerProvider(paneId) {
   }
 }
 
+/**
+ * Who is calling: which agent, and which TermFleet card it runs in.
+ *
+ * A Claude command inherits TERMFLEET_PANE_ID from its terminal. Codex runs commands from
+ * ONE shared background service (`codex app-server`), so a Codex command has no card id
+ * (or a stale one from whichever terminal started the service). It does carry the chat's
+ * own id (CODEX_THREAD_ID) and has a Codex process above it; the card is then looked up
+ * from the chat-to-card record the Codex status hook keeps. Getting this wrong made a
+ * Codex handover continue in Claude.
+ */
+export function resolveCaller(env = process.env, procRoot = "/proc", selfPid = process.pid) {
+  const envPane = env.TERMFLEET_PANE_ID?.trim() || "";
+  const threadId = (env.CODEX_THREAD_ID ?? env.CODEX_SESSION_ID ?? "").trim();
+  const underCodex = [...ancestors(procRoot, selfPid)].some((pid) => isProviderProcess("codex", procArgv(procRoot, pid)));
+  if (threadId || underCodex) {
+    let pane = "";
+    try {
+      const bindings = JSON.parse(readFileSync(join(statusDir(), "codex-chat-panes.json"), "utf8"));
+      pane = threadId ? String(bindings?.[threadId]?.paneId ?? "") : "";
+    } catch {
+      /* no record yet */
+    }
+    if (!pane) {
+      try {
+        pane = resolveCodexPaneId({ envPaneId: envPane, conversationId: threadId, cwd: process.cwd(), selfPid, procRoot }) || "";
+      } catch {
+        pane = "";
+      }
+    }
+    return { provider: "codex", paneId: pane || undefined };
+  }
+  return { provider: envPane ? callerProvider(envPane) : undefined, paneId: envPane || undefined };
+}
+
 async function spawnCommand(options) {
-  const parentPaneId = process.env.TERMFLEET_PANE_ID?.trim() || undefined;
+  const caller = resolveCaller();
+  const parentPaneId = caller.paneId;
   const { task, title, handover } = resolveTask(options);
   let provider = options.provider;
   // A handover continues in the SAME kind of agent: a Codex session that hits its limit
   // continues in Codex, a Claude session in Claude, whatever --provider was typed.
-  if (handover && parentPaneId) {
-    const caller = callerProvider(parentPaneId);
-    if (caller && provider !== caller) {
-      if (provider) {
-        process.stderr.write(`termfleet-child: a handover continues in the same agent as you (${caller}), not ${provider}.\n`);
-      }
-      provider = caller;
+  if (handover && caller.provider && provider !== caller.provider) {
+    if (provider) {
+      process.stderr.write(`termfleet-child: a handover continues in the same agent as you (${caller.provider}), not ${provider}.\n`);
     }
+    provider = caller.provider;
   }
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
   const cwd = resolve(options.cwd ?? process.cwd());
@@ -284,16 +319,28 @@ function statusCommand() {
   process.exit(listening ? 0 : 3);
 }
 
-const argv = process.argv.slice(2);
-if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h" || argv[0] === "help") {
-  process.stdout.write(`${USAGE}\n`);
-  process.exit(0);
+// Only run as a command; importing this file (tests) must not start the CLI. The command
+// is usually started through a symlink, so compare real paths.
+const startedAsCommand = (() => {
+  try {
+    return realpathSync(process.argv[1] ?? "") === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return true;
+  }
+})();
+
+if (startedAsCommand) {
+  const argv = process.argv.slice(2);
+  if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h" || argv[0] === "help") {
+    process.stdout.write(`${USAGE}\n`);
+    process.exit(0);
+  }
+  if (argv[0] === "--version" || argv[0] === "-v") {
+    process.stdout.write(`${VERSION}\n`);
+    process.exit(0);
+  }
+  const { command, options } = parseArgs(argv);
+  if (command === "spawn") await spawnCommand(options);
+  else if (command === "status") statusCommand();
+  else fail(`unknown command "${command}"\n${USAGE}`);
 }
-if (argv[0] === "--version" || argv[0] === "-v") {
-  process.stdout.write(`${VERSION}\n`);
-  process.exit(0);
-}
-const { command, options } = parseArgs(argv);
-if (command === "spawn") await spawnCommand(options);
-else if (command === "status") statusCommand();
-else fail(`unknown command "${command}"\n${USAGE}`);
