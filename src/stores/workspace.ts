@@ -186,6 +186,7 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   fileExplorerCollapsed: true,
   canvasSidebarCollapsed: false,
   canvasSidebarSortMode: "project",
+  canvasSidebarManualOrderBy: "custom",
   canvasSidebarManualOrder: [],
   canvasSidebarGroupOrder: [],
   terminalSidebarCollapsed: false,
@@ -719,6 +720,10 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
     // A restart always presents the map in its stable project/lane projection;
     // manual drag order remains available as an in-session choice.
     canvasSidebarSortMode: "project",
+    canvasSidebarManualOrderBy:
+      uiState?.canvasSidebarManualOrderBy === "recent" || uiState?.canvasSidebarManualOrderBy === "name"
+        ? uiState.canvasSidebarManualOrderBy
+        : "custom",
     canvasSidebarManualOrder: Array.isArray(uiState?.canvasSidebarManualOrder)
       ? uiState.canvasSidebarManualOrder.filter((id): id is string => typeof id === "string")
       : [],
@@ -3723,6 +3728,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const linkedNode = state.canvasState.nodes.find((node) => node.terminalTabId === id);
       return {
         activeTabId: id,
+        tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, lastUsedAt: Date.now() } : tab)),
         groups: activeTab?.groupId
           ? state.groups.map((group) =>
               group.id === activeTab.groupId ? { ...group, lastActiveTabId: id } : group
@@ -5027,6 +5033,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         tab?.groupId ? groups.map((group) => (group.id === tab.groupId ? { ...group, lastActiveTabId: tab.id } : group)) : groups;
       return {
         activeTabId: tab?.id ?? state.activeTabId,
+        tabs: tab ? state.tabs.map((candidate) => (candidate.id === tab.id ? { ...candidate, lastUsedAt: Date.now() } : candidate)) : state.tabs,
         groups: remember(state.groups),
         terminalGroups: remember(state.terminalGroups),
         canvasState: { ...state.canvasState, selectedNodeId: node.id, selectedNodeIds: [node.id] },

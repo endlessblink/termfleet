@@ -155,6 +155,8 @@ export interface Tab {
   workstream?: WorkstreamMetadata;
   terminals: TerminalState[];
   initialCwd?: string;
+  /** When the operator last opened this card (drives the "Latest use" order). */
+  lastUsedAt?: number;
   /** Folder that decides this card's project when it differs from where its shell starts (a handover keeps its predecessor's). */
   projectCwd?: string;
   /** Stable name from an external restore manifest, when one exists. */
@@ -475,6 +477,8 @@ export interface WorkspaceUiState {
   fileExplorerCollapsed: boolean;
   canvasSidebarCollapsed: boolean;
   canvasSidebarSortMode: "manual" | "project";
+  /** How the Manual list is ordered: your own drag order, or automatically by latest use / name. */
+  canvasSidebarManualOrderBy: "custom" | "recent" | "name";
   /** Sidebar-only order for Manual mode; never controls map geometry. */
   canvasSidebarManualOrder: string[];
   /** Order of project groups in the By-project list: creation order, new at the end, user-rearrangeable. */

@@ -5678,7 +5678,11 @@ function MapPanel({
   });
   const tasksByRoot = useMasterPlanTasks(taskRoots);
 
-  const draggable = true;
+  const manualOrderBy = useWorkspaceStore(
+    (state) => state.workspaceUiState.canvasSidebarManualOrderBy ?? "custom",
+  );
+  // Dragging only makes sense for your own order; an automatic order decides by itself.
+  const draggable = sortMode === "project" || manualOrderBy === "custom";
   const clearDrag = () => {
     setDraggingId(null);
     setDropTarget(null);
@@ -5738,10 +5742,19 @@ function MapPanel({
     const place = order.indexOf(draggingGroupKey) < order.indexOf(targetKey) ? "after" : "before";
     reorderSidebarGroups(draggingGroupKey, targetKey, place, order);
   };
-  const manualNodes = useMemo(
-    () => orderCanvasNodesByManualOrder(visibleNodes, manualOrder),
-    [visibleNodes, manualOrder],
-  );
+  const manualNodes = useMemo(() => {
+    const custom = orderCanvasNodesByManualOrder(visibleNodes, manualOrder);
+    if (manualOrderBy === "custom") return custom;
+    const tabOf = (node: CanvasNode) => tabForMapNode(node, tabs);
+    // Stable: cards that tie keep their own drag order.
+    const slot = new Map(custom.map((node, index) => [node.id, index]));
+    const byOrder = (a: CanvasNode, b: CanvasNode) => (slot.get(a.id) ?? 0) - (slot.get(b.id) ?? 0);
+    return [...custom].sort((a, b) =>
+      manualOrderBy === "recent"
+        ? (tabOf(b)?.lastUsedAt ?? 0) - (tabOf(a)?.lastUsedAt ?? 0) || byOrder(a, b)
+        : (tabOf(a)?.title ?? a.title ?? "").localeCompare(tabOf(b)?.title ?? b.title ?? "", undefined, { sensitivity: "base" }) || byOrder(a, b),
+    );
+  }, [visibleNodes, manualOrder, manualOrderBy, tabs]);
 
   type MapListItem =
     | { kind: "header"; key: string; projectKey: string; label: string }
@@ -5823,6 +5836,36 @@ function MapPanel({
           );
         })}
       </div>
+      {sortMode === "manual" && (
+        <div style={styles.mapFilterBar} aria-label="Order of the manual list">
+          {(
+            [
+              { id: "custom", label: "My order" },
+              { id: "recent", label: "Latest use" },
+              { id: "name", label: "A–Z" },
+            ] as const
+          ).map((order) => {
+            const active = manualOrderBy === order.id;
+            return (
+              <button
+                key={order.id}
+                type="button"
+                data-testid={`map-order-${order.id}`}
+                aria-pressed={active}
+                style={{
+                  ...styles.mapFilterButton,
+                  background: active ? "var(--surface-selected)" : "var(--surface-base)",
+                  color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                  borderColor: active ? "var(--border-strong)" : "transparent",
+                }}
+                onClick={() => updateWorkspaceUiState({ canvasSidebarManualOrderBy: order.id })}
+              >
+                <span>{order.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div style={styles.mapFilterBar} aria-label="Map filters">
         {MAP_FILTERS.map((filter) => {
           const active = mapFilter === filter.id;
