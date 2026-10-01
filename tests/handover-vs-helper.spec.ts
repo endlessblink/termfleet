@@ -53,7 +53,10 @@ async function spawnAndReadRequest(args: string[], dataHome: string, dir: string
   if (!requestFile) return { request: null, stderr, code: await closed };
   const request = JSON.parse(readFileSync(join(dir, requestFile), "utf8"));
   writeFileSync(join(dir, `${request.requestId}.result.json`), JSON.stringify({ requestId: request.requestId, ok: true }));
-  return { request, stderr, code: await closed };
+  const code = await closed;
+  // clear this run's files so a second run in the same sandbox reads its own request
+  for (const name of readdirSync(dir)) if (name !== ".listener") rmSync(join(dir, name), { force: true });
+  return { request, stderr, code };
 }
 
 test("a helper (--task) never replaces the card that asked for it", async () => {
