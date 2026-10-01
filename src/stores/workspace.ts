@@ -3129,7 +3129,10 @@ export async function refreshProjectRootFromActiveTerminal() {
     const { invoke } = await import("@tauri-apps/api/core");
     const cwd = await getPtyCwd(activeTerminal.id, invoke);
     if (!cwd || cwd === state.projectRoot) return;
-    useWorkspaceStore.getState().setProjectRoot(cwd, false);
+    // Only the displayed folder follows the terminal. Going through setProjectRoot here
+    // renamed and re-rooted the active project and rewrote a card's start folder
+    // whenever the operator clicked a card from another project (TF-069).
+    useWorkspaceStore.setState({ projectRoot: cwd });
   } catch (error) {
     console.warn("Could not refresh project root from terminal CWD:", error);
   }
@@ -4387,14 +4390,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   setProjectRoot: (path: string | null, syncTerminal = true) => {
-    // An automatic refresh from a terminal's live folder (syncTerminal === false) only
-    // updates the displayed folder. It must never rename or re-root the active project
-    // or rewrite a card's start folder: that scrambled group names and icons whenever
-    // the operator clicked a card from another project (TF-069).
-    if (!syncTerminal) {
-      set({ projectRoot: path });
-      return;
-    }
     set((state) => ({
       projectRoot: path,
       tabs: path && state.activeTabId
