@@ -929,7 +929,8 @@ function terminalProjectPath(
   // A card belongs to the project it was opened in. The shell wandering into
   // another folder later must not move the card between projects (TF-069); the
   // live folder only decides when the card has no start folder at all.
-  const startCwd = tab.projectCwd ?? nodesByTabId.get(tab.id)?.terminalCwd ?? tab.initialCwd;
+  // The card node's terminalCwd follows the shell around, so it is only a last resort.
+  const startCwd = tab.projectCwd ?? tab.initialCwd ?? nodesByTabId.get(tab.id)?.terminalCwd;
   const currentPath = normalizeProjectPath(startCwd || terminalLiveCwd(tab, liveCwds));
   for (const terminalId of terminalIds) {
     const gitRoot = normalizeProjectPath(liveGitRoots?.[terminalId]);
