@@ -855,7 +855,7 @@ test("a helper started in another real project gets that project's group, not it
   expect(result).toBe("/media/endlessblink/data/my-projects/ai-development/bots/botson");
 });
 
-test("a card opened in a parent project does not move into a nested project when its shell cds there", async ({ page }) => {
+test("a card follows its terminal into a known nested project and stays there", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -960,10 +960,10 @@ test("a card opened in a parent project does not move into a nested project when
       viewport: state.canvasState.viewport,
     };
   })).toEqual({
-    tabGroupName: "cc-linux-enhancments",
-    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
-    activeProjectName: "cc-linux-enhancments",
-    projectRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
+    tabGroupName: "termfleet",
+    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/terminal-workspace-tauri",
+    activeProjectName: "termfleet",
+    projectRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/terminal-workspace-tauri",
     viewport: { x: -80, y: 70, zoom: 0.75 },
   });
 });

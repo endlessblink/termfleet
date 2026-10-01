@@ -10125,5 +10125,14 @@ Status:
   headers; duplicate groups for one folder still need collapsing in the real app.
 - Clicking a card in the sidebar no longer moves the map camera when the card is
   already on screen ("they change positions when I click"); unverified in the real app.
+- RULE CHANGE (operator, 2026-10-01, replaces "where it started"): a card sits in
+  the project its terminal is WORKING in, and its title follows. The working folder
+  is remembered on the card (`projectCwd`) so restarts and clicks never flip it; it
+  only moves when the terminal enters another known project (a subfolder of its own
+  project does not count). Card emoji is the project's emoji, so it follows the
+  group. Built into tests; needs a new release build + restart to be visible.
+- Reports still open: clicking cards moved them / changed their emoji (suspected
+  same cause: group flipping when the live folder arrived on click); helper cards
+  show nested under the card that started them (by design, "↳") — confirm it is wanted.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?

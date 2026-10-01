@@ -926,9 +926,8 @@ function terminalProjectPath(
     ...(activeTerminal ? [activeTerminal.id] : []),
     ...tab.terminals.filter((terminal) => terminal.id !== activeTerminal?.id).map((terminal) => terminal.id),
   ];
-  // A card belongs to the project it was opened in. The shell wandering into
-  // another folder later must not move the card between projects (TF-069); the
-  // live folder only decides when the card has no start folder at all.
+  // The remembered working folder (projectCwd) decides, then where the card was
+  // opened; the raw live folder is only read into projectCwd by the reconciler.
   // The card node's terminalCwd follows the shell around, so it is only a last resort.
   const startCwd = tab.projectCwd ?? tab.initialCwd ?? nodesByTabId.get(tab.id)?.terminalCwd;
   const currentPath = normalizeProjectPath(startCwd || terminalLiveCwd(tab, liveCwds));
@@ -1013,10 +1012,21 @@ function reconcileProjectGroups(
   };
 
   const adoptParentGroupIds = new Set<string>();
-  const nextTabsByPath = tabs.map((tab) => {
-    // Path-based project membership: live cwd wins, and when nested project roots
-    // match the same cwd, the deepest root wins (e.g. parent checkout vs nested app).
-    // Otherwise same-path terminals collapse into one canonical project. (TC-034)
+  const nextTabsByPath = tabs.map((rawTab) => {
+    // A card sits in the project its terminal is working in. The folder it works in
+    // is remembered on the card (projectCwd), so a restart or a click that refreshes
+    // the live folder never flips it back to where it began; it only moves when the
+    // terminal really enters another known project.
+    let tab = rawTab;
+    const liveFolder = normalizeProjectPath(terminalLiveCwd(tab, liveCwds));
+    const liveGroup = liveFolder ? bestProjectGroupForPath(liveFolder, nextGroups) : undefined;
+    const currentGroupId = tab.groupId ? remap.get(tab.groupId) ?? tab.groupId : null;
+    if (liveFolder && liveGroup && liveGroup.id !== currentGroupId && liveFolder !== tab.projectCwd) {
+      tab = { ...tab, projectCwd: liveFolder };
+    }
+    // Path-based project membership: when nested project roots match the same cwd,
+    // the deepest root wins (e.g. parent checkout vs nested app). Otherwise
+    // same-path terminals collapse into one canonical project. (TC-034)
     const path = terminalProjectPath(tab, nodesByTabId, liveCwds, liveGitRoots);
     if (!path && tab.groupId && remap.has(tab.groupId)) {
       return { ...tab, groupId: remap.get(tab.groupId) ?? null };
