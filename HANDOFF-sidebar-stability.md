@@ -133,3 +133,35 @@ No source files changed by either instance. Only this HANDOFF file is mine and u
 
 ### State
 No source changes yet. Only HANDOFF-sidebar-stability.md is mine (commit it alone). First command: `cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && npm run issues -- check && npm run issues -- list`
+
+## UPDATE 4 (fourth instance) — IMPLEMENTATION STARTED, handed over at context limit
+
+### NEW request from Noam (verbatim, sent mid-work, NOT yet addressed in code)
+> when existing a terminal the sidebar shouldnt jump and glitch it can just move to the next terminal in that project, if there isnt one - to the last terminal that was used maybe. ask questions if unclear.
+
+Meaning: when the user EXITS/closes a terminal, the selection must move to the next terminal in the SAME project (in sidebar order); if none, to the last-used terminal; the sidebar must not jump/glitch. Find the close path in `src/stores/workspace.ts` (closeTab / closeTerminalSession / removal of canvas node + activeTabId fallback) and the sidebar `useFlipList` animation (`mapNodeListRef`, key `mapListOrderKey`) which may cause the glitch/jump. Ask Noam 1 short question if unclear (e.g. "next" = the one below it in the list? wrap to previous if closing the last one in the project?). Recommended default: next below, else the one above in same project, else most recently used terminal overall.
+
+### Done this session (all uncommitted->committed in one commit, tsc --noEmit passes; NOT built, NOT tested, NOT visually verified)
+- Issue TF-069 created via `node scripts/termfleet-issues.mjs create ...` (state reported; docs/issue-registry.json now has it, but that file also carries other agents' edits — NOT committed by me). Transition to in-progress/verifying + evidence still to do.
+- `src/lib/types.ts`: added `canvasSidebarGroupOrder: string[]` to WorkspaceUiState.
+- `src/stores/workspace.ts`: default `[]` + normalize; new actions `reorderSidebarGroups(draggedId, targetId, place, currentOrder)` and `syncSidebarGroupOrder(visibleOrder)` (saved ids keep slot, new groups appended at end, closed groups forgotten); `reconcileProjectGroups` now LOCKS group emoji (a group keeps its existing `emoji`; auto-pick only when none, avoiding all emojis in use; no more re-derivation). Release on close is natural: closed group leaves the list so its emoji frees up.
+- `src/lib/mapNodeOrdering.ts`: `projectBucketsByManualOrder` takes `options.groupOrder`; includes EMPTY groups (stay in place), orders buckets by saved group order then first-appearance, Unassigned last.
+- `src/components/WorkbenchSidebar.tsx` (MapPanel): subscribes to groupOrder, passes it to buckets, effect syncs order into the store, group header rows are draggable (swap) in "By project" mode, header shows group emoji, helper terminals (`tab.childOf`) get "↳" badge (`data-testid=map-node-helper-badge`) + 14px indent.
+- `src/components/CanvasSidebar.tsx`: passes groupOrder too. `src/components/MagicCanvas.tsx` (~6894): map project strip reads group.emoji as-is (no dedupe derivation) and sorts by saved group order, not map position; added `sidebarGroupOrder` selector after `groups` (~line 6672).
+- Existing facts verified: project right-click menu already has the full searchable EmojiPicker (WorkbenchSidebar ProjectContextMenu); terminal reorder is already restricted to the same group (`reorderCanvasSidebarNodes`).
+
+### Key findings
+- The "By project" list is in MapPanel (WorkbenchSidebar.tsx ~5230+, render ~7815), NOT SessionsPanel/projectSidebarModel (that one is the project picker: compareProjects count/current/pinned sort — left untouched; Noam asked to remove pin/category sections "in the by-project view" — decide whether the SessionsPanel project picker needs the same flat creation order; not done).
+- Old bucket order = position of each group's first terminal in manualOrder, and empty groups were absent → that is why groups jumped.
+- Wrong-project cause candidate: `reconcileProjectGroups` assigns tab.groupId by LIVE cwd / git root each reconcile (`terminalProjectPath` → `bestProjectGroupForPath`); a terminal whose cwd changes moves group; helpers without own folder adopt parent's group. NOT confirmed from live data. I wrote `scratchpad/inspect.mjs` (in the session scratchpad dir) to compare tab.groupId vs cwd in `~/.local/share/terminal-workspace/workspace.json` — it was NOT run yet. Run it (`node <scratchpad>/inspect.mjs`) or re-create: print tabs whose group projectRoot doesn't contain their cwd. Decide with evidence, don't guess; likely fix = a tab keeps its group once assigned unless the user moves it.
+
+### Remaining steps
+1. Handle Noam's new close-terminal request (above); ask one short question only if needed.
+2. Wrong-project grouping: run the inspector, find cause, fix, add test.
+3. Migration check: first run seeds groupOrder from the current on-screen order (effect). Verify it does not wipe on empty groups during hydration (guarded by `state.groups.length === 0`).
+4. Add a regression test (source-contract or unit): stable order across 2→1→3 terminals, empty group keeps slot, emoji not re-derived, helper badge. Careful: `tests/*` and verify-map-terminals source gates are letter-for-letter; run `npm run verify:map-terminals` and relevant Playwright specs (`tests/canvas-arrange.spec.ts` reads CanvasNodeType).
+5. `npm run build`, `npm run release:install`, `npm run verify:installed-release`, `npm run doctor` (check launch mode — memory says dock may run dev mode), screenshot of real app; update TF-069 evidence (`node scripts/termfleet-issues.mjs evidence TF-069 <kind> --note ...`, `transition`), update MASTER_PLAN.md.
+6. Rules: patch .ts/.tsx via node script files (Edit/Write reformat whole file and break source verifiers); stage only own files; main branch; commands that restart the app/daemon kill live terminal processes — say so up front; docs/issue-registry.json, baseline PNGs, verify-clipboard-paste.sh, .kilo/, HANDOFF-feature-64.md, tests/scratch-eval.spec.ts are NOT mine.
+
+### First command
+`cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && git log -1 --stat && npx tsc --noEmit`

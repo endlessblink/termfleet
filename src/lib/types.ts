@@ -473,6 +473,8 @@ export interface WorkspaceUiState {
   canvasSidebarSortMode: "manual" | "project";
   /** Sidebar-only order for Manual mode; never controls map geometry. */
   canvasSidebarManualOrder: string[];
+  /** Order of project groups in the By-project list: creation order, new at the end, user-rearrangeable. */
+  canvasSidebarGroupOrder: string[];
   terminalSidebarCollapsed: boolean;
   primarySidebarCollapsed: boolean;
   primarySidebarPanel: "sessions" | "map" | "tasks";

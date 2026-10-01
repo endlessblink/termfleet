@@ -187,6 +187,7 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   canvasSidebarCollapsed: false,
   canvasSidebarSortMode: "project",
   canvasSidebarManualOrder: [],
+  canvasSidebarGroupOrder: [],
   terminalSidebarCollapsed: false,
   primarySidebarCollapsed: false,
   primarySidebarPanel: "sessions",
@@ -444,6 +445,8 @@ interface WorkspaceState {
   arrangeProjectRow: (groupId: string) => void;
   arrangeCanvasProjectLanes: () => void;
   reorderCanvasSidebarNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
+  reorderSidebarGroups: (draggedId: string, targetId: string, place: "before" | "after", currentOrder: string[]) => void;
+  syncSidebarGroupOrder: (visibleOrder: string[]) => void;
   reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
@@ -715,6 +718,9 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
     canvasSidebarManualOrder: Array.isArray(uiState?.canvasSidebarManualOrder)
       ? uiState.canvasSidebarManualOrder.filter((id): id is string => typeof id === "string")
       : [],
+    canvasSidebarGroupOrder: Array.isArray(uiState?.canvasSidebarGroupOrder)
+      ? uiState.canvasSidebarGroupOrder.filter((id): id is string => typeof id === "string")
+      : [],
     projectSidebarExpandedSections: Array.isArray(uiState?.projectSidebarExpandedSections)
       ? uiState.projectSidebarExpandedSections.filter((section): section is string => typeof section === "string")
       : [],
@@ -945,16 +951,19 @@ function reconcileProjectGroups(
   // re-opened, which used to mint a fresh random group id each time) — they are
   // dropped and their tabs remapped onto the canonical group. (TC-034)
   const groupsByRoot = new Map<string, Group>();
-  const generatedEmojis = new Set<string>();
+  // A group keeps the icon it has: auto-picks happen once, for groups with none,
+  // and avoid every icon already in use. Only the user changes it afterwards.
+  const generatedEmojis = new Set<string>(
+    groups.map((group) => group.emoji).filter((value): value is string => Boolean(value)),
+  );
   const remap = new Map<string, string>(); // duplicate group id -> canonical id
   const nextGroups: Group[] = [];
   for (const group of groups) {
     const projectRoot = normalizeProjectPath(group.projectRoot);
     const generatedName = projectRoot ? projectNameFromPath(projectRoot) : group.name;
     const name = projectRoot && groupLooksAutoNamed(group, projectRoot) ? generatedName : group.name;
-    const generatedEmoji = projectEmojiFor(projectRoot ?? group.name, generatedEmojis);
-    generatedEmojis.add(generatedEmoji);
-    const emoji = group.emojiSource === "user" ? group.emoji ?? generatedEmoji : generatedEmoji;
+    const emoji = group.emoji ?? projectEmojiFor(projectRoot ?? group.name, generatedEmojis);
+    generatedEmojis.add(emoji);
     const emojiSource: Group["emojiSource"] = group.emojiSource === "user" ? "user" : "generated";
     const normalizedGroup =
       (projectRoot && projectRoot !== group.projectRoot) ||
@@ -4881,6 +4890,34 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           ...state.workspaceUiState,
           canvasSidebarManualOrder: nextOrder,
         },
+      };
+    });
+  },
+
+  reorderSidebarGroups: (draggedId, targetId, place, currentOrder) => {
+    if (draggedId === targetId) return;
+    set((state) => {
+      if (!currentOrder.includes(draggedId) || !currentOrder.includes(targetId)) return {};
+      const next = currentOrder.filter((id) => id !== draggedId);
+      let to = next.indexOf(targetId);
+      if (place === "after") to += 1;
+      next.splice(to, 0, draggedId);
+      return { workspaceUiState: { ...state.workspaceUiState, canvasSidebarGroupOrder: next } };
+    });
+  },
+
+  // Persist the order the list is showing so it can never reshuffle later: ids
+  // already saved keep their slot, brand-new groups go to the end, and a group
+  // that was closed (no longer exists) is forgotten.
+  syncSidebarGroupOrder: (visibleOrder) => {
+    set((state) => {
+      const saved = state.workspaceUiState.canvasSidebarGroupOrder;
+      const known = new Set(state.groups.map((group) => group.id));
+      const kept = saved.filter((id) => known.has(id) || state.groups.length === 0);
+      const additions = visibleOrder.filter((id) => known.has(id) && !kept.includes(id));
+      if (additions.length === 0 && kept.length === saved.length) return {};
+      return {
+        workspaceUiState: { ...state.workspaceUiState, canvasSidebarGroupOrder: [...kept, ...additions] },
       };
     });
   },

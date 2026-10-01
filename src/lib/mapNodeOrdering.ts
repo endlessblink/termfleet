@@ -66,7 +66,7 @@ export function projectBucketsByManualOrder(
   tabs: Tab[],
   groups: Group[],
   manualOrder: string[],
-  options: { unassignedLabel?: string } = {},
+  options: { unassignedLabel?: string; groupOrder?: string[] } = {},
 ): MapProjectBucket[] {
   const tabsById = new Map(tabs.map((tab) => [tab.id, tab]));
   const groupsById = new Map(groups.map((group) => [group.id, group]));
@@ -88,7 +88,27 @@ export function projectBucketsByManualOrder(
     else buckets.set(key, { key, label, nodes: [node] });
   }
 
-  return [...buckets.values()];
+  // Groups keep their saved slot whether they hold 0, 1 or 5 terminals; groups
+  // not saved yet follow in the order they already appeared (new ones at the end).
+  for (const group of groups) {
+    if (!buckets.has(group.id)) {
+      buckets.set(group.id, { key: group.id, label: group.name, nodes: [] });
+    }
+  }
+  const saved = options.groupOrder ?? [];
+  const slot = (key: string) => {
+    const index = saved.indexOf(key);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  const appeared = [...buckets.values()];
+  return appeared
+    .map((bucket, index) => ({ bucket, index }))
+    .sort((a, b) => {
+      if (a.bucket.key === unassignedKey) return b.bucket.key === unassignedKey ? 0 : 1;
+      if (b.bucket.key === unassignedKey) return -1;
+      return slot(a.bucket.key) - slot(b.bucket.key) || a.index - b.index;
+    })
+    .map(({ bucket }) => bucket);
 }
 
 export function projectBucketsByCanvasPosition(

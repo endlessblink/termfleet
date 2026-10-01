@@ -388,6 +388,7 @@ export function CanvasSidebar() {
   const collapsed = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarCollapsed);
   const sortMode = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarSortMode);
   const manualOrder = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarManualOrder);
+  const groupOrder = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarGroupOrder);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
@@ -495,8 +496,8 @@ export function CanvasSidebar() {
   ), [nodeTab, groups, canvasState.selectedNodeId, onSelect, onRename, draggingId, dropTarget, onDragStart, onDragOver, onDrop, clearDrag]);
 
   const projectBuckets = useMemo(() => {
-    return projectBucketsByManualOrder(terminals, tabs, groups, manualOrder);
-  }, [terminals, tabs, groups, manualOrder]);
+    return projectBucketsByManualOrder(terminals, tabs, groups, manualOrder, { groupOrder });
+  }, [terminals, tabs, groups, manualOrder, groupOrder]);
   const manualTerminals = useMemo(
     () => orderCanvasNodesByManualOrder(terminals, manualOrder),
     [terminals, manualOrder],

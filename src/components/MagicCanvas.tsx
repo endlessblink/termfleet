@@ -6669,6 +6669,7 @@ export function MagicCanvas() {
     }
   }, []);
   const groups = useWorkspaceStore((state) => state.groups);
+  const sidebarGroupOrder = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarGroupOrder);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const addCanvasNode = useWorkspaceStore((state) => state.addCanvasNode);
@@ -6896,11 +6897,19 @@ export function MagicCanvas() {
         const group = groups.find((candidate) => candidate.id === id);
         return { id, group, label: group?.name ?? id, emoji: "", ...box };
       })
-      .sort((a, b) => a.minX - b.minX || a.minY - b.minY);
+      .sort((a, b) => {
+        // Same order as the sidebar: the saved group order, never map position.
+        const slot = (id: string) => {
+          const index = sidebarGroupOrder.indexOf(id);
+          return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+        };
+        return slot(a.id) - slot(b.id) || a.minX - b.minX || a.minY - b.minY;
+      });
     const used = new Set<string>();
+    // A group's icon is permanent: read it as-is, duplicates included.
     for (const project of projects) {
       const own = project.group?.emoji;
-      if (own && !used.has(own)) project.emoji = own;
+      if (own) project.emoji = own;
     }
     for (const project of projects) if (project.emoji) used.add(project.emoji);
     for (const project of projects) {
@@ -6912,7 +6921,7 @@ export function MagicCanvas() {
       used.add(project.emoji);
     }
     return projects;
-  }, [canvasNodeProjects, groups, nodes]);
+  }, [canvasNodeProjects, groups, nodes, sidebarGroupOrder]);
   const revealMapProject = useCallback(
     (project: (typeof mapProjects)[number]) => {
       const width = containerSize.width || window.innerWidth;

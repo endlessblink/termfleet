@@ -5264,6 +5264,15 @@ function MapPanel({
     (state) => state.closeTerminalSession,
   );
   const closePane = useWorkspaceStore((state) => state.closePane);
+  const groupOrder = useWorkspaceStore(
+    (state) => state.workspaceUiState.canvasSidebarGroupOrder,
+  );
+  const reorderSidebarGroups = useWorkspaceStore(
+    (state) => state.reorderSidebarGroups,
+  );
+  const syncSidebarGroupOrder = useWorkspaceStore(
+    (state) => state.syncSidebarGroupOrder,
+  );
   const reorderCanvasSidebarNodes = useWorkspaceStore(
     (state) => state.reorderCanvasSidebarNodes,
   );
@@ -5694,8 +5703,24 @@ function MapPanel({
   const projectBuckets = useMemo(() => {
     return projectBucketsByManualOrder(visibleNodes, tabs, groups, manualOrder, {
       unassignedLabel: "Unassigned",
+      groupOrder,
     });
-  }, [visibleNodes, tabs, groups, manualOrder]);
+  }, [visibleNodes, tabs, groups, manualOrder, groupOrder]);
+  // Remember the order the list shows so closing/opening terminals never moves a group.
+  const bucketOrderKey = projectBuckets
+    .map((bucket) => bucket.key)
+    .filter((key) => key !== "__unassigned__")
+    .join("|");
+  useEffect(() => {
+    syncSidebarGroupOrder(bucketOrderKey ? bucketOrderKey.split("|") : []);
+  }, [bucketOrderKey, syncSidebarGroupOrder]);
+  const [draggingGroupKey, setDraggingGroupKey] = useState<string | null>(null);
+  const dropGroupOnto = (targetKey: string) => {
+    if (!draggingGroupKey || draggingGroupKey === targetKey) return;
+    const order = bucketOrderKey.split("|");
+    const place = order.indexOf(draggingGroupKey) < order.indexOf(targetKey) ? "after" : "before";
+    reorderSidebarGroups(draggingGroupKey, targetKey, place, order);
+  };
   const manualNodes = useMemo(
     () => orderCanvasNodesByManualOrder(visibleNodes, manualOrder),
     [visibleNodes, manualOrder],
@@ -7819,8 +7844,28 @@ function MapPanel({
                     key={item.key}
                     data-flip-key={item.key}
                     data-map-project-key={item.projectKey}
+                    draggable={sortMode === "project" && item.projectKey !== "__unassigned__"}
+                    onDragStart={(event) => {
+                      setDraggingGroupKey(item.projectKey);
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", `group:${item.projectKey}`);
+                    }}
+                    onDragOver={(event) => {
+                      if (draggingGroupKey && draggingGroupKey !== item.projectKey) {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }
+                    }}
+                    onDrop={(event) => {
+                      if (!draggingGroupKey) return;
+                      event.preventDefault();
+                      dropGroupOnto(item.projectKey);
+                      setDraggingGroupKey(null);
+                    }}
+                    onDragEnd={() => setDraggingGroupKey(null)}
                     style={{
                       ...styles.sectionLabel,
+                      ...(draggingGroupKey === item.projectKey ? { opacity: 0.45 } : null),
                       scrollMarginTop: 8,
                       transition: "color var(--motion-med)",
                       ...(highlightProjectKey === item.projectKey
@@ -7829,6 +7874,9 @@ function MapPanel({
                     }}
                     data-testid="map-project-group-header"
                   >
+                    {groups.find((group) => group.id === item.projectKey)?.emoji
+                      ? `${groups.find((group) => group.id === item.projectKey)?.emoji} `
+                      : ""}
                     {item.label}
                   </div>
                 );
@@ -7962,6 +8010,7 @@ function MapPanel({
                         : null),
                       ...(draggingId === node.id ? { opacity: 0.45 } : null),
                       ...(draggable ? { cursor: "grab" } : null),
+                      ...(linkedTab?.childOf ? { marginInlineStart: 14 } : null),
                     }}
                     onDragStart={(event) => handleDragStart(node, event)}
                     onDragOver={(event) => handleDragOver(node, event)}
@@ -8036,6 +8085,15 @@ function MapPanel({
                     )}
                     <span style={{ minWidth: 0 }}>
                       <div style={styles.rowTitle}>
+                        {linkedTab?.childOf && (
+                          <span
+                            data-testid="map-node-helper-badge"
+                            title="Helper terminal started by another terminal"
+                            style={{ color: "var(--text-secondary)", marginInlineEnd: 4 }}
+                          >
+                            ↳
+                          </span>
+                        )}
                         {node.type === "preview"
                           ? node.title
                           : header
