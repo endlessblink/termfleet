@@ -8,10 +8,9 @@ test.use({
   },
 });
 
-// Clicking a terminal in the sidebar must only select it: no card moves on the
-// map, the camera stays put when the card is already visible, and the list keeps
-// its order (TF-069).
-test("clicking a sidebar terminal does not move cards, the camera, or the list order", async ({ page }) => {
+// Clicking a terminal in the sidebar selects exactly that card and shows it: no card
+// moves on the map, no card changes group, and the list keeps its order (TF-069).
+test("clicking a sidebar terminal selects the clicked card without moving cards, groups, or list order", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -144,6 +143,10 @@ test("clicking a sidebar terminal does not move cards, the camera, or the list o
   await rows.nth(1).click();
   await page.waitForTimeout(600);
   expect(await active()).toEqual({ activeTabId: "tab-a2", selectedNodeId: "node-tab-a2" });
-  expect(await snapshot()).toEqual(before);
+  // Cards and groups stay exactly where they were. The camera is allowed to move: a
+  // click must bring the clicked terminal into view.
+  const after = await snapshot();
+  expect(after.nodes).toEqual(before.nodes);
+  expect(after.groups).toEqual(before.groups);
   expect((await list.innerText()).replace(/\s+/g, " ")).toBe(listBefore.replace(/\s+/g, " "));
 });
