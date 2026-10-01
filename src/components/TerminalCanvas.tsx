@@ -1636,7 +1636,13 @@ export function TerminalCanvas({
       // is blocked in WebKitGTK (that is the actual paste bug). Browser preview (no
       // Tauri runtime) still uses the webview API as a fallback.
       const text = isTauriRuntime()
-        ? await invoke<string>("clipboard_read_text", { corrId })
+        ? await Promise.race([
+            invoke<string>("clipboard_read_text", { corrId }),
+            // Backstop: a read that never returns must not wedge every later paste.
+            new Promise<string>((_, reject) =>
+              window.setTimeout(() => reject(new Error("clipboard read timed out")), 3000),
+            ),
+          ])
         : await navigator.clipboard.readText();
       if (text) {
         if (DEBUG_TERM_HUD) bumpHud({ clip: `paste:read ${text.length}` });

@@ -1970,6 +1970,9 @@ pub fn agent_status_list_sidecars() -> Result<Vec<String>, String> {
         .collect())
 }
 
+const CLIPBOARD_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
+const CLIPBOARD_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(2000);
+
 /// Read the OS clipboard's text from the backend, NOT the webview.
 ///
 /// `navigator.clipboard.readText()` is unreliable/blocked inside a WebKitGTK
@@ -1997,7 +2000,34 @@ pub async fn clipboard_read_text(corr_id: Option<String>) -> Result<String, Stri
         // both indistinguishable here — so fall through to the next tool, and only
         // report "" (→ image/agent path) once every tool has been tried.
         let start = std::time::Instant::now();
-        match tokio::process::Command::new(bin).args(args).output().await {
+        // Bounded: xclip/xsel block forever when the selection owner is gone or
+        // slow, which used to wedge every later paste (paste-debug.log 2026-10-01).
+        // kill_on_drop reaps the child when the timeout drops the future.
+        let read = tokio::time::timeout(
+            CLIPBOARD_READ_TIMEOUT,
+            tokio::process::Command::new(bin)
+                .args(args)
+                .stdin(std::process::Stdio::null())
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await;
+        let read = match read {
+            Ok(read) => read,
+            Err(_) => {
+                plog(
+                    &cid,
+                    &format!(
+                        "backend.read TIMEOUT tool={} ms={} -> empty (agent path)",
+                        bin,
+                        start.elapsed().as_millis()
+                    ),
+                );
+                // A hung owner hangs the next tool too; answer "" now.
+                return Ok(String::new());
+            }
+        };
+        match read {
             Ok(output) if output.status.success() => {
                 let text = String::from_utf8_lossy(&output.stdout).to_string();
                 plog(
@@ -2088,7 +2118,14 @@ pub async fn clipboard_write_text(text: String, corr_id: Option<String>) -> Resu
         }
         // The foreground process forks a daemon to serve the selection and exits;
         // waiting on it returns promptly while the daemon keeps the clipboard set.
-        let _ = child.wait().await;
+        // Bounded so a stuck tool can't hold the write lock forever.
+        if tokio::time::timeout(CLIPBOARD_WRITE_TIMEOUT, child.wait())
+            .await
+            .is_err()
+        {
+            let _ = child.kill().await;
+            plog(&cid, &format!("backend.write TIMEOUT tool={}", bin));
+        }
         plog(
             &cid,
             &format!(
