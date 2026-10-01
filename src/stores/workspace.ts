@@ -370,7 +370,7 @@ interface WorkspaceState {
   hydrating: boolean;
 
   // Tab actions
-  addTab: (tab?: Partial<Tab>) => void;
+  addTab: (tab?: Partial<Tab>, placement?: { x: number; y: number }) => void;
   /** Replace the restored tab set after async disk-hydration + orphan reconcile. */
   hydrateRestoredWorkspace: (payload: {
     tabs: Tab[];
@@ -1004,11 +1004,13 @@ function reconcileProjectGroups(
     return { ...tab, groupId: group.id };
   });
 
-  // A helper terminal an agent started stays in its parent's project, wherever
-  // its own folder is, so the sidebar and the map keep them together.
+  // A helper terminal an agent started lives in the project of the folder it works
+  // in (its link line still shows who started it). Only a helper with no folder of
+  // its own falls back to its parent's project.
   const nextTabs = nextTabsByPath.map((tab) => {
     const parentTabId = tab.childOf?.parentTabId;
-    const parent = parentTabId ? nextTabsByPath.find((candidate) => candidate.id === parentTabId) : undefined;
+    if (!parentTabId || terminalProjectPath(tab, nodesByTabId, liveCwds, liveGitRoots)) return tab;
+    const parent = nextTabsByPath.find((candidate) => candidate.id === parentTabId);
     return parent?.groupId && tab.groupId !== parent.groupId ? { ...tab, groupId: parent.groupId } : tab;
   });
 
@@ -3282,7 +3284,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  addTab: (overrides?: Partial<Tab>) => {
+  addTab: (overrides?: Partial<Tab>, placement?: { x: number; y: number }) => {
     const newTab = createDefaultTab(overrides);
     workspaceMutationVersion += 1;
     set((state) => {
@@ -3290,7 +3292,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const canvasState = normalizeCanvasState(
         {
           ...state.canvasState,
-          nodes: [...state.canvasState.nodes, terminalNodeForTab(newTab, state.tabs.length)],
+          nodes: [
+            ...state.canvasState.nodes,
+            placement
+              ? { ...terminalNodeForTab(newTab, state.tabs.length), x: placement.x, y: placement.y }
+              : terminalNodeForTab(newTab, state.tabs.length),
+          ],
           selectedNodeId: `terminal-map-${newTab.id}`,
         },
         tabs
