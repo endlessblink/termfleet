@@ -989,6 +989,7 @@ function reconcileProjectGroups(
     return group;
   };
 
+  const adoptParentGroupIds = new Set<string>();
   const nextTabsByPath = tabs.map((tab) => {
     // Path-based project membership: live cwd wins, and when nested project roots
     // match the same cwd, the deepest root wins (e.g. parent checkout vs nested app).
@@ -999,7 +1000,14 @@ function reconcileProjectGroups(
     }
     if (!path) return tab.groupId ? { ...tab, groupId: null } : tab;
 
-    const group = bestProjectGroupForPath(path, nextGroups) ?? ensureGroupForPath(path);
+    const known = bestProjectGroupForPath(path, nextGroups);
+    if (!known && tab.childOf) {
+      // A helper started in a loose scratch folder must not mint a project of its
+      // own: it follows its parent (below). Helpers in a real project folder stay there.
+      adoptParentGroupIds.add(tab.id);
+      return tab;
+    }
+    const group = known ?? ensureGroupForPath(path);
     if (tab.groupId === group.id) return tab;
     return { ...tab, groupId: group.id };
   });
@@ -1011,7 +1019,9 @@ function reconcileProjectGroups(
     const parentTabId = tab.childOf?.parentTabId;
     if (!parentTabId || terminalProjectPath(tab, nodesByTabId, liveCwds, liveGitRoots)) return tab;
     const parent = nextTabsByPath.find((candidate) => candidate.id === parentTabId);
-    return parent?.groupId && tab.groupId !== parent.groupId ? { ...tab, groupId: parent.groupId } : tab;
+    return adoptParentGroupIds.has(tab.id) && parent?.groupId && tab.groupId !== parent.groupId
+      ? { ...tab, groupId: parent.groupId }
+      : tab;
   });
 
   const usedGroupIds = new Set(nextTabs.map((tab) => tab.groupId).filter((id): id is string => Boolean(id)));
