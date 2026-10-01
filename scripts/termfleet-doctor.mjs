@@ -751,6 +751,32 @@ try {
   }
 }
 
+{
+  // lean-ctx jails each agent session to its start folder plus allow_paths; a session
+  // opened in one project cannot read a sibling project unless the shared parent is listed.
+  const cfgPath = path.join(os.homedir(), ".config", "lean-ctx", "config.toml");
+  const parts = ROOT.split(path.sep);
+  const i = parts.lastIndexOf("my-projects");
+  const projectsRoot = i > 0 ? parts.slice(0, i + 1).join(path.sep) : null;
+  if (!existsSync(cfgPath) || !projectsRoot) {
+    report("info", "Cross-project access", "lean-ctx config or projects folder not found — skipped");
+  } else {
+    const cfg = readFileSync(cfgPath, "utf8");
+    const listed = ["allow_paths", "extra_roots"].flatMap((key) => {
+      const m = cfg.match(new RegExp(`^${key}\\s*=\\s*\\[([^\\]]*)\\]`, "m"));
+      return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : [];
+    });
+    const covered = listed.some((r) => projectsRoot === r || projectsRoot.startsWith(r + path.sep));
+    report(
+      covered ? "ok" : "warn",
+      "Cross-project access",
+      covered
+        ? "agent sessions may read sibling projects (projects folder is in the lean-ctx allowed list)"
+        : `agent sessions are fenced to their own project — add "${projectsRoot}" to allow_paths in ${cfgPath}`,
+    );
+  }
+}
+
 let failed = 0;
 let warned = 0;
 for (const { level, name, detail } of results) {
