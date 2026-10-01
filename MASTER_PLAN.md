@@ -10108,5 +10108,14 @@ Status:
   selected in the replaced card's place, instead of the selection falling to some
   other card when the old one is removed. If the camera still zooms out, the cause
   is elsewhere (`startup-offscreen-rescue` in the map, or a project reveal).
+- MEASURED 2026-10-01 (from the saved Claude session records of this project, 29
+  sessions): sessions started from a handoff (13) begin at ~67K tokens of context,
+  of which almost all is fixed overhead (other sessions begin at ~76K); a handoff
+  file itself adds about 1.5-2K tokens. Handoff sessions peak at a median ~114K and
+  run ~35 turns; ordinary long sessions peak at ~264K over ~298 turns and write
+  ~8x more cache (1.24M vs 0.15M tokens). This instance (9th) was the heaviest
+  handoff session: 129 turns, peak ~179K, ~96K output tokens. Not apples to
+  apples: a chain splits one job across several sessions, so total spend per job
+  still needs a per-job sum.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?
