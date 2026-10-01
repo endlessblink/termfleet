@@ -50,6 +50,10 @@ termfleet-child spawn --provider claude --cwd <dir> --task-file prompt.md --titl
 termfleet-child status        # app running + listening?
 ```
 
+Helper (caller keeps running, a new card is added) = `--task` / `--task-file`.
+Handover (the caller's own card is replaced) = `--dropoff` of the caller's own
+HANDOFF.md only; a file that does not read like a handoff starts a helper instead.
+
 - Works inside a pane (linked as that pane's child) and outside (top-level instance).
 - Long text goes through `--task-file`, never argv. Prints JSON with `childPaneId`.
 - Fails fast (exit 3) and says why; starts the app via the approved launcher if closed.
