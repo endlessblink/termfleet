@@ -39,7 +39,7 @@ const HOOK_FILES = [
 ];
 
 // SessionStart closes an older copy of a resumed chat in another terminal.
-const CLAUDE_EVENTS = ["SessionStart", "Stop", "Notification", "PermissionRequest", "UserPromptSubmit", "PostToolUse"];
+const CLAUDE_EVENTS = ["SessionStart", "SessionEnd", "Stop", "Notification", "PermissionRequest", "UserPromptSubmit", "PostToolUse"];
 const CODEX_EVENTS = ["Stop", "Notification", "UserPromptSubmit", "PreToolUse", "PostToolUse"];
 
 const results = [];

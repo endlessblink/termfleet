@@ -22,6 +22,7 @@ import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
 import { plainCommandActivity } from "./lib/agent-status-activity.mjs";
 import { durableGoalForPrompt, isDurableGoalText, isRequestText } from "./lib/agent-status-goal.mjs";
 import { closeOtherCopies } from "./lib/single-chat-owner.mjs";
+import { agentPid, logAgentEvent } from "./lib/agent-exit-log.mjs";
 
 const TASK_EVENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
 
@@ -451,6 +452,20 @@ async function main() {
   }
   const cwd = sidecarKeyCwd(payload);
   const paneId = statusPaneId();
+  if (payload.hook_event_name === "SessionStart" || payload.hook_event_name === "SessionEnd") {
+    // Timeline of agent sessions: how each one started and the reason Claude gives when it ends.
+    logAgentEvent({
+      event: payload.hook_event_name === "SessionEnd" ? "session-end" : "session-start",
+      provider: "claude",
+      reason: payload.hook_event_name === "SessionEnd" ? String(payload.reason ?? "") : undefined,
+      source: payload.hook_event_name === "SessionStart" ? String(payload.source ?? "") : undefined,
+      sessionId: String(payload.session_id ?? ""),
+      paneId,
+      cwd,
+      agentPid: agentPid("claude"),
+    });
+    if (payload.hook_event_name === "SessionEnd") process.exit(0);
+  }
   if (payload.hook_event_name === "SessionStart" || payload.hook_event_name === "UserPromptSubmit") {
     // One chat, one terminal: an older copy of this chat in another terminal is closed.
     closeOtherCopies({ provider: "claude", conversationId: String(payload?.session_id ?? ""), paneId });
