@@ -800,6 +800,59 @@ test("sidebar card order is remembered, so closing a card never reshuffles the r
   expect(order).toEqual(["n1", "n3"]);
 });
 
+test("refreshing the project folder from a terminal never renames or re-roots a project", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          setProjectRoot: (path: string | null, syncTerminal?: boolean) => void;
+          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          tabs: Array<{ id: string; initialCwd?: string }>;
+          projectRoot: string | null;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const TF = "/media/endlessblink/data/my-projects/ai-development/devops/termfleet";
+    const RC = "/media/endlessblink/data/my-projects/ai-development/content-creation/rough-cut-mvp";
+    const group = { id: "group-tf", name: "termfleet", color: "#7aa2f7", emoji: "TF", projectRoot: TF };
+    store.setState({
+      groups: [group],
+      terminalGroups: [group],
+      activeGroupFilter: "group-tf",
+      activeGroupId: "group-tf",
+      tabs: [{
+        id: "tab-rc",
+        title: "rc",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: "group-tf",
+        initialCwd: RC,
+        terminals: [{ id: "pty-rc", paneId: "pane-rc", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-rc", type: "terminal" },
+        activePaneId: "pane-rc",
+      }],
+      activeTabId: "tab-rc",
+    });
+    // What the app does automatically when you click a card from another project.
+    store.getState().setProjectRoot(RC, false);
+    const state = store.getState();
+    return { group: state.groups[0], cwd: state.tabs[0].initialCwd, projectRoot: state.projectRoot };
+  });
+
+  expect(result.group.name).toBe("termfleet");
+  expect(result.group.projectRoot).toBe("/media/endlessblink/data/my-projects/ai-development/devops/termfleet");
+  expect(result.cwd).toBe("/media/endlessblink/data/my-projects/ai-development/content-creation/rough-cut-mvp");
+  expect(result.projectRoot).toBe("/media/endlessblink/data/my-projects/ai-development/content-creation/rough-cut-mvp");
+});
+
 test("a helper started in another real project gets that project's group, not its starter's", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

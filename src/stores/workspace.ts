@@ -4387,6 +4387,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   setProjectRoot: (path: string | null, syncTerminal = true) => {
+    // An automatic refresh from a terminal's live folder (syncTerminal === false) only
+    // updates the displayed folder. It must never rename or re-root the active project
+    // or rewrite a card's start folder: that scrambled group names and icons whenever
+    // the operator clicked a card from another project (TF-069).
+    if (!syncTerminal) {
+      set({ projectRoot: path });
+      return;
+    }
     set((state) => ({
       projectRoot: path,
       tabs: path && state.activeTabId
