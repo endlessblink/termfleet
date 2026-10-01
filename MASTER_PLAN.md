@@ -10140,5 +10140,13 @@ Status:
   Copy all. Only affects handovers made after the next build; the three already
   shown are empty. Still wanted: a structured (You / Assistant) copy built from the
   provider's own session record.
+- NEW (issue register TF-071): Claude Code input garbles when it wraps to a second
+  line in a map card (stale fragments mixed into the input line). Pane width is
+  consistent (138 columns, 1104 px canvas at 8 px cells), so it is not the earlier
+  width-mismatch bug; suspect stale rows after erase/insert-line sequences. Next:
+  reproduce with `npm run verify:canvas-live` using a long wrapping input.
+- freelance-desk card was killed once (operator, 2026-10-01 ~16:30); no handover or
+  helper request in the logs explains it. Suspect the "one chat, one terminal" rule
+  closing an older copy after a restart; unconfirmed.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?
