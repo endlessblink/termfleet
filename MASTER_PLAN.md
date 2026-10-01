@@ -9990,3 +9990,61 @@ line/page wheel units and Codex mouse reporting remain intact.
 - Superseding check: the latest dock screenshots show the Bina Codex pane already scrolled (`New activity / Back to bottom`) but no highlight after the attempted Shift-drag; wheel movement is also inconclusive because output changed during capture. Do not count this attempt as proof. `TF-062` remains open; both transcript selection and exact-pane scrolling need a reliable live reproduction.
 - 2026-09-28 follow-up: the isolated selection/viewport suite passes 14/14. Candidate `2732af0b315b-c8fca2de796d-4017c4f64621` was rebuilt, promoted, and passes installed-release checksum verification (binary SHA-256 `c8fca2de796d05d9e396a6e24e4d2db293ddc40d19d2e29c9d6795355b818f62`). A correct TermFleet shell pane remained blank at `pty starting`, and this tool session had no desktop display connection, so dock-launched Codex scrolling and selection remain unverified; TF-062 stays open.
 - 2026-09-28 latest: root workspace release `2732af0b315b-f4744e06af38-06698a5604c9` promoted and `npm run verify:installed-release` passed (binary SHA-256 `f4744e06af38edb6aabad3e383c7d1ddace5beb0d00d49df29df322a85a32daa`). Focused selection/viewport checks passed 13/13; `git diff --check` and `npm run issues -- check` passed. This shell has no desktop display, so real dock Codex scroll/selection behavior remains unverified and TF-062 stays open.
+
+## 2026-10-01 — Helper terminals: reach, grouping, and placement
+
+### TF-063 — Let agent sessions reach every project folder (DONE)
+
+A session started in one project could not read a sibling project because the
+file tool (lean-ctx) fenced it to its start folder. The projects folder is now in
+the lean-ctx allowed list, so any session can reach any project.
+
+**Evidence:** a blocked session read the freelance-desk handoff and ran a command
+there with no restart. Other already-running sessions are not verified; a session
+that still says "path escapes project root" needs a restart.
+
+### TF-064 — Doctor warns when sessions are fenced off from sibling projects (DONE)
+
+`npm run doctor` has a "Cross-project access" line that warns if the projects
+folder is missing from the allowed list. Commit 7305b7e; currently reports OK.
+
+### TF-065 — Helpers group under their own folder's project (IN PROGRESS)
+
+The map forced every helper into its starter's project whatever folder it worked
+in, so a freelance-desk helper started from a TermFleet card sat under TermFleet.
+A helper now joins the project of its own folder and only falls back to the
+starter's project when it has no folder. Commit 93d0528 (it also carried another
+session's unfinished card-placement option for the same file).
+
+**Remaining:** relaunch the dock app and confirm the "Freelance leads" helper
+shows in the freelance-desk row and sidebar group. Type check passed; the wider
+test suite was not run.
+
+### TF-066 — Helper cards land directly under the card that started them (IN PROGRESS)
+
+New helpers are placed straight under their starter instead of at the end of the
+project row, which sent them far across the map. Commit dbf7ea3; the 14 helper
+tests pass.
+
+**Remaining:** live read-back after relaunch. Reported: some helpers still do not
+land there, which is expected for cards created before the fix (see TF-067) and
+for helpers with no starter (see TF-069).
+
+### TF-067 — Tidy existing helpers under their starters (TODO, needs operator yes)
+
+Move helpers already on the map to sit under the card that started them. It moves
+existing cards, so it waits for the operator's approval.
+
+### TF-068 — Dropoff replaces the original card instead of adding a new one (TODO, decision pending)
+
+Operator preference: a dropoff should either appear right under the original or,
+better, end the original and relaunch with the dropoff in the same card
+(proposed `--replace`). Risks to settle first: the original agent ends itself in
+the middle of its own command, and closing a terminal deletes its saved text, so
+the old text would need to be kept.
+
+### TF-069 — Helpers started from outside a card have no starter (TODO)
+
+A helper requested without a pane identity (for example an automatic handover) is
+placed in free space with no link line, so it never lands under anything. Find
+which launch paths lose the pane identity and pass it through.
