@@ -764,6 +764,42 @@ test("a handover successor takes the predecessor's slot in the list and keeps th
   expect(result.active).toBe("tab-new");
 });
 
+test("sidebar card order is remembered, so closing a card never reshuffles the rest", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const order = await page.evaluate(() => {
+    type Store = {
+      getState: () => {
+        syncSidebarCardOrder: (ids: string[]) => void;
+        workspaceUiState: { canvasSidebarManualOrder: string[] };
+        canvasState: { nodes: Array<{ id: string }> };
+      };
+      setState: (state: Record<string, unknown>) => void;
+    };
+    const store = (window as typeof window & { __termfleetWorkspaceStore?: Store }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const node = (id: string, x: number) => ({ id, type: "terminal", title: id, x, y: 0, width: 600, height: 400 });
+    const base = store.getState();
+    store.setState({
+      canvasState: { ...base.canvasState, nodes: [node("n1", 0), node("n2", 700), node("n3", 1400)] },
+      workspaceUiState: { ...base.workspaceUiState, canvasSidebarManualOrder: [] },
+    });
+    store.getState().syncSidebarCardOrder(["n1", "n2", "n3"]);
+    // n2 closes and the survivors come back in a different internal order.
+    store.setState({
+      canvasState: { ...store.getState().canvasState, nodes: [node("n3", 1400), node("n1", 0)] },
+    });
+    store.getState().syncSidebarCardOrder(["n3", "n1"]);
+    return store.getState().workspaceUiState.canvasSidebarManualOrder;
+  });
+
+  expect(order).toEqual(["n1", "n3"]);
+});
+
 test("a helper started in another real project gets that project's group, not its starter's", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

@@ -10095,5 +10095,13 @@ Status:
   that TermFleet owns and the user's picked colours never replace. Same rule as
   icons: once the user picks, TermFleet never changes it. Show a screenshot of the
   real app before calling it done.
+- DONE (tests, not yet seen in the real app): sidebar card order is now remembered
+  per card (`syncSidebarCardOrder`), so closing a terminal does not reshuffle the
+  rest ("when closing terminals the order still keeps changing").
+- NEW request: "create a system that will make sure that instances are separated".
+  Meaning to confirm with the operator (my reading: every instance sits in its own
+  project group, never mixed into another's). Proposed: an audit that reads the live
+  app state and flags any card whose group differs from its start folder's project,
+  runs in `npm run doctor`, and fails loudly like `audit:panes` does.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?

@@ -5270,6 +5270,7 @@ function MapPanel({
   const reorderSidebarGroups = useWorkspaceStore(
     (state) => state.reorderSidebarGroups,
   );
+  const syncSidebarCardOrder = useWorkspaceStore((state) => state.syncSidebarCardOrder);
   const syncSidebarGroupOrder = useWorkspaceStore(
     (state) => state.syncSidebarGroupOrder,
   );
@@ -5714,6 +5715,12 @@ function MapPanel({
   useEffect(() => {
     syncSidebarGroupOrder(bucketOrderKey ? bucketOrderKey.split("|") : []);
   }, [bucketOrderKey, syncSidebarGroupOrder]);
+  const cardOrderKey = projectBuckets
+    .flatMap((bucket) => bucket.nodes.map((node) => node.id))
+    .join("|");
+  useEffect(() => {
+    syncSidebarCardOrder(cardOrderKey ? cardOrderKey.split("|") : []);
+  }, [cardOrderKey, syncSidebarCardOrder]);
   const [draggingGroupKey, setDraggingGroupKey] = useState<string | null>(null);
   const dropGroupOnto = (targetKey: string) => {
     if (!draggingGroupKey || draggingGroupKey === targetKey) return;

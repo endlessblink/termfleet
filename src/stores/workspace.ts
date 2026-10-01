@@ -447,6 +447,8 @@ interface WorkspaceState {
   reorderCanvasSidebarNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   reorderSidebarGroups: (draggedId: string, targetId: string, place: "before" | "after", currentOrder: string[]) => void;
   syncSidebarGroupOrder: (visibleOrder: string[]) => void;
+  /** Remember each card's slot so closing or opening a terminal never reshuffles the list. */
+  syncSidebarCardOrder: (visibleNodeIds: string[]) => void;
   reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
@@ -4944,6 +4946,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       if (additions.length === 0 && kept.length === saved.length) return {};
       return {
         workspaceUiState: { ...state.workspaceUiState, canvasSidebarGroupOrder: [...kept, ...additions] },
+      };
+    });
+  },
+
+  // Cards keep the slot they were first shown in: ids already saved stay put, new
+  // cards go to the end, and a closed card's slot is simply forgotten.
+  syncSidebarCardOrder: (visibleNodeIds) => {
+    set((state) => {
+      const saved = state.workspaceUiState.canvasSidebarManualOrder;
+      const live = new Set(state.canvasState.nodes.map((node) => node.id));
+      const kept = saved.filter((id) => live.has(id));
+      const additions = visibleNodeIds.filter((id) => live.has(id) && !kept.includes(id));
+      if (additions.length === 0 && kept.length === saved.length) return {};
+      return {
+        workspaceUiState: { ...state.workspaceUiState, canvasSidebarManualOrder: [...kept, ...additions] },
       };
     });
   },
