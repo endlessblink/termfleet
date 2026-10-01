@@ -1970,6 +1970,23 @@ mod tests {
             .join("\n")
     }
 
+    /// Diagnosis helper (TF-071): replay a saved terminal byte stream through the VT
+    /// emulation and print the final screen. Run with
+    /// `REPLAY_FILE=<path.scrollback> REPLAY_COLS=139 REPLAY_ROWS=27 cargo test replay_saved_stream -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn replay_saved_stream() {
+        let Ok(path) = std::env::var("REPLAY_FILE") else { return };
+        let cols = std::env::var("REPLAY_COLS").ok().and_then(|v| v.parse().ok()).unwrap_or(DEFAULT_COLS);
+        let rows = std::env::var("REPLAY_ROWS").ok().and_then(|v| v.parse().ok()).unwrap_or(DEFAULT_ROWS);
+        let data = std::fs::read(path).expect("readable stream");
+        // REPLAY_UPTO stops the replay at a byte offset, to see the screen at an earlier moment.
+        let upto = std::env::var("REPLAY_UPTO").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(data.len());
+        let mut state = TermState::new(cols, rows);
+        state.feed(&data[..upto.min(data.len())]);
+        println!("---SCREEN---\n{}\n---END---", frame_text(&WireFrame::capture(&state.term)));
+    }
+
     #[test]
     fn plain_text_lands_on_the_first_row() {
         let snapshot = feed("hello world");
