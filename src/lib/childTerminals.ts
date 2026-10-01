@@ -136,10 +136,6 @@ export function planChildLaunch(input: {
     return { ok: false, reason: "duplicate-request" };
   }
   if (children.length >= MAX_CHILDREN_PER_PARENT) return { ok: false, reason: "too-many-children" };
-  const projectTabIds = new Set(
-    input.tabs.filter((tab) => parentTab.groupId && tab.groupId === parentTab.groupId).map((tab) => tab.id),
-  );
-  const projectNodes = input.nodes.filter((node) => node.terminalTabId && projectTabIds.has(node.terminalTabId));
   const parentNode =
     input.nodes.find((node) => node.terminalTabId === parent.tabId) ??
     ({ id: "parent-fallback", x: 0, y: 0, width: 0, height: 0 } as CanvasNode);
@@ -147,7 +143,7 @@ export function planChildLaunch(input: {
     ok: true,
     link: { parentPaneId: request.parentPaneId, parentTabId: parent.tabId, requestId: request.requestId },
     parentTab,
-    placement: findSpotInProjectRow(parentNode, projectNodes, input.size, input.nodes),
+    placement: findSpotBelowRow(parentNode, input.size, input.nodes),
   };
 }
 
