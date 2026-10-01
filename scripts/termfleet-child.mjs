@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { paneSidecarPath } from "./lib/agent-status-paths.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -31,7 +32,8 @@ usage:
 Inside a TermFleet pane the new terminal is linked as that pane's child. Elsewhere it
 is a top-level instance. Long prompts: use --task-file (not argv).
 HELPER (you keep running, a new card is added): --task / --task-file.
-HANDOVER (your own card is replaced by a fresh instance): --dropoff <your HANDOFF.md>.`;
+HANDOVER (your own card is replaced by a fresh instance): --dropoff <your HANDOFF.md>.
+A handover always continues in the same agent you are (Codex stays Codex, Claude stays Claude).`;
 
 function fail(message, code = 1) {
   process.stderr.write(`termfleet-child: ${message}\n`);
@@ -197,11 +199,32 @@ function resolveTask(options) {
     : { task: text, title: options.title };
 }
 
+/** Which agent is running in a TermFleet pane (from its status record), or undefined. */
+export function callerProvider(paneId) {
+  try {
+    const record = JSON.parse(readFileSync(paneSidecarPath(paneId), "utf8"));
+    return ["claude", "codex", "opencode"].includes(record?.provider) ? record.provider : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function spawnCommand(options) {
   const parentPaneId = process.env.TERMFLEET_PANE_ID?.trim() || undefined;
-  const provider = options.provider;
-  if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
   const { task, title, handover } = resolveTask(options);
+  let provider = options.provider;
+  // A handover continues in the SAME kind of agent: a Codex session that hits its limit
+  // continues in Codex, a Claude session in Claude, whatever --provider was typed.
+  if (handover && parentPaneId) {
+    const caller = callerProvider(parentPaneId);
+    if (caller && provider !== caller) {
+      if (provider) {
+        process.stderr.write(`termfleet-child: a handover continues in the same agent as you (${caller}), not ${provider}.\n`);
+      }
+      provider = caller;
+    }
+  }
+  if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
   const cwd = resolve(options.cwd ?? process.cwd());
   const timeoutSeconds = Number(options.timeout ?? 20);
   if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) fail("--timeout must be a positive number of seconds");

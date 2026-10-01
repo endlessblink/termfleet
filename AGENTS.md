@@ -45,7 +45,7 @@ visible terminal on the TermFleet map. Hidden tmux sessions and loose Konsole
 windows are forbidden (they are invisible and die with uncommitted work).
 
 ```bash
-termfleet-child spawn --provider claude --cwd <dir> --dropoff <abs path/HANDOFF.md>
+termfleet-child spawn --provider <your own agent: codex|claude> --cwd <dir> --dropoff <abs path/HANDOFF.md>
 termfleet-child spawn --provider claude --cwd <dir> --task-file prompt.md --title "card name"
 termfleet-child status        # app running + listening?
 ```
@@ -53,6 +53,8 @@ termfleet-child status        # app running + listening?
 Helper (caller keeps running, a new card is added) = `--task` / `--task-file`.
 Handover (the caller's own card is replaced) = `--dropoff` of the caller's own
 HANDOFF.md only; a file that does not read like a handoff starts a helper instead.
+A handover always continues in the same agent you are (Codex stays Codex, Claude stays
+Claude); the command enforces it.
 
 - Works inside a pane (linked as that pane's child) and outside (top-level instance).
 - Long text goes through `--task-file`, never argv. Prints JSON with `childPaneId`.

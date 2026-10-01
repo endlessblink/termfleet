@@ -61,7 +61,7 @@ visible terminal on the TermFleet map. Hidden tmux sessions and loose Konsole
 windows are forbidden (they are invisible and die with uncommitted work).
 
 ```bash
-termfleet-child spawn --provider claude --cwd <dir> --dropoff <abs path/HANDOFF.md>
+termfleet-child spawn --provider <your own agent: claude|codex> --cwd <dir> --dropoff <abs path/HANDOFF.md>
 termfleet-child spawn --provider claude --cwd <dir> --task-file prompt.md --title "card name"
 termfleet-child status        # app running + listening?
 ```

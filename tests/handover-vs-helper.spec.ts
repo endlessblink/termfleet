@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+// @ts-expect-error — plain ESM helper shared with the status hooks
+import { fnv } from "../scripts/lib/agent-status-paths.mjs";
 
 // A helper adds a card and the caller keeps running. Only a real handoff of the
 // caller's own work replaces the caller's card (TF-069). A helper briefing that
@@ -35,8 +37,8 @@ function setup() {
   return { dataHome, dir, file };
 }
 
-async function spawnAndReadRequest(args: string[], dataHome: string, dir: string) {
-  const child = spawn(process.execPath, [CLI, "spawn", "--provider", "claude", "--timeout", "10", ...args], {
+async function spawnAndReadRequest(args: string[], dataHome: string, dir: string, provider = "claude") {
+  const child = spawn(process.execPath, [CLI, "spawn", "--provider", provider, "--timeout", "10", ...args], {
     env: { ...process.env, XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: parentPaneId },
   });
   let stderr = "";
@@ -96,5 +98,42 @@ test("a nearly empty handoff is refused, because a successor would start with no
   expect(code).toBe(2);
   expect(stderr).toContain("successor starts with nothing");
   expect(existsSync(dir) ? readdirSync(dir).filter((name) => name.endsWith(".request.json")) : []).toEqual([]);
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+// A Codex session that reaches its limit continues in Codex, not in Claude.
+function recordCallerAgent(dataHome: string, provider: string) {
+  const statusDir = join(dataHome, "terminal-workspace", "agent-status");
+  mkdirSync(statusDir, { recursive: true });
+  writeFileSync(join(statusDir, `pane-${fnv(parentPaneId)}.json`), JSON.stringify({ paneId: parentPaneId, provider, updatedAt: Date.now() }));
+}
+
+test("a handover from a Codex session continues in Codex, even if Claude was typed", async () => {
+  const { dataHome, dir, file } = setup();
+  recordCallerAgent(dataHome, "codex");
+  const { request, stderr, code } = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "claude");
+  expect(code).toBe(0);
+  expect(request.provider).toBe("codex");
+  expect(request.replace).toBe(true);
+  expect(stderr).toContain("same agent as you (codex)");
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+test("a handover from a Claude session continues in Claude", async () => {
+  const { dataHome, dir, file } = setup();
+  recordCallerAgent(dataHome, "claude");
+  const { request, code } = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "codex");
+  expect(code).toBe(0);
+  expect(request.provider).toBe("claude");
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+test("a helper may still be a different agent than the one that asked for it", async () => {
+  const { dataHome, dir } = setup();
+  recordCallerAgent(dataHome, "codex");
+  const { request, code } = await spawnAndReadRequest(["--task", "Check the pricing page"], dataHome, dir, "claude");
+  expect(code).toBe(0);
+  expect(request.provider).toBe("claude");
+  expect(request.replace).toBeUndefined();
   rmSync(dataHome, { recursive: true, force: true });
 });
