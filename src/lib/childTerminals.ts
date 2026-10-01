@@ -134,8 +134,46 @@ export function planChildLaunch(input: {
     ok: true,
     link: { parentPaneId: request.parentPaneId, parentTabId: parent.tabId, requestId: request.requestId },
     parentTab,
-    placement: findFreeCanvasSpot(parentNode, input.size, input.nodes),
+    placement: findSpotBelowRow(parentNode, input.size, input.nodes),
   };
+}
+
+const ROW_GAP = 24;
+
+/**
+ * Bottom of the parent's row: directly under the lowest card that shares the
+ * parent's horizontal band, left-aligned with the parent. It slides further down
+ * (never sideways into someone else's column) until it covers no card, and no
+ * existing card is moved.
+ */
+export function findSpotBelowRow(
+  parent: CanvasNode,
+  size: { width: number; height: number },
+  nodes: readonly CanvasNode[],
+): CanvasPosition {
+  const parentBottom = parent.y + parent.height;
+  const row = nodes.filter((node) => node.y < parentBottom && node.y + node.height > parent.y);
+  let y = Math.max(parentBottom, ...row.map((node) => node.y + node.height)) + ROW_GAP;
+  const x = parent.x;
+  const overlaps = (top: number) =>
+    nodes.some(
+      (node) =>
+        x < node.x + node.width + ROW_GAP &&
+        x + size.width + ROW_GAP > node.x &&
+        top < node.y + node.height + ROW_GAP &&
+        top + size.height + ROW_GAP > node.y,
+    );
+  for (let guard = 0; overlaps(y) && guard < 200; guard += 1) {
+    const blocker = nodes.find(
+      (node) =>
+        x < node.x + node.width + ROW_GAP &&
+        x + size.width + ROW_GAP > node.x &&
+        y < node.y + node.height + ROW_GAP &&
+        y + size.height + ROW_GAP > node.y,
+    );
+    y = blocker ? blocker.y + blocker.height + ROW_GAP : y + ROW_GAP;
+  }
+  return { x, y };
 }
 
 export interface ChildLinkSegment {

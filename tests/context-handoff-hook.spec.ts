@@ -23,7 +23,7 @@ function run(dir: string, tokens: number, env: Record<string, string> = {}) {
 test("under the threshold stays silent; at 40% it asks once, never twice", () => {
   const dir = mkdtempSync(join(tmpdir(), "tf-ctx-"));
   expect(run(dir, 50_000)).toBe("");
-  const first = run(dir, 90_000);
+  const first = run(dir, 90_000, { TERMFLEET_CONTEXT_HANDOFF: "ask" });
   expect(JSON.parse(first).hookSpecificOutput.additionalContext).toMatch(/45% full[\s\S]*only do it if he agrees/);
   expect(run(dir, 150_000)).toBe("");
   rmSync(dir, { recursive: true, force: true });

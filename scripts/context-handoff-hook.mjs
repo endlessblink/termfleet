@@ -10,7 +10,7 @@
 //
 // Safety: fires at most once per session (marker file), never spawns by itself in
 // the default "ask" mode — it only tells the agent to propose the handoff to the
-// user. Modes via TERMFLEET_CONTEXT_HANDOFF: "off" | "ask" (default) | "auto".
+// user. Modes via TERMFLEET_CONTEXT_HANDOFF: "off" | "ask" | "auto" (default).
 // "auto" lets the agent run the documented handover without asking; still once per
 // session, and the successor session gets its own marker so no chain runs away
 // unless the user opts in. Threshold: TERMFLEET_CONTEXT_HANDOFF_PERCENT (default 40),
@@ -43,17 +43,19 @@ export function decide({ tokens, windowTokens, percent, mode, alreadyFired }) {
   const rounded = Math.round(used);
   const how =
     mode === "auto"
-      ? "Do it now without asking: follow the spawn-on-termfleet skill's handover recipe."
+      ? "Do it now, before anything else, without asking: follow the spawn-on-termfleet skill's handover recipe."
       : "Tell Noam in one plain sentence and offer to do it; only do it if he agrees.";
   return (
-    `Context is about ${rounded}% full. Time for a clean handover: write HANDOFF.md (task, files, decisions, run state, next step), ` +
-    `commit only your own files, then start the next instance on TermFleet with ` +
-    `\`termfleet-child spawn --provider claude --cwd <dir> --dropoff <abs path to HANDOFF.md>\` (never tmux). ${how}`
+    `Context is about ${rounded}% full: hand over to a fresh instance. Write an EXPANSIVE HANDOFF.md that skips nothing relevant: ` +
+    `the original request in Noam's words and every later correction, the goal and definition of done, everything done so far with evidence, ` +
+    `every file touched (with uncommitted state), decisions and why, rejected approaches, open problems, running processes/ports/builds, ` +
+    `constraints and house rules, exact next steps, and the first command to run. Commit only your own files, then run ` +
+    `\`termfleet-child spawn --provider claude --cwd <project dir> --dropoff <abs path to HANDOFF.md>\` (never tmux; the card lands under the project's row). ${how}`
   );
 }
 
 async function main() {
-  const mode = (process.env.TERMFLEET_CONTEXT_HANDOFF ?? "ask").toLowerCase();
+  const mode = (process.env.TERMFLEET_CONTEXT_HANDOFF ?? "auto").toLowerCase();
   if (mode === "off") return;
   let input = "";
   for await (const chunk of process.stdin) input += chunk;
