@@ -127,6 +127,10 @@ export function planChildLaunch(input: {
     return { ok: false, reason: "duplicate-request" };
   }
   if (children.length >= MAX_CHILDREN_PER_PARENT) return { ok: false, reason: "too-many-children" };
+  const projectTabIds = new Set(
+    input.tabs.filter((tab) => parentTab.groupId && tab.groupId === parentTab.groupId).map((tab) => tab.id),
+  );
+  const projectNodes = input.nodes.filter((node) => node.terminalTabId && projectTabIds.has(node.terminalTabId));
   const parentNode =
     input.nodes.find((node) => node.terminalTabId === parent.tabId) ??
     ({ id: "parent-fallback", x: 0, y: 0, width: 0, height: 0 } as CanvasNode);
@@ -134,11 +138,37 @@ export function planChildLaunch(input: {
     ok: true,
     link: { parentPaneId: request.parentPaneId, parentTabId: parent.tabId, requestId: request.requestId },
     parentTab,
-    placement: findSpotBelowRow(parentNode, input.size, input.nodes),
+    placement: findSpotInProjectRow(parentNode, projectNodes, input.size, input.nodes),
   };
 }
 
 const ROW_GAP = 24;
+
+/**
+ * Same row as the parent: right after the last card of the parent's project that
+ * sits in the parent's horizontal band, level with the parent. If that spot would
+ * cover another card (a neighbouring project), it goes under the row instead.
+ * Never moves an existing card.
+ */
+export function findSpotInProjectRow(
+  parent: CanvasNode,
+  projectNodes: readonly CanvasNode[],
+  size: { width: number; height: number },
+  nodes: readonly CanvasNode[],
+): CanvasPosition {
+  const parentBottom = parent.y + parent.height;
+  const row = [parent, ...projectNodes].filter((node) => node.y < parentBottom && node.y + node.height > parent.y);
+  const x = Math.max(...row.map((node) => node.x + node.width)) + ROW_GAP;
+  const y = parent.y;
+  const covers = nodes.some(
+    (node) =>
+      x < node.x + node.width + ROW_GAP &&
+      x + size.width + ROW_GAP > node.x &&
+      y < node.y + node.height + ROW_GAP &&
+      y + size.height + ROW_GAP > node.y,
+  );
+  return covers ? findSpotBelowRow(parent, size, nodes) : { x, y };
+}
 
 /**
  * Bottom of the parent's row: directly under the lowest card that shares the

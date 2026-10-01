@@ -79,14 +79,14 @@ test("a request from a pane that is not open is refused", () => {
   });
 });
 
-test("the child card goes under its parent's row and covers nothing", () => {
+test("the child card joins the parent's row and covers nothing", () => {
   const parsed = parseChildRequest(JSON.stringify(good), now);
   if (!parsed.ok) throw new Error("fixture");
   const plan = planChildLaunch({ request: parsed.request, tabs: [parentTab], nodes: [parentNode], size });
   if (!plan.ok) throw new Error(plan.reason);
   expect(plan.link).toEqual({ parentPaneId, parentTabId: tabId, requestId: good.requestId });
-  expect(plan.placement.x).toBe(parentNode.x);
-  expect(plan.placement.y).toBeGreaterThan(parentNode.y + parentNode.height);
+  expect(plan.placement.y).toBe(parentNode.y);
+  expect(plan.placement.x).toBeGreaterThan(parentNode.x + parentNode.width);
 });
 
 test("the same request never launches twice, and a parent has a child limit", () => {

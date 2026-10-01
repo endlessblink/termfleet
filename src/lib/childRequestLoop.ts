@@ -105,10 +105,15 @@ async function handle(raw: string) {
   // The daemon answers within 700ms, but starting a login shell can take longer:
   // the session still comes up, so asking again for the same id just reuses it.
   const { invoke } = await import("@tauri-apps/api/core");
+  // Start at the card's own size. A default 80-column start leaves an agent drawing
+  // in the left half of a wide card (a map card never reflows a running agent).
+  const cardSize = parentNode ? { width: parentNode.width, height: parentNode.height } : DEFAULT_CHILD_SIZE;
+  const cols = Math.max(40, Math.floor((cardSize.width - 80) / 7.9));
+  const rows = Math.max(12, Math.floor((cardSize.height - 260) / 17));
   let startError: unknown = null;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
-      await invoke("daemon_ensure_session", { id: childPaneId, cwd: cwd ?? null, command });
+      await invoke("daemon_ensure_session", { id: childPaneId, cwd: cwd ?? null, command, cols, rows });
       startError = null;
       break;
     } catch (error) {

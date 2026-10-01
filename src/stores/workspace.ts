@@ -989,7 +989,7 @@ function reconcileProjectGroups(
     return group;
   };
 
-  const nextTabs = tabs.map((tab) => {
+  const nextTabsByPath = tabs.map((tab) => {
     // Path-based project membership: live cwd wins, and when nested project roots
     // match the same cwd, the deepest root wins (e.g. parent checkout vs nested app).
     // Otherwise same-path terminals collapse into one canonical project. (TC-034)
@@ -1002,6 +1002,14 @@ function reconcileProjectGroups(
     const group = bestProjectGroupForPath(path, nextGroups) ?? ensureGroupForPath(path);
     if (tab.groupId === group.id) return tab;
     return { ...tab, groupId: group.id };
+  });
+
+  // A helper terminal an agent started stays in its parent's project, wherever
+  // its own folder is, so the sidebar and the map keep them together.
+  const nextTabs = nextTabsByPath.map((tab) => {
+    const parentTabId = tab.childOf?.parentTabId;
+    const parent = parentTabId ? nextTabsByPath.find((candidate) => candidate.id === parentTabId) : undefined;
+    return parent?.groupId && tab.groupId !== parent.groupId ? { ...tab, groupId: parent.groupId } : tab;
   });
 
   const usedGroupIds = new Set(nextTabs.map((tab) => tab.groupId).filter((id): id is string => Boolean(id)));
