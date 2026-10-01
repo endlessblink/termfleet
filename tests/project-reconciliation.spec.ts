@@ -544,7 +544,7 @@ test("addTab and cwd changes auto-group terminals by path (live wiring)", async 
   expect(out.movedToBGroup).toBe(true);  // cwd change re-homes the terminal
 });
 
-test("live cwd rehomes a stale Bina-scoped terminal to the TermFleet project", async ({ page }) => {
+test("a card stays in its start-folder project when its shell cds into another project", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -653,20 +653,19 @@ test("live cwd rehomes a stale Bina-scoped terminal to the TermFleet project", a
       viewport: state.canvasState.viewport,
     };
   })).toEqual({
-    tabGroupName: "termfleet",
-    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
-    activeProjectName: "termfleet",
-    projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+    tabGroupName: "bina-ve-ze",
+    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze",
+    activeProjectName: "bina-ve-ze",
+    projectRoot: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze",
     viewport: { x: -220, y: 140, zoom: 0.7 },
   });
 
   const nodeList = page.getByTestId("map-node-list");
-  await expect(nodeList).toContainText("termfleet");
-  await expect(nodeList).not.toContainText("bina-ve-ze");
-  await expect(page.getByTestId("map-node-project-emoji")).toHaveAttribute("title", /termfleet/);
+  await expect(nodeList).toContainText("bina-ve-ze");
+  await expect(nodeList).not.toContainText("termfleet");
 });
 
-test("live cwd uses the deepest matching project root instead of a stale parent", async ({ page }) => {
+test("a card opened in a parent project does not move into a nested project when its shell cds there", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -771,10 +770,10 @@ test("live cwd uses the deepest matching project root instead of a stale parent"
       viewport: state.canvasState.viewport,
     };
   })).toEqual({
-    tabGroupName: "termfleet",
-    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/terminal-workspace-tauri",
-    activeProjectName: "termfleet",
-    projectRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/terminal-workspace-tauri",
+    tabGroupName: "cc-linux-enhancments",
+    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
+    activeProjectName: "cc-linux-enhancments",
+    projectRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
     viewport: { x: -80, y: 70, zoom: 0.75 },
   });
 });
@@ -1019,7 +1018,7 @@ test("project emoji is stable for generated icons and user emoji wins", async ({
   });
 });
 
-test("generated project emoji updates to semantic mapping on reconciliation", async ({ page }) => {
+test("a stored project icon is never re-derived on reconciliation", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1055,7 +1054,7 @@ test("generated project emoji updates to semantic mapping on reconciliation", as
     return store.getState().groups.find((group) => group.id === "group-designersai");
   });
 
-  expect(result?.emoji).toBe("🎨");
+  expect(result?.emoji).toBe("🧱");
   expect(result?.emojiSource).toBe("generated");
 });
 
@@ -1190,7 +1189,7 @@ test("old generated category name repairs to the concrete project name", async (
   });
 
   expect(result?.name).toBe("designersai");
-  expect(result?.emoji).toBe("🎨");
+  expect(result?.emoji).toBe("📊");
   expect(result?.emojiSource).toBe("generated");
 });
 
@@ -1235,7 +1234,7 @@ test("nested project row repairs ancestor name while preserving user emoji", asy
   expect(result?.emojiSource).toBe("user");
 });
 
-test("terminal live cwd under an auto-named ancestor becomes its own sidebar project", async ({ page }) => {
+test("terminal live cwd under an auto-named ancestor does not split the card out of its start project", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1300,20 +1299,20 @@ test("terminal live cwd under an auto-named ancestor becomes its own sidebar pro
     };
   });
 
-  expect(result.groupName).toBe("watchpost");
-  expect(result.groupRoot).toBe("/media/endlessblink/data/my-projects/ai-development/productivity/flow-state/watchpost");
+  expect(result.groupName).toBe("flow-state");
+  expect(result.groupRoot).toBe("/media/endlessblink/data/my-projects/ai-development/productivity/flow-state");
   expect(result.activeGroupFilter).toBe(result.tabGroupId);
   expect(result.activeGroupId).toBe(result.tabGroupId);
   expect(result.projectRoot).toBe(result.groupRoot);
   expect(result.allGroups).toEqual([
     {
-      name: "watchpost",
-      root: "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state/watchpost",
+      name: "flow-state",
+      root: "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state",
     },
   ]);
 });
 
-test("terminal git root rehomes sidebar project to match terminal header identity", async ({ page }) => {
+test("a nested git root does not rehome a card away from its start-folder project", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1399,15 +1398,15 @@ test("terminal git root rehomes sidebar project to match terminal header identit
     };
   });
 
-  expect(result.tabGroupName).toBe("watchpost");
-  expect(result.activeGroupName).toBe("watchpost");
+  expect(result.tabGroupName).toBe("flow-state");
+  expect(result.activeGroupName).toBe("flow-state");
   expect(result.activeGroupId).toBe(result.tabGroupId);
   expect(result.projectRoot).toBe(result.tabGroupRoot);
-  expect(result.counts).toContainEqual({ name: "watchpost", count: 1 });
-  expect(result.counts).not.toContainEqual({ name: "flow-state", count: 1 });
+  expect(result.counts).toContainEqual({ name: "flow-state", count: 1 });
+  expect(result.counts).not.toContainEqual({ name: "watchpost", count: 1 });
 });
 
-test("map sidebar refreshes a saved terminal project before it is clicked", async ({ page }) => {
+test("map sidebar keeps a saved terminal in its start-folder project", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => {
@@ -1465,5 +1464,5 @@ test("map sidebar refreshes a saved terminal project before it is clicked", asyn
 
   const sidebar = page.getByTestId("map-node-list");
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.getByTestId("map-project-group-header")).toContainText("watchpost");
+  await expect(sidebar.getByTestId("map-project-group-header")).toContainText("flow-state");
 });
