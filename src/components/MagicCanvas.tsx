@@ -10215,6 +10215,16 @@ export function MagicCanvas() {
                 strokeDasharray="10 8"
                 vectorEffect="non-scaling-stroke"
               />
+              {/* A dot on each card edge, so the line reads as a real connection. */}
+              {[
+                [link.x1, link.y1],
+                [link.x2, link.y2],
+              ].map(([cx, cy], index) => (
+                <g key={index} data-testid="canvas-child-link-dot">
+                  <circle cx={cx - left} cy={cy - top} r={9} fill="var(--surface-sunken)" />
+                  <circle cx={cx - left} cy={cy - top} r={6} fill={HELPER_TERMINAL_COLOR} />
+                </g>
+              ))}
             </svg>
           );
         })}
