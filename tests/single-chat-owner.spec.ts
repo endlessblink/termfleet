@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error — plain ESM helper shared with the status hooks
-import { closeOtherCopies, findOtherCopies } from "../scripts/lib/single-chat-owner.mjs";
+import { closeOtherCopies, findOtherCopies, movedNote } from "../scripts/lib/single-chat-owner.mjs";
 
 // Live 2026-09-24: one Claude chat ran in three terminals at once, each reopened by
 // hand because the older copy looked stuck. Opening a chat now closes older copies
@@ -54,11 +54,44 @@ test("opening a chat closes its older copy in another terminal, and only that", 
   const notes: string[] = [];
   const closed = closeOtherCopies(
     { provider: "claude", conversationId: CHAT, paneId: "pane-A", selfPid: 70, ...system },
-    { kill: (pid: number, signal: string) => killed.push([pid, signal]), waitMs: 0, writeNote: (t: string) => notes.push(t) },
+    { kill: (pid: number, signal: string) => killed.push([pid, signal]), waitMs: 0, writeNote: (t: string) => notes.push(t), log: () => {} },
   );
   expect(closed.map((copy: { pid: number }) => copy.pid)).toEqual([200]);
   expect(killed).toEqual([[200, "SIGTERM"]]);
   expect(notes).toEqual(["/dev/pts/5"]);
+});
+
+test("every closure is logged with who closed whom, and the note names the card that took over", () => {
+  const system = fakeSystem(
+    [
+      claude(50, "terminal-aaaa1111-pane-A", "/dev/pts/3"),
+      { pid: 70, ppid: 50, args: ["node", "hook.mjs"], pane: "terminal-aaaa1111-pane-A" },
+      claude(200, "terminal-bbbb2222-pane-B", "/dev/pts/5"),
+    ],
+    { 50: CHAT, 200: CHAT },
+  );
+  const logged: Array<Record<string, unknown>> = [];
+  const notes: Array<[string, string]> = [];
+  closeOtherCopies(
+    { provider: "claude", conversationId: CHAT, paneId: "terminal-aaaa1111-pane-A", selfPid: 70, ...system },
+    {
+      kill: () => {},
+      waitMs: 0,
+      writeNote: (terminal: string, byPane: string) => notes.push([terminal, byPane]),
+      log: (entry: Record<string, unknown>) => logged.push(entry),
+    },
+  );
+  expect(logged).toEqual([
+    {
+      event: "closed-older-copy",
+      conversationId: CHAT,
+      closedPane: "terminal-bbbb2222-pane-B",
+      closedPid: 200,
+      openedByPane: "terminal-aaaa1111-pane-A",
+    },
+  ]);
+  expect(notes).toEqual([["/dev/pts/5", "terminal-aaaa1111-pane-A"]]);
+  expect(movedNote("terminal-aaaa1111-pane-A")).toContain("(card aaaa1111)");
 });
 
 test("a scripted run of a chat never closes the operator's copy", () => {

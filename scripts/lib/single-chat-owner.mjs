@@ -8,12 +8,30 @@
 // Newest wins: the copy whose hook is firing is the one the operator is typing
 // into. Only interactive copies inside TermFleet terminals are touched, and only
 // the agent process is stopped; the terminal and its shell stay open.
-import { readdirSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
 const MOVED_NOTE =
   "\r\n[TermFleet] This chat was opened in another terminal, so it was closed here to keep one copy.\r\n";
+
+/** The note names the card that took over, so a closed copy is never a mystery. */
+export function movedNote(byPane) {
+  const short = String(byPane ?? "").replace(/^terminal-/, "").slice(0, 8);
+  return short
+    ? `\r\n[TermFleet] This chat was opened in another terminal (card ${short}), so it was closed here to keep one copy.\r\n`
+    : MOVED_NOTE;
+}
+
+/** One line per closure, so "why did my agent die?" can be answered afterwards. */
+export function logClosure(entry, logPath = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "termfleet", "chat-closures.jsonl")) {
+  try {
+    mkdirSync(join(logPath, ".."), { recursive: true });
+    appendFileSync(logPath, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`);
+  } catch {
+    /* logging must never break the hook */
+  }
+}
 
 function readText(path) {
   try {
@@ -146,12 +164,20 @@ export function closeOtherCopies(
   {
     kill = process.kill.bind(process),
     waitMs = 2000,
-    writeNote = (terminal) => writeFileSync(terminal, MOVED_NOTE),
+    writeNote = (terminal, byPane) => writeFileSync(terminal, movedNote(byPane)),
+    log = logClosure,
   } = {},
 ) {
   const procRoot = options.procRoot ?? "/proc";
   const copies = findOtherCopies(options);
   for (const copy of copies) {
+    log({
+      event: "closed-older-copy",
+      conversationId: options.conversationId,
+      closedPane: copy.paneId,
+      closedPid: copy.pid,
+      openedByPane: options.paneId,
+    });
     try {
       kill(copy.pid, "SIGTERM");
     } catch {
@@ -162,7 +188,7 @@ export function closeOtherCopies(
   while (copies.some((copy) => alive(procRoot, copy.pid)) && Date.now() < deadline) pause(50);
   for (const copy of copies) {
     try {
-      writeNote(copy.terminal);
+      writeNote(copy.terminal, options.paneId);
     } catch {
       /* the terminal is gone; nothing to tell */
     }
