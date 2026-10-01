@@ -764,6 +764,61 @@ test("a handover successor takes the predecessor's slot in the list and keeps th
   expect(result.active).toBe("tab-new");
 });
 
+test("a helper started in another real project gets that project's group, not its starter's", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          reconcileProjectGroups: () => void;
+          tabs: Array<{ id: string; groupId: string | null }>;
+          groups: Array<{ id: string; projectRoot?: string }>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const TERMFLEET = "/media/endlessblink/data/my-projects/ai-development/devops/termfleet";
+    const BOTSON = "/media/endlessblink/data/my-projects/ai-development/bots/botson";
+    const group = { id: "group-tf", name: "termfleet", color: "#7aa2f7", emoji: "TF", projectRoot: TERMFLEET };
+    const tab = (id: string, extra: Record<string, unknown>) => ({
+      id,
+      title: id,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: "group-tf",
+      terminals: [{ id: `pty-${id}`, paneId: `pane-${id}`, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: `pane-${id}`, type: "terminal" },
+      activePaneId: `pane-${id}`,
+      ...extra,
+    });
+    store.setState({
+      groups: [group],
+      terminalGroups: [group],
+      tabs: [
+        tab("tab-parent", { initialCwd: TERMFLEET }),
+        tab("tab-helper", {
+          initialCwd: BOTSON,
+          childOf: { parentPaneId: "terminal-tab-parent-pane-tab-parent", parentTabId: "tab-parent", requestId: "request-12345678" },
+        }),
+      ],
+      liveCwds: {},
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    store.getState().reconcileProjectGroups();
+    const state = store.getState();
+    const helper = state.tabs.find((candidate) => candidate.id === "tab-helper");
+    return state.groups.find((candidate) => candidate.id === helper?.groupId)?.projectRoot;
+  });
+
+  expect(result).toBe("/media/endlessblink/data/my-projects/ai-development/bots/botson");
+});
+
 test("a card opened in a parent project does not move into a nested project when its shell cds there", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

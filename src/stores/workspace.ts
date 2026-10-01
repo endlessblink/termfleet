@@ -936,6 +936,10 @@ function terminalProjectPath(
   return currentPath;
 }
 
+function isScratchPath(path: string) {
+  return /^\/(tmp|var\/tmp)(\/|$)/.test(path) || path.includes("/.dev-tmp/") || path.includes("/scratchpad");
+}
+
 function reconcileProjectGroups(
   tabs: Tab[],
   groups: Group[],
@@ -1017,9 +1021,11 @@ function reconcileProjectGroups(
     if (!path) return tab.groupId ? { ...tab, groupId: null } : tab;
 
     const known = bestProjectGroupForPath(path, nextGroups);
-    if (!known && tab.childOf) {
-      // A helper started in a loose scratch folder must not mint a project of its
-      // own: it follows its parent (below). Helpers in a real project folder stay there.
+    if (!known && tab.childOf && isScratchPath(path)) {
+      // A helper started in a throwaway scratch folder must not mint a project of its
+      // own: it follows its parent (below). A helper in any real project folder (even
+      // one with no group yet, like botson started from a termfleet card) gets that
+      // project's own group.
       adoptParentGroupIds.add(tab.id);
       return tab;
     }
