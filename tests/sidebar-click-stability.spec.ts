@@ -66,6 +66,13 @@ test("clicking a sidebar terminal does not move cards, the camera, or the list o
         terminals: [{ id: `pty-${card.tab}`, paneId: `pane-${card.tab}`, cols: 80, rows: 24, status: "running" }],
         splitLayout: { id: `pane-${card.tab}`, type: "terminal" },
         activePaneId: `pane-${card.tab}`,
+        // tab-a2 is a helper started by tab-a1, in the same folder (the freelance-desk case).
+        ...(card.tab === "tab-a2"
+          ? {
+              childOf: { parentPaneId: "terminal-p-pane-tab-a1", parentTabId: "tab-a1", requestId: "request-12345678" },
+              earlierSessions: [{ ptyIds: [], title: "old", endedAt: 1 }],
+            }
+          : {}),
       })),
       activeTabId: "tab-a1",
       liveCwds: {},
@@ -120,6 +127,23 @@ test("clicking a sidebar terminal does not move cards, the camera, or the list o
   await rows.nth(1).click();
   await page.waitForTimeout(600);
 
+  const active = () =>
+    page.evaluate(() => {
+      const state = (window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { activeTabId: string | null; canvasState: { selectedNodeId: string | null } };
+        };
+      }).__termfleetWorkspaceStore?.getState();
+      return { activeTabId: state?.activeTabId, selectedNodeId: state?.canvasState.selectedNodeId };
+    });
+  // The last click was on the helper (tab-a2): it, not its sibling, must be shown.
+  expect(await active()).toEqual({ activeTabId: "tab-a2", selectedNodeId: "node-tab-a2" });
+  await rows.nth(0).click();
+  await page.waitForTimeout(600);
+  expect(await active()).toEqual({ activeTabId: "tab-a1", selectedNodeId: "node-tab-a1" });
+  await rows.nth(1).click();
+  await page.waitForTimeout(600);
+  expect(await active()).toEqual({ activeTabId: "tab-a2", selectedNodeId: "node-tab-a2" });
   expect(await snapshot()).toEqual(before);
   expect((await list.innerText()).replace(/\s+/g, " ")).toBe(listBefore.replace(/\s+/g, " "));
 });
