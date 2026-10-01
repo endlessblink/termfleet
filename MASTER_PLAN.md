@@ -10145,6 +10145,11 @@ Status:
   consistent (138 columns, 1104 px canvas at 8 px cells), so it is not the earlier
   width-mismatch bug; suspect stale rows after erase/insert-line sequences. Next:
   reproduce with `npm run verify:canvas-live` using a long wrapping input.
+  Diagnosis so far: freelance-desk's saved byte stream was replayed through the VT
+  emulation at 139x27 (ignored test `replay_saved_stream` in vt_grid.rs); the screen
+  is clean at the end and at the moment the long message was typed (Claude pins the
+  typed text on row 1 and puts "Jump to bottom" on row 21). So the emulation is not
+  the cause; look at the drawing layer or timing next.
 - freelance-desk card was killed once (operator, 2026-10-01 ~16:30); no handover or
   helper request in the logs explains it. Suspect the "one chat, one terminal" rule
   closing an older copy after a restart; unconfirmed.
