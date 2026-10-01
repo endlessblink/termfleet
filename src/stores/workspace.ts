@@ -3416,8 +3416,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         };
       }
 
-      // Switch to adjacent tab: prefer next, fall back to previous
-      const nextTab = remainingTabs[index] ?? remainingTabs[index - 1];
+      // Switch to the next terminal in the SAME project (then the one above it);
+      // only when the project has no other terminal fall back to the list neighbour.
+      const removedGroupId = state.tabs[index].groupId;
+      const sameGroup = removedGroupId
+        ? state.tabs.filter((t) => t.groupId === removedGroupId)
+        : [];
+      const groupIndex = sameGroup.findIndex((t) => t.id === id);
+      const groupNeighbour = sameGroup[groupIndex + 1] ?? sameGroup[groupIndex - 1];
+      const nextTab = groupNeighbour ?? remainingTabs[index] ?? remainingTabs[index - 1];
 
       return {
         tabs: remainingTabs,
