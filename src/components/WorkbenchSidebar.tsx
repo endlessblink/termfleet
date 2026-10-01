@@ -8042,6 +8042,7 @@ function MapPanel({
                         setActiveTab(linkedTab.id);
                       setWorkspaceMode("canvas");
                       focusCanvasNode(node);
+                      recordSidebarClick(node.id, node.terminalTabId, linkedTab?.id);
                     }}
                     onDoubleClick={() => {
                       if (!node.terminalTabId || !linkedTab) return;
@@ -8285,6 +8286,26 @@ function MapPanel({
       </div>
     </>
   );
+}
+
+/** Records which card a sidebar click selected versus what the app ended up showing (TF-069 diagnosis). */
+function recordSidebarClick(nodeId: string, nodeTabId?: string, linkedTabId?: string) {
+  window.setTimeout(() => {
+    const state = useWorkspaceStore.getState();
+    const line = {
+      t: Date.now(),
+      kind: "sidebar-click",
+      clickedNode: nodeId,
+      nodeTabId,
+      linkedTabId,
+      activeTabId: state.activeTabId,
+      selectedNodeId: state.canvasState.selectedNodeId,
+      viewport: state.canvasState.viewport,
+    };
+    void import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke("terminal_geometry_log", { line: JSON.stringify(line) }))
+      .catch(() => undefined);
+  }, 400);
 }
 
 export function WorkbenchSidebar() {
