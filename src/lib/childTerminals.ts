@@ -26,6 +26,8 @@ export interface ChildTerminalRequest {
   parentPaneId?: string;
   provider: AgentProvider;
   task: string;
+  /** Project folder this top-level instance belongs with (joins its group and row). */
+  near?: string;
   /** Short card title; the task itself may be a long "read this file" instruction. */
   title?: string;
   cwd?: string;
@@ -80,12 +82,19 @@ export function parseChildRequest(raw: string, nowMs = Date.now()): ChildRequest
     }
     cwd = record.cwd;
   }
+  let near: string | undefined;
+  if (record.near !== undefined) {
+    if (typeof record.near !== "string" || !record.near.startsWith("/") || record.near.includes("\0")) {
+      return { ok: false, reason: "bad-near" };
+    }
+    near = record.near.replace(/\/+$/, "") || "/";
+  }
   const createdAt = typeof record.createdAt === "number" ? record.createdAt : NaN;
   if (!Number.isFinite(createdAt)) return { ok: false, reason: "bad-created-at" };
   if (nowMs - createdAt > CHILD_REQUEST_MAX_AGE_MS) return { ok: false, reason: "expired" };
   return {
     ok: true,
-    request: { version: CHILD_REQUEST_SCHEMA_VERSION, requestId, parentPaneId, provider, task, title, cwd, createdAt },
+    request: { version: CHILD_REQUEST_SCHEMA_VERSION, requestId, parentPaneId, provider, task, title, near, cwd, createdAt },
   };
 }
 

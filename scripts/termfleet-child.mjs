@@ -24,7 +24,7 @@ const USAGE = `termfleet-child ${VERSION} - start an agent instance as a visible
 
 usage:
   termfleet-child spawn --provider <${PROVIDERS.join("|")}> (--task "<text>" | --task-file FILE | --dropoff FILE)
-                        [--title "<card title>"] [--cwd DIR] [--timeout SECONDS] [--no-start-app]
+                        [--title "<card title>"] [--near PROJECT_DIR] [--cwd DIR] [--timeout SECONDS] [--no-start-app]
   termfleet-child status
   termfleet-child --help | --version
 
@@ -171,7 +171,8 @@ async function spawnCommand(options) {
   const requestId = randomUUID();
   const requestPath = join(dir, `${requestId}.request.json`);
   const resultPath = join(dir, `${requestId}.result.json`);
-  const request = { version: 1, requestId, parentPaneId, provider, task, title, cwd, createdAt: Date.now() };
+  const near = options.near ? resolve(options.near) : undefined;
+  const request = { version: 1, requestId, parentPaneId, provider, task, title, near, cwd, createdAt: Date.now() };
   // Write then rename, so the app never reads a half-written request.
   writeFileSync(`${requestPath}.tmp`, JSON.stringify(request), { mode: 0o600 });
   renameSync(`${requestPath}.tmp`, requestPath);

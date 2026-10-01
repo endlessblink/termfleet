@@ -43,7 +43,15 @@ async function handle(raw: string) {
     if (requestId) await complete(requestId, { ok: false, reason: parsed.reason });
     return;
   }
-  const { request } = parsed;
+  let { request } = parsed;
+  if (!request.parentPaneId && request.near) {
+    // Started from outside any pane but "for" a project: join that project's row and group.
+    const near = request.near;
+    const homeTab = useWorkspaceStore
+      .getState()
+      .tabs.find((tab) => tab.initialCwd && (near === tab.initialCwd || near.startsWith(`${tab.initialCwd}/`)));
+    if (homeTab) request = { ...request, parentPaneId: `terminal-${homeTab.id}-${homeTab.activePaneId}` };
+  }
   const now = Date.now();
   recentLaunches = recentLaunches.filter((at) => now - at < SPAWN_WINDOW_MS);
   if (recentLaunches.length >= MAX_SPAWNS_PER_WINDOW) {
@@ -86,7 +94,7 @@ async function handle(raw: string) {
     initialCwd: cwd,
     groupId: plan.parentTab?.groupId,
     childOf: plan.link,
-  });
+  }, plan.placement);
   const after = useWorkspaceStore.getState();
   const tab = after.tabs.find((candidate) => !knownTabIds.has(candidate.id));
   if (!tab) {
