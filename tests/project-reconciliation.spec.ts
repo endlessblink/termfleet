@@ -717,6 +717,53 @@ test("a handover successor stays in its predecessor's project even when its shel
   expect(result).toBe("/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze");
 });
 
+test("a handover successor takes the predecessor's slot in the list and keeps the view on it", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          archivePredecessor: (predecessorId: string, successorId: string) => void;
+          tabs: Array<{ id: string }>;
+          activeTabId: string | null;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const tab = (id: string) => ({
+      id,
+      title: id,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: null,
+      initialCwd: "/tmp",
+      terminals: [{ id: `pty-${id}`, paneId: `pane-${id}`, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: `pane-${id}`, type: "terminal" },
+      activePaneId: `pane-${id}`,
+    });
+    // addTab appends the successor, so it starts at the end of the list.
+    store.setState({
+      groups: [],
+      terminalGroups: [],
+      tabs: [tab("tab-a"), tab("tab-old"), tab("tab-c"), tab("tab-new")],
+      activeTabId: "tab-old",
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    store.getState().archivePredecessor("tab-old", "tab-new");
+    const state = store.getState();
+    return { order: state.tabs.map((candidate) => candidate.id), active: state.activeTabId };
+  });
+
+  expect(result.order).toEqual(["tab-a", "tab-new", "tab-c"]);
+  expect(result.active).toBe("tab-new");
+});
+
 test("a card opened in a parent project does not move into a nested project when its shell cds there", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

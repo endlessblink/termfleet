@@ -3482,12 +3482,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         { ptyIds, title: predecessor.title, endedAt: Date.now() },
       );
       for (const session of merged.dropped) dropped.push(...session.ptyIds);
+      const updated = state.tabs.map((tab) =>
+        tab.id === successorTabId ? { ...tab, earlierSessions: merged.kept } : tab,
+      );
+      // The successor takes the predecessor's slot in the list (addTab appended it),
+      // so the sidebar order does not change through a handover.
+      const slot = updated.findIndex((tab) => tab.id === predecessorTabId);
+      const without = updated.filter((tab) => tab.id !== successorTabId);
+      const reordered =
+        slot === -1
+          ? updated
+          : [...without.slice(0, slot), updated.find((tab) => tab.id === successorTabId)!, ...without.slice(slot)];
       return {
         // Keep the daemon sessions alive but never re-adopt them as tabs.
         closedSessionIds: [...new Set([...state.closedSessionIds, ...ptyIds])],
-        tabs: state.tabs.map((tab) =>
-          tab.id === successorTabId ? { ...tab, earlierSessions: merged.kept } : tab,
-        ),
+        tabs: reordered,
+        // Whoever was looking at the old card follows it to the new one.
+        ...(state.activeTabId === predecessorTabId ? { activeTabId: successorTabId, activeTerminalId: null } : {}),
       };
     });
     get().removeTab(predecessorTabId);

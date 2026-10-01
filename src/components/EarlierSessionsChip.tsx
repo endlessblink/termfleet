@@ -15,7 +15,60 @@ function ago(at: number, now = Date.now()) {
   return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
 }
 
+// Saved terminal output still holds colour/cursor codes; strip them so the old chat reads as text.
+function plainText(raw: string) {
+  return raw
+    .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/\u001b[()][A-Za-z0-9]/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+}
+
+async function loadSessionText(session: EarlierSession) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const parts: string[] = [];
+  for (const id of session.ptyIds) {
+    try {
+      parts.push(plainText(await invoke<string>("daemon_snapshot_session", { id })));
+    } catch {
+      /* session already gone: nothing to show for it */
+    }
+  }
+  const text = parts.join("\n").trim();
+  return text || "This earlier session has no saved text any more.";
+}
+
 const styles: Record<string, CSSProperties> = {
+  viewer: {
+    position: "fixed",
+    zIndex: 2001,
+    width: 640,
+    maxWidth: "calc(100vw - 32px)",
+    height: 420,
+    maxHeight: "calc(100vh - 32px)",
+    display: "flex",
+    flexDirection: "column",
+    borderRadius: 10,
+    background: "var(--surface-raised)",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+    fontFamily: "var(--font-ui)",
+  },
+  viewerHead: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", fontSize: 12, color: "var(--text-primary)" },
+  viewerText: {
+    flex: 1,
+    margin: 0,
+    padding: "0 12px 12px",
+    overflow: "auto",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    fontFamily: "monospace",
+    fontSize: 12,
+    userSelect: "text",
+    cursor: "text",
+    color: "var(--text-secondary)",
+  },
   chip: {
     display: "inline-flex",
     alignItems: "center",
@@ -74,6 +127,7 @@ const styles: Record<string, CSSProperties> = {
 export function EarlierSessionsChip({ tabId, sessions }: { tabId: string; sessions: readonly EarlierSession[] }) {
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<{ title: string; text: string } | null>(null);
   const anchor = useRef<HTMLButtonElement>(null);
   const clearOne = useWorkspaceStore((state) => state.clearEarlierSession);
   const clearAll = useWorkspaceStore((state) => state.clearAllEarlierSessions);
@@ -120,9 +174,17 @@ export function EarlierSessionsChip({ tabId, sessions }: { tabId: string; sessio
                     onMouseEnter={() => setHover(key)}
                     onMouseLeave={() => setHover(null)}
                   >
-                    <div style={styles.rowText}>
+                    <div
+                      style={{ ...styles.rowText, cursor: "pointer" }}
+                      data-testid="earlier-session-open"
+                      title="Open this earlier chat to read and copy from it"
+                      onClick={() => {
+                        setViewing({ title: session.title, text: "Loading…" });
+                        void loadSessionText(session).then((text) => setViewing({ title: session.title, text }));
+                      }}
+                    >
                       <span style={styles.rowTitle}>{session.title}</span>
-                      <span style={styles.rowMeta}>Handed over {ago(session.endedAt)}</span>
+                      <span style={styles.rowMeta}>Handed over {ago(session.endedAt)} · open to read</span>
                     </div>
                     <button type="button" style={styles.clear} onClick={() => void clearOne(tabId, index)}>
                       Clear
@@ -142,6 +204,32 @@ export function EarlierSessionsChip({ tabId, sessions }: { tabId: string; sessio
                   Clear all
                 </button>
               </div>
+            </div>,
+            document.body,
+          )
+        : null}
+      {open && viewing
+        ? createPortal(
+            <div
+              data-testid="earlier-session-viewer"
+              style={{ ...styles.viewer, left: 24, top: 24 }}
+              onMouseDown={stop}
+              onPointerDown={stop}
+              onWheel={stop}
+              onKeyDown={stop}
+            >
+              <div style={styles.viewerHead}>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {viewing.title}
+                </span>
+                <button type="button" style={styles.clear} onClick={() => void navigator.clipboard?.writeText(viewing.text)}>
+                  Copy all
+                </button>
+                <button type="button" style={styles.clear} onClick={() => setViewing(null)}>
+                  Close
+                </button>
+              </div>
+              <pre style={styles.viewerText}>{viewing.text}</pre>
             </div>,
             document.body,
           )
