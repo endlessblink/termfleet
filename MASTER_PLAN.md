@@ -10077,5 +10077,10 @@ Status:
   tests for stable order and close-selects-next; token/context measurement of
   dropoff; fix the pre-existing `canvas-arrange` failure; visual proof in the real
   dock app; then mark the issue resolved with evidence.
+- NEW report (screenshot of a rough-cut-mvp card showing "2 earlier"): "botson is
+  still under the termfleet group". A card that came from a handover sits in a
+  project it does not belong to. Check first: the successor's project folder
+  (`projectCwd`, then start folder) versus the group the sidebar actually shows, and
+  whether older saved cards still carry a stale group. Reproduce in the real app.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?
