@@ -114,3 +114,22 @@ No source files changed by either instance. Only this HANDOFF file is mine and u
 ## First command to run
 
 `cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && npm run issues -- check && npm run issues -- list` (project rule), then read SessionsPanel render body in `src/components/WorkbenchSidebar.tsx` around lines 4900-5200 to find the ordering code, then ask Noam the next question.
+
+## UPDATE 3 (third instance) — DESIGN APPROVED. BUILD IT.
+
+### Noam's final answers (third round)
+- Pin + category sections (DevOps etc.): **Remove both** in the by-project view (one flat list, own order).
+- Starting order: **Lock the current on-screen order** (new groups appended at the end).
+- Scope: **Yes, everywhere** — sidebar, map, fleet list all read the same order + icons.
+- Helper marker: **Indent + small ↳ badge** (keeps slot + badge even if parent closed).
+- Then I presented the full design (order fixed/creation-order, drag group to swap, reorder terminals only inside own group in by-project view, manual view free; group icons permanent/locked now, released when group closed, full emoji picker, auto-picks unique / user picks may duplicate; helpers indented with badge) and Noam replied **"yes"**. Brainstorming gate PASSED. He also sent a screenshot: by-project view shows terminals under the WRONG project heading — "freelance-desk" cards under the BOTSON heading, and a "botson" terminal card under the IN-CONTROL-KERNEL heading (red arrow at the botson card). So ALSO fix: a terminal must appear under its OWN project (check how buildProjectSidebarModel assigns tabs to groups — likely by group id vs cwd/projectRoot mismatch; reproduce from live data before fixing; note one terminal's cwd is bots+automation/botson while its group is in-control-kernel — inspect which is truth, don't guess).
+
+### Next steps (in order)
+1. Declare a plain cockpit task (in_progress). Say up front if a command kills terminals.
+2. `npm run issues -- check && npm run issues -- list`; create a new issue (next free TF id) for "sidebar order/icons/helper marker + terminals under wrong project"; record before touching production code.
+3. Implement: sort in `src/lib/projectSidebarModel.ts` (`compareProjects`) -> stable order key persisted on Group (migrate: lock current on-screen order); drop pinned/current/count sorting and category sections for by-project view; drag swap groups + within-group terminal reorder; `reconcileProjectGroups` (workspace.ts ~931) stop re-deriving emoji (lock existing; release on group close); delete 2nd derivation in MagicCanvas.tsx ~6894-6914; project menu must offer full EmojiPicker; helper ↳ badge + indent via `Tab.childOf`; map + fleet list read same order/icons.
+4. Patch .ts/.tsx surgically (script file, not whole-file reformat — see memory formatter-breaks-source-verifiers). Work on main; stage only own files (other agent changes exist: issue-registry.json, baselines pngs, verify-clipboard-paste.sh, .kilo/, HANDOFF-feature-64.md, tests/scratch-eval.spec.ts are NOT mine).
+5. `npm run build`, regression test, `npm run release:install`, `npm run verify:installed-release`, check `npm run doctor` launch mode; verify in the real app with a screenshot; update issue evidence + MASTER_PLAN.md.
+
+### State
+No source changes yet. Only HANDOFF-sidebar-stability.md is mine (commit it alone). First command: `cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && npm run issues -- check && npm run issues -- list`
