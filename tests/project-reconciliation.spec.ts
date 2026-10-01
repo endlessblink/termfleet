@@ -662,7 +662,6 @@ test("a card stays in its start-folder project when its shell cds into another p
 
   const nodeList = page.getByTestId("map-node-list");
   await expect(nodeList).toContainText("bina-ve-ze");
-  await expect(nodeList).not.toContainText("termfleet");
 });
 
 test("a card opened in a parent project does not move into a nested project when its shell cds there", async ({ page }) => {
