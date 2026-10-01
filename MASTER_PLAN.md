@@ -10103,5 +10103,10 @@ Status:
   project group, never mixed into another's). Proposed: an audit that reads the live
   app state and flags any card whose group differs from its start folder's project,
   runs in `npm run doctor`, and fails loudly like `audit:panes` does.
+- NEW request: "after a dropoff the camera should stay on the same terminal location,
+  not zoom out". Change made (unverified in the real app): the successor stays
+  selected in the replaced card's place, instead of the selection falling to some
+  other card when the old one is removed. If the camera still zooms out, the cause
+  is elsewhere (`startup-offscreen-rescue` in the map, or a project reveal).
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?

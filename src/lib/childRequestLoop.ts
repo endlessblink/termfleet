@@ -111,7 +111,13 @@ async function handle(raw: string) {
   }
   // Only the new card is placed; every card already on the map stays put.
   after.updateCanvasNode(`terminal-map-${tab.id}`, plan.placement, "workspace-update");
-  if (previousTabId && after.tabs.some((candidate) => candidate.id === previousTabId)) {
+  // On a handover the card being watched is the one that gets replaced: the new card
+  // stays selected in its place so the camera does not jump to some other card.
+  if (
+    previousTabId &&
+    previousTabId !== predecessor?.id &&
+    after.tabs.some((candidate) => candidate.id === previousTabId)
+  ) {
     after.setActiveTab(previousTabId);
     after.setActiveTerminal(previousTerminalId);
   }
