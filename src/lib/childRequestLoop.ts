@@ -82,6 +82,7 @@ async function handle(raw: string) {
   }
 
   const cwd = request.cwd ?? plan.parentTab?.initialCwd;
+  const predecessor = plan.replaces ? store.tabs.find((candidate) => candidate.id === plan.parentTab?.id) : undefined;
   const command = childStartupCommand(request.provider, request.task);
   // Opening a helper must not pull the operator away from what they are doing.
   const previousTabId = store.activeTabId;
@@ -93,7 +94,7 @@ async function handle(raw: string) {
     color: HELPER_TERMINAL_COLOR,
     initialCwd: cwd,
     groupId: plan.parentTab?.groupId,
-    childOf: plan.link,
+    childOf: predecessor ? predecessor.childOf : plan.link,
   }, plan.placement);
   const after = useWorkspaceStore.getState();
   const tab = after.tabs.find((candidate) => !knownTabIds.has(candidate.id));
@@ -108,6 +109,10 @@ async function handle(raw: string) {
     after.setActiveTerminal(previousTerminalId);
   }
 
+  if (predecessor) {
+    // Handover: the old session leaves the map but is kept (not killed) under the new card.
+    after.archivePredecessor(predecessor.id, tab.id);
+  }
   const childPaneId = `terminal-${tab.id}-${tab.activePaneId}`;
   // Start it now in the daemon; the card attaches to this same session later.
   // The daemon answers within 700ms, but starting a login shell can take longer:
@@ -138,6 +143,7 @@ async function handle(raw: string) {
     parentPaneId: request.parentPaneId ?? null,
     childTabId: tab.id,
     childPaneId,
+    replacedTabId: predecessor?.id ?? null,
     provider: request.provider,
   });
 }

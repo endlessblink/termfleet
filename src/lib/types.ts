@@ -161,6 +161,15 @@ export interface Tab {
   activePaneId: string;
   /** Set when a parent agent's terminal opened this one as its helper (FEATURE-64). */
   childOf?: { parentPaneId: string; parentTabId: string; requestId: string };
+  /** Sessions that handed over to this card's current one; their agents have stopped. */
+  earlierSessions?: EarlierSession[];
+}
+
+export interface EarlierSession {
+  /** Daemon sessions still held (not killed) until the operator clears them. */
+  ptyIds: string[];
+  title: string;
+  endedAt: number;
 }
 
 export type WorkstreamKind = "terminal" | "agent";

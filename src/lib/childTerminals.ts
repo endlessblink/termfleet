@@ -26,6 +26,8 @@ export interface ChildTerminalRequest {
   parentPaneId?: string;
   provider: AgentProvider;
   task: string;
+  /** A handover: the new session takes over the parent's card instead of adding one. */
+  replace?: boolean;
   /** Project folder this top-level instance belongs with (joins its group and row). */
   near?: string;
   /** Short card title; the task itself may be a long "read this file" instruction. */
@@ -82,6 +84,8 @@ export function parseChildRequest(raw: string, nowMs = Date.now()): ChildRequest
     }
     cwd = record.cwd;
   }
+  if (record.replace !== undefined && typeof record.replace !== "boolean") return { ok: false, reason: "bad-replace" };
+  const replace = record.replace === true && Boolean(parentPaneId) ? true : undefined;
   let near: string | undefined;
   if (record.near !== undefined) {
     if (typeof record.near !== "string" || !record.near.startsWith("/") || record.near.includes("\0")) {
@@ -94,7 +98,7 @@ export function parseChildRequest(raw: string, nowMs = Date.now()): ChildRequest
   if (nowMs - createdAt > CHILD_REQUEST_MAX_AGE_MS) return { ok: false, reason: "expired" };
   return {
     ok: true,
-    request: { version: CHILD_REQUEST_SCHEMA_VERSION, requestId, parentPaneId, provider, task, title, near, cwd, createdAt },
+    request: { version: CHILD_REQUEST_SCHEMA_VERSION, requestId, parentPaneId, provider, task, title, near, replace, cwd, createdAt },
   };
 }
 
@@ -102,6 +106,8 @@ export type ChildLaunchPlan =
   | {
       ok: true;
       link?: ChildTerminalLink;
+      /** The new session takes over the parent's card (handover). */
+      replaces?: boolean;
       parentTab?: Pick<Tab, "id" | "groupId" | "initialCwd">;
       placement: CanvasPosition;
     }
@@ -143,8 +149,24 @@ export function planChildLaunch(input: {
     ok: true,
     link: { parentPaneId: request.parentPaneId, parentTabId: parent.tabId, requestId: request.requestId },
     parentTab,
-    placement: findSpotBelowRow(parentNode, input.size, input.nodes),
+    placement: request.replace
+      ? { x: parentNode.x, y: parentNode.y }
+      : findSpotBelowRow(parentNode, input.size, input.nodes),
+    replaces: request.replace === true ? true : undefined,
   };
+}
+
+/** Earlier sessions kept per card; older ones are ended and dropped. */
+export const MAX_EARLIER_SESSIONS = 3;
+
+/** Newest first; whatever falls off the end is returned so its sessions can be ended. */
+export function mergeEarlierSessions<T extends { endedAt: number }>(
+  existing: readonly T[] | undefined,
+  added: T,
+  max = MAX_EARLIER_SESSIONS,
+): { kept: T[]; dropped: T[] } {
+  const all = [added, ...(existing ?? [])];
+  return { kept: all.slice(0, max), dropped: all.slice(max) };
 }
 
 const ROW_GAP = 24;

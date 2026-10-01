@@ -44,6 +44,7 @@ import { registerTaskRun } from "../lib/canonicalTaskRuntime";
 import { recordCanvasNodeMovement, recordMapViewportChange } from "../lib/terminalGeometryLog";
 import type { MapViewportTrigger } from "../lib/mapViewportTrace";
 import { flushStorageWrites } from "../lib/storageGovernor";
+import { mergeEarlierSessions } from "../lib/childTerminals";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -388,6 +389,10 @@ interface WorkspaceState {
   }) => void;
   removeTab: (id: string) => void;
   closeTerminalSession: (id: string, reason?: TerminalCloseReason) => Promise<void>;
+  /** Handover: move a finished session off the map and under its successor's card. */
+  archivePredecessor: (predecessorTabId: string, successorTabId: string) => void;
+  clearEarlierSession: (tabId: string, index: number) => Promise<void>;
+  clearAllEarlierSessions: (tabId: string) => Promise<void>;
   restoreRecoverySession: (id: string) => Promise<void>;
   dismissRecoverySessions: (keys: string[]) => void;
   restoreLastClosed: () => boolean;
@@ -3443,6 +3448,58 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ...keys.filter((key) => typeof key === "string" && key.length > 0),
       ])],
     }));
+  },
+
+  archivePredecessor: (predecessorTabId: string, successorTabId: string) => {
+    const predecessor = get().tabs.find((tab) => tab.id === predecessorTabId);
+    if (!predecessor || predecessorTabId === successorTabId) return;
+    const ptyIds = predecessor.terminals.map((terminal) => terminal.id);
+    const dropped: string[] = [];
+    workspaceMutationVersion += 1;
+    set((state) => {
+      const successor = state.tabs.find((tab) => tab.id === successorTabId);
+      if (!successor) return state;
+      const merged = mergeEarlierSessions(
+        [...(successor.earlierSessions ?? []), ...(predecessor.earlierSessions ?? [])],
+        { ptyIds, title: predecessor.title, endedAt: Date.now() },
+      );
+      for (const session of merged.dropped) dropped.push(...session.ptyIds);
+      return {
+        // Keep the daemon sessions alive but never re-adopt them as tabs.
+        closedSessionIds: [...new Set([...state.closedSessionIds, ...ptyIds])],
+        tabs: state.tabs.map((tab) =>
+          tab.id === successorTabId ? { ...tab, earlierSessions: merged.kept } : tab,
+        ),
+      };
+    });
+    get().removeTab(predecessorTabId);
+    scheduleWorkspacePersistence();
+    if (dropped.length > 0) void killPtys(dropped);
+  },
+
+  clearEarlierSession: async (tabId: string, index: number) => {
+    const sessions = get().tabs.find((tab) => tab.id === tabId)?.earlierSessions ?? [];
+    const target = sessions[index];
+    if (!target) return;
+    workspaceMutationVersion += 1;
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId ? { ...tab, earlierSessions: sessions.filter((_, i) => i !== index) } : tab,
+      ),
+    }));
+    scheduleWorkspacePersistence();
+    await killPtys(target.ptyIds);
+  },
+
+  clearAllEarlierSessions: async (tabId: string) => {
+    const sessions = get().tabs.find((tab) => tab.id === tabId)?.earlierSessions ?? [];
+    if (sessions.length === 0) return;
+    workspaceMutationVersion += 1;
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, earlierSessions: [] } : tab)),
+    }));
+    scheduleWorkspacePersistence();
+    await killPtys(sessions.flatMap((session) => session.ptyIds));
   },
 
   closeTerminalSession: async (id: string, reason: TerminalCloseReason = "operator") => {

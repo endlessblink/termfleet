@@ -8,6 +8,7 @@ import {
   childStartupCommand,
   MAX_CHILDREN_PER_PARENT,
   requestIdOf,
+  mergeEarlierSessions,
   parseChildRequest,
   parseRuntimePaneId,
   planChildLaunch,
@@ -255,4 +256,26 @@ test("a helper starts its agent on the task, then stays a usable terminal", () =
   expect(childStartupCommand("codex", "it's done")).toBe(`codex 'it'\\''s done'; exec "\${SHELL:-bash}" -l`);
   expect(childStartupCommand("opencode", "x")).toBe(`opencode --prompt 'x'; exec "\${SHELL:-bash}" -l`);
   expect(childStartupCommand("shell", "echo hi")).toBe(`echo hi; exec "\${SHELL:-bash}" -l`);
+});
+
+test("a handover takes over the parent's own spot, and older sessions are capped at three", () => {
+  const parsed = parseChildRequest(JSON.stringify({ ...good, replace: true }), now);
+  if (!parsed.ok) throw new Error("fixture");
+  const plan = planChildLaunch({ request: parsed.request, tabs: [parentTab], nodes: [parentNode], size });
+  if (!plan.ok) throw new Error(plan.reason);
+  expect(plan.replaces).toBe(true);
+  expect(plan.placement).toEqual({ x: parentNode.x, y: parentNode.y });
+  // replace without a parent is ignored (a top-level spawn has nothing to take over)
+  const { parentPaneId: _drop, ...orphan } = good as Record<string, unknown>;
+  const top = parseChildRequest(JSON.stringify({ ...orphan, replace: true }), now);
+  expect(top.ok && top.request.replace).toBeFalsy();
+  let kept: Array<{ endedAt: number }> | undefined;
+  let droppedTotal = 0;
+  for (let i = 1; i <= 5; i += 1) {
+    const merged = mergeEarlierSessions(kept, { endedAt: i });
+    kept = merged.kept;
+    droppedTotal += merged.dropped.length;
+  }
+  expect(kept?.map((session) => session.endedAt)).toEqual([5, 4, 3]);
+  expect(droppedTotal).toBe(2);
 });

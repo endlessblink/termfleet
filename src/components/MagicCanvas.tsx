@@ -194,6 +194,7 @@ import { AgentProviderIdentity, TerminalSignifier } from "./AgentProviderIdentit
 import { agentReconnectCommand } from "../lib/agentReconnect";
 import { TaskProgressBar } from "./TaskProgressBar";
 import { childLinkSegments, HELPER_TERMINAL_COLOR } from "../lib/childTerminals";
+import { EarlierSessionsChip } from "./EarlierSessionsChip";
 
 /** Room around a helper link so its stroke is never clipped at any zoom. */
 const CHILD_LINK_PAD = 24;
@@ -5003,6 +5004,9 @@ function CanvasNodeViewImpl({
                   >
                     Helper
                   </span>
+                )}
+                {linkedTab?.earlierSessions && linkedTab.earlierSessions.length > 0 && (
+                  <EarlierSessionsChip tabId={linkedTab.id} sessions={linkedTab.earlierSessions} />
                 )}
                 {terminalBranch && (
                   <span
