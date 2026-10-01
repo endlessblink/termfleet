@@ -5271,6 +5271,7 @@ function MapPanel({
     (state) => state.reorderSidebarGroups,
   );
   const syncSidebarCardOrder = useWorkspaceStore((state) => state.syncSidebarCardOrder);
+  const selectCard = useWorkspaceStore((state) => state.selectCard);
   const syncSidebarGroupOrder = useWorkspaceStore(
     (state) => state.syncSidebarGroupOrder,
   );
@@ -8038,8 +8039,7 @@ function MapPanel({
                       if (!draggable) event.preventDefault();
                     }}
                     onClick={() => {
-                      if (node.terminalTabId && linkedTab)
-                        setActiveTab(linkedTab.id);
+                      selectCard(node.id);
                       setWorkspaceMode("canvas");
                       focusCanvasNode(node);
                       recordSidebarClick(node.id, node.terminalTabId, linkedTab?.id);

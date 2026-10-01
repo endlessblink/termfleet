@@ -452,6 +452,8 @@ interface WorkspaceState {
   reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
+  /** One atomic write for a click on a card: the card's OWN tab and node, never a lookup by folder or pane. */
+  selectCard: (nodeId: string) => void;
   selectCanvasNodes: (ids: string[]) => void;
   updateCanvasViewport: (viewport: Partial<CanvasState["viewport"]>, trigger: MapViewportTrigger) => void;
 
@@ -5008,6 +5010,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           selectedNodeId,
           selectedNodeIds,
         },
+      };
+    });
+  },
+
+  selectCard: (nodeId: string) => {
+    cancelPendingProjectSwitchActivation();
+    set((state) => {
+      const node = state.canvasState.nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) return {};
+      const tab = node.terminalTabId ? state.tabs.find((candidate) => candidate.id === node.terminalTabId) : undefined;
+      const remember = (groups: Group[]) =>
+        tab?.groupId ? groups.map((group) => (group.id === tab.groupId ? { ...group, lastActiveTabId: tab.id } : group)) : groups;
+      return {
+        activeTabId: tab?.id ?? state.activeTabId,
+        groups: remember(state.groups),
+        terminalGroups: remember(state.terminalGroups),
+        canvasState: { ...state.canvasState, selectedNodeId: node.id, selectedNodeIds: [node.id] },
       };
     });
   },
