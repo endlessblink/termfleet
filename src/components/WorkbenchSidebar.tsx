@@ -5358,6 +5358,17 @@ function MapPanel({
   const focusCanvasNode = (node: CanvasNode) => {
     const zoom = node.type === "terminal" ? 1 : canvasState.viewport.zoom;
     selectCanvasNode(node.id);
+    // A card the operator can already see stays exactly where it is; the camera
+    // only moves to bring an off-screen card into view.
+    const view = canvasState.viewport;
+    const left = node.x * view.zoom + view.x;
+    const top = node.y * view.zoom + view.y;
+    const onScreen =
+      left < window.innerWidth &&
+      left + node.width * view.zoom > 0 &&
+      top < window.innerHeight &&
+      top + node.height * view.zoom > 0;
+    if (onScreen) return;
     const nextX =
       node.type === "terminal" ? 18 - node.x * zoom : 320 - node.x * zoom;
     const nextY = 120 - node.y * zoom;

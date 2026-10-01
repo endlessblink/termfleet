@@ -10117,5 +10117,13 @@ Status:
   handoff session: 129 turns, peak ~179K, ~96K output tokens. Not apples to
   apples: a chain splits one job across several sessions, so total spend per job
   still needs a per-job sum.
+- FOUND in the saved state (2026-10-01): four cards sat in the group of the folder
+  their shell had moved to (botson, freelance-desk, income-zen, claude-and-conquer),
+  because the map card's live folder was read before the start folder. Fixed (start
+  folder first). Also seen: two groups both named "termfleet" with the same folder
+  (project-90upxo and project-svijr7) and the screenshot's twin "claude-and-conquer"
+  headers; duplicate groups for one folder still need collapsing in the real app.
+- Clicking a card in the sidebar no longer moves the map camera when the card is
+  already on screen ("they change positions when I click"); unverified in the real app.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?
