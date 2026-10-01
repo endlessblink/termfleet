@@ -10086,5 +10086,14 @@ Status:
   shared teal (`HELPER_TERMINAL_COLOR`), but it does not show distinctly in the
   sidebar or on the map; make every helper card visibly its own colour there, and
   prove it with a screenshot of the real app.
+- NEW request (screenshot of the project menu: rename + emoji grid + pin/remove):
+  "this needs to be designed better + having colors the user can pick, and you should
+  have your hardcoded colors — one for helper, one for regular terminal, one for
+  agent etc." So: (1) redesign the project popup (tidier layout, emoji picker that
+  is not a raw wall of icons); (2) the user can pick a colour for a project;
+  (3) built-in fixed colours per card kind (regular terminal, agent, helper, ...)
+  that TermFleet owns and the user's picked colours never replace. Same rule as
+  icons: once the user picks, TermFleet never changes it. Show a screenshot of the
+  real app before calling it done.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?
