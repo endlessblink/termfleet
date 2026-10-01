@@ -24,7 +24,7 @@ const USAGE = `termfleet-child ${VERSION} - start an agent instance as a visible
 
 usage:
   termfleet-child spawn --provider <${PROVIDERS.join("|")}> (--task "<text>" | --task-file FILE | --dropoff FILE)
-                        [--title "<card title>"] [--near PROJECT_DIR] [--separate | --replace] [--cwd DIR] [--timeout SECONDS] [--no-start-app]
+                        [--title "<card title>"] [--near PROJECT_DIR] [--separate | --replace] [--allow-thin] [--cwd DIR] [--timeout SECONDS] [--no-start-app]
   termfleet-child status
   termfleet-child --help | --version
 
@@ -36,7 +36,18 @@ function fail(message, code = 1) {
   process.exit(code);
 }
 
-const BOOLEAN_FLAGS = new Set(["no-start-app", "separate", "replace"]);
+const BOOLEAN_FLAGS = new Set(["no-start-app", "separate", "replace", "allow-thin"]);
+
+const THIN_HANDOFF_CHARS = 1500;
+/** What a successor needs to not lose context; a missing one is warned about, not fatal. */
+const HANDOFF_PARTS = [
+  ["original request", /request|asked|said|words/i],
+  ["done / evidence", /done|evidence|verified|result/i],
+  ["files touched", /files?|uncommitted|commit/i],
+  ["decisions / rejected approaches", /decision|rejected|decided|why/i],
+  ["next steps", /next step|open|todo|remaining/i],
+  ["first command", /first command|start with|run first/i],
+];
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
@@ -136,6 +147,21 @@ function resolveTask(options) {
   if (options.dropoff !== undefined) {
     const file = resolve(options.dropoff);
     if (!existsSync(file) || !statSync(file).isFile()) fail(`--dropoff file not found: ${file}`);
+    // A thin handoff is how successors lose context (TF-069 request 5): refuse an
+    // obviously empty one, and say which expected parts are missing from the rest.
+    const text = readFileSync(file, "utf8");
+    const gaps = HANDOFF_PARTS.filter(([, pattern]) => !pattern.test(text)).map(([name]) => name);
+    if (text.trim().length < THIN_HANDOFF_CHARS && options["allow-thin"] !== true) {
+      fail(
+        `--dropoff ${file} is only ${text.trim().length} characters; a successor starts with nothing but this file. ` +
+          `Write the full handoff (original request in the user's words, corrections, done + evidence, files touched, ` +
+          `decisions, rejected approaches, open problems, next steps, first command) or pass --allow-thin.`,
+        2,
+      );
+    }
+    if (gaps.length > 0) {
+      process.stderr.write(`termfleet-child: warning: handoff has no section for: ${gaps.join(", ")}\n`);
+    }
     return {
       task: `Read ${file}. It is a handoff from the previous instance: continue exactly where it left off, and start by confirming what you understood.`,
       title: `Continue from ${basename(file)}`,

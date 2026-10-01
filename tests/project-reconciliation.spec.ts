@@ -664,6 +664,59 @@ test("a card stays in its start-folder project when its shell cds into another p
   await expect(nodeList).toContainText("bina-ve-ze");
 });
 
+test("a handover successor stays in its predecessor's project even when its shell starts elsewhere", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          reconcileProjectGroups: () => void;
+          tabs: Array<{ id: string; groupId: string | null }>;
+          groups: Array<{ id: string; projectRoot?: string }>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const BINA = "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze";
+    const TERMFLEET = "/media/endlessblink/data/my-projects/ai-development/devops/termfleet";
+    const group = { id: "group-bina", name: "bina-ve-ze", color: "#7aa2f7", emoji: "BZ", projectRoot: BINA };
+    const tab = (id: string, extra: Record<string, unknown>) => ({
+      id,
+      title: id,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: "group-bina",
+      terminals: [{ id: `pty-${id}`, paneId: `pane-${id}`, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: `pane-${id}`, type: "terminal" },
+      activePaneId: `pane-${id}`,
+      ...extra,
+    });
+    store.setState({
+      groups: [group],
+      terminalGroups: [group],
+      tabs: [
+        tab("tab-old", { initialCwd: BINA }),
+        // The successor's shell starts in termfleet, but it took over a bina card.
+        tab("tab-new", { initialCwd: TERMFLEET, projectCwd: BINA }),
+      ],
+      liveCwds: {},
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    store.getState().reconcileProjectGroups();
+    const state = store.getState();
+    const newTab = state.tabs.find((candidate) => candidate.id === "tab-new");
+    return state.groups.find((candidate) => candidate.id === newTab?.groupId)?.projectRoot;
+  });
+
+  expect(result).toBe("/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze");
+});
+
 test("a card opened in a parent project does not move into a nested project when its shell cds there", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

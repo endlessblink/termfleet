@@ -155,6 +155,8 @@ export interface Tab {
   workstream?: WorkstreamMetadata;
   terminals: TerminalState[];
   initialCwd?: string;
+  /** Folder that decides this card's project when it differs from where its shell starts (a handover keeps its predecessor's). */
+  projectCwd?: string;
   /** Stable name from an external restore manifest, when one exists. */
   restoreName?: string;
   splitLayout: SplitNode;

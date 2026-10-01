@@ -93,6 +93,13 @@ async function handle(raw: string) {
     emoji: "↳",
     color: HELPER_TERMINAL_COLOR,
     initialCwd: cwd,
+    // A handover stays in the project (and slot) of the card it replaces, even when
+    // the successor's shell starts in another folder.
+    projectCwd: predecessor
+      ? predecessor.projectCwd ??
+        store.canvasState.nodes.find((node) => node.terminalTabId === predecessor.id)?.terminalCwd ??
+        predecessor.initialCwd
+      : undefined,
     groupId: plan.parentTab?.groupId,
     childOf: predecessor ? predecessor.childOf : plan.link,
   }, plan.placement);
