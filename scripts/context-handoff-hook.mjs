@@ -15,64 +15,16 @@
 // session, and the successor session gets its own marker so no chain runs away
 // unless the user opts in. Threshold: TERMFLEET_CONTEXT_HANDOFF_PERCENT (default 40),
 // window: TERMFLEET_CONTEXT_WINDOW_TOKENS (default 200000; use 1000000 for [1m]).
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { contextTokens, decide, handoffAdvice } from "./lib/context-handoff.mjs";
 
-export function contextTokens(transcriptText) {
-  let last = 0;
-  for (const line of transcriptText.split("\n")) {
-    if (!line.includes('"usage"')) continue;
-    try {
-      const usage = JSON.parse(line)?.message?.usage;
-      if (!usage) continue;
-      const total =
-        (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
-      if (total > 0) last = total;
-    } catch {
-      /* partial line */
-    }
-  }
-  return last;
-}
-
-export function decide({ tokens, windowTokens, percent, mode, alreadyFired }) {
-  if (mode === "off" || alreadyFired || tokens <= 0) return null;
-  const used = (tokens / windowTokens) * 100;
-  if (used < percent) return null;
-  const rounded = Math.round(used);
-  const how =
-    mode === "auto"
-      ? "Do it now, before anything else, without asking: follow the spawn-on-termfleet skill's handover recipe."
-      : "Tell Noam in one plain sentence and offer to do it; only do it if he agrees.";
-  return (
-    `Context is about ${rounded}% full: hand over to a fresh instance. Write an EXPANSIVE HANDOFF.md that skips nothing relevant: ` +
-    `the original request in Noam's words and every later correction, the goal and definition of done, everything done so far with evidence, ` +
-    `every file touched (with uncommitted state), decisions and why, rejected approaches, open problems, running processes/ports/builds, ` +
-    `constraints and house rules, exact next steps, and the first command to run. Commit only your own files, then run ` +
-    `\`termfleet-child spawn --provider claude --cwd <project dir> --dropoff <abs path to HANDOFF.md>\` (never tmux; the card lands under the project's row). ${how}`
-  );
-}
+export { contextTokens, decide };
 
 async function main() {
-  const mode = (process.env.TERMFLEET_CONTEXT_HANDOFF ?? "auto").toLowerCase();
-  if (mode === "off") return;
+  if ((process.env.TERMFLEET_CONTEXT_HANDOFF ?? "auto").toLowerCase() === "off") return;
   let input = "";
   for await (const chunk of process.stdin) input += chunk;
-  const event = JSON.parse(input || "{}");
-  if (!event.transcript_path || !event.session_id || !existsSync(event.transcript_path)) return;
-  const stateDir = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "termfleet", "context-handoff");
-  const marker = join(stateDir, `${String(event.session_id).replace(/[^A-Za-z0-9-]/g, "")}.fired`);
-  const message = decide({
-    tokens: contextTokens(readFileSync(event.transcript_path, "utf8")),
-    windowTokens: Number(process.env.TERMFLEET_CONTEXT_WINDOW_TOKENS) || 200_000,
-    percent: Number(process.env.TERMFLEET_CONTEXT_HANDOFF_PERCENT) || 40,
-    mode,
-    alreadyFired: existsSync(marker),
-  });
+  const message = handoffAdvice({ payload: JSON.parse(input || "{}"), provider: "claude" });
   if (!message) return;
-  mkdirSync(stateDir, { recursive: true });
-  writeFileSync(marker, String(Date.now()));
   process.stdout.write(
     `${JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: message } })}\n`,
   );

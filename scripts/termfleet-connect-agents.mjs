@@ -38,6 +38,7 @@ const HOOK_FILES = [
   "lib/single-chat-owner.mjs",
   "lib/agent-exit-log.mjs",
   "lib/codex-pane-owner.mjs",
+  "lib/context-handoff.mjs",
 ];
 
 // SessionStart closes an older copy of a resumed chat in another terminal.
