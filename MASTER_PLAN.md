@@ -10048,3 +10048,34 @@ the old text would need to be kept.
 A helper requested without a pane identity (for example an automatic handover) is
 placed in free space with no link line, so it never lands under anything. Find
 which launch paths lose the pane identity and pass it through.
+
+## 2026-10-01 — Sidebar stability and the dropoff flow (issue register TF-069, WIP)
+
+Note: the issue register's TF-069 (sidebar) is a different item from the "TF-069"
+heading above. Handoffs: `HANDOFF-sidebar-stability*.md` (latest: -6).
+
+Operator's requests, in his words:
+
+- The sidebar must not change when a terminal opens or closes: same positions, icons
+  permanent (only the user may change one), sub-agents get a signifier.
+- Closing a terminal moves to the next one in that project, else the last one used.
+- A card belongs to the folder it started in, even if its shell moves elsewhere.
+- Dropoff: the successor must land in the same place and group as the card it
+  replaces; the handoff must carry enough that successors do not lose context;
+  measure whether dropoff now saves tokens and context.
+- Newest: terminals still reset location through the dropoff flow; the "earlier
+  sessions" chip does not load the old chats so text cannot be copied; a dropoff
+  while the operator is typing deletes what he typed.
+
+Status:
+
+- DONE, tests only (not yet seen in the real app): start-folder grouping, stable group
+  order, locked icons, helper badge, close-selects-next, handover keeps predecessor's
+  project (eeba499), thin handoff files refused.
+- TODO: successor takes the predecessor's exact slot; keep typed text across a
+  dropoff; earlier-sessions chip opens old chats read-only and copyable; regression
+  tests for stable order and close-selects-next; token/context measurement of
+  dropoff; fix the pre-existing `canvas-arrange` failure; visual proof in the real
+  dock app; then mark the issue resolved with evidence.
+- Open question for the operator: log an issue about a handoff dropping a user's
+  earlier question (the Upwork slot-timer transcript)?
