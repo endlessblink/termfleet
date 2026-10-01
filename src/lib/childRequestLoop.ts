@@ -83,6 +83,7 @@ async function handle(raw: string) {
 
   const cwd = request.cwd ?? plan.parentTab?.initialCwd;
   const predecessor = plan.replaces ? store.tabs.find((candidate) => candidate.id === plan.parentTab?.id) : undefined;
+  let draft = "";
   const command = childStartupCommand(request.provider, request.task);
   // Opening a helper must not pull the operator away from what they are doing.
   const previousTabId = store.activeTabId;
@@ -135,6 +136,15 @@ async function handle(raw: string) {
         /* nothing to save for a session that is already gone */
       }
     }
+    // What the operator was typing but had not sent must not be lost: read it off the
+    // screen now and put it, unsent, into the new agent's input box once that is up.
+    try {
+      const { extractInputDraft } = await import("./handoverDraft");
+      const typing = predecessor.terminals.find((terminal) => terminal.paneId === predecessor.activePaneId) ?? predecessor.terminals[0];
+      if (typing) draft = extractInputDraft(await snapshot<string>("grid_screen_text", { id: typing.id }));
+    } catch {
+      /* no screen to read: nothing to carry */
+    }
     after.archivePredecessor(predecessor.id, tab.id, clipEarlierSessionText(pieces.join("\n")) || undefined);
   }
   const childPaneId = `terminal-${tab.id}-${tab.activePaneId}`;
@@ -162,6 +172,7 @@ async function handle(raw: string) {
     await complete(request.requestId, { ok: false, reason: "start-failed", detail: String(startError), childPaneId });
     return;
   }
+  if (draft) void carryDraft(childPaneId, draft);
   await complete(request.requestId, {
     ok: true,
     parentPaneId: request.parentPaneId ?? null,
@@ -170,6 +181,34 @@ async function handle(raw: string) {
     replacedTabId: predecessor?.id ?? null,
     provider: request.provider,
   });
+}
+
+/** Type the operator's unsent text, without sending it, into the new agent's box once it is up. */
+async function carryDraft(sessionId: string, draft: string) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const { inputBoxIsUp, pasteWithoutSubmitting } = await import("./handoverDraft");
+  const { plainTerminalText } = await import("./plainTerminalText");
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    await new Promise((wait) => window.setTimeout(wait, 1500));
+    let screen = "";
+    try {
+      screen = await invoke<string>("grid_screen_text", { id: sessionId });
+    } catch {
+      try {
+        screen = plainTerminalText(await invoke<string>("daemon_snapshot_session", { id: sessionId }));
+      } catch {
+        continue;
+      }
+    }
+    if (!inputBoxIsUp(screen)) continue;
+    await new Promise((wait) => window.setTimeout(wait, 1500));
+    try {
+      await invoke("daemon_write_session", { id: sessionId, data: pasteWithoutSubmitting(draft) });
+    } catch {
+      /* the session ended before the box was ready; the text stays in the earlier-session copy */
+    }
+    return;
+  }
 }
 
 let migrated = false;
