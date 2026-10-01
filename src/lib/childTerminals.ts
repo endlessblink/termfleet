@@ -11,7 +11,7 @@ export const CHILD_REQUEST_SCHEMA_VERSION = 1;
 export const HELPER_TERMINAL_COLOR = "#4fb6a8";
 /** A parent that keeps spawning is a runaway loop, not a plan. */
 export const MAX_CHILDREN_PER_PARENT = 8;
-export const MAX_CHILD_TASK_LENGTH = 2000;
+export const MAX_CHILD_TASK_LENGTH = 4000;
 /** Requests older than this were abandoned by their CLI and must not appear later. */
 export const CHILD_REQUEST_MAX_AGE_MS = 5 * 60_000;
 
@@ -22,9 +22,12 @@ const RUNTIME_PANE_ID = new RegExp(`^terminal-(${UUID})-(${UUID})$`, "i");
 export interface ChildTerminalRequest {
   version: number;
   requestId: string;
-  parentPaneId: string;
+  /** Absent for a top-level instance started from outside any TermFleet pane. */
+  parentPaneId?: string;
   provider: AgentProvider;
   task: string;
+  /** Short card title; the task itself may be a long "read this file" instruction. */
+  title?: string;
   cwd?: string;
   createdAt: number;
 }
@@ -57,8 +60,14 @@ export function parseChildRequest(raw: string, nowMs = Date.now()): ChildRequest
   if (record.version !== CHILD_REQUEST_SCHEMA_VERSION) return { ok: false, reason: "unsupported-version" };
   const requestId = typeof record.requestId === "string" ? record.requestId : "";
   if (!/^[A-Za-z0-9-]{8,64}$/.test(requestId)) return { ok: false, reason: "bad-request-id" };
-  const parentPaneId = typeof record.parentPaneId === "string" ? record.parentPaneId.trim() : "";
-  if (!parseRuntimePaneId(parentPaneId)) return { ok: false, reason: "bad-parent-pane-id" };
+  const parentPaneId =
+    typeof record.parentPaneId === "string" && record.parentPaneId.trim() ? record.parentPaneId.trim() : undefined;
+  if (record.parentPaneId !== undefined && record.parentPaneId !== null && !parentPaneId) {
+    return { ok: false, reason: "bad-parent-pane-id" };
+  }
+  if (parentPaneId && !parseRuntimePaneId(parentPaneId)) return { ok: false, reason: "bad-parent-pane-id" };
+  const title =
+    typeof record.title === "string" && record.title.trim() ? record.title.trim().slice(0, 120) : undefined;
   const provider = record.provider as AgentProvider;
   if (!CHILD_PROVIDERS.includes(provider)) return { ok: false, reason: "unsupported-provider" };
   const task = typeof record.task === "string" ? record.task.trim() : "";
@@ -76,15 +85,15 @@ export function parseChildRequest(raw: string, nowMs = Date.now()): ChildRequest
   if (nowMs - createdAt > CHILD_REQUEST_MAX_AGE_MS) return { ok: false, reason: "expired" };
   return {
     ok: true,
-    request: { version: CHILD_REQUEST_SCHEMA_VERSION, requestId, parentPaneId, provider, task, cwd, createdAt },
+    request: { version: CHILD_REQUEST_SCHEMA_VERSION, requestId, parentPaneId, provider, task, title, cwd, createdAt },
   };
 }
 
 export type ChildLaunchPlan =
   | {
       ok: true;
-      link: ChildTerminalLink;
-      parentTab: Pick<Tab, "id" | "groupId" | "initialCwd">;
+      link?: ChildTerminalLink;
+      parentTab?: Pick<Tab, "id" | "groupId" | "initialCwd">;
       placement: CanvasPosition;
     }
   | { ok: false; reason: "unknown-parent" | "duplicate-request" | "too-many-children" };
@@ -100,6 +109,14 @@ export function planChildLaunch(input: {
   size: { width: number; height: number };
 }): ChildLaunchPlan {
   const { request } = input;
+  if (!request.parentPaneId) {
+    // Top-level instance from outside any pane: no parent link, placed on free map space.
+    if (input.tabs.some((tab) => tab.childOf?.requestId === request.requestId)) {
+      return { ok: false, reason: "duplicate-request" };
+    }
+    const origin = { id: "origin", x: 0, y: 0, width: 0, height: 0 } as CanvasNode;
+    return { ok: true, placement: findFreeCanvasSpot(origin, input.size, input.nodes) };
+  }
   const parent = parseRuntimePaneId(request.parentPaneId);
   const parentTab = parent ? input.tabs.find((tab) => tab.id === parent.tabId) : undefined;
   if (!parent || !parentTab) return { ok: false, reason: "unknown-parent" };

@@ -54,6 +54,31 @@ a–f done, g done except a live latency/TUI confirmation pass; the canvas rende
 is now the desktop default. TC-018 (BiDi/Hebrew nikud) and TC-015/TC-016 are
 TODO backlog.
 
+## Starting another agent instance — use TermFleet, never tmux (FEATURE-64)
+
+Any instance or helper terminal an agent starts for the operator must be a real,
+visible terminal on the TermFleet map. Hidden tmux sessions and loose Konsole
+windows are forbidden (they are invisible and die with uncommitted work).
+
+```bash
+termfleet-child spawn --provider claude --cwd <dir> --dropoff <abs path/HANDOFF.md>
+termfleet-child spawn --provider claude --cwd <dir> --task-file prompt.md --title "card name"
+termfleet-child status        # app running + listening?
+```
+
+- Works inside a pane (linked as that pane's child) and outside (top-level instance).
+- Long text goes through `--task-file`, never argv. Prints JSON with `childPaneId`.
+- Fails fast (exit 3) and says why; starts the app via the approved launcher if closed.
+  `--help`/`--version` never start the app.
+- Limits: 8 children per parent, 6 spawns/minute. Do not spawn recursively unasked.
+- The app polls `child-requests/` every 1.5 s and writes a `.listener` heartbeat the CLI
+  checks; the poller is ON by default (opt out: localStorage
+  `termfleet.experimental.helperTerminals` = "0"). It was previously opt-in, which made
+  spawns time out silently.
+- lean-ctx shell allowlist: `lean-ctx allow termfleet-child` once. Skill: `/spawn-on-termfleet`.
+- Auto handover near 40% context: `scripts/context-handoff-hook.mjs` (UserPromptSubmit
+  hook; `TERMFLEET_CONTEXT_HANDOFF=off|ask|auto`, default ask).
+
 ## Cross-agent board authority
 
 TermFleet's repository-local `MASTER_PLAN.md` is the implementation/release backlog for this codebase only. It is not the canonical list rendered by the cross-agent board.

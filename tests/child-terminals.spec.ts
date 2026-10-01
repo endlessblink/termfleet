@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -60,7 +60,7 @@ test("malformed, stale, or unsafe requests are refused with a reason", () => {
     [{ ...good, parentPaneId: "pane-1" }, "bad-parent-pane-id"],
     [{ ...good, provider: "bash -c rm" }, "unsupported-provider"],
     [{ ...good, task: "   " }, "missing-task"],
-    [{ ...good, task: "x".repeat(2001) }, "task-too-long"],
+    [{ ...good, task: "x".repeat(4001) }, "task-too-long"],
     [{ ...good, cwd: "relative/dir" }, "bad-cwd"],
     [{ ...good, createdAt: now - 10 * 60_000 }, "expired"],
   ];
@@ -132,6 +132,13 @@ test("a rejected request still names its id so the waiting command hears back", 
 
 const CLI = join(process.cwd(), "scripts", "termfleet-child.mjs");
 
+function beat(dataHome: string) {
+  const dir = join(dataHome, "terminal-workspace", "child-requests");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, ".listener"), String(Date.now()));
+  return dir;
+}
+
 function runCli(args: string[], env: Record<string, string>) {
   const child = spawn(process.execPath, [CLI, ...args], { env: { ...process.env, ...env } });
   let stdout = "";
@@ -144,7 +151,7 @@ function runCli(args: string[], env: Record<string, string>) {
 
 test("the spawn command hands a request to the app and prints the app's answer", async () => {
   const dataHome = mkdtempSync(join(tmpdir(), "tf-child-"));
-  const dir = join(dataHome, "terminal-workspace", "child-requests");
+  const dir = beat(dataHome);
   const run = runCli(["spawn", "--provider", "claude", "--task", "Write tests", "--cwd", "/work", "--timeout", "10"], {
     XDG_DATA_HOME: dataHome,
     TERMFLEET_PANE_ID: parentPaneId,
@@ -167,26 +174,80 @@ test("the spawn command hands a request to the app and prints the app's answer",
   const { code, stdout } = await run.done();
   expect(code).toBe(0);
   expect(JSON.parse(stdout)).toMatchObject({ ok: true, childPaneId: "terminal-x-y" });
-  expect(readdirSync(dir)).toEqual([requestFile]);
+  expect(readdirSync(dir).filter((name) => name !== ".listener")).toEqual([requestFile]);
   rmSync(dataHome, { recursive: true, force: true });
 });
 
 test("a request nobody picks up is withdrawn, so no terminal pops up later by surprise", async () => {
   const dataHome = mkdtempSync(join(tmpdir(), "tf-child-"));
+  beat(dataHome);
   const { code, stderr } = await runCli(["spawn", "--provider", "shell", "--task", "ls", "--timeout", "0.5"], {
     XDG_DATA_HOME: dataHome,
     TERMFLEET_PANE_ID: parentPaneId,
   }).done();
   expect(code).toBe(2);
-  expect(stderr).toContain("did not pick up");
-  expect(readdirSync(join(dataHome, "terminal-workspace", "child-requests"))).toEqual([]);
+  expect(stderr).toContain("did not take the request");
+  expect(readdirSync(join(dataHome, "terminal-workspace", "child-requests")).filter((name) => name !== ".listener")).toEqual([]);
   rmSync(dataHome, { recursive: true, force: true });
 });
 
-test("the spawn command refuses to run outside a TermFleet terminal", async () => {
-  const { code, stderr } = await runCli(["spawn", "--provider", "shell", "--task", "ls"], { TERMFLEET_PANE_ID: "" }).done();
-  expect(code).toBe(1);
-  expect(stderr).toContain("not running inside a TermFleet terminal");
+test("outside any pane the spawn becomes a top-level instance with no parent link", async () => {
+  const dataHome = mkdtempSync(join(tmpdir(), "tf-child-"));
+  const dir = beat(dataHome);
+  const run = runCli(["spawn", "--provider", "claude", "--task", "Hello", "--timeout", "5"], {
+    XDG_DATA_HOME: dataHome,
+    TERMFLEET_PANE_ID: "",
+  });
+  let requestFile: string | undefined;
+  for (let i = 0; i < 80 && !requestFile; i += 1) {
+    requestFile = readdirSync(dir).find((name) => name.endsWith(".request.json"));
+    if (!requestFile) await new Promise((wait) => setTimeout(wait, 50));
+  }
+  if (!requestFile) throw new Error("no request written");
+  const parsed = parseChildRequest(readFileSync(join(dir, requestFile), "utf8"));
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) return;
+  expect(parsed.request.parentPaneId).toBeUndefined();
+  const plan = planChildLaunch({ request: parsed.request, tabs: [], nodes: [], size });
+  expect(plan.ok).toBe(true);
+  writeFileSync(join(dir, `${parsed.request.requestId}.result.json`), JSON.stringify({ ok: true }));
+  expect((await run.done()).code).toBe(0);
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+test("a long prompt travels as a private file, not on the command line", async () => {
+  const dataHome = mkdtempSync(join(tmpdir(), "tf-child-"));
+  const dir = beat(dataHome);
+  const promptFile = join(dataHome, "prompt.md");
+  writeFileSync(promptFile, "Do the thing.\n".repeat(500));
+  const run = runCli(["spawn", "--provider", "claude", "--task-file", promptFile, "--timeout", "5"], { XDG_DATA_HOME: dataHome });
+  let requestFile: string | undefined;
+  for (let i = 0; i < 80 && !requestFile; i += 1) {
+    requestFile = readdirSync(dir).find((name) => name.endsWith(".request.json"));
+    if (!requestFile) await new Promise((wait) => setTimeout(wait, 50));
+  }
+  if (!requestFile) throw new Error("no request written");
+  const parsed = parseChildRequest(readFileSync(join(dir, requestFile), "utf8"));
+  if (!parsed.ok) throw new Error(parsed.reason);
+  expect(parsed.request.task).toMatch(/^Read .*child-tasks\/.*\.md and carry out/);
+  expect(parsed.request.task.length).toBeLessThan(300);
+  writeFileSync(join(dir, `${parsed.request.requestId}.result.json`), JSON.stringify({ ok: true }));
+  await run.done();
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+test("--help and --version never start the app, and a silent listener fails fast with the reason", async () => {
+  const help = await runCli(["--help"], {}).done();
+  expect(help.code).toBe(0);
+  expect(help.stdout).toContain("usage:");
+  expect((await runCli(["--version"], {}).done()).stdout).toMatch(/^\d+\.\d+\.\d+/);
+  const dataHome = mkdtempSync(join(tmpdir(), "tf-child-"));
+  const started = Date.now();
+  const silent = await runCli(["spawn", "--provider", "shell", "--task", "ls", "--no-start-app"], { XDG_DATA_HOME: dataHome }).done();
+  expect(silent.code).toBe(3);
+  expect(silent.stderr).toMatch(/not running|not listening/);
+  expect(Date.now() - started).toBeLessThan(10_000);
+  rmSync(dataHome, { recursive: true, force: true });
 });
 
 test("a helper starts its agent on the task, then stays a usable terminal", () => {

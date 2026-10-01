@@ -16,6 +16,10 @@ import type { Tab } from "./types";
 
 const POLL_INTERVAL_MS = 1_500;
 const DEFAULT_CHILD_SIZE = { width: 1180, height: 720 };
+// Loop guard: no more than this many agent-requested terminals per minute overall.
+const SPAWN_WINDOW_MS = 60_000;
+const MAX_SPAWNS_PER_WINDOW = 6;
+let recentLaunches: number[] = [];
 let started = false;
 let ticking = false;
 
@@ -40,10 +44,19 @@ async function handle(raw: string) {
     return;
   }
   const { request } = parsed;
+  const now = Date.now();
+  recentLaunches = recentLaunches.filter((at) => now - at < SPAWN_WINDOW_MS);
+  if (recentLaunches.length >= MAX_SPAWNS_PER_WINDOW) {
+    await complete(request.requestId, { ok: false, reason: "rate-limited" });
+    return;
+  }
+  recentLaunches.push(now);
   const store = useWorkspaceStore.getState();
-  const parentNode = store.canvasState.nodes.find(
-    (node) => node.terminalTabId && request.parentPaneId.startsWith(`terminal-${node.terminalTabId}-`),
-  );
+  const parentNode = request.parentPaneId
+    ? store.canvasState.nodes.find(
+        (node) => node.terminalTabId && request.parentPaneId!.startsWith(`terminal-${node.terminalTabId}-`),
+      )
+    : undefined;
   const plan = planChildLaunch({
     request,
     tabs: store.tabs,
@@ -60,18 +73,18 @@ async function handle(raw: string) {
     return;
   }
 
-  const cwd = request.cwd ?? plan.parentTab.initialCwd;
+  const cwd = request.cwd ?? plan.parentTab?.initialCwd;
   const command = childStartupCommand(request.provider, request.task);
   // Opening a helper must not pull the operator away from what they are doing.
   const previousTabId = store.activeTabId;
   const previousTerminalId = store.activeTerminalId;
   const knownTabIds = new Set(store.tabs.map((tab) => tab.id));
   store.addTab({
-    title: `Helper: ${request.task}`,
+    title: `${plan.link ? "Helper" : "Agent"}: ${request.title ?? request.task}`,
     emoji: "↳",
     color: HELPER_TERMINAL_COLOR,
     initialCwd: cwd,
-    groupId: plan.parentTab.groupId,
+    groupId: plan.parentTab?.groupId,
     childOf: plan.link,
   });
   const after = useWorkspaceStore.getState();
@@ -109,7 +122,7 @@ async function handle(raw: string) {
   }
   await complete(request.requestId, {
     ok: true,
-    parentPaneId: request.parentPaneId,
+    parentPaneId: request.parentPaneId ?? null,
     childTabId: tab.id,
     childPaneId,
     provider: request.provider,
@@ -156,16 +169,18 @@ async function tick() {
   }
 }
 
-// Helper terminals are experimental and off in the public preview: the poll costs
-// an IPC round trip every 1.5 s and lets any local process ask for a new agent
-// terminal. Opt in with localStorage `termfleet.experimental.helperTerminals` = "1".
+// Agent-requested terminals are ON by default: an agent asked to start another
+// instance must reach the map without anyone flipping a hidden flag (that flag
+// being off is why spawn requests used to time out). Requests only come from this
+// user's own processes (the request folder is mode 0700) and are rate limited.
+// Turn off with localStorage `termfleet.experimental.helperTerminals` = "0".
 const HELPER_TERMINALS_OPT_IN_KEY = "termfleet.experimental.helperTerminals";
 
 function helperTerminalsEnabled() {
   try {
-    return window.localStorage.getItem(HELPER_TERMINALS_OPT_IN_KEY) === "1";
+    return window.localStorage.getItem(HELPER_TERMINALS_OPT_IN_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 

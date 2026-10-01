@@ -1893,7 +1893,17 @@ fn valid_child_request_id(id: &str) -> bool {
 #[tauri::command(async)]
 pub fn child_requests_take() -> Result<Vec<String>, String> {
     const MAX_REQUESTS: usize = 16;
-    const MAX_BYTES: u64 = 16 * 1024;
+    const MAX_BYTES: u64 = 64 * 1024;
+    // Heartbeat: lets `termfleet-child` tell "app listening" from "app closed / listener off"
+    // in a second instead of timing out silently.
+    let _ = fs::create_dir_all(child_requests_dir());
+    let _ = fs::write(
+        child_requests_dir().join(".listener"),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis().to_string())
+            .unwrap_or_default(),
+    );
     let entries = match fs::read_dir(child_requests_dir()) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
