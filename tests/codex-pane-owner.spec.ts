@@ -14,7 +14,7 @@ const OTHER_CHAT = "0199aaaa-0000-7000-8000-000000000002";
 const KERNEL = "/work/in-control-kernel";
 const TERMFLEET = "/work/termfleet";
 
-type Proc = { pid: number; ppid: number; args: string[]; pane?: string; tty?: string; cwd?: string };
+type Proc = { pid: number; ppid: number; args: string[]; pane?: string; tty?: string; cwd?: string; files?: string[] };
 
 function fakeSystem(procs: Proc[]) {
   const root = mkdtempSync(join(tmpdir(), "codex-pane-"));
@@ -26,6 +26,7 @@ function fakeSystem(procs: Proc[]) {
     writeFileSync(join(dir, "environ"), proc.pane ? `HOME=/x\0TERMFLEET_PANE_ID=${proc.pane}\0` : "HOME=/x\0");
     writeFileSync(join(dir, "stat"), `${proc.pid} (${proc.args[0]}) S ${proc.ppid} 1 1`);
     symlinkSync(proc.tty ?? "/dev/null", join(dir, "fd", "0"));
+    proc.files?.forEach((file, index) => symlinkSync(file, join(dir, "fd", String(index + 3))));
     if (proc.cwd) symlinkSync(proc.cwd, join(dir, "cwd"));
   }
   return { procRoot, bindingsPath: join(root, "codex-chat-panes.json") };
@@ -93,4 +94,44 @@ test("no chat id from the shared service: write nothing", () => {
   expect(
     resolveCodexPaneId({ envPaneId: "pane-termfleet", conversationId: "", cwd: KERNEL, selfPid: 120, ...system }),
   ).toBe("");
+});
+
+const rollout = (chat: string) => `/home/test/.codex/sessions/2026/10/02/rollout-2026-10-02T12-00-00-${chat}.jsonl`;
+
+test("an exact open conversation file identifies the caller among same-folder windows", () => {
+  const system = fakeSystem([
+    ...sharedService,
+    { ...window(300, "pane-kernel-1", KERNEL), files: [rollout(OTHER_CHAT)] },
+    { ...window(301, "pane-kernel-2", KERNEL), files: [rollout(CHAT)] },
+  ]);
+  writeFileSync(system.bindingsPath, JSON.stringify({ [CHAT]: { paneId: "pane-kernel-1", at: 1 } }));
+  expect(resolveCodexPaneId({ envPaneId: "pane-termfleet", conversationId: CHAT, cwd: KERNEL, selfPid: 120, ...system })).toBe("pane-kernel-2");
+  expect(JSON.parse(readFileSync(system.bindingsPath, "utf8"))[CHAT].paneId).toBe("pane-kernel-2");
+});
+
+test("the shared service's open file cannot identify an interactive caller", () => {
+  const system = fakeSystem([
+    { ...sharedService[0], files: [rollout(CHAT)] }, ...sharedService.slice(1),
+    window(300, "pane-kernel-1", KERNEL), window(301, "pane-kernel-2", KERNEL),
+  ]);
+  expect(resolveCodexPaneId({ envPaneId: "pane-termfleet", conversationId: CHAT, cwd: KERNEL, selfPid: 120, ...system })).toBe("");
+});
+
+test("two interactive panes holding the exact conversation refuse a stale binding", () => {
+  const system = fakeSystem([
+    ...sharedService,
+    { ...window(300, "pane-kernel-1", KERNEL), files: [rollout(CHAT)] },
+    { ...window(301, "pane-kernel-2", KERNEL), files: [rollout(CHAT)] },
+  ]);
+  writeFileSync(system.bindingsPath, JSON.stringify({ [CHAT]: { paneId: "pane-kernel-1", at: 1 } }));
+  expect(resolveCodexPaneId({ envPaneId: "pane-termfleet", conversationId: CHAT, cwd: KERNEL, selfPid: 120, ...system })).toBe("");
+});
+
+test("a conversation UUID substring in another open filename does not establish ownership", () => {
+  const system = fakeSystem([
+    ...sharedService,
+    { ...window(300, "pane-kernel-1", KERNEL), files: [`${rollout(CHAT)}.backup`, `/tmp/${CHAT}.jsonl`] },
+    window(301, "pane-kernel-2", KERNEL),
+  ]);
+  expect(resolveCodexPaneId({ envPaneId: "pane-termfleet", conversationId: CHAT, cwd: KERNEL, selfPid: 120, ...system })).toBe("");
 });

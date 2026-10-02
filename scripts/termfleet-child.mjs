@@ -260,6 +260,9 @@ async function spawnCommand(options) {
     provider = caller.provider;
   }
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
+  if (!parentPaneId && !options.separate && (handover === true || options.replace === true)) {
+    fail("cannot identify your TermFleet card; the handover was not started. Restore the exact chat-to-card binding before retrying, or use --separate to explicitly open a new card.", 2);
+  }
   const cwd = resolve(options.cwd ?? process.cwd());
   const timeoutSeconds = Number(options.timeout ?? 20);
   if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) fail("--timeout must be a positive number of seconds");

@@ -240,18 +240,43 @@ test("a stale card id inherited from the shared Codex service never wins over th
   rmSync(dataHome, { recursive: true, force: true });
 });
 
-test("a Codex caller whose card is not known yet still gets a Codex successor (as a new card)", async () => {
+test("a Codex handover without its card binding refuses before adding another card", async () => {
   const { dataHome, dir, file } = setup();
-  const { request, code } = await spawnAndReadRequest(
+  const { request, code, stderr } = await spawnAndReadRequest(
     ["--dropoff", file("HANDOFF.md", REAL_HANDOFF)],
     dataHome,
     dir,
     "claude",
     { TERMFLEET_PANE_ID: undefined, CODEX_THREAD_ID: "thread-unbound" },
   );
+  expect(code).toBe(2);
+  expect(request).toBeNull();
+  expect(stderr).toContain("cannot identify your TermFleet card");
+  expect(readdirSync(dir).filter((name) => name.endsWith(".request.json"))).toEqual([]);
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+test("an explicitly separate unbound Codex dropoff may open a new card", async () => {
+  const { dataHome, dir, file } = setup();
+  const { request, code } = await spawnAndReadRequest(
+    ["--dropoff", file("HANDOFF.md", REAL_HANDOFF), "--separate"], dataHome, dir, "codex",
+    { TERMFLEET_PANE_ID: undefined, CODEX_THREAD_ID: "thread-unbound" },
+  );
   expect(code).toBe(0);
   expect(request.provider).toBe("codex");
   expect(request.replace).toBeUndefined();
+  rmSync(dataHome, { recursive: true, force: true });
+});
+
+test("an explicit replacement without its card binding also refuses before launch", async () => {
+  const { dataHome, dir } = setup();
+  const { request, code, stderr } = await spawnAndReadRequest(
+    ["--task", "Continue the current work", "--replace"], dataHome, dir, "codex",
+    { TERMFLEET_PANE_ID: undefined, CODEX_THREAD_ID: "thread-unbound" },
+  );
+  expect(code).toBe(2);
+  expect(request).toBeNull();
+  expect(stderr).toContain("cannot identify your TermFleet card");
   rmSync(dataHome, { recursive: true, force: true });
 });
 

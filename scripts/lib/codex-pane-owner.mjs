@@ -14,7 +14,7 @@
 // or the only Codex window in the chat's folder. If none is certain, return ""
 // and write nothing rather than paint another terminal's card.
 import { readFileSync, readlinkSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { ancestors, argv, isProviderProcess, paneOf, terminalOf } from "./single-chat-owner.mjs";
 import { normalizeCwd, statusDir } from "./agent-status-paths.mjs";
 
@@ -23,6 +23,25 @@ function cwdOf(procRoot, pid) {
     return normalizeCwd(readlinkSync(join(procRoot, String(pid), "cwd")));
   } catch {
     return "";
+  }
+}
+
+function holdsConversationFile(procRoot, pid, conversationId) {
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(conversationId)) return false;
+  try {
+    const fdDir = join(procRoot, String(pid), "fd");
+    return readdirSync(fdDir).some((fd) => {
+      try {
+        // Match only Codex's canonical rollout basename; never read its contents.
+        const name = basename(readlinkSync(join(fdDir, fd)));
+        const match = /^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-([0-9a-f-]+)\.jsonl$/i.exec(name);
+        return match?.[1] === conversationId;
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return false;
   }
 }
 
@@ -87,10 +106,12 @@ export function resolveCodexPaneId({
   const windows = codexWindows(procRoot);
   const panes = (list) => [...new Set(list.map((window) => window.paneId))];
 
-  const resumed = panes(windows.filter((window) => window.args.includes(conversationId)));
-  if (resumed.length === 1) {
-    writeBinding(bindingsPath, conversationId, resumed[0], now);
-    return resumed[0];
+  const exact = panes(windows.filter((window) => window.args.includes(conversationId)
+    || holdsConversationFile(procRoot, window.pid, conversationId)));
+  if (exact.length > 1) return "";
+  if (exact.length === 1) {
+    writeBinding(bindingsPath, conversationId, exact[0], now);
+    return exact[0];
   }
 
   const bindings = readBindings(bindingsPath);
