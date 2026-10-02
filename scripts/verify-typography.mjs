@@ -44,21 +44,25 @@ for (const file of sourceFiles(srcRoot)) {
     failures.push(`${rel}: letter spacing must stay 0.`);
   }
 
-  if (!allowedMonoFiles.has(rel) && /monospace|var\(--font-mono\)/.test(text)) {
+  // The raw `monospace` keyword stays reserved for terminal surfaces; the
+  // `var(--font-mono)` token (Hack) is the approved data tier (paths, branches,
+  // ids, counters, kbd) and may be used by any component.
+  if (!allowedMonoFiles.has(rel) && /monospace/.test(text.replace(/var\(--font-mono\)/g, ""))) {
     failures.push(`${rel}: monospace must be reserved for terminal/code surfaces.`);
   }
 
-  // No outlines. State is shown with fills + text contrast, never an edge.
-  // - Hard `outline:` is banned everywhere except `none`/`0`.
-  // - Full `border:` shorthand with a visible color is banned in component
-  //   styles. Use a fill, or a directional hairline separator
-  //   (`borderTop`/`border-bottom`/etc.) for panel dividers.
+  // Approved design: a visible keyboard-focus ring and token-coloured full borders.
+  // - `outline:` is banned except `none`/`0` and the one focus-ring declaration
+  //   `var(--focus-ring-width) solid var(--focus-ring-color)`.
+  // - Full `border:` shorthand is allowed only in a token border colour
+  //   (--border-default|strong|control|subtle) or transparent; raw colours stay banned.
   for (const line of text.split("\n")) {
-    if (/\boutline\s*:\s*["']?(?!none|0)[^,;"'}]*\b(solid|dashed|dotted|\dpx)/.test(line)) {
-      failures.push(`${rel}: no hard outlines — "${line.trim()}" (use a fill/inset ring).`);
+    if (/\boutline\s*:\s*["']?(?!none|0)[^,;"'}]*\b(solid|dashed|dotted|\dpx)/.test(line) &&
+        !/outline\s*:\s*var\(--focus-ring-width\)\s+solid\s+var\(--focus-ring-color\)/.test(line)) {
+      failures.push(`${rel}: no hard outlines — "${line.trim()}" (use the focus-ring tokens).`);
     }
     if (rel.endsWith(".tsx") &&
-        /\bborder\s*:\s*["']\s*\d+px\s+solid\s+(?!transparent)(var\(--|#|rgb)/.test(line)) {
+        /\bborder\s*:\s*["']\s*\d+px\s+solid\s+(?!transparent|var\(--border-(?:default|strong|control|subtle)\))(var\(--|#|rgb)/.test(line)) {
       failures.push(`${rel}: no full box-borders — "${line.trim()}" (use a fill or directional separator).`);
     }
   }

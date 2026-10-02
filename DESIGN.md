@@ -5,10 +5,19 @@ the code, the code wins — but update this file. Tokens live in
 `src/styles/theme.css`; global rules in `src/styles/global.css`; per-component
 styles are inline `CSSProperties` objects.
 
-The typography **and the no-outlines rule** below are enforced in CI by
+The typography, **focus-ring and border rules** below are enforced in CI by
 `npm run verify:typography` (`scripts/verify-typography.mjs`): it fails the build
-on any hard `outline:` or full `border:` box-shorthand with a visible color in
-component styles. Don't relitigate these without updating the verifier too.
+on any `outline:` other than the tokenised focus ring, or a full `border:`
+shorthand in a raw colour (token borders are allowed) in component styles.
+Don't relitigate these without updating the verifier too.
+
+> **Design update (muted near-black redesign, step 0.5).** The approved design
+> reverses three older rules: (1) a visible 2px keyboard focus ring now exists
+> (`--focus-ring-*`, one global rule); (2) panes, fields, dialogs, cards and menus
+> use full 1px token borders (`--border-default|strong|control`); (3) `--font-mono`
+> (Hack) is the approved *data tier* (paths, branches, ids, counters, kbd) and may
+> be used outside the terminal. Where the sections below still say "no outlines" or
+> "no monospace outside the terminal", this note wins.
 
 ---
 
@@ -122,10 +131,11 @@ classes in `global.css` plus per-row inline layout.
   `className="workspace-sidebar-row"` + `data-active`, so there is one source of
   truth, not per-component borders.
 
-**Focus:** no hard outlines anywhere. `button`/`[role=button]`/`select`
-`:focus-visible` → `outline: none`. Text inputs get a subtle
-`box-shadow: 0 0 0 1px var(--border-focus)` only (typing affordance). Keyboard
-focus on rows is conveyed by the same hover/selected fills.
+**Focus:** every interactive element shows a 2px `--focus-ring-color` outline
+(`--focus-ring-width`, offset `--focus-ring-offset`) on `:focus-visible`, defined
+once in `global.css`; list rows inset it (`outline-offset: -2px`). Hover remains a
+fill; focus is a ring. The terminal's hidden `<textarea class="terminal-canvas-input">`
+shows no ring — the active pane border carries focus.
 
 ---
 
@@ -135,7 +145,9 @@ Source: `--font-ui`, `--font-mono` in `theme.css`; faces in `global.css`.
 **Enforced by `verify-typography.mjs`.**
 
 - **UI font:** Rubik (`--font-ui`). Weights **300 / 400 / 500 only**. No 600+ in
-  visible UI. No letter-spacing (stays `0`). No monospace in UI.
+  visible UI. No letter-spacing (stays `0`) except the one uppercase label style.
+  The raw `monospace` keyword stays out of UI; `var(--font-mono)` (Hack) is the
+  **data tier** for paths, branches, ids, counters and key caps.
 - **Terminal font:** **Hack** (`--font-mono`) — matches Warp's default terminal
   font. Bundled as `@font-face` from TTFs in `src/styles/fonts/hack/` (regular,
   bold, italic, bold-italic) so rendering is identical regardless of system fonts.
@@ -206,8 +218,7 @@ choices:
 - Interactive rows that are `<div>`s carry `role="button"`, `tabIndex={0}`,
   Enter/Space handlers, and `aria-current` for selection.
 - Icon-only controls carry `aria-label` (not just `title`).
-- No hard focus outlines (per §4) — focus is shown through fills; text inputs keep
-  a subtle ring.
+- Keyboard focus is a visible 2px ring on every interactive element (per §4).
 - `prefers-reduced-motion` is honored globally.
 
 ---
@@ -224,9 +235,10 @@ choices:
 
 ## 11. Don'ts (learned the hard way)
 
-- ❌ No outlines / visible borders on rows, buttons, inputs, or focus rings.
+- ❌ No raw-colour borders or ad-hoc outlines: borders use `--border-*` tokens and
+  keyboard focus uses the one global ring.
 - ❌ No colored "brand" accent fighting the terminal (no neon, no warm-on-cool).
-- ❌ No monospace or 600+ weights in non-terminal UI (CI-enforced).
+- ❌ No raw `monospace` keyword or 600+ weights in non-terminal UI (CI-enforced).
 - ❌ No letter-spacing on UI text.
 - ❌ No native OS dialogs — use the themed in-app picker.
 - ❌ Don't make the explorer a permanent third column.
