@@ -74,7 +74,8 @@ import { stableHeader } from "../lib/stableHeader";
 import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { agentReconnectCommand } from "../lib/agentReconnect";
-import { processStatusColor } from "../lib/agentState";
+import { attentionToAgentState, processStatusColor } from "../lib/agentState";
+import { StatusDot } from "../ui";
 import { TaskProgressBar } from "./TaskProgressBar";
 import {
   calculatePaneBounds,
@@ -221,8 +222,7 @@ function AgentTaskSidebar({
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: 6,
-                background:
-                  "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+                background: "var(--accent-tint)",
                 color: "var(--text-primary)",
                 fontSize: 11,
     fontWeight: 500,
@@ -496,7 +496,7 @@ function PaneToolbar({ paneId, tabId, canClose, visible }: PaneToolbarProps) {
 
   const btnStyle: CSSProperties = {
     width: 24,
-    height: 22,
+    height: 24,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1585,18 +1585,14 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              background: "var(--surface-sunken)",
+              background: "var(--surface-panel)",
               border: isImmersivePane
                 ? "none"
-                : panelColor
-                  ? `1px solid color-mix(in srgb, ${panelColor} 42%, transparent)`
-                  : "1px solid transparent",
-              borderRadius: isImmersivePane ? 0 : "var(--radius-lg)",
-              boxShadow: isImmersivePane
-                ? "none"
                 : isActive
-                  ? "var(--shadow-active-pane)"
-                  : "0 0 0 1px rgba(0, 0, 0, 0.12)",
+                  ? "1px solid var(--accent-fill)"
+                  : "1px solid var(--border-default)",
+              borderRadius: isImmersivePane ? 0 : "var(--radius-lg)",
+              boxShadow: "none",
               transition: isImmersivePane
                 ? "none"
                 : "box-shadow var(--motion-med), border-color var(--motion-med), background var(--motion-med)",
@@ -1766,21 +1762,6 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 }}
               />
             )}
-            {isActive && !isImmersivePane && (
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 1,
-                  background:
-                    "linear-gradient(90deg, transparent, var(--accent-live) 8%, var(--accent-live) 92%, transparent)",
-                  zIndex: 2,
-                }}
-              />
-            )}
             {isImmersivePane && (
               <div
                 role="toolbar"
@@ -1795,9 +1776,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   gap: 8,
                   padding: "7px 8px",
                   borderRadius: 8,
-                  background: "rgba(29, 34, 36, 0.94)",
-    border: "1px solid transparent",
-                  boxShadow: "0 12px 32px rgba(0,0,0,0.35)",
+                  background: "var(--surface-raised)",
+                  border: "1px solid var(--border-strong)",
+                  boxShadow: "var(--elev-menu)",
                   color: "var(--text-primary)",
                   fontFamily: "var(--font-ui)",
                 }}
@@ -1829,11 +1810,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     alignItems: "center",
                     gap: 7,
                     padding: "0 10px",
-                    border:
-                      "1px solid color-mix(in srgb, var(--accent-live) 42%, transparent)",
+                    border: "1px solid var(--accent-fill)",
                     borderRadius: 6,
-                    background:
-                      "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+                    background: "var(--accent-tint)",
                     color: "var(--text-primary)",
                     fontSize: 12,
                     fontWeight: 500,
@@ -1861,14 +1840,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     : isShellSummaryPane
                       ? "7px 8px 6px"
                       : "0 7px",
-                  borderBottom: "1px solid var(--border-subtle)",
+                  borderBottom: "1px solid var(--border-default)",
                   background: panelColor
-                    ? `color-mix(in srgb, ${panelColor} ${isActive ? 14 : 7}%, ${
-                        isActive ? "#202527" : "#1d2224"
-                      })`
-                    : isActive
-                      ? "#202527"
-                      : "#1d2224",
+                    ? `color-mix(in srgb, ${panelColor} var(--identity-wash-pct), var(--surface-panel))`
+                    : "var(--surface-panel)",
                   color: "var(--text-secondary)",
                   cursor: "default",
                 }}
@@ -2046,15 +2021,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         }}
                         title={splitAttention.label}
                       >
-                        <span
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: splitAttention.color,
-                            flexShrink: 0,
-                          }}
-                        />
+                        <StatusDot state={attentionToAgentState(splitAttentionState)} />
                         {splitAttention.label}
                       </span>
                       {budgetSignal ? (
@@ -2434,15 +2401,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         }}
                         title={splitAttention.label}
                       >
-                        <span
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: splitAttention.color,
-                            flexShrink: 0,
-                          }}
-                        />
+                        <StatusDot state={attentionToAgentState(splitAttentionState)} />
                         {splitAttention.label}
                       </span>
                       {budgetSignal && (

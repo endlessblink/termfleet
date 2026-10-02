@@ -1618,3 +1618,8 @@ button:active {
   --text-tertiary: var(--text-secondary);
   --text-muted: var(--text-secondary);
 }
+
+.session-state-glyph {
+  margin-inline-end: 5px;
+  vertical-align: middle;
+}
