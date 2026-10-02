@@ -441,6 +441,36 @@ function appendRecent(prevRecent, text, at) {
   return list.slice(-RECENT_LIMIT);
 }
 
+// A fresh Claude pane has no sidecar until its first prompt, so the header read "SHELL".
+// Stamp ONLY who the agent is (no task/goal text, no turn state); an existing sidecar
+// (resume/compact) keeps everything it already has. (TF-075)
+export function stampProviderAtSessionStart({ payload, cwd, paneId }) {
+  if (!paneId) return;
+  try {
+    const filePath = statusFilePath(cwd);
+    const prev = readExistingSidecar(filePath);
+    const sidecar = prev
+      ? { ...prev, provider: "claude", paneId }
+      : {
+          cwd,
+          sessionId: String(payload?.session_id ?? ""),
+          updatedAt: Date.now(),
+          source: "session-start",
+          todos: [],
+          provider: "claude",
+          paneId,
+        };
+    mkdirSync(statusDir(), { recursive: true });
+    for (const targetPath of statusFilePaths(cwd)) {
+      const tmp = `${targetPath}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify(sidecar));
+      renameSync(tmp, targetPath);
+    }
+  } catch {
+    // Never break the agent over a status-file write.
+  }
+}
+
 async function main() {
   const eventAt = Date.now();
   const raw = await readStdin();
@@ -469,7 +499,10 @@ async function main() {
   if (payload.hook_event_name === "SessionStart" || payload.hook_event_name === "UserPromptSubmit") {
     // One chat, one terminal: an older copy of this chat in another terminal is closed.
     closeOtherCopies({ provider: "claude", conversationId: String(payload?.session_id ?? ""), paneId });
-    if (payload.hook_event_name === "SessionStart") process.exit(0);
+    if (payload.hook_event_name === "SessionStart") {
+      stampProviderAtSessionStart({ payload, cwd, paneId });
+      process.exit(0);
+    }
   }
   // Pane-keyed when termfleet injected TERMFLEET_PANE_ID into the PTY, else cwd-keyed.
   const filePath = statusFilePath(cwd);
