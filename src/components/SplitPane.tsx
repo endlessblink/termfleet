@@ -637,8 +637,8 @@ function PaneContextMenu({
       <div
         className={`terminal-pane-menu-item${danger ? " terminal-pane-menu-item--danger" : ""}`}
         style={{
-          minHeight: 30,
-          padding: "6px 9px",
+          minHeight: 28,
+          padding: "4px 8px",
           margin: "0 4px",
           fontSize: 12,
           cursor: "pointer",
@@ -648,7 +648,7 @@ function PaneContextMenu({
           alignItems: "center",
           justifyContent: "space-between",
           gap: 16,
-          borderRadius: "var(--radius-md)",
+          borderRadius: "var(--radius-sm)",
           background: "transparent",
           transition: "background var(--motion-fast), color var(--motion-fast)",
         }}
@@ -660,13 +660,13 @@ function PaneContextMenu({
             style={{
               height: 18,
               padding: "0 5px",
-              border: "1px solid transparent",
-              borderRadius: "var(--radius-sm)",
-              background: "var(--surface-rail)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius-xs)",
+              background: "transparent",
               color: "var(--text-secondary)",
               fontSize: 11,
               lineHeight: "16px",
-              fontFamily: "var(--font-ui)",
+              fontFamily: "var(--font-mono)",
             }}
           >
             {shortcut}
@@ -685,12 +685,12 @@ function PaneContextMenu({
         top: y,
         left: x,
         background: "var(--surface-raised)",
-        border: "1px solid transparent",
-        borderRadius: "var(--radius-lg)",
+        border: "1px solid var(--border-strong)",
+        borderRadius: "var(--radius-md)",
         padding: 4,
         minWidth: 180,
         zIndex: 1000,
-        boxShadow: "var(--shadow-menu)",
+        boxShadow: "var(--elev-menu)",
         animation: "workbench-popover-in var(--motion-med)",
       }}
     >

@@ -127,8 +127,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gap: 8,
     background: "var(--surface-raised)",
-    borderRadius: "var(--radius-lg)",
-    boxShadow: "var(--shadow-popover, 0 12px 32px rgba(0,0,0,0.45))",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-md)",
+    boxShadow: "var(--elev-menu)",
     fontFamily: "var(--font-ui)",
   },
   embedded: {

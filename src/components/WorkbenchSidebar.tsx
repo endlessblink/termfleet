@@ -79,6 +79,7 @@ import {
   type TerminalHeaderState,
 } from "../lib/terminalHeaderState";
 import { StatusDot } from "../ui";
+import { IDENTITY_COLORS } from "../lib/tokens";
 import { attentionToAgentState } from "../lib/agentState";
 import { badgeForAttention } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
@@ -174,14 +175,8 @@ import {
   type ProjectSidebarItem,
 } from "../lib/projectSidebarModel";
 
-const TERMINAL_COLORS = [
-  "#8aa0b8",
-  "#7fc681",
-  "#7dbac3",
-  "#6ea8fe",
-  "#ad8fcb",
-  "#ef6f72",
-];
+// Swatch hues are the six muted identity colours (--identity-1..6).
+const TERMINAL_COLORS = [...IDENTITY_COLORS];
 const TERMINAL_EMOJIS = ["💻", "⚙️", "🚀", "🧪", "🛠️", "📦", "🔧", "🧭"];
 
 function workstreamLabel(provider?: string) {
@@ -1302,12 +1297,12 @@ const styles: Record<string, CSSProperties> = {
   contextMenu: {
     position: "fixed",
     zIndex: 1000,
-    width: 236,
+    width: 272,
     padding: 8,
-    border: "1px solid transparent",
-    borderRadius: "var(--radius-lg)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
-    boxShadow: "var(--shadow-menu)",
+    boxShadow: "var(--elev-menu)",
     animation: "workbench-popover-in var(--motion-med)",
   },
   contextHeader: {
@@ -1421,8 +1416,8 @@ const styles: Record<string, CSSProperties> = {
   },
   colorSwatch: {
     width: "100%",
-    height: 22,
-    borderRadius: 4,
+    height: 24,
+    borderRadius: 6,
     border: "1px solid transparent",
     cursor: "pointer",
     transition:
@@ -1435,13 +1430,13 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 6,
   },
   emojiButton: {
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     display: "grid",
     placeItems: "center",
     border: "1px solid transparent",
-    borderRadius: 4,
-    background: "var(--surface-rail)",
+    borderRadius: 6,
+    background: "var(--surface-base)",
     cursor: "pointer",
     fontSize: 13,
     transition:
@@ -1893,7 +1888,7 @@ function TerminalContextMenu({
               background: color,
               boxShadow:
                 tab.color === color
-                  ? "inset 0 0 0 2px var(--text-primary)"
+                  ? "inset 0 0 0 2px var(--accent-fill)"
                   : "none",
             }}
             title={color}

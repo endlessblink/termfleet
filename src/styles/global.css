@@ -495,24 +495,20 @@ button::-moz-focus-inner {
 
 .workspace-terminal-color-swatch:hover {
   border-color: var(--text-primary) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.24) !important;
 }
 
 .workspace-terminal-color-swatch[data-selected="true"] {
-  border-color: var(--text-primary) !important;
+  border-color: var(--accent-fill) !important;
 }
 
 .workspace-terminal-emoji-button:hover {
   background: var(--surface-hover) !important;
-  border-color: var(--border-strong) !important;
-  transform: translateY(-1px);
 }
 
 .workspace-terminal-emoji-button[data-selected="true"] {
   background: var(--surface-selected) !important;
-  border-color: var(--border-focus) !important;
-  color: var(--accent-live) !important;
+  border-color: var(--accent-fill) !important;
+  color: var(--accent) !important;
 }
 
 .workbench-command-tool:hover {
