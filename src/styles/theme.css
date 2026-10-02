@@ -132,19 +132,19 @@
 :root[data-accent="C"] { --accent:#bb967b; --accent-hi:#cead94; --accent-fill:#9d7f69; --accent-tint:#25201f; }
 /* ===========================================================================
    LEGACY ALIASES — paste directly AFTER the new block, in the same theme.css, during Phase 1.
-   Purpose: every existing legacy variable keeps working while Phase 2 migrates surfaces.
-   Rule: an alias may only point at a NEW token. When usage of an old name hits 0, delete the alias (Phase 4).
-   Entries tagged [decide] must be re-pointed per usage in Phase 2 (accent edge/ring -> --accent-fill,
-   accent text/caret -> --accent, "waiting" meaning -> --state-waiting, anything else -> --text-2).
-   Mapping choices are the implementer's (derived from the review), NOT values shown in the mocks.
-   =========================================================================== */
+  Purpose: every existing legacy variable keeps working while Phase 2 migrates surfaces.
+  Rule: an alias may only point at a NEW token. When usage of an old name hits 0, delete the alias (Phase 4).
+  Entries tagged [decide] must be re-pointed per usage in Phase 2 (accent edge/ring -> --accent-fill,
+  accent text/caret -> --accent, "waiting" meaning -> --state-waiting, anything else -> --text-2).
+  Mapping choices are the implementer's (derived from the review), NOT values shown in the mocks.
+  =========================================================================== */
 :root {
   /* text */
   --text-primary: var(--text-1);
   --text-secondary: var(--text-2);
   --text-tertiary: var(--text-3);
   --text-muted: var(--text-3);                 /* was undefined (P0-2) */
-  --text-warning: var(--state-waiting);        /* was undefined (P0-2) */
+
   --fg-dark: var(--text-2);                    /* legacy, 2 refs */
   /* surfaces (old --surface-base meant "rails/sidebars"; it was renamed to --surface-rail in step 1.1 and is now this alias) */
   --surface-rail: var(--surface-sidebar);      /* [decide] header/rail/status bar -> --surface-chrome; sidebars -> --surface-sidebar */
@@ -161,27 +161,22 @@
   /* accent + status */
   --accent-live: var(--accent);                /* [decide] */
   --accent-primary: var(--accent);             /* was undefined (P0-2) [decide] */
-  --accent-positive: var(--state-running);     /* was undefined (P0-2) */
+
   --accent-info: var(--state-done);
   --accent-success: var(--state-running);
   --accent-warning: var(--state-waiting);      /* [decide] only "Waiting for you" may stay amber; starting/stale/highlights -> --text-2 */
   --accent-danger: var(--state-failed);
-  --live: var(--accent);                       /* [decide] */
-  --live-muted: var(--accent-tint);
-  --success-muted: color-mix(in srgb, var(--state-running) 14%, transparent);
+
   --danger-muted: color-mix(in srgb, var(--state-failed) 14%, transparent);
   /* shadows */
   --shadow-menu: var(--elev-menu);
-  --shadow-popover: var(--elev-menu);          /* was undefined (P0-2) */
+
   --shadow-command: var(--elev-menu);
   --shadow-card: none;                         /* mock map node / task card have no shadow */
   --shadow-active-pane: none;                  /* active pane = 1px --accent-fill border */
   --shadow-selected-row: none;                 /* selected row = fill + 2px --accent-fill edge (box-shadow: inset 2px 0 0) */
   /* canvas / sidebar roles */
-  --canvas-sidebar-bg: var(--surface-sidebar);
-  --canvas-sidebar-header-bg: var(--surface-raised);
-  --canvas-sidebar-border: var(--border-default);
-  --canvas-sidebar-row-selected: var(--surface-selected);
+
   --canvas-terminal-icon: var(--text-2);       /* derived: mock icons are neutral */
   --canvas-file-icon: var(--text-2);
   --canvas-note-icon: var(--text-2);
@@ -192,18 +187,18 @@
   --command-chip-active-bg: var(--accent-tint);
   --command-chip-active-border: var(--accent-fill);
   /* explorer family (49 vars -> roles; geometry vars such as --explorer-row-height stay as they are) */
-  --explorer-bg: var(--surface-sidebar); --explorer-titlebar-bg: var(--surface-sidebar);
+ --explorer-titlebar-bg: var(--surface-sidebar);
   --explorer-rootbar-bg: var(--surface-sidebar); --explorer-footer-bg: var(--surface-sidebar);
   --explorer-border: var(--border-default);
   --explorer-fg: var(--text-1); --explorer-title-fg: var(--text-1); --explorer-root-fg: var(--text-1);
   --explorer-muted: var(--text-2); --explorer-hidden: var(--text-3); --explorer-chevron: var(--text-3);
   --explorer-row-hover: var(--surface-hover); --explorer-row-selected: var(--surface-selected);
-  --explorer-root-row-bg: var(--surface-hover);
+
   --explorer-input-bg: var(--surface-base); --explorer-input-border: var(--border-control); --explorer-input-fg: var(--text-1);
-  --explorer-menu-bg: var(--surface-raised); --explorer-menu-shadow: var(--elev-menu);
+ --explorer-menu-shadow: var(--elev-menu);
   --explorer-workspace: var(--text-2); --explorer-workspace-tab: var(--text-2); --explorer-workspace-shade: var(--text-3);
   --explorer-folder: var(--text-2); --explorer-folder-tab: var(--text-2); --explorer-folder-shade: var(--text-3);
-  --explorer-folder-open-bg: var(--accent-tint);
+
   --explorer-file: var(--text-2); --explorer-file-js: var(--text-2); --explorer-file-md: var(--text-2);
   --explorer-file-data: var(--text-2); --explorer-file-code: var(--text-2); --explorer-file-style: var(--text-2);
   --explorer-file-markup: var(--text-2); --explorer-icon-label: var(--surface-base);
@@ -218,17 +213,17 @@
   --terminal-ansi-bright-white: var(--ansi-white); /* GAP: the design defines only 8 ANSI colours; brights reuse them */
   --terminal-selection-fg: var(--text-1);
   --terminal-scroll-track: var(--surface-base); --terminal-scroll-thumb: var(--border-strong); --terminal-scroll-thumb-hover: var(--border-control); /* (derived) */
-  --terminal-block-rail-bg: var(--surface-base); --terminal-block-rail-border: var(--border-default);
+ --terminal-block-rail-border: var(--border-default);
   --terminal-block-spine: var(--border-default); --terminal-block-marker: var(--border-control);
   --terminal-block-marker-active: var(--accent-fill); --terminal-block-context: var(--accent-fill);
   /* tab chrome (legacy) */
-  --tab-bg: var(--surface-chrome); --tab-active-bg: var(--surface-selected); --tab-hover-bg: var(--surface-hover);
+ --tab-active-bg: var(--surface-selected); --tab-hover-bg: var(--surface-hover);
   /* transient text/bg tints used by a few files */
-  --selection-bg: var(--accent-tint);
+
 }
 
 /* ===========================================================================
-   LEGACY LAYOUT / GEOMETRY VARIABLES — values unchanged from the pre-redesign
+LEGACY LAYOUT / GEOMETRY VARIABLES — values unchanged from the pre-redesign
    theme (design step 1.2). These are sizes and weights, not colours, and are
    still referenced by components. Remove each when its usage reaches 0.
    =========================================================================== */
