@@ -204,7 +204,8 @@ export function Dialog({ title, onClose, width = 560, height, footer, children, 
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const panel = panelRef.current;
     if (panel) {
-      const first = panel.querySelector<HTMLElement>(FOCUSABLE);
+      // [data-autofocus] marks the control that should receive focus on open.
+      const first = panel.querySelector<HTMLElement>("[data-autofocus]") ?? panel.querySelector<HTMLElement>(FOCUSABLE);
       (first ?? panel).focus();
     }
     const onKeyDown = (event: KeyboardEvent) => {

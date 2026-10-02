@@ -8,7 +8,6 @@ import {
   Eye,
   EyeSlash,
   Folder,
-  FolderOpen,
   House,
   PushPin,
   PushPinSlash,
@@ -16,6 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import type { FileEntry } from "../lib/types";
 import { useWorkspaceStore } from "../stores/workspace";
+import { Button, Dialog } from "../ui";
 
 interface FolderPickerProps {
   /** Directory to open at. Falls back to the user home directory. */
@@ -67,13 +67,13 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
   },
   iconButton: {
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     display: "grid",
     placeItems: "center",
     border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
-    background: "var(--surface-rail)",
+    background: "var(--surface-hover)",
     color: "var(--text-secondary)",
     cursor: "pointer",
   },
@@ -119,13 +119,13 @@ const styles: Record<string, CSSProperties> = {
   pathInput: {
     flex: 1,
     minWidth: 0,
-    height: 28,
+    height: 30,
     padding: "0 9px",
-    border: "1px solid transparent",
+    border: "1px solid var(--border-control)",
     borderRadius: "var(--radius-sm)",
-    background: "var(--surface-sunken)",
+    background: "var(--surface-base)",
     color: "var(--text-primary)",
-    fontFamily: "var(--font-ui)",
+    fontFamily: "var(--font-mono)",
     fontSize: 12,
   },
   pinnedSection: {
@@ -140,7 +140,9 @@ const styles: Record<string, CSSProperties> = {
   pinnedLabel: {
     flexShrink: 0,
     fontSize: 11,
-    color: "var(--text-secondary)",
+    fontWeight: 500,
+    letterSpacing: "var(--label-caps-tracking)",
+    color: "var(--text-tertiary)",
     textTransform: "uppercase",
   },
   pinnedChip: {
@@ -151,9 +153,9 @@ const styles: Record<string, CSSProperties> = {
     height: 24,
     padding: "0 4px 0 8px",
     border: "1px solid transparent",
-    borderRadius: "999px",
-    background: "var(--surface-rail)",
-    color: "var(--text-primary)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-sidebar)",
+    color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
     cursor: "pointer",
@@ -183,11 +185,11 @@ const styles: Record<string, CSSProperties> = {
   },
   filterInput: {
     width: "100%",
-    height: 28,
+    height: 30,
     padding: "0 9px",
-    border: "1px solid transparent",
+    border: "1px solid var(--border-control)",
     borderRadius: "var(--radius-sm)",
-    background: "var(--surface-sunken)",
+    background: "var(--surface-base)",
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
@@ -196,7 +198,11 @@ const styles: Record<string, CSSProperties> = {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: 6,
+    margin: "8px 12px",
+    padding: 4,
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-sidebar)",
   },
   row: {
     width: "100%",
@@ -233,9 +239,8 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    padding: "10px 12px",
-    borderTop: "1px solid var(--border-subtle)",
-    background: "var(--surface-wash)",
+    padding: "10px 16px 14px",
+    borderTop: "1px solid var(--border-default)",
   },
   footerPath: {
     flex: 1,
@@ -402,24 +407,8 @@ export function FolderPicker({ initialPath, title = "Choose project folder", con
   const atRoot = path === "/" || path === null;
 
   return (
-    <div style={styles.backdrop} onMouseDown={onClose} role="presentation">
-      <div
-        style={styles.panel}
-        onMouseDown={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-      >
-        <div style={styles.header}>
-          <span style={styles.headerTitle}>
-            <FolderOpen size={15} weight="duotone" color="var(--accent-live)" />
-            {title}
-          </span>
-          <button style={styles.iconButton} onClick={onClose} aria-label="Close folder picker" title="Close">
-            <X size={14} />
-          </button>
-        </div>
-
+    <Dialog title={title} width={640} height={500} onClose={onClose}>
+      <>
         <div style={styles.toolbar}>
           <button
             style={{ ...styles.iconButton, opacity: atRoot ? 0.4 : 1, cursor: atRoot ? "default" : "pointer" }}
@@ -556,6 +545,7 @@ export function FolderPicker({ initialPath, title = "Choose project folder", con
         <div style={styles.filter}>
           <input
             ref={filterRef}
+            data-autofocus
             style={styles.filterInput}
             value={filter}
             placeholder="Filter folders…"
@@ -594,20 +584,15 @@ export function FolderPicker({ initialPath, title = "Choose project folder", con
           <span style={styles.footerPath} title={path ?? undefined} dir="auto">
             {path ?? "—"}
           </span>
-          <button className="workspace-secondary-button" style={styles.secondaryButton} onClick={onClose}>
+          <Button size="lg" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            className="workspace-primary-button"
-            style={{ ...styles.primaryButton, opacity: path ? 1 : 0.4 }}
-            disabled={!path}
-            onClick={() => path && onSelect(path)}
-          >
+          </Button>
+          <Button size="lg" variant="primary" disabled={!path} onClick={() => path && onSelect(path)}>
             <Check size={14} weight="bold" />
             {confirmLabel}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </Dialog>
   );
 }
