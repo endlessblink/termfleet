@@ -1,5 +1,11 @@
 # MASTER_PLAN.md - termfleet
 
+## 2026-10-02 — TF-072: Showing the selected project's tasks clearly
+
+Status: **in_progress**. Paired Markdown wrappers hid formatted task IDs; a differently shaped Completed table then crashed the project parser. Both cases now have focused regressions. The board opens one project, shows its own totals, and offers a searchable selector with persistent most-used and recent shortcuts (five each). Responsive columns replace the overflowing aggregate board. Source remains each project's own MASTER_PLAN; the shared agent-ops queue is unchanged.
+
+Evidence: `npx playwright test tests/project-plans-board.spec.ts tests/canonical-agent-board.spec.ts --reporter=line` passes 17/17; TypeScript and Vite build pass during `npm run release:install`; `git diff --check` passes. Earlier browser visual review found readable controls and no overlap at 760px. Typography has three existing unrelated violations in ApproveAllDialog and EarlierSessionsChip. Promoted release `bcd04ad01d4b-aaf982281658-7a768f51cf15`, SHA-256 `aaf9822816581a93acd8ffd5280281d8faafea84949e03eddd0b84be5037728b`, passes direct `npm run verify:installed-release`. Host `npm run doctor` confirms protocol-compatible canonical daemon and a stale operator UI. Isolated installed native proof reads the real claude-and-conquer plan: 137 tasks, 45 completed, real cards, picker, and Done cards (artifacts `/tmp/tf072-native/board.png`, `picker.png`, `done.png`). Independent native visual review passes: 74 To Do, 17 In Progress, 0 Blocked, 1 Unsorted, 45 Done; selector and cards have no unintended overlap or clipping. Operator-window read-back remains pending. Preserve live PTYs; UI-only dock relaunch requires operator confirmation.
+
 ## 2026-09-28 — TF-015 sampler deployment correction
 
 Status: **in_progress**. The installed watchdog was stale even though its user service remained active: the running shell's open script SHA-256 was `5bb0bea6…`, while the tested repository version is `692617e3…`; its five-second sample TSV and runtime heartbeat were both frozen at 18:05. Staged the tested current watchdog, incident-capture helper, and load-shed helper with `TERMFLEET_PRESSURE_WATCHDOG_FILES_ONLY=1 scripts/install-pressure-watchdog.sh`; installed/source watchdog hashes now match. `python3 -m unittest tests.test_pressure_watchdog` passes 25/25, including a test that proves sample files older than 48 hours are removed without deleting current samples or unrelated logs. Fresh follow-up verification: 8 focused Playwright telemetry regressions pass, `npm run build` passes, and `npm run verify:map-terminals` passes. The existing watchdog process still holds the older script inode, so no new samples have appeared yet; its recovery-enabled service has not been restarted because it can recycle the desktop group. Next: refresh the live sample stream, then correlate typing and map movement telemetry with active use. The PTY daemon remains untouched.
@@ -10049,7 +10055,17 @@ A helper requested without a pane identity (for example an automatic handover) i
 placed in free space with no link line, so it never lands under anything. Find
 which launch paths lose the pane identity and pass it through.
 
-## 2026-10-01 — Sidebar stability and the dropoff flow (issue register TF-069, WIP)
+## 2026-10-01 — Sidebar stability and the dropoff flow (issue register TF-069) — IN REVIEW
+
+**Status 2026-10-02: IN REVIEW.** All fixes below are built and installed (release
+e106d39) or live through the scripts. The operator is now using it for a while to
+confirm. Issue TF-069 is in `verifying`. Still to confirm in daily use: clicking a
+card shows the right terminal and nothing jumps or changes icons; groups stay put;
+a Codex handover continues in Codex on its own card; a dropoff keeps unsent typing;
+freelance-desk stops dying (the closure log and `scripts/why-did-it-die.mjs` will say
+why if it does). Open separately: TF-071 (Claude input garbling on the map), the
+pre-existing `canvas-arrange` and "restart tidy" test failures, the structured
+"You / Assistant" copy of earlier chats.
 
 Note: the issue register's TF-069 (sidebar) is a different item from the "TF-069"
 heading above. Handoffs: `HANDOFF-sidebar-stability*.md` (latest: -6).
@@ -10155,3 +10171,291 @@ Status:
   closing an older copy after a restart; unconfirmed.
 - Open question for the operator: log an issue about a handoff dropping a user's
   earlier question (the Upwork slot-timer transcript)?
+
+## 2026-10-02 — Review findings and hardening backlog (PROPOSED / TODO)
+
+Status: **proposed** (nothing here is started; no code, test or registry file was changed by the review). Source: read-only review `termfleet-review-2026-10-02.md` (kept outside the repo). IDs continue after TC-077 (no TC-078 or higher exists anywhere in the repo). TF-NNN issue IDs belong to `docs/issue-registry.json` and are not invented here; where a task matches an existing issue it is cross-referenced, and matching registry entries should be created with `npm run issues` by whoever works the task. Effort: S ≤ ½ day, M ≤ 2 days, L > 2 days. This section is appended at the end of the file (append-only edit); the file's newest-first dated sections stay at the top.
+
+| ID | Priority | Effort | Status | Task |
+| --- | --- | --- | --- | --- |
+| TC-078 | P0 | S–M | TODO | Retention for releases, pane screenshots and saved sessions |
+| TC-079 | P0 | M | TODO | Get CI green and push the 78 unpushed commits |
+| TC-080 | P0 | S–M | TODO | Confine `fs_*` commands to allowed roots; tighten CSP and opener permission |
+| TC-081 | P1 | M | TODO | Remove mutex-poisoning cascades in the PTY core; add panic hooks |
+| TC-082 | P1 | L | TODO | Measured responsiveness plan: software rendering default, per-frame work |
+| TC-083 | P1 | M | TODO | Daemon/UI build skew: show it, negotiate capabilities |
+| TC-084 | P1 | S–M | TODO | Plan and issue governance: unique IDs, split plan, triage severity |
+| TC-085 | P2 | M | TODO | Test tiers, one `npm test`, safe Playwright server reuse |
+| TC-086 | P1 | M | TODO | TermControl bridge hardening |
+| TC-087 | P2 | S | TODO | Durable, collision-proof workspace save and backup cap |
+| TC-088 | P2 | S | TODO | Replace `sh -lc` probes and cwd-relative adapter path |
+| TC-089 | P2 | L | TODO | Split the very large files |
+| TC-090 | P2 | S–M | TODO | Typed IPC errors and no silent catches |
+| TC-091 | P2 | S | TODO | Low-priority cleanup: release profile, naming, root clutter, Actions on Node 20 |
+| TC-092 | P2 | S–M | TODO | Retire the old `terminal-workspace-tauri` fork instead of "merging" it |
+
+### TC-078: Retention for releases, pane screenshots and saved sessions (P0, S–M)
+- Evidence (2026-10-02): `~/.local/share/termfleet/releases` has 989 release directories (about 19 MB each, 18 GB, 2026-07-30 to 2026-10-01); `~/.local/share/terminal-workspace/agent-status` has 20,069 PNGs (4.8 GB, 15,029 older than a week, oldest 2026-06-19); `sessions/` 5,383 files (829 MB) plus a 744 MB archive; 47 `workspace.json.before-*` backups; `src-tauri/target` 13 GB; `/media/endlessblink/data` is 83% full. `scripts/install-release.sh` and `scripts/termfleet-reaper.mjs` contain no pruning of these. The PNGs and sessions are copies of terminal content.
+- Do: `scripts/termfleet-retention.mjs`, dry-run by default, run from the existing 15-minute maintenance timer once trusted. Keep `current`, `previous`, every release a running process executes, and the newest 10; delete releases older than 14 days otherwise; delete pane PNGs older than 3 days and cap the directory; compress old session archives; cap backups; write a log of every removal. Do not touch the daemon or its 22 live sessions.
+- Done when: a dry run lists the keep-set and sizes, a real run frees the expected space, and `termfleet doctor` stays green.
+
+### TC-079: Get CI green and push (P0, M)
+- Evidence: the last seven `ci.yml` runs on `main` (2026-09-24 → 2026-09-27) failed; run 36307297607 (commit `2732af0`) failed at "Source-contract gates" (one second, right after the Rust warnings gate) and at the Playwright job's "Canvas renderer + interaction specs"; local `main` is ahead of `origin/main` by 78 commits (2026-09-29 → 2026-10-01), so none of the TF-069/TF-015 work has CI. TF-REL-02 (this file) recorded the same pattern on 2026-09-23.
+- Do: reproduce both steps in a clean worktree (not the shared checkout), fix or consciously retire the gate, push, require green before new feature work, add a local pre-push check of the CI subset. Remaining Node 20 deprecation in the workflow belongs here too (see TC-091).
+
+### TC-080: Confine filesystem commands, tighten CSP and opener (P0, S–M)
+- Evidence: `src-tauri/src/commands.rs:2437-2449` `fs_delete` only refuses a path with no parent; `:2679` `fs_write_file`, `:2452` `fs_read_file`, `:2407` `fs_create`, `:2422` `fs_rename`, `:2656` `fs_open_external` accept any path; `src-tauri/capabilities/default.json` grants `opener:allow-open-path`; `src-tauri/tauri.conf.json` CSP has `frame-src http: https:` and `style-src 'unsafe-inline'`.
+- Do: canonicalise every path and require it under an allow-list of roots (workspace project roots, `$HOME` minus dot-directories), reject symlink escapes, send deletes to the trash or require native confirmation, narrow `frame-src` to loopback previews, replace the generic opener permission with a validated command. Tests: `/home/<user>`, `../`, symlink out of root.
+
+### TC-081: Mutex poisoning and panic hooks (P1, M)
+- Evidence: 32 `lock().unwrap()` in production code of `src-tauri/src/pty.rs` (before its test module at line 2828; e.g. lines 119, 128, 134); no `panic::set_hook` or `catch_unwind` in `main.rs`, `lib.rs` or `daemon.rs`. This is a risk from code shape; no production panic was observed.
+- Do: `parking_lot::Mutex` or `unwrap_or_else(|e| e.into_inner())`; a panic hook that logs thread and backtrace to the daemon log; per-session reader threads under `catch_unwind` that fail one session only.
+
+### TC-082: Measured responsiveness plan (P1, L)
+- Cross-ref: TF-015 (`verifying`), TF-055. Evidence: `docs/termfleet-responsiveness-dropoff-2026-09-27.md` (first paint about 89 s, WebKitWebProcess 63% of a 15-second `perf` sample, profiling blocked by `perf_event_paranoid=4`); `scripts/termfleet-desktop-launcher.sh:108-110` still defaults to `LIBGL_ALWAYS_SOFTWARE=1`, `WEBKIT_DISABLE_COMPOSITING_MODE=1`, `WEBKIT_DISABLE_DMABUF_RENDERER=1` (JIT is back on since `:115-122`); `MagicCanvas.tsx` is 10,593 lines and `stores/workspace.ts:5452` serialises a 1.4 MB layout.
+- Do: baseline with the existing latency trace on the installed build, try hardware GL with only DMA-BUF disabled behind a launcher flag, profile per-frame work in the map and terminal canvas, cap persisted snapshot size, record every result in TF-015.
+
+### TC-083: Daemon/UI build skew (P1, M)
+- Evidence: daemon PID 1515447 started 2026-09-24 21:12 from release `57736947a5c5…`; the installed UI is `e106d39…` (2026-10-01); `daemon.rs:23` `PROTOCOL_VERSION: u16 = 1`, equality only (`:187-214`). Fixes in `pty.rs`/`daemon.rs` therefore do not reach live sessions until the daemon restarts (which ends about 22 sessions).
+- Do: UI banner "daemon is N releases old, fixes pending" (S); capability list in daemon status instead of one number (M); later, evaluate a daemon hand-over that re-attaches PTY file descriptors (L).
+
+### TC-084: Plan and issue governance (P1, S–M)
+- Evidence: this file is 10,157 lines (876 KB); duplicate task IDs TC-016 (lines 5898, 5920, 5989), TC-034 (5854, 7946), TC-063 (2595, 8666), TC-064 (2401, 8717), TC-069 (2193, 8747), TC-070 (2121, 8796), TC-071 (2169, 8824); `CLAUDE.md` still names TC-017 as the active task; nine `HANDOFF*.md` in the repo root; `docs/issue-registry.json` has 70 issues, 61 open, 45 `verifying`, severity 69 medium / 1 high.
+- Do: an ID-uniqueness check in `scripts/termfleet-issues.mjs` (or a new lint run by CI); split completed phases into `docs/plan-archive/`; refresh the status block of `CLAUDE.md` from the plan; move HANDOFF files to `docs/handoffs/`; triage severity with the operator. Never reuse an ID; renumber duplicates only with a mapping note.
+
+### TC-085: Test tiers and safe Playwright reuse (P2, M)
+- Evidence: `playwright.config.ts` uses `workers: 1`, `fullyParallel: false`, `reuseExistingServer: true`, and its header still describes the web xterm renderer; 154 specs, 96 `verify:*` npm scripts, 35 skip/fixme call sites; CI runs only `verify:canvas-all` plus two source-contract scripts; `tests/scratch-eval.spec.ts` is untracked.
+- Do: tags for fast / UI / live-desktop; one `npm test` that equals the CI set; `reuseExistingServer: !process.env.CI` on a dedicated port; a table of required versus advisory verifiers; update the config header.
+
+### TC-086: TermControl bridge hardening (P1, M)
+- Evidence: `termcontrol.service` active on `127.0.0.1:7810`; `termcontrol/bridge/server.mjs:184,202` `sendKey`/`sendToPane` inject keystrokes after login; `auth.mjs:21-23` keys the login limiter by `cf-connecting-ip`/`x-forwarded-for` (client-controlled unless only the trusted proxy can connect); the `Secure` cookie implies an HTTPS front end not inspected; accounts use scrypt, HMAC and `timingSafeEqual` (`accounts.mjs`); 8 test files.
+- Do: limiter by socket address unless the peer is the known proxy; `Origin` check on POST; idle session timeout; confirmation for destructive keys; document and test the exposure path.
+
+### TC-087: Durable workspace save (P2, S)
+- Evidence: `commands.rs:2824-2830` writes a fixed `workspace.json.tmp` then renames, with no `fsync`; more than one dock window can exist (see the comment in `cockpit_snapshot_write`); 47 `.before-*` backups.
+- Do: unique temp name, `sync_all` on file and directory, keep the last N backups.
+
+### TC-088: `sh -lc` probes and cwd-relative path (P2, S)
+- Evidence: `commands.rs:612-630` runs `sh -lc "command -v …"` three times per call and builds `scripts/agent-provider-adapter.sh` from `current_dir()`.
+- Do: search `PATH` in Rust, cache briefly, resolve the adapter relative to the executable.
+
+### TC-089: Split the very large files (P2, L)
+- Evidence: `src/components/MagicCanvas.tsx` 10,593 lines, `WorkbenchSidebar.tsx` 8,458, `src/stores/workspace.ts` 5,541, `src-tauri/src/pty.rs` 5,649, `commands.rs` 3,960 (72 commands), `vt_grid.rs` 2,696.
+- Do: behaviour-neutral extraction along existing seams, one module per change, guarded by the existing specs; do after TC-079.
+
+### TC-090: Typed IPC errors, no silent catches (P2, S–M)
+- Evidence: commands return `Result<_, String>` (all `fs_*`); 144 `invoke` call sites and 22 empty `catch` handlers in `src`.
+- Do: serialisable error enum (`kind`, `message`, `retryable`) and a single `invoke` wrapper that logs and surfaces failures.
+
+### TC-091: Low-priority cleanup (P2, S)
+- Evidence: no `[profile.release]` in `src-tauri/Cargo.toml` (about 19 MB per release); two data roots (`~/.local/share/terminal-workspace` 6.4 GB and `~/.local/share/termfleet` 18 GB) and the package/binary name `terminal-workspace(-tauri)` next to the brand TermFleet; root clutter (`reconnect-menu-visual.png`, `termfleet-critique-main.png`); GitHub Actions on Node 20 (open item in TF-REL-02).
+- Do: `strip`/`lto = "thin"` measured against startup; document or migrate the data roots; move clutter to `docs/`; bump the Actions.
+
+### TC-092: Retire the old `terminal-workspace-tauri` fork (P2, S–M)
+- Evidence: `cc-linux-enhancments/terminal-workspace-tauri` is v0.1.0, 60 source files, `MagicCanvas.tsx` 1,080 lines, 71 commits (last 2026-09-10) and 142 uncommitted entries; TermFleet already contains Magic Canvas (506 files, `MagicCanvas.tsx` 10,593 lines). 20 files exist only in the old repo (native-VTE latency scripts, `native_vte.rs`, `native_gtk_pane.rs`, `DockRail`, `GroupBar`, `ProjectRail`, `TabSidebar`, `paneWorkSummary.ts`). The 2026-09-25 triage note proposed a merge; none is needed.
+- Do: review those 20 files, port what is wanted as ordinary tasks, back the old repo up (it holds uncommitted work), then archive it. Needs the operator's approval.
+
+### Suggested order
+TC-078 → TC-079 → TC-080 → TC-081, then TC-083/TC-084, TC-086 and TC-082 in parallel; the P2 items afterwards, with TC-089 last.
+
+## 2026-10-02 — Deep dive: size control, long-uptime soak, public release, Brainiac
+
+Status: **proposed** (no code, test, file or setting was changed). Source: `termfleet-deep-dive-2026-10-02.md` (read-only review; box copy of the report is in the operator's /workspace). New IDs continue after TC-092. **TC-078 stays the umbrella retention task** (phase 1 script); the size-control items below are its children and amendments, not duplicates. Measurements were taken on 2026-10-02: releases 18 GB / 989 dirs; `~/.cache/termfleet/tmp` (the TMPDIR the launcher gives every PTY child) 19 GB / 12,404 entries; pane PNGs 4.8 GB / 20,099 files; sessions 832 MB + 744 MB archive; WebKit data 1.1 GB (localStorage WAL 97.7 MB); `src-tauri/target` 13 GB; data disk 83% used.
+
+Amendments to existing items: TC-078 (+TC-093..TC-108 as children; also covers TMPDIR, WebKit data, archives), TC-080 (+TC-125), TC-081 (+TC-112), TC-083 (+TC-120), TC-086 (+TC-121..TC-123, TC-126), TC-087 (+TC-100, TC-118), TC-091 (+TC-136).
+
+### Top 10 highest-leverage
+1. TC-078 + TC-093 + TC-096 retention engine and in-daemon janitor. 2. TC-101 TMPDIR containment (19 GB). 3. TC-124 `0700/0600` for persisted terminal content (dirs are `775`, files `664`). 4. TC-095 screenshot lifecycle/redaction. 5. TC-109 bounded subscriber queues (pty.rs:1440-1495, 1767-1771). 6. TC-110 UTF-8-safe PTY reader (pty.rs:1052). 7. TC-111 idle poll storm. 8. TC-112 panic hook/watchdog/restart. 9. TC-080 + TC-123 + TC-125 confinement, Host/Origin, CSP. 10. TC-151b Brainiac project-index MVP (after 1-9).
+
+| ID | Pri | Eff | Status | Title |
+|---|---|---|---|---|
+| TC-093 | P0 | M | TODO | StoreSpec registry + retention engine (age AND size caps, protect rules, plan/apply) |
+| TC-094 | P0 | S | TODO | Release pruning (keep current/previous/running/pinned/newest N) + install hook |
+| TC-095 | P0 | M | TODO | Pane screenshot lifecycle: default off, TTL/cap, redaction, 0600 |
+| TC-096 | P0 | M | TODO | Daemon background janitor with metrics and emergency low-disk mode |
+| TC-097 | P0 | S–M | TODO | Safe-delete: trash + manifest + undo window + realpath guard; dry-run default |
+| TC-098 | P0 | M | TODO | Disk-budget setting + Storage usage panel + status-bar chip |
+| TC-099 | P1 | S–M | TODO | Session retention by size, zstd after 3 d, fold archives into registry |
+| TC-100 | P1 | S | TODO | Cap `workspace.json.before-*`, rotate/disable `paste-debug.log*`, expire stale backups |
+| TC-101 | P0 | S–M | TODO | TMPDIR containment: per-session tmp, age sweep with live-process checks, cap |
+| TC-102 | P1 | S | TODO | WebKit localStorage WAL checkpoint/VACUUM + WebKit cache cap |
+| TC-103 | P1 | S | TODO | Dev build hygiene (`target` 13 GB), doctor warning; not in product janitor |
+| TC-104 | P1 | S–M | TODO | Unified `LogSink` with size+age rotation; daemon logs to file |
+| TC-105 | P1 | S | TODO | Cap/TTL persisted workspace arrays; 1 MB `workspace.json` guard |
+| TC-106 | P1 | S | TODO | Cockpit snapshot heartbeat write amplification (74 KB / 10 s) |
+| TC-107 | P1 | S | TODO | Crash-report ring + core-dump policy (opt-in upload only) |
+| TC-108 | P1 | S | TODO | Free-space guard (<15% warn, <10% emergency, <5% stop evidence writes) |
+| TC-109 | P0 | M | TODO | Bounded subscriber queues with drop-oldest + resync |
+| TC-110 | P0 | S | TODO | UTF-8-safe PTY reader with carry-over bytes + property test |
+| TC-111 | P1 | M | TODO | Replace per-instance polling with events/observers; visibility gating |
+| TC-112 | P1 | M | TODO | Panic hook, `catch_unwind` per connection, `Restart=`/`WatchdogSec` |
+| TC-113 | P1 | M | TODO | Bounded connection threads, timeouts, connection reuse |
+| TC-114 | P1 | M | TODO | Long-uptime soak harness (RSS/FD/threads/zombies slope) |
+| TC-115 | P1 | S–M | TODO | Adaptive GL instead of forced software GL; idle-CPU budget |
+| TC-116 | P2 | M | TODO | Sleep/resume and network-change reconciliation |
+| TC-117 | P1 | L | TODO | Render hot-spots: store slices, memo, virtualization, lazy mount |
+| TC-118 | P2 | S | TODO | Crash-safe persistence: fsync file+dir, checksum, last-good generation |
+| TC-119 | P2 | M | TODO | IPC frame fuzz and limits audit |
+| TC-120 | P2 | L | TODO | Daemon in-place upgrade / capability negotiation |
+| TC-121 | P1 | S | TODO | Bridge TLS story; refuse non-loopback bind without it |
+| TC-122 | P1 | S | TODO | Throttle keyed by spoofable header; unbounded attempts map |
+| TC-123 | P1 | S | TODO | Host allowlist, Origin check, top-level error guard in bridge |
+| TC-124 | P0 | S | TODO | `0700/0600` for sessions, scrollback, agent-status, workspace; per-project no-persist |
+| TC-125 | P1 | S | TODO | Tighten CSP (`unsafe-inline`, `frame-src http(s)`), scope opener |
+| TC-126 | P1 | M | TODO | Phone pairing, device revoke, `/api/send` audit log |
+| TC-127 | P1 | S | TODO | Consent/diff/undo for agent-config connection script |
+| TC-128 | P1 | M | TODO | Publish agent-status JSON contract + validator |
+| TC-129 | P1 | M | TODO | More agent adapters (Gemini, Aider, Copilot CLI, Cursor, generic wrapper) |
+| TC-130 | P2 | L | TODO | Sandboxed extension surface (adapters, panels, commands) |
+| TC-131 | P2 | S | TODO | Agent-connect step in onboarding |
+| TC-132 | P1 | M | TODO | Updater plugin + signed releases |
+| TC-133 | P1 | L | TODO | Windows/macOS port (IPC seam, scheduler, non-GTK snapshot) |
+| TC-134 | P2 | M | TODO | Linux packaging matrix (Flatpak/rpm/AUR), X11+Wayland smoke |
+| TC-135 | P1 | S | TODO | Licence/dependency audit, SBOM, notices; prune unused xterm deps |
+| TC-136 | P2 | M | TODO | Bundle-size budget and code splitting (dist 12 MB) |
+| TC-137 | P2 | M | TODO | Startup budget and lazy hydration |
+| TC-138 | P1 | S | TODO | Relax 1400×900 minimum window size |
+| TC-139 | P2 | M | TODO | Accessibility: terminal text layer, reduced motion, forced colors |
+| TC-140 | P2 | M | TODO | Command palette, rebindable keymap, cheat sheet |
+| TC-141 | P2 | S | TODO | Theme tokens, light/dark/high-contrast, palette import |
+| TC-142 | P2 | M | TODO | Central settings with schema version, migrations, export/import |
+| TC-143 | P2 | M | TODO | First-run onboarding |
+| TC-144 | P2 | S | TODO | End-user docs and privacy page; move internal docs |
+| TC-145 | P1 | M | TODO | Test pyramid additions: property, fuzz, janitor, perf budgets, OS matrix |
+| TC-146 | P2 | S | TODO | `tracing` + rolling file appender replacing 38 `eprintln!/println!` |
+| TC-147 | P2 | M | TODO | Local crash reporting, no telemetry by default |
+| TC-148 | P3 | M | TODO | Session timeline/replay (with redaction and opt-out) |
+| TC-149 | P3 | M | TODO | Agent attention inbox + phone push |
+| TC-150 | P3 | M | TODO | Per-agent usage/cost view (local) |
+| TC-151 | P1 | L | TODO | **Epic — Integrations: Brainiac** (children a–h below) |
+| TC-152 | P3 | M | TODO | Workspace templates / shareable layouts |
+
+### Size-control design (summary; TC-078 children)
+- One `StoreSpec` registry (id, root, class, max_age, max_bytes, protect rules, action) feeds the phase-1 script, the daemon janitor, the Storage panel and `termfleet doctor`.
+- Defaults (age AND size, oldest first, protected items skipped): releases 14 d / 2 GB / keep current+previous+running+pinned+newest 5; TMPDIR 7 d untouched / 3 GB / skip anything a live process holds; screenshots off by default, else 24 h / 200 MB; sessions 30 d idle / 1 GB, zstd after 3 d; backups 30 d / 200 MB / keep 5 workspace backups; logs 7 d / 100 MB; WebKit WAL checkpoint >16 MB; crash reports ring of 10.
+- Dry-run first (first run after upgrade is always dry-run), trash with manifest and 7 d undo (24 h under disk pressure), realpath guard, pins and active-item protection, audit log of every removal.
+- Janitor in the daemon (nice 19, idle ioprio, `catch_unwind` per store, backoff, emergency mode below 10% free) exposes metrics: bytes/files by store, last run, bytes freed, protected, errors, trash bytes.
+- Rollout: dry-run script → apply releases/screenshots/TMPDIR with trash → Rust janitor → UI budget/panel → sessions compress/redact → WebKit WAL/cache.
+
+### TC-093..TC-108: Evidence / Do / Done when (size control)
+- **TC-093** Evidence: no registry; stores are cleaned ad hoc (`pty.rs:1682` sessions at startup only, `commands.rs:947,1012` two trace types, header trace rotation `commands.rs:2793`). Do: `StoreSpec` registry + engine with plan/apply and audit log. Done when: every store in the report table is declared, `doctor` prints plan sizes per store, tests cover protect rules and symlink escape.
+- **TC-094** Evidence: 989 releases, `install-release.sh` has no prune. Do: prune after successful install, keep set as above, never delete an exe in `/proc/*/exe`; optional hardlink dedupe. Done when: dry run shows the keep set and ~17 GB reclaimable, daemon untouched.
+- **TC-095** Evidence: `webview_snapshot.rs` `output_path` writes ms-stamped PNGs forever; 20,099 files; callers `cockpitSnapshot.ts:131`, `CockpitSnapshotProbe.tsx:190` hourly. Do: periodic capture off by default; on-demand capture streamed in memory; TTL/count cap; per-pane exclude; redaction before write; `0600`. Done when: after 48 h with defaults the directory has no new PNGs unless requested.
+- **TC-096** Do: in-daemon janitor thread as designed; remove reliance on startup-only prune. Done when: a daemon that has been up 7 days still enforces caps; metrics visible in `doctor --json`.
+- **TC-097** Do: trash + manifest + undo + root guard; dry-run default. Done when: undo restores a deleted release/session byte-identical; a path outside any store root is refused.
+- **TC-098** Do: Settings → Storage panel with budget (default 5 GB), per-store bars, clean-now with plan preview, undo, pins; status chip amber 80% / red 95%. Done when: lowering the budget produces a plan that shrinks temp → screenshots → logs → archives → sessions → releases and never touches pins.
+- **TC-099** Evidence: sessions 832 MB, archive 744 MB, age-only prune (`pty.rs:38`). Do: size caps, zstd after 3 d, archives in registry, protect live/pinned/resumable. Done when: total sessions <1 GB with all live sessions restorable.
+- **TC-100** Evidence: 51 `workspace.json.before-*`, `paste-debug.log.before-*`. Do: keep 5 + last-good, rotate/disable debug log in release. Done when: counts bounded.
+- **TC-101** Evidence: launcher exports `TMPDIR` (`libexec/termfleet-desktop-launcher:15,77`); 19 GB. Do: per-session tmp dir removed on exit; sweep untouched entries older than 7 d unless held by a live process; cap 3 GB; reconsider exporting TMPDIR at all. Done when: dry run lists the 580 MB `package-dir-staging-*` and 2 GB extract cache as reclaimable and spares live-process dirs.
+- **TC-102** Evidence: localStorage WAL 97.7 MB (`storageGovernor.ts:26` documents a 96 MB incident). Do: checkpoint/truncate at >16 MB, monthly VACUUM, cap WebKit cache. Done when: WAL stays <20 MB over a week.
+- **TC-103** Evidence: `src-tauri/target` 13 GB. Do: `npm run clean:build`, `debug=line-tables-only`, shared target dir, doctor warning >10 GB.
+- **TC-104** Evidence: 38 `eprintln!/println!`; spawner uses `Stdio::null()` (`platform_process.rs`). Do: `LogSink` with rotation; daemon stderr to file on the fallback path.
+- **TC-105** Evidence: `workspace.ts:5385-5395` arrays; `workspace.json` 1.5 MB. Do: caps/TTL; dev build warns >1 MB.
+- **TC-106** Evidence: `cockpitSnapshot.ts:92` 10 s heartbeat, 74 KB snapshot + trace append (`commands.rs:2788-2812`). Do: write only on change or when a debug flag is set; fsync policy.
+- **TC-107** Evidence: no `set_hook`/`catch_unwind` in main/lib/daemon. Do: bounded crash-report ring; `LimitCORE` on the daemon unit; opt-in upload only.
+- **TC-108** Do: free-space guard thresholds and alerts; stop new evidence writes below 5% free.
+
+### TC-109..TC-120: long-uptime soak (evidence in report §3)
+- **TC-109** `pty.rs:1440-1495` unbounded `mpsc`, `:1767-1771` per-subscriber clone. Do: bounded queue + drop-oldest + resync marker, disconnect stalled subscribers, metric `subscriber_lag_bytes`. Done when: a deliberately stuck subscriber leaves daemon RSS flat for 1 h at 1 MB/s output.
+- **TC-110** `pty.rs:1034-1052` `from_utf8_lossy` per read. Do: carry incomplete tail bytes. Done when: property test over random splits passes for Hebrew/CJK/emoji/ZWJ.
+- **TC-111** Pollers: `BoardNode.tsx:270` 200 ms, `useNativeTerminalPane.ts:211` 250 ms, `Terminal.tsx:2608` 1.2 s, `TerminalCanvas.tsx:560` 2 s, `GamificationPanel.tsx:148` 1 s, `CanonicalAgentBoard.tsx:161` 2 s, `useMasterPlanTasks.ts:44` and `GitMonitoringView.tsx:144` 5 s, `StatusBar.tsx:207`/`CockpitSnapshotProbe.tsx:154` 10 s; 26 `setInterval` vs 17 `clearInterval`. Done when: idle window with 20 terminals has <1 wakeup/s/terminal and zero timers while hidden.
+- **TC-112** No panic hook; 43 non-test `.lock().unwrap()`; transient unit has no `Restart=` (`platform_process.rs:76-98`). Done when: an injected panic produces a crash report and the daemon returns within 10 s with sessions restorable.
+- **TC-113** Thread per connection (`daemon.rs` accept loop). Do: pool + max connections + timeouts.
+- **TC-114** Do: soak harness in an isolated HOME/socket (50 sessions, slow subscriber, disconnects, resizes, 1 MB/s bursts); fail on positive RSS/FD/thread/zombie slope. Done when: 24 h run produces a report and passes the acceptance numbers in the report §3.2.
+- **TC-115** Launcher defaults force software GL (`LIBGL_ALWAYS_SOFTWARE=1`, `WEBKIT_DISABLE_COMPOSITING_MODE=1`, `WEBKIT_DISABLE_DMABUF_RENDERER=1`, lines 108-110). Do: detect/fallback; measure idle CPU.
+- **TC-116..TC-120** see report §3.1 (resume handling to verify, fsync/last-good, IPC fuzz, daemon handover).
+
+### TC-121..TC-152: security, agents, release, UX, tests (evidence in report §4-§9)
+Key anchors: bridge `auth.mjs:21-23,45`, `accounts.mjs:158-167`, `server.mjs:3,37,113,278`; `tauri.conf.json` CSP and `minWidth/minHeight`; `release.yml:17,61,69` unsigned single-OS release; `Cargo.toml` Linux-only GTK/webkit2gtk and no updater; `termcontrol/bridge/adapters/` has only `claude.mjs`, `codex.mjs`; 395 `aria-*` / 52 `role=`; 1 `memo(` in `src`; `dist` 12 MB.
+
+### TC-151: Epic — Integrations: Brainiac (P1, L)
+Decision (proposed): integrate as an opt-in **Projects** module backed by a **sidecar indexer**; core owns project registry, dashboard panel, approval UI, permission model; personal Hermes/Telegram/baseline stays in a user-level Brainiac profile plugin. Not inside the PTY daemon. Prerequisites: TC-078/093/096/124 (bound the data first) and TC-128 (status contract).
+Privacy model: read-only by default, per-root permission scopes (`index`, `git-status`, `read-plan-files`, `size`, `write-suggestions`), local-only, no telemetry, never read `.env*`/key files, every write is a visible diff with one-click approval and undo.
+- **TC-151a** (S) Decision record + permission scopes + data location; link `devops/brainiac`.
+- **TC-151b** (M) Project index MVP: roots config, sidecar scanner, SQLite index, dashboard panel (last commit, dirty count, size, MASTER_PLAN/AGENTS/CLAUDE presence, linked panes/agents), manual rescan, open-in-TermFleet.
+- **TC-151c** (S) Scanner read-only enforcement test (git index/mtimes unchanged, reuse Brainiac `ro_check` approach) and deny list.
+- **TC-151d** (M) Scheduled sweep + diff since last scan + heartbeat chip (in-app scheduler; OS scheduler adapters later).
+- **TC-151e** (M) Pluggable plan readers → unified task model (MASTER_PLAN.md first).
+- **TC-151f** (M) Approval workflow: suggestion → diff → proposed task in the project's plan, with undo.
+- **TC-151g** (L) Registry entities (bots/agents/services), drift check, archive/consolidation queue reusing the TC-093 plan/apply engine.
+- **TC-151h** (M) Delivery plugin hook (Hermes/Telegram stays a personal plugin).
+Roadmap: Phase 0 prerequisites → Phase 1 index panel (MVP) → Phase 2 scheduled sweep + diff → Phase 3 plan aggregation + approvals → Phase 4 registry + archive queue → Phase 5 plugins and OS schedulers. Keep `devops/brainiac/scripts/sweep.py` as reference implementation and test oracle until the sidecar matches its output on the 2026-10-02 snapshot.
+
+### Suggested order (this section)
+TC-078 → TC-093 → TC-101 → TC-124 → TC-094 → TC-095 → TC-096/097 → TC-098; in parallel TC-110 → TC-109 → TC-112 → TC-111 → TC-114; then TC-121..TC-123, TC-125 (with TC-080); TC-128/TC-129; release work (TC-132, TC-135, TC-138); TC-151b last of the first wave.
+
+## 2026-10-02 (evening) — Plugin system epic (TC-153 … TC-169)
+
+Status: **proposed**. Source: `docs/reviews/termfleet-plugins-and-assembly-line-2026-10-02.md` (Part 1). Noam wants features like Brainiac to be plugins, not core. **Amends TC-151:** the "module vs sidecar" question is answered by this epic; TC-151b is implemented as the first plugin (TC-168). Core stays small; plugins are separate processes behind a manifest, a deny-by-default permission broker and a versioned JSON-RPC protocol; MCP is reused for tools, SKILL.md for prompt-commands, VS Code vocabulary for contribution points. Existing surface found: agent status hooks (`scripts/termfleet-*-hook.mjs`) writing `agent-status/*.json`, bridge adapters (`termcontrol/bridge/adapters`), file-based child requests (`childRequestLoop.ts`), `useMasterPlanTasks.ts`, `layouts/` — all implicit, none with a manifest or permissions.
+
+| ID | Pri | Eff | Status | Title |
+|---|---|---|---|---|
+| TC-153 | P1 | L | TODO | **Epic: Plugin system** (T0 declarative, T1 brokered sidecar, T2 OS-sandboxed sidecar) |
+| TC-154 | P1 | M | TODO | ADR + `termfleet-plugin.json` v1 JSON Schema (manifest, `contributes`, permission names) |
+| TC-155 | P1 | M | TODO | `termfleet-plugin-host`: spawn/supervise sidecars (transient systemd units like `platform_process.rs:72-135`, limits, backoff, crash-loop disable, heartbeat) |
+| TC-156 | P1 | M | TODO | JSON-RPC 2.0 over Unix socket with peer-cred check, `initialize` version/capability negotiation, bounded frames and queues |
+| TC-157 | P1 | M | TODO | Capability broker: deny by default, grants per plugin+manifest hash, consent UI, revocation, audit log; `plan.append` host-mediated with diff |
+| TC-158 | P1 | M | TODO | UI contributions v1: commands, status items, settings sections (JSON Schema), notifications |
+| TC-159 | P2 | L | TODO | Declarative views (list/table/card/form), then canvas node types; webview tier only for T2 |
+| TC-160 | P1 | S | TODO | Plugin storage under the retention engine (TC-093) and uninstall-to-trash (TC-097) |
+| TC-161 | P2 | M | TODO | MCP bridge: host as MCP client of plugin tools; TermFleet as read-only MCP server (panes, projects, tasks) |
+| TC-162 | P2 | S | TODO | Importer: Claude/Codex `SKILL.md` frontmatter -> palette prompt-commands |
+| TC-163 | P2 | S | TODO | `termfleet plugin dev|validate|pack` and an RPC trace viewer |
+| TC-164 | P2 | L | TODO | T2 sandbox tier (bubblewrap/Landlock first; macOS/Windows later) |
+| TC-165 | P2 | M | TODO | Plugin Manager UI (list, enable, grants, logs, health, versions) |
+| TC-166 | P3 | M | TODO | Signed plugin index + install from git/archive; update policy |
+| TC-167 | P1 | M | TODO | Conformance suite and fake plugins in CI (crash loop, slow, oversized frame, permission violation) |
+| TC-168 | P1 | M | TODO | **Brainiac as the first plugin** (`brainiac-core` generic + `brainiac-noam` personal); consumes `project-index-1.0`/`suggestion-1.0`; read-only grants; replaces TC-151b as the implementation route |
+| TC-169 | P2 | S | TODO | assembly-line status panel plugin (reads `reports/`, `state/` read-only) |
+
+Key decisions (proposed): permissions are honest about enforcement (T1 brokers the host API but is not an OS sandbox; third-party plugins should be T0 or T2); terminal output and keystrokes are separate scary scopes (`panes.output.read`, `panes.input`) never granted by default; plugin processes never share the PTY daemon's failure domain; freeze API v1 small (commands, status items, declarative views, storage, `projects.read`). Order: TC-154 → 155/156 → 157 → 158 → 160/167 → 168; then 159, 161, 162, 164, 165; distribution last.
+
+## 2026-10-02 (night) — Status reliability + Goal/Now redesign (TC-170 … TC-188) — HIGH PRIORITY
+
+Source: `docs/reviews/termfleet-status-and-tasks-2026-10-02.md` (read-only review; the app was not run). Finding: status/label derivation is ~10.4k lines in ~20 files (`src/lib/terminalHeader*.ts`, `taskLine.ts`, `agentStatusSidecar.ts`, `statusPollLoop.ts`, …) with five overlapping state vocabularies, two writers (poll loop + mounted `Terminal.tsx`), a second copy of the logic in the TermControl bridge, polling plus 5 s hold timers, and a pure-event model with no lease: of 1,477 sidecars on this machine 136 say `working`, 109 of them older than 7 days. "Go"/"Now" interpreted as the **Goal** and **Now** rows of every card (Task / Goal / Now); alternative reading = TASKS panel (TC-186) — **Noam to confirm**.
+
+| ID | Pri | Eff | Status | Title |
+|---|---|---|---|---|
+| TC-170 | P0 | L | TODO | **Epic: one authoritative status state machine + Goal/Now redesign** (shadow mode first) |
+| TC-171 | P0 | S | TODO | Status contract doc: states (absent/starting/working/needs-you/idle/interrupted/ended/crashed/unknown), inputs, transitions, confidence, lease; decide location (daemon vs TS first) |
+| TC-172 | P0 | M | TODO | Replay corpus + flag-gated recorder (sanitised JSONL of hook/PTY/process events); fault fixtures: duplicate, out-of-order, missing Stop, kill -9, Esc, two panes same cwd, long tool call, clock jump, session change |
+| TC-173 | P0 | M | TODO | Pure reducer `reduceSessionStatus(state,event,ctx)` with injected clock; table-driven + property tests (idempotent, order-tolerant, no `working` once process gone) |
+| TC-174 | P0 | M | TODO | Hook event schema v2 (seq, ts, sessionId, paneId, kind); append-only per-session JSONL instead of read-modify-write; legacy sidecar derived for compatibility |
+| TC-175 | P0 | M | TODO | Event ingestion via file watcher / daemon socket; demote `statusPollLoop` to a 30–60 s verification probe |
+| TC-176 | P0 | M | TODO | PTY-lifecycle and agent-process events into the reducer; operator Esc/Ctrl+C marks "verify"; interrupted vs crashed |
+| TC-177 | P0 | M | TODO | Lease + confidence + "last seen"/"quiet for" on every status chip; `unknown` state; no silent guess of Idle |
+| TC-178 | P0 | L | TODO | Single selector `selectSessionView(paneId)` for sidebar, map node, header, status bar and bridge; retire `badgeLiveness`, `keepNewerReportedStatus`, `reconcileSessionStatus`, `Terminal.tsx` writer step by step; lint forbids raw `statusSummary` reads in components |
+| TC-179 | P0 | S | TODO | Cross-surface parity test (sidebar row = map node = header for every fixture) |
+| TC-180 | P0 | M | TODO | Goal model `{text, source, confidence, pinned}`; click-to-edit/pin; sticky precedence operator > agent plan > inferred > labelled placeholder; tags you/agent/inferred |
+| TC-181 | P1 | S | TODO | Stop suppressing rejected goals as "not captured": show as *inferred*; keep a short deny-list; count rejections in diagnostics |
+| TC-182 | P1 | M | TODO | Typed Now `{kind,text,since}` straight from the latest event, with elapsed time; never blank on idle (dimmed last action + age); drop prose scraping (`agentSaid`, `readsAsActivity`) |
+| TC-183 | P1 | S | TODO | Attention view as a separate "Needs you (N)" strip/filter; status never reorders sidebar rows (respects HANDOFF-sidebar-stability rules) |
+| TC-184 | P1 | S | TODO | Status record hygiene: reaper for orphaned `working` runs; retention for 1,477 sidecars (TC-093); `termfleet status doctor` |
+| TC-185 | P0 | M | TODO | "Why this status?" explainer per pane: last events, rule fired, confidence, what would change it |
+| TC-186 | P1 | M | TODO | TASKS panel (if that is "Go/Now"): event-driven plan watching, explicit pane↔task binding (`TERMFLEET_TASK_ID`), one Now lane of tasks bound to live panes; drop 5 s/2 s polls |
+| TC-187 | P1 | S | TODO | Status metrics in soak (badge flips/min, `unknown` minutes, surface disagreements = 0, hook→pixel latency < 1 s) |
+| TC-188 | P2 | S | TODO | Docs: update `runtime-truth.md` and `regression-matrix.md`; fold the six `HANDOFF-sidebar-stability*.md` into docs |
+
+Order: TC-171 → 172/173 → 174/175 → 176/177 → 178/179 → 180–182 → 185 → 184. Ship the reducer in shadow mode (log disagreements vs the old path) before switching any surface.
+
+## Evidence locations (2026-10-02)
+Reports now live in-repo under `docs/reviews/`: `termfleet-review-2026-10-02.md`, `termfleet-deep-dive-2026-10-02.md`, `termfleet-plugins-and-assembly-line-2026-10-02.md`, `termfleet-status-and-tasks-2026-10-02.md`. Earlier entries in this plan that point at scratch/chat copies (`/workspace/...`) should be read as these files.
+
+## 2026-10-02 (late) — Coverage audit of the four review reports (TC-189 … TC-198)
+
+Audit method: every finding/task ID in `docs/reviews/termfleet-review-2026-10-02.md` (H1–H5, M1–M8, L1–L4, merge question → TC-078…TC-092), `termfleet-deep-dive-2026-10-02.md` (sections 2–10 → TC-093…TC-152, Brainiac children TC-151a–h), `termfleet-plugins-and-assembly-line-2026-10-02.md` (TC-153…TC-169) and `termfleet-status-and-tasks-2026-10-02.md` (TC-170…TC-188) was matched against the plan tables above: **all have a TC task**. The gaps below are items that appear in the reports' prose or in the 2026-10-01 sidebar/dropoff section (tracked there only as TODO bullets, no TC id) or are cross-report overlaps that need an explicit reconciliation.
+
+| ID | Pri | Eff | Status | Title |
+|---|---|---|---|---|
+| TC-189 | P1 | S | TODO | Replace the two 5 s hold timers (`stableHeader.ts` `MIN_HEADER_HOLD_MS`, `terminalHeaderState.ts` `HEADER_ROW_STABILITY_MS`) with one hysteresis rule inside the status reducer (TC-173); prove with the badge-flip counter (TC-187). Source: status report §2.3 |
+| TC-190 | P1 | S | TODO | Extend `cockpit-sidecar-corpus.spec.ts` into live-corpus invariants run nightly: no `working` record older than its lease without a live process, goal coverage floor, sidecar count cap. Source: status report §7.5 |
+| TC-191 | P1 | S | TODO | TermControl phone bridge reads the same selector/reducer output (TC-178); delete the duplicate `termcontrol/bridge/session-status.mjs` and `liveness.mjs` logic after parity tests pass. Source: status report §2.1 |
+| TC-192 | P1 | M | TODO | Dropoff: the successor card takes the predecessor's exact map position and sidebar slot, and typed-but-unsent text survives the handover (`archivePredecessor` → `removeTab` suspected). Source: plan section 2026-10-01 (TF-069), HANDOFF-sidebar-stability-6 |
+| TC-193 | P2 | M | TODO | "Earlier sessions" chip opens old chats read-only and copyable (`EarlierSessionsChip.tsx`; archived sessions are only daemon ptyIds today) |
+| TC-194 | P1 | S | TODO | Handover cards land in the wrong project group ("botson under termfleet"): check `projectCwd` vs start folder vs saved stale groups; migration for old cards; reproduce in the real app |
+| TC-195 | P2 | M | TODO | Project popup redesign (tidy layout, real emoji picker), user-picked project colours, and fixed built-in colours per card kind (terminal / agent / helper) that user picks never override; helper cards visibly distinct in sidebar and map; screenshot of the real app as proof |
+| TC-196 | P2 | S | TODO | Measure whether dropoff saves tokens and context (before/after on real handovers) |
+| TC-197 | P2 | S | TODO | Fix the pre-existing `tests/canvas-arrange.spec.ts:166` failure; add regression tests for stable sidebar order and close-selects-next |
+| TC-198 | P1 | S | TODO | Reconcile overlapping tasks with notes in the plan: TC-130 (sandboxed extension surface) is superseded by TC-153…TC-165; TC-128 (agent-status JSON contract) must be written as the v2 event schema of TC-174; TC-151b is implemented by TC-168; TC-086/TC-126 bridge hardening and TC-191 share one bridge workstream |
+
+Ordering: TC-198 first (cheap, prevents duplicate work), TC-192/194 with the sidebar work already in progress, TC-189–191 as part of the TC-170 epic.
