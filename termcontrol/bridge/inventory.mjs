@@ -6,6 +6,25 @@ const readJson = (p) => {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
 };
 
+/**
+ * The desktop rewrites workspace.json (over a megabyte) while termcontrol reads
+ * it, so a read can land on a half-written file. Treating that as "no map" made
+ * every daemon session reappear until the next poll. Keep the last good copy and
+ * fall back to it, so the list never flickers back to the full set.
+ */
+let lastWorkspace = { mtimeMs: 0, value: null };
+export function readWorkspace() {
+  let mtimeMs = 0;
+  try { mtimeMs = fs.statSync(PATHS.workspace).mtimeMs; } catch { return lastWorkspace.value; }
+  if (mtimeMs === lastWorkspace.mtimeMs && lastWorkspace.value) return lastWorkspace.value;
+  const fresh = readJson(PATHS.workspace);
+  if (fresh && Array.isArray(fresh.tabs)) {
+    lastWorkspace = { mtimeMs, value: fresh };
+    return fresh;
+  }
+  return lastWorkspace.value;
+}
+
 const PROVIDERS = { claude: 'claude', codex: 'codex', opencode: 'opencode' };
 
 function providerOf(source) {
@@ -214,7 +233,7 @@ export function orderPanesLikeCanvasSidebar(panes, workspace) {
   return ordered;
 }
 
-export function canvasSidebarView(workspace = readJson(PATHS.workspace)) {
+export function canvasSidebarView(workspace = readWorkspace()) {
   return workspace?.workspaceUiState?.canvasSidebarSortMode === 'manual' ? 'manual' : 'projects';
 }
 
@@ -261,7 +280,7 @@ function lineageByTerminal(workspace) {
  * terminals cannot disappear from the phone while remaining present on the
  * desktop. The workspace supplies the same project identity and ordering.
  */
-export function reconcileLivePanes(panes, liveById, workspace = readJson(PATHS.workspace), agents = agentsByPane()) {
+export function reconcileLivePanes(panes, liveById, workspace = readWorkspace(), agents = agentsByPane()) {
   const everyone = liveById instanceof Map ? liveById : new Map();
   // Only terminals that are still running and that the desktop still owns. An
   // exited shell and a handed-over predecessor both linger in the daemon.
@@ -331,7 +350,7 @@ export function reconcileLivePanes(panes, liveById, workspace = readJson(PATHS.w
 }
 
 export function listPanes({ maxAgeMs = null } = {}) {
-  const workspace = readJson(PATHS.workspace);
+  const workspace = readWorkspace();
   const { byTerminal, byProjectName } = tabDecorations(workspace);
   const now = Date.now();
   const panes = [];
