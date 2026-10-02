@@ -14,6 +14,7 @@
 //
 // Colours are the --state-* tokens; callers pair them with a glyph and a word.
 
+import type { AttentionState } from "./terminalAttention";
 import type { MasterPlanTaskStatus, TerminalRuntimeStatus } from "./types";
 
 export type AgentState = "running" | "waiting" | "idle" | "failed" | "done";
@@ -61,6 +62,13 @@ export function agentStateOf(status: string | null | undefined): AgentState | nu
     default:
       return null;
   }
+}
+
+/** Pane attention badge (waiting/running/idle/unavailable) -> state. */
+export function attentionToAgentState(state: AttentionState): AgentState {
+  if (state === "waiting") return "waiting";
+  if (state === "running") return "running";
+  return "idle";
 }
 
 /** Process (PTY runtime) vocabulary -> colour. Only running/failed are status colours. */

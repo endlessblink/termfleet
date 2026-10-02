@@ -87,37 +87,22 @@ button::-moz-focus-inner {
 
 .workspace-sidebar-row[data-active="true"] {
   background: var(--surface-selected) !important;
+  box-shadow: inset 2px 0 0 var(--accent-fill) !important;
 }
 
 .workspace-sidebar-row[data-active="false"] {
   background: transparent !important;
 }
 
-.workspace-sidebar-row[data-panel-color] {
-  background: color-mix(
-    in srgb,
-    var(--surface-raised) 92%,
-    var(--surface-rail)
-  ) !important;
-  box-shadow: inset 2px 0 color-mix(
-    in srgb,
-    var(--session-panel-color) 58%,
-    var(--surface-rail)
-  ) !important;
-}
-
-.workspace-sidebar-row[data-panel-color][data-active="true"] {
-  background: var(--surface-selected) !important;
-  box-shadow: inset 2px 0 color-mix(
-    in srgb,
-    var(--session-panel-color) 72%,
-    var(--surface-selected)
-  ) !important;
+/* A per-session label colour (data-panel-color) no longer draws a row edge: the only
+   edge on a row is the accent edge of the selected one. */
+.workspace-sidebar-row[data-panel-color][data-active="false"] {
+  background: transparent !important;
 }
 
 .workspace-sidebar-row[data-active="false"]:hover,
 .workspace-sidebar-row[data-active="false"]:focus-within {
-  background: var(--surface-hover) !important;
+  background: var(--surface-raised) !important;
 }
 
 .workspace-sidebar-row[data-quest-active="true"] {
@@ -393,20 +378,30 @@ button::-moz-focus-inner {
   padding-right: 82px;
 }
 
+.workspace-rail-button {
+  position: relative;
+}
+
 .workspace-rail-button:hover {
   background: var(--surface-hover) !important;
-  border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
 }
 
+/* Active rail item: selected fill, accent icon and a 2px accent bar on the rail edge. */
+.workspace-rail-button[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent-fill);
+}
+
 .workspace-rail-button[data-active="true"]:hover {
-  background: color-mix(
-    in srgb,
-    var(--surface-selected) 82%,
-    var(--accent-live)
-  ) !important;
-  border-color: var(--border-focus) !important;
-  color: var(--accent-live) !important;
+  background: var(--surface-selected) !important;
+  color: var(--accent) !important;
 }
 
 .workspace-header-create-button:hover,

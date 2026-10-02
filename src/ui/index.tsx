@@ -14,6 +14,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { AGENT_STATE_LABEL, type AgentState } from "../lib/agentState";
 import "./ui.css";
 
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" ");
@@ -74,15 +75,8 @@ export function Chip({ height = 22, active, className, ...rest }: ChipProps) {
 }
 
 /* ---- Status glyph + pill ------------------------------------------------- */
-export type AgentState = "running" | "waiting" | "idle" | "failed" | "done";
-
-export const AGENT_STATE_LABEL: Record<AgentState, string> = {
-  running: "Running",
-  waiting: "Waiting for you",
-  idle: "Idle",
-  failed: "Failed",
-  done: "Done",
-};
+export type { AgentState };
+export { AGENT_STATE_LABEL };
 
 export function StatusDot({ state, className }: { state: AgentState; className?: string }) {
   return <span aria-hidden="true" className={cx("tf-status-dot", `tf-status-dot--${state}`, className)} />;

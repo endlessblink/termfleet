@@ -78,6 +78,8 @@ import {
   buildTerminalHeaderState,
   type TerminalHeaderState,
 } from "../lib/terminalHeaderState";
+import { StatusDot } from "../ui";
+import { attentionToAgentState } from "../lib/agentState";
 import { badgeForAttention } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { FileExplorer } from "./FileExplorer";
@@ -458,9 +460,9 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     alignItems: "center",
     gap: 8,
-    padding: "12px 5px",
-    borderRight: "1px solid var(--border-subtle)",
-    background: "var(--surface-rail)",
+    padding: "12px 4px",
+    borderRight: "1px solid var(--border-default)",
+    background: "var(--surface-chrome)",
   },
   railButton: {
     width: 32,
@@ -476,11 +478,10 @@ const styles: Record<string, CSSProperties> = {
       "background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), transform var(--motion-fast)",
   },
   railSeparator: {
-    width: 24,
+    width: 20,
     height: 1,
-    background: "var(--border-subtle)",
+    background: "var(--border-default)",
     margin: "2px 0",
-    opacity: 0.9,
   },
   railSpacer: {
     flex: 1,
@@ -759,10 +760,10 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     gap: 8,
     margin: "8px 6px 4px",
-    color: "var(--text-tertiary)",
+    color: "var(--text-secondary)",
     fontSize: 11,
     fontWeight: 500,
-    letterSpacing: 0,
+    letterSpacing: "var(--label-caps-tracking)",
     textTransform: "uppercase",
   },
   projectRailRow: {
@@ -1248,7 +1249,7 @@ const styles: Record<string, CSSProperties> = {
     height: 24,
     border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
-    background: "var(--surface-rail)",
+    background: "var(--surface-raised)",
     color: "var(--text-secondary)",
     display: "grid",
     placeItems: "center",
@@ -1491,8 +1492,8 @@ function PanelButton({ panel }: { panel: OperationsPanel }) {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
-        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+        borderColor: "transparent",
+        color: active ? "var(--accent)" : "var(--text-secondary)",
       }}
       title={title}
       aria-label={label}
@@ -1524,8 +1525,8 @@ function FileTreeButton() {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
-        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+        borderColor: "transparent",
+        color: active ? "var(--accent)" : "var(--text-secondary)",
       }}
       title={active ? "Hide files panel" : "Show files panel"}
       aria-label="Files"
@@ -1573,11 +1574,7 @@ function PreviewButton() {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active
-          ? "var(--border-focus)"
-          : hasPreviewUrl
-            ? "var(--border-subtle)"
-            : "transparent",
+        borderColor: "transparent",
         color: active ? "var(--accent-live)" : "var(--text-secondary)",
         cursor: hasPreviewUrl ? "pointer" : "not-allowed",
         opacity: hasPreviewUrl ? 1 : 0.44,
@@ -1623,8 +1620,8 @@ function DrawingBoardButton() {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
-        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+        borderColor: "transparent",
+        color: active ? "var(--accent)" : "var(--text-secondary)",
       }}
       title={
         existingBoardId ? "Show the drawing board" : "Open a drawing board"
@@ -1723,8 +1720,8 @@ function GitMonitorButton() {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
-        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+        borderColor: "transparent",
+        color: active ? "var(--accent)" : "var(--text-secondary)",
       }}
       title="Git work monitor"
       aria-label="Git work monitor"
@@ -1747,7 +1744,7 @@ function TerminalAvatar({ tab, active }: { tab: Tab; active: boolean }) {
       style={{
         ...styles.iconCell,
         color: active ? "var(--accent-live)" : "var(--text-primary)",
-        border: `1px solid ${tab.color ?? "var(--border-subtle)"}`,
+        border: "1px solid transparent",
       }}
     >
       {hasEmoji ? tab.emoji : <TerminalWindow size={13} weight="duotone" />}
@@ -5118,18 +5115,11 @@ function SessionsPanel({
                         flexShrink: 0,
                       }}
                     >
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          background: badgeForAttention(
-                            paneBadgeAttention(terminal),
-                          ).color,
-                          marginInlineEnd: 5,
-                          verticalAlign: "middle",
-                        }}
+                      <StatusDot
+                        state={attentionToAgentState(
+                          badgeForAttention(paneBadgeAttention(terminal)).state,
+                        )}
+                        className="session-state-glyph"
                       />
                       {badgeForAttention(paneBadgeAttention(terminal)).label}
                     </span>
