@@ -185,7 +185,8 @@
   --canvas-terminal-icon: var(--text-2);       /* derived: mock icons are neutral */
   --canvas-file-icon: var(--text-2);
   --canvas-note-icon: var(--text-2);
-  --canvas-grid: rgba(255, 255, 255, 0.04);    /* (derived) the mock grid is radial dots #26262a 1px / 24px — see Map checklist */
+  --canvas-grid: rgba(255, 255, 255, 0.04);
+  --canvas-dot: #26262a; /* map dot grid (mock value: radial dot, 1px, every 24px) */    /* (derived) the mock grid is radial dots #26262a 1px / 24px — see Map checklist */
   --statusbar-bg: var(--surface-chrome);
   --statusbar-fg: var(--text-2);
   --command-chip-active-bg: var(--accent-tint);

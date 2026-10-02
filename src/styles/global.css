@@ -549,7 +549,7 @@ button::-moz-focus-inner {
 .canvas-sidebar-row[data-selected="true"] {
   background: var(--surface-selected) !important;
   border-color: transparent !important;
-  box-shadow: none !important;
+  box-shadow: inset 2px 0 0 var(--accent-fill) !important;
 }
 
 

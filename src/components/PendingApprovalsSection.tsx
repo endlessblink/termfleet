@@ -326,7 +326,7 @@ export function PendingApprovalsSection({
           <button
             type="button"
             data-testid="map-pending-approvals-approve-all"
-            style={{ ...styles.actionButton, color: "var(--accent-warning)", marginLeft: "auto" }}
+            style={{ ...styles.actionButton, color: "var(--state-waiting)", background: "transparent", marginLeft: "auto" }}
             onClick={() => setApproveAllOpen(true)}
             title="Review and approve every waiting request (Ctrl+Shift+A)"
           >

@@ -320,8 +320,8 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     cursor: "grab",
     background:
-      "linear-gradient(var(--canvas-grid-soft) 1px, transparent 1px), linear-gradient(90deg, var(--canvas-grid-soft) 1px, transparent 1px), #1b2022",
-    backgroundSize: "128px 128px, 128px 128px, auto",
+      "radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px), var(--surface-base)",
+    backgroundSize: "24px 24px, auto",
   },
   toolbar: {
     position: "absolute",
@@ -337,9 +337,8 @@ const styles: Record<string, CSSProperties> = {
     // supplies the blur (with a more-opaque @supports fallback).
     background: "color-mix(in srgb, var(--surface-raised) 70%, transparent)",
     border: "1px solid transparent",
-    borderRadius: 13,
-    boxShadow:
-      "inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 12px 34px rgba(0, 0, 0, 0.42)",
+    borderRadius: "var(--radius-lg)",
+    boxShadow: "none",
     animation: "workbench-popover-in var(--motion-med)",
     transition: "opacity var(--motion-med)",
   },
@@ -417,8 +416,8 @@ const styles: Record<string, CSSProperties> = {
     padding: "0 8px",
     marginRight: 2,
     borderRadius: "var(--radius-sm)",
-    background: "color-mix(in srgb, var(--accent-info) 16%, transparent)",
-    color: "var(--accent-info)",
+    background: "var(--accent-tint)",
+    color: "var(--accent)",
     fontFamily: "var(--font-ui)",
     fontSize: 11,
     whiteSpace: "nowrap",
@@ -564,7 +563,7 @@ const styles: Record<string, CSSProperties> = {
     position: "fixed",
     zIndex: 30,
     border: "1px solid transparent",
-    background: "color-mix(in srgb, var(--accent-info) 13%, transparent)",
+    background: "color-mix(in srgb, var(--accent-fill) 18%, transparent)",
     borderRadius: "var(--radius-sm)",
     pointerEvents: "none",
   },
@@ -642,10 +641,10 @@ const styles: Record<string, CSSProperties> = {
     position: "absolute",
     display: "flex",
     flexDirection: "column",
-    background: "var(--surface-raised)",
-    border: "1px solid transparent",
+    background: "var(--surface-panel)",
+    border: "1px solid var(--border-default)",
     borderRadius: "var(--radius-lg)",
-    boxShadow: "var(--shadow-card)",
+    boxShadow: "none",
     overflow: "visible",
     transition:
       "border-color var(--motion-med), box-shadow var(--motion-med), transform var(--motion-fast)",
@@ -656,9 +655,9 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 8,
     padding: "0 9px 0 11px",
-    borderBottom: "1px solid var(--border-subtle)",
+    borderBottom: "1px solid var(--border-default)",
     background:
-      "var(--surface-raised)" /* TF-015: solid, gradients repaint slowly in software */,
+      "var(--surface-panel)" /* TF-015: solid, gradients repaint slowly in software */,
     cursor: "grab",
     userSelect: "none",
   },
@@ -1297,10 +1296,8 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
   },
   taskPickerRowActive: {
-    border:
-      "1px solid color-mix(in srgb, var(--accent-live) 48%, var(--border-subtle))",
-    background:
-      "color-mix(in srgb, var(--accent-live) 10%, var(--surface-rail))",
+    border: "1px solid var(--accent-fill)",
+    background: "var(--accent-tint)",
   },
   taskPickerTaskId: {
     color: "var(--text-primary)",
@@ -1388,11 +1385,9 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
   },
   taskPickerPrimaryButton: {
-    border:
-      "1px solid color-mix(in srgb, var(--accent-live) 52%, var(--border-subtle))",
-    background:
-      "color-mix(in srgb, var(--accent-live) 13%, var(--surface-rail))",
-    color: "var(--accent-live)",
+    border: "1px solid var(--accent-fill)",
+    background: "var(--accent-tint)",
+    color: "var(--accent)",
   },
   taskPickerDangerButton: {
     border:
@@ -1539,8 +1534,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,
-    background:
-      "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+    background: "var(--accent-tint)",
     color: "var(--text-primary)",
     fontSize: 11,
     fontWeight: 500,
@@ -1687,8 +1681,8 @@ const styles: Record<string, CSSProperties> = {
     width: 34,
     borderRadius: "var(--radius-md)",
     border: "1px solid transparent",
-    background: "var(--accent-live)",
-    color: "#08100c",
+    background: "var(--accent-fill)",
+    color: "var(--surface-base)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -4663,14 +4657,10 @@ function CanvasNodeViewImpl({
             : selected
               ? 15
               : 1,
-        border: panelColor
-          ? `1px solid color-mix(in srgb, ${panelColor} 42%, transparent)`
-          : selected
-            ? "1px solid var(--border-focus)"
-            : styles.node.border,
-        boxShadow: selected
-          ? "var(--shadow-active-pane)"
-          : styles.node.boxShadow,
+        border: selected
+          ? "1px solid var(--accent-fill)"
+          : styles.node.border,
+        boxShadow: "none",
       }}
       onMouseDown={(event) => {
         if (event.button === 1) {
@@ -4725,6 +4715,12 @@ function CanvasNodeViewImpl({
             ? styles.terminalNodeHeader
             : null),
           ...(agentStatusSummary ? styles.agentNodeHeader : null),
+          // Identity colour is a 7% solid wash on the header (not an edge, not a gradient).
+          ...(panelColor
+            ? {
+                background: `color-mix(in srgb, ${panelColor} var(--identity-wash-pct), var(--surface-panel))`,
+              }
+            : null),
         }}
         onMouseDown={(event) => {
           if (event.button === 1) {
@@ -5552,7 +5548,7 @@ function CanvasNodeViewImpl({
                 void copyPaneLastReply(terminalPaneId).then((outcome) => {
                   button.title = labels[outcome];
                   button.style.color =
-                    outcome === "copied" ? "var(--accent-success)" : "var(--accent-warning)";
+                    outcome === "copied" ? "var(--state-running)" : "var(--text-secondary)";
                   window.setTimeout(() => {
                     button.title = "Copy last reply";
                     button.style.color = "";
