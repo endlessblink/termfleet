@@ -148,6 +148,14 @@
   --radius-md: 12px;
   --motion-fast: 120ms cubic-bezier(0.22, 1, 0.36, 1);
   --motion-med: 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* Previously referenced but never defined (design review P0-2). */
+  --text-muted: var(--text-tertiary);
+  --accent-primary: var(--accent-live);
+  --accent-positive: var(--accent-success);
+  --text-warning: var(--accent-warning);
+  --radius-lg: var(--radius-md);
+  --shadow-popover: var(--shadow-menu);
+  --surface-2: var(--surface-raised);
   /* No blur: the desktop draws in software, and a 42px blurred card shadow
      roughly doubled every map/workspace redraw (TF-015 probe: p50 21ms -> 11ms,
      p95 40ms -> 24ms). A crisp offset edge keeps the lift without the cost. */
