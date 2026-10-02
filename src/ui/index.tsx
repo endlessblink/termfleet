@@ -19,6 +19,8 @@ import "./ui.css";
 
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" ");
 
+export { Tooltip, TooltipHost } from "./Tooltip";
+
 /* ---- Button -------------------------------------------------------------- */
 export type ButtonSize = "sm" | "md" | "lg";
 export type ButtonVariant = "default" | "outlined" | "primary" | "warn";

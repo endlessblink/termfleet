@@ -7,6 +7,7 @@ import { WorkbenchSidebar } from "./components/WorkbenchSidebar";
 import { WorkspaceSurface } from "./components/WorkspaceSurface";
 import { WorkbenchHeader } from "./components/WorkbenchHeader";
 import { AttentionLiveRegion } from "./components/AttentionLiveRegion";
+import { TooltipHost } from "./ui/Tooltip";
 import { useKeybindings } from "./hooks/useKeybindings";
 import { useRegionNavigation } from "./hooks/useRegionNavigation";
 import { reconnectSavedAgentPanes } from "./lib/agentReconnectRuntime";
@@ -132,6 +133,7 @@ function App() {
         <h1 className="sr-only">{workspaceMode === "canvas" ? "Operations map" : "Sessions"}</h1>
       )}
       <AttentionLiveRegion />
+      <TooltipHost />
       {!immersiveTerminal.enabled && <WorkbenchHeader />}
       <div className="app-main">
         {!immersiveTerminal.enabled && <WorkbenchSidebar />}
