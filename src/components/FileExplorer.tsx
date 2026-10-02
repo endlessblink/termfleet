@@ -1025,6 +1025,7 @@ export function FileExplorer({ openFolderRequest = 0 }: { openFolderRequest?: nu
 
       <div style={styles.rootBar}>
         <input
+          aria-label="Project folder path"
           style={styles.pathInput}
           dir="auto"
           value={rootInput}
