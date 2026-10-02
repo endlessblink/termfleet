@@ -224,7 +224,7 @@ button::-moz-focus-inner {
 .gamification-quest-status-row span { display: inline-flex; align-items: center; gap: 5px; }
 .gamification-quest-status-row .is-counting { color: var(--accent-live); font-weight: 500; }
 .gamification-quest-progress-bar { height: 7px; margin-top: 9px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text-primary) 15%, transparent); }
-.gamification-quest-progress-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-info), var(--accent-warning)); transition: width 300ms ease; }
+.gamification-quest-progress-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-info), var(--accent-warning)); }
 .gamification-milestone-rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 12px; }
 .gamification-milestone-rail > div { display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border-radius: var(--radius-sm); color: var(--text-tertiary); font-size: 11px; }
 .gamification-milestone-rail span { display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--border-subtle); border-radius: 50%; background: var(--surface-hover); }
@@ -325,7 +325,7 @@ button::-moz-focus-inner {
 .gamification-level-row > div:first-child { display: flex; justify-content: space-between; gap: 8px; }
 .gamification-level-row > div:first-child span:first-child { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-warning); font-weight: 500; }
 .gamification-level-bar { height: 4px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text-primary) 12%, transparent); }
-.gamification-level-bar > div { height: 100%; border-radius: inherit; background: var(--accent-warning); transition: width 300ms ease; }
+.gamification-level-bar > div { height: 100%; border-radius: inherit; background: var(--accent-warning); }
 .gamification-level-row p { margin: 7px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gamification-level-row p b { color: var(--accent-warning); font-weight: 500; }
 
@@ -1236,14 +1236,16 @@ button:active {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Reduced motion, on purpose: state-feedback fades (colour, background, border,
+   opacity, shadow) stay; everything that moves or pulses (translate/scale transitions,
+   keyframe animations: pulses, shimmers, entrance slides) is turned off. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
+    animation: none !important;
     scroll-behavior: auto !important;
-    transition-duration: 1ms !important;
+    transition-property: color, background-color, border-color, outline-color, opacity, box-shadow !important;
   }
 }
 
