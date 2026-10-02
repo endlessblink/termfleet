@@ -247,14 +247,14 @@
   --font-weight-ui-status: var(--font-weight-ui);
 
   --explorer-titlebar-height: 32px;
-  --explorer-footer-height: 30px;
-  --explorer-input-height: 24px;
+  --explorer-footer-height: 34px;
+  --explorer-input-height: 26px;
   --explorer-title-size: 13px;
-  --explorer-title-weight: var(--font-weight-ui);
+  --explorer-title-weight: var(--font-weight-medium);
   --explorer-root-row-weight: var(--font-weight-ui);
-  --explorer-row-height: 27px;
-  --explorer-row-font-size: 14px;
-  --explorer-action-size: 22px;
+  --explorer-row-height: 24px;
+  --explorer-row-font-size: 12px;
+  --explorer-action-size: 24px;
   --explorer-pad-x: 8px;
   --explorer-tree-pad-y: 5px;
   --explorer-row-margin-x: 5px;

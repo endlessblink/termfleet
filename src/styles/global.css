@@ -468,7 +468,7 @@ button::-moz-focus-inner {
 
 .workspace-explorer-row[data-selected="true"] {
   background: var(--surface-selected) !important;
-  box-shadow: none !important;
+  box-shadow: inset 2px 0 0 var(--accent-fill) !important;
 }
 
 .workspace-explorer-row:focus-visible {
