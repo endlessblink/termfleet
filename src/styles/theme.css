@@ -187,15 +187,15 @@
   --command-chip-active-bg: var(--accent-tint);
   --command-chip-active-border: var(--accent-fill);
   /* explorer family (49 vars -> roles; geometry vars such as --explorer-row-height stay as they are) */
- --explorer-titlebar-bg: var(--surface-sidebar);
-  --explorer-rootbar-bg: var(--surface-sidebar); --explorer-footer-bg: var(--surface-sidebar);
+
+  --explorer-rootbar-bg: var(--surface-sidebar);
   --explorer-border: var(--border-default);
   --explorer-fg: var(--text-1); --explorer-title-fg: var(--text-1); --explorer-root-fg: var(--text-1);
   --explorer-muted: var(--text-2); --explorer-hidden: var(--text-3); --explorer-chevron: var(--text-3);
-  --explorer-row-hover: var(--surface-hover); --explorer-row-selected: var(--surface-selected);
+  --explorer-row-hover: var(--surface-hover);
 
-  --explorer-input-bg: var(--surface-base); --explorer-input-border: var(--border-control); --explorer-input-fg: var(--text-1);
- --explorer-menu-shadow: var(--elev-menu);
+  --explorer-input-bg: var(--surface-base);
+
   --explorer-workspace: var(--text-2); --explorer-workspace-tab: var(--text-2); --explorer-workspace-shade: var(--text-3);
   --explorer-folder: var(--text-2); --explorer-folder-tab: var(--text-2); --explorer-folder-shade: var(--text-3);
 
@@ -213,11 +213,11 @@
   --terminal-ansi-bright-white: var(--ansi-white); /* GAP: the design defines only 8 ANSI colours; brights reuse them */
   --terminal-selection-fg: var(--text-1);
   --terminal-scroll-track: var(--surface-base); --terminal-scroll-thumb: var(--border-strong); --terminal-scroll-thumb-hover: var(--border-control); /* (derived) */
- --terminal-block-rail-border: var(--border-default);
+
   --terminal-block-spine: var(--border-default); --terminal-block-marker: var(--border-control);
-  --terminal-block-marker-active: var(--accent-fill); --terminal-block-context: var(--accent-fill);
+  --terminal-block-marker-active: var(--accent-fill);
   /* tab chrome (legacy) */
- --tab-active-bg: var(--surface-selected); --tab-hover-bg: var(--surface-hover);
+
   /* transient text/bg tints used by a few files */
 
 }
@@ -253,6 +253,6 @@ LEGACY LAYOUT / GEOMETRY VARIABLES — values unchanged from the pre-redesign
   --explorer-pad-x: 8px;
   --explorer-tree-pad-y: 5px;
   --explorer-row-margin-x: 5px;
-  --explorer-radius-sm: 4px;
+
   --explorer-radius-md: 6px;
 }
