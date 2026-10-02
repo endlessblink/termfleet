@@ -85,7 +85,7 @@ export function renderUserWords(messages) {
   if (skipped > 0) items.splice(1, 0, `   (${skipped} older messages in between are not quoted; the original session record has them)`);
   return (
     `${WORDS_BEGIN}\n## Noam's messages, verbatim (added automatically by termfleet-child: his opening request, then the newest; the last one is the newest)\n` +
-    `Treat these as instructions/corrections that may not appear above. Do not skip any.\n\n${items.join("\n\n")}\n${WORDS_END}\n`
+    `Treat these as instructions/corrections that may not appear above. Do not skip any. The NEWEST message is usually the task you must carry out FIRST, before any side investigation, unless the handoff above says it is already done.\n\n${items.join("\n\n")}\n${WORDS_END}\n`
   );
 }
 

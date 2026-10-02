@@ -183,7 +183,9 @@ function resolveTask(options) {
     }
     return {
       task: handover
-        ? `Read ${file}. It is a handoff from the previous instance: continue exactly where it left off, and start by confirming what you understood.`
+        ? `Read ${file}. It is a handoff from the previous instance: continue exactly where it left off. ` +
+          `First confirm what you understood: quote Noam's newest messages (the last section of the file) and the first next step in full, and say which ONE thing you will do first. ` +
+          `Do that first step before any side investigation; a failing test or odd finding on the way is a sub-step of it, never a replacement for it.`
         : `Read ${file} and carry out the instructions in it.`,
       title: handover ? `Continue from ${basename(file)}` : `Helper: ${basename(file)}`,
       handover,
