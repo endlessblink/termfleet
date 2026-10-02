@@ -3344,9 +3344,12 @@ function CanvasNodeViewImpl({
       : undefined;
   const terminalStatusSummaryIsWorkstream =
     terminalStatusSummary === workstream?.statusSummary;
+  // The pane can switch agents after launch; tab workstream metadata describes
+  // the original launch and must not override this exact pane's current provider.
   const terminalAgentProvider =
-    workstream?.provider ??
     linkedTerminal?.agentProvider ??
+    linkedTerminal?.statusSummary?.provider ??
+    workstream?.provider ??
     terminalStatusSummary?.provider;
   const terminalAgentLabel = agentProviderIdentity(terminalAgentProvider);
   const terminalBranch = workstream?.gitBranch?.trim() || undefined;
@@ -3366,7 +3369,7 @@ function CanvasNodeViewImpl({
           ? linkedTerminal?.mainUserAsk?.text
           : undefined) ?? terminalWorkstreamAskText,
       provider:
-        workstream?.provider ?? linkedTerminal?.agentProvider ?? "shell",
+        terminalAgentProvider ?? "shell",
       status:
         linkedTerminal?.status === "failed"
           ? "failed"

@@ -2293,15 +2293,8 @@ export async function hydrateWorkspace(options: { background?: boolean } = {}) {
     for (const session of [...liveSessions].sort((a, b) => a.id.localeCompare(b.id))) {
       const providerSessionId = session.providerSessionId ?? providerSessionIdFromCommand(session.command);
       if (closedSessionIds.has(session.id) || (providerSessionId && closedProviderSessionIds.has(providerSessionId))) {
-        // A fast restart can race the asynchronous PTY teardown (especially
-        // after an explicit shell exit). The close tombstone is authoritative:
-        // remove this exact live session during hydration, but never use CWD or
-        // project matching that could affect an unrelated sibling.
-        try {
-          await invoke("daemon_kill_session", { id: session.id, userRequested: true });
-        } catch (error) {
-          console.warn("Could not finish explicit PTY close during hydration:", session.id, error);
-        }
+        // Historical close records exclude cards; they do not authorize a new
+        // destructive action against a live PTY. Explicit Close owns teardown.
         continue;
       }
       const legacyMapRebound = bindLegacyMapSessionToSavedPane(
@@ -2622,11 +2615,7 @@ export async function reconcileLiveWorkspace() {
     for (const session of [...liveSessions].sort((a, b) => a.id.localeCompare(b.id))) {
       const providerSessionId = session.providerSessionId ?? providerSessionIdFromCommand(session.command);
       if (closedSessionIds.has(session.id) || (providerSessionId && closedProviderSessionIds.has(providerSessionId))) {
-        try {
-          await invoke("daemon_kill_session", { id: session.id, userRequested: true });
-        } catch (error) {
-          console.warn("Could not finish explicit PTY close during live reconciliation:", session.id, error);
-        }
+        // Reconciliation must not replay historical close records as PTY kills.
         continue;
       }
 
