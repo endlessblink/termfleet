@@ -10,7 +10,7 @@ import {
   type AgentConnectSummary,
 } from "../lib/agentConnect";
 import { useWorkspaceStore } from "../stores/workspace";
-import type { TerminalRuntimeStatus } from "../lib/types";
+import { processStatusColor } from "../lib/agentState";
 import { pathTail, projectNameFor, projectRootFor, projectSessionCount } from "../lib/projectDisplay";
 import { classifySystemPressure, type SystemPressureSnapshot, type SystemPressureSummary } from "../lib/systemPressure";
 
@@ -19,7 +19,7 @@ import { classifySystemPressure, type SystemPressureSnapshot, type SystemPressur
 const styles: Record<string, CSSProperties> = {
   bar: {
     height: "var(--statusbar-height)",
-    background: "var(--surface-rail)",
+    background: "var(--surface-chrome)",
     color: "var(--text-secondary)",
     borderTop: "1px solid var(--border-subtle)",
     display: "flex",
@@ -89,17 +89,6 @@ const styles: Record<string, CSSProperties> = {
   },
 };
 
-type StatusKey = TerminalRuntimeStatus | "idle";
-
-const STATUS_COLORS: Record<StatusKey, string> = {
-  starting: "var(--accent-warning)",
-  running: "var(--accent-success)",
-  reconnected: "var(--accent-info)",
-  stale: "var(--accent-warning)",
-  failed: "var(--accent-danger)",
-  exited: "var(--text-secondary)",
-  idle: "var(--text-secondary)",
-};
 
 // ── StatusBar ─────────────────────────────────────────────────────────────────
 
@@ -118,7 +107,7 @@ export function StatusBar() {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeTerminal = activeTab?.terminals.find((terminal) => terminal.paneId === activeTab.activePaneId);
   const activeStatus = activeTerminal?.status ?? (activeTerminalId ? "running" : "idle");
-  const statusColor = STATUS_COLORS[activeStatus];
+  const statusColor = processStatusColor(activeStatus);
   const tabCount = tabs.length;
   const groupCount = groups.length;
   // Count only LIVE ptys. Stale/failed records linger in tab.terminals after a
@@ -216,7 +205,7 @@ export function StatusBar() {
       <div style={styles.left}>
         {activeTab && (
           <span style={{ ...styles.chip, ...styles.chipActive }} title={activeTab.initialCwd ?? activeTab.title}>
-            <TerminalSquare size={12} strokeWidth={1.8} color="var(--accent-live)" style={styles.icon} />
+            <TerminalSquare size={12} strokeWidth={1.8} color="var(--accent)" style={styles.icon} />
             <span style={styles.value}>
               <span style={{ ...styles.text, maxWidth: 180 }}>{activeTab.title}</span>
             </span>
@@ -224,7 +213,7 @@ export function StatusBar() {
         )}
 
         <span style={styles.chip} title={selectedProjectRoot ?? undefined}>
-            <Folder size={12} strokeWidth={1.8} color="var(--accent-info)" style={styles.icon} />
+            <Folder size={12} strokeWidth={1.8} color="var(--text-secondary)" style={styles.icon} />
             <span style={{ ...styles.text, maxWidth: 220 }}>
               {selectedProjectName} · {pathTail(selectedProjectRoot)}
             </span>
@@ -237,8 +226,7 @@ export function StatusBar() {
             style={{
               ...styles.dot,
               background: statusColor,
-              boxShadow: `0 0 0 3px color-mix(in srgb, ${statusColor} 14%, transparent)`,
-            }}
+                          }}
             aria-hidden="true"
           />
           <Server size={12} strokeWidth={1.8} color={statusColor} style={styles.icon} />
@@ -247,7 +235,7 @@ export function StatusBar() {
           </span>
         </span>
         <span style={styles.chip} title={`${terminalCount} terminal runtime records`}>
-          <Activity size={12} strokeWidth={1.8} color="var(--accent-live)" style={styles.icon} />
+          <Activity size={12} strokeWidth={1.8} color="var(--text-secondary)" style={styles.icon} />
           <span style={styles.muted}>
             {terminalCount} {terminalCount === 1 ? "pty" : "ptys"}
           </span>
@@ -294,7 +282,7 @@ export function StatusBar() {
             title={`Recovery states: ${recoveryText}`}
             data-testid="statusbar-recovery-summary"
           >
-            <Activity size={12} strokeWidth={1.8} color="var(--accent-warning)" style={styles.icon} />
+            <Activity size={12} strokeWidth={1.8} color={recoveryCounts.failed > 0 ? "var(--state-failed)" : "var(--text-secondary)"} style={styles.icon} />
             <span style={styles.muted}>{recoveryText}</span>
           </span>
         )}
@@ -307,7 +295,7 @@ export function StatusBar() {
             <Gauge
               size={12}
               strokeWidth={1.8}
-              color={systemPressure.severity === "high" ? "var(--accent-danger)" : "var(--accent-warning)"}
+              color={systemPressure.severity === "high" ? "var(--state-failed)" : "var(--text-secondary)"}
               style={styles.icon}
             />
             <span style={styles.muted}>{systemPressure.label}</span>
@@ -315,7 +303,7 @@ export function StatusBar() {
         )}
         {groupCount > 0 && (
           <span style={styles.chip}>
-            <Layers3 size={12} strokeWidth={1.8} color="var(--accent-info)" style={styles.icon} />
+            <Layers3 size={12} strokeWidth={1.8} color="var(--text-secondary)" style={styles.icon} />
             {groupCount} {groupCount === 1 ? "group" : "groups"}
           </span>
         )}

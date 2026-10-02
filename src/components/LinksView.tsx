@@ -1,5 +1,6 @@
 import { CSSProperties, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceStore } from "../stores/workspace";
+import { processStatusColor } from "../lib/agentState";
 import { pathTail } from "../lib/projectDisplay";
 import type { OpenFile, Tab, TerminalRuntimeStatus } from "../lib/types";
 
@@ -32,12 +33,12 @@ interface SessionView {
 }
 
 const statusTone: Record<TerminalRuntimeStatus, string> = {
-  starting: "var(--accent-warning)",
-  running: "var(--accent-positive, #5fb878)",
-  reconnected: "var(--accent-positive, #5fb878)",
-  stale: "var(--text-tertiary, #8a8f93)",
-  failed: "var(--accent-danger, #d96b6b)",
-  exited: "var(--text-tertiary, #8a8f93)",
+  starting: processStatusColor("starting"),
+  running: processStatusColor("running"),
+  reconnected: processStatusColor("reconnected"),
+  stale: processStatusColor("stale"),
+  failed: processStatusColor("failed"),
+  exited: processStatusColor("exited"),
 };
 
 function sessionStatus(tab: Tab): { tone: string; label: string } {

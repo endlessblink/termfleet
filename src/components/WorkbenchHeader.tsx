@@ -52,8 +52,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 10,
     padding: "0 18px",
-    background: "var(--surface-floor)",
-    borderBottom: "1px solid var(--border-subtle)",
+    background: "var(--surface-chrome)",
+    borderBottom: "1px solid var(--border-default)",
     position: "relative",
   },
   contextCrumb: {
@@ -89,15 +89,15 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 8,
     padding: "0 12px",
-    border: "none",
+    border: "1px solid var(--border-strong)",
     borderRadius: "var(--radius-md)",
-    background: "var(--surface-rail)",
+    background: "var(--surface-raised)",
     color: "var(--text-secondary)",
     fontSize: 12,
-    transition: "background var(--motion-fast)",
+    transition: "background var(--motion-fast), border-color var(--motion-fast)",
   },
   searchActive: {
-    background: "var(--surface-hover)",
+    borderColor: "var(--accent-fill)",
   },
   projectTabs: {
     width: "100%",
@@ -244,12 +244,12 @@ const styles: Record<string, CSSProperties> = {
     height: 18,
     display: "flex",
     alignItems: "center",
-    padding: "0 6px",
-    border: "none",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--surface-hover)",
+    padding: "0 5px",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-xs)",
+    background: "transparent",
     color: "var(--text-secondary)",
-    fontFamily: "var(--font-ui)",
+    fontFamily: "var(--font-mono)",
     fontSize: 11,
   },
   scopeRow: {
@@ -278,7 +278,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "0 7px",
     border: "none",
     borderRadius: "var(--radius-sm)",
-    background: "var(--surface-hover)",
+    background: "var(--surface-base)",
     color: "var(--text-secondary)",
     fontSize: 11,
     whiteSpace: "nowrap",
@@ -291,9 +291,9 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     padding: "0 9px",
-    border: "none",
-    borderRadius: "var(--radius-md)",
-    background: "var(--surface-hover)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     fontSize: 11,
@@ -305,12 +305,13 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     padding: "0 6px",
-    border: "none",
-    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-xs)",
     color: "var(--text-secondary)",
+    fontFamily: "var(--font-mono)",
     fontSize: 11,
     lineHeight: 1,
-    background: "var(--surface-hover)",
+    background: "transparent",
     flexShrink: 0,
   },
   menuFooter: {
@@ -322,7 +323,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "6px 6px 2px",
     marginTop: 4,
     borderTop: "1px solid var(--border-subtle)",
-    color: "var(--text-secondary)",
+    color: "var(--text-tertiary)",
     fontSize: 11,
   },
   keyHints: {
@@ -339,10 +340,11 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     padding: "0 5px",
-    border: "none",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--surface-hover)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-xs)",
+    background: "transparent",
     color: "var(--text-secondary)",
+    fontFamily: "var(--font-mono)",
     fontSize: 11,
     lineHeight: 1,
   },
@@ -362,21 +364,21 @@ const styles: Record<string, CSSProperties> = {
     overflowY: "auto",
     overflowX: "hidden",
     padding: 5,
-    border: "1px solid transparent",
-    borderRadius: "var(--radius-lg)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
-    boxShadow: "var(--shadow-menu)",
-    zIndex: 40,
+    boxShadow: "var(--elev-menu)",
+    zIndex: "var(--z-menu)",
     boxSizing: "border-box",
     animation: "workbench-popover-in var(--motion-med)",
   },
   menuRow: {
-    minHeight: 38,
+    minHeight: 44,
     display: "grid",
-    gridTemplateColumns: "24px minmax(0, 1fr) auto",
+    gridTemplateColumns: "28px minmax(0, 1fr) auto",
     alignItems: "center",
-    gap: 8,
-    padding: "6px 8px",
+    gap: 10,
+    padding: "0 10px",
     border: "none",
     borderRadius: "var(--radius-md)",
     color: "var(--text-primary)",
@@ -386,6 +388,7 @@ const styles: Record<string, CSSProperties> = {
   },
   menuRowActive: {
     background: "var(--surface-selected)",
+    boxShadow: "inset 2px 0 0 var(--accent-fill)",
   },
   emptyResult: {
     minHeight: 86,
@@ -397,13 +400,13 @@ const styles: Record<string, CSSProperties> = {
     textAlign: "center",
   },
   menuIcon: {
-    width: 24,
-    height: 24,
+    width: 26,
+    height: 26,
     display: "grid",
     placeItems: "center",
-    borderRadius: "var(--radius-md)",
-    background: "var(--surface-rail)",
-    color: "var(--accent-live)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
   },
   menuLabel: {
     overflow: "hidden",
@@ -418,7 +421,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 12,
+    fontSize: 11,
   },
   searchIcon: {
     color: "var(--text-secondary)",
@@ -435,7 +438,6 @@ const styles: Record<string, CSSProperties> = {
     height: 6,
     borderRadius: "50%",
     background: "var(--accent-live)",
-    boxShadow: "0 0 0 3px rgba(217, 154, 69, 0.11)",
     flexShrink: 0,
   },
   right: {
@@ -1099,9 +1101,9 @@ export function WorkbenchHeader() {
                   type="button"
                   style={{
                     ...styles.scopeButton,
-                    borderColor: active ? "var(--command-chip-active-border)" : "var(--border-subtle)",
-                    color: active ? "var(--accent-live)" : "var(--text-secondary)",
-                    background: active ? "var(--command-chip-active-bg)" : "var(--surface-rail)",
+                    borderColor: active ? "var(--accent-fill)" : "var(--border-default)",
+                    color: active ? "var(--accent)" : "var(--text-secondary)",
+                    background: active ? "var(--accent-tint)" : "var(--surface-base)",
                   }}
                   onMouseDown={(event) => {
                     event.preventDefault();
@@ -1157,7 +1159,7 @@ export function WorkbenchHeader() {
                   }}
                   onMouseEnter={() => setSelectedIndex(index)}
                 >
-                  <span style={styles.menuIcon}>
+                  <span style={{ ...styles.menuIcon, ...(active ? { color: "var(--accent)" } : null) }}>
                     <Icon size={13} strokeWidth={1.8} />
                   </span>
                   <span style={{ minWidth: 0 }}>

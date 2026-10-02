@@ -1,3 +1,4 @@
+import { AGENT_STATE_COLOR, taskStateOf } from "./agentState";
 import type { MasterPlanTaskStatus } from "./types";
 
 export interface MasterPlanTask {
@@ -192,9 +193,8 @@ export function taskStatusLabel(status: MasterPlanTaskStatus) {
 }
 
 export function taskStatusColor(status: MasterPlanTaskStatus) {
-  if (status === "done") return "var(--accent-live)";
-  if (status === "in-progress") return "#7dbac3";
-  if (status === "blocked") return "var(--accent-danger)";
-  if (status === "todo") return "var(--text-secondary)";
+  const state = taskStateOf(status);
+  if (state === "idle") return "var(--text-secondary)";
+  if (state) return AGENT_STATE_COLOR[state];
   return "var(--border-strong)";
 }

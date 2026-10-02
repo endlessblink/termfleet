@@ -74,6 +74,7 @@ import { stableHeader } from "../lib/stableHeader";
 import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { agentReconnectCommand } from "../lib/agentReconnect";
+import { processStatusColor } from "../lib/agentState";
 import { TaskProgressBar } from "./TaskProgressBar";
 import {
   calculatePaneBounds,
@@ -98,12 +99,12 @@ const STATUS_LABELS: Record<TerminalRuntimeStatus, string> = {
 };
 
 const STATUS_COLORS: Record<TerminalRuntimeStatus, string> = {
-  starting: "var(--accent-warning)",
-  running: "var(--accent-success)",
-  reconnected: "var(--accent-info)",
-  stale: "var(--accent-warning)",
-  failed: "var(--accent-danger)",
-  exited: "var(--text-secondary)",
+  starting: processStatusColor("starting"),
+  running: processStatusColor("running"),
+  reconnected: processStatusColor("reconnected"),
+  stale: processStatusColor("stale"),
+  failed: processStatusColor("failed"),
+  exited: processStatusColor("exited"),
 };
 
 type SplitTaskRow = {
