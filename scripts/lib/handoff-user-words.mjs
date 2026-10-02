@@ -57,30 +57,41 @@ export function codexUserMessages(rolloutText) {
   return out;
 }
 
-/** The block to append: the last `limit` messages, verbatim (long ones cut, marked). */
-export function renderUserWords(messages, limit = 12) {
-  const last = messages.slice(-limit);
-  if (last.length === 0) return "";
-  const items = last.map((m, i) => {
-    const body = m.text.length > MAX_CHARS ? `${m.text.slice(0, MAX_CHARS)} […cut]` : m.text;
-    return `${i + 1}. ${m.at ?? ""}\n${body.split("\n").map((l) => `   > ${l}`).join("\n")}`;
-  });
+/** Total size of the quoted words; the newest messages win, the opening request is always kept. */
+const BUDGET_CHARS = 24_000;
+
+/** The block to append: the opening request, then the newest messages that fit, verbatim (long ones cut, marked). */
+export function renderUserWords(messages) {
+  if (messages.length === 0) return "";
+  const cut = (m) => (m.text.length > MAX_CHARS ? { ...m, text: `${m.text.slice(0, MAX_CHARS)} […cut]` } : m);
+  const kept = [cut(messages[0])];
+  let used = kept[0].text.length;
+  const tail = [];
+  for (let i = messages.length - 1; i >= 1; i -= 1) {
+    const m = cut(messages[i]);
+    if (used + m.text.length > BUDGET_CHARS) break;
+    used += m.text.length;
+    tail.unshift(m);
+  }
+  const skipped = messages.length - 1 - tail.length;
+  const items = [...kept, ...tail].map((m, i) => `${i + 1}. ${m.at ?? ""}\n${m.text.split("\n").map((l) => `   > ${l}`).join("\n")}`);
+  if (skipped > 0) items.splice(1, 0, `   (${skipped} older messages in between are not quoted; the original session record has them)`);
   return (
-    `${WORDS_BEGIN}\n## Noam's last messages, verbatim (added automatically by termfleet-child; the last one is the newest)\n` +
+    `${WORDS_BEGIN}\n## Noam's messages, verbatim (added automatically by termfleet-child: his opening request, then the newest; the last one is the newest)\n` +
     `Treat these as instructions/corrections that may not appear above. Do not skip any.\n\n${items.join("\n\n")}\n${WORDS_END}\n`
   );
 }
 
 /** Add (or refresh) the block in the handoff file. Returns the number of messages written. */
-export function appendUserWords(file, messages, limit = 12) {
-  const block = renderUserWords(messages, limit);
+export function appendUserWords(file, messages) {
+  const block = renderUserWords(messages);
   if (!block) return 0;
   let text = readFileSync(file, "utf8");
   const start = text.indexOf(WORDS_BEGIN);
   const end = text.indexOf(WORDS_END);
   if (start >= 0 && end > start) text = text.slice(0, start) + text.slice(end + WORDS_END.length).replace(/^\n/, "");
   writeFileSync(file, `${text.replace(/\s*$/, "\n")}\n${block}`);
-  return Math.min(limit, messages.length);
+  return messages.length;
 }
 
 /** Locate the caller's own session record, or undefined. */

@@ -42,3 +42,16 @@ test("the caller's own Claude session record is found by id", () => {
   expect(userMessagesFor({ provider: "claude", sessionId: id, home }).length).toBe(1);
   expect(userMessagesFor({ provider: "claude", sessionId: "../x", home })).toEqual([]);
 });
+
+test("a long session keeps the opening request and the newest messages, and says what it left out", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tf-words-"));
+  const file = join(dir, "HANDOFF.md");
+  writeFileSync(file, "# handoff\n");
+  const many = Array.from({ length: 60 }, (_, i) => ({ at: String(i), text: `message ${i} ${"x".repeat(1500)}` }));
+  appendUserWords(file, many);
+  const out = readFileSync(file, "utf8");
+  expect(out).toContain("message 0 ");
+  expect(out).toContain("message 59 ");
+  expect(out).not.toContain("message 5 x");
+  expect(out).toContain("older messages in between are not quoted");
+});
