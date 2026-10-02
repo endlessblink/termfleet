@@ -80,7 +80,7 @@ termfleet-child status        # app running + listening?
   `termfleet.experimental.helperTerminals` = "0"). It was previously opt-in, which made
   spawns time out silently.
 - lean-ctx shell allowlist: `lean-ctx allow termfleet-child` once. Skill: `/spawn-on-termfleet`.
-- Auto handover near 50% context: `scripts/context-handoff-hook.mjs` (UserPromptSubmit
+- Auto handover near 40% of the 1M window: `scripts/context-handoff-hook.mjs` (UserPromptSubmit
   hook; `TERMFLEET_CONTEXT_HANDOFF=off|ask|auto`, default ask).
 
 ## Cross-agent board authority

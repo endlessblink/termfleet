@@ -1,4 +1,4 @@
-// "Hand over to a fresh instance when the context is about 50% full", for BOTH agents.
+// "Hand over to a fresh instance when the context is about 40% full", for BOTH agents.
 // Claude's transcript carries per-turn `usage`; Codex's rollout carries `token_count`
 // events with the model's context window. Without this a Codex session never hands
 // over and just runs its own "compacting context" instead.
@@ -94,12 +94,12 @@ export function handoffAdvice({ payload, provider, env = process.env }) {
   const text = readFileSync(transcript, "utf8");
   const fromCodex = provider === "codex" ? codexContext(text) : null;
   const tokens = fromCodex ? fromCodex.tokens : contextTokens(text);
-  const windowTokens = Number(env.TERMFLEET_CONTEXT_WINDOW_TOKENS) || fromCodex?.windowTokens || 200_000;
+  const windowTokens = Number(env.TERMFLEET_CONTEXT_WINDOW_TOKENS) || fromCodex?.windowTokens || 1_000_000;
   const usedPercent = (tokens / windowTokens) * 100;
   const message = decide({
     tokens,
     windowTokens,
-    percent: Number(env.TERMFLEET_CONTEXT_HANDOFF_PERCENT) || 50,
+    percent: Number(env.TERMFLEET_CONTEXT_HANDOFF_PERCENT) || 40,
     mode,
     alreadyFired: existsSync(marker),
     lastFiredPercent: readLastPercent(marker),

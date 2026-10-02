@@ -20,19 +20,19 @@ function run(dir: string, tokens: number, env: Record<string, string> = {}) {
   }).stdout;
 }
 
-test("under the threshold stays silent; at 50% it asks, then again only after 15 more points", () => {
+test("under the threshold stays silent; at 40% it asks, then again only after 15 more points", () => {
   const dir = mkdtempSync(join(tmpdir(), "tf-ctx-"));
-  expect(run(dir, 50_000)).toBe("");
-  const first = run(dir, 110_000, { TERMFLEET_CONTEXT_HANDOFF: "ask" });
-  expect(JSON.parse(first).hookSpecificOutput.additionalContext).toMatch(/55% full[\s\S]*only do it if he agrees/);
-  expect(run(dir, 120_000)).toBe("");
-  expect(JSON.parse(run(dir, 170_000)).hookSpecificOutput.additionalContext).toMatch(/STILL NOT HANDED OVER/);
+  expect(run(dir, 250_000)).toBe("");
+  const first = run(dir, 450_000, { TERMFLEET_CONTEXT_HANDOFF: "ask" });
+  expect(JSON.parse(first).hookSpecificOutput.additionalContext).toMatch(/45% full[\s\S]*only do it if he agrees/);
+  expect(run(dir, 500_000)).toBe("");
+  expect(JSON.parse(run(dir, 700_000)).hookSpecificOutput.additionalContext).toMatch(/STILL NOT HANDED OVER/);
   rmSync(dir, { recursive: true, force: true });
 });
 
 test("can be switched off, and auto mode tells the agent to proceed", () => {
   const dir = mkdtempSync(join(tmpdir(), "tf-ctx-"));
-  expect(run(dir, 150_000, { TERMFLEET_CONTEXT_HANDOFF: "off" })).toBe("");
-  expect(run(dir, 150_000, { TERMFLEET_CONTEXT_HANDOFF: "auto" })).toContain("without asking");
+  expect(run(dir, 750_000, { TERMFLEET_CONTEXT_HANDOFF: "off" })).toBe("");
+  expect(run(dir, 750_000, { TERMFLEET_CONTEXT_HANDOFF: "auto" })).toContain("without asking");
   rmSync(dir, { recursive: true, force: true });
 });
