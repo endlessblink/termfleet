@@ -545,7 +545,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   agentLaneList: {
     display: "grid",
@@ -707,7 +707,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     marginTop: 1,
   },
   nodeTitleActivity: {
@@ -721,7 +721,7 @@ const styles: Record<string, CSSProperties> = {
   },
   nodeTitleActivityLabel: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
@@ -814,7 +814,7 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalTaskLabel: {
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     letterSpacing: 0,
     lineHeight: "16px",
@@ -904,7 +904,7 @@ const styles: Record<string, CSSProperties> = {
   terminalNowActiveLabel: {
     ...({
       color: "var(--text-tertiary)",
-      fontSize: 10,
+      fontSize: 11,
       fontWeight: 500,
       letterSpacing: 0,
       lineHeight: "16px",
@@ -957,7 +957,7 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalStatusFieldLabel: {
     color: "color-mix(in srgb, var(--text-secondary) 62%, transparent)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     letterSpacing: 0,
   },
@@ -1001,7 +1001,7 @@ const styles: Record<string, CSSProperties> = {
   },
   agentStatusLabel: {
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
@@ -1057,7 +1057,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-xs)",
     background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -1083,7 +1083,7 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     gap: 8,
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
@@ -1109,7 +1109,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     overflow: "hidden",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   agentTaskNext: {
     minWidth: 0,
@@ -1324,7 +1324,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   taskPickerStatus: {
     height: 22,
@@ -1335,7 +1335,7 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     color: "var(--text-primary)",
-    fontSize: 10,
+    fontSize: 11,
     whiteSpace: "nowrap",
   },
   taskPickerFooter: {
@@ -1352,7 +1352,7 @@ const styles: Record<string, CSSProperties> = {
   },
   taskPickerLabel: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
@@ -1528,7 +1528,7 @@ const styles: Record<string, CSSProperties> = {
     writingMode: "vertical-rl",
     textTransform: "uppercase",
     color: "var(--text-primary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     letterSpacing: 0,
   },
@@ -1548,7 +1548,7 @@ const styles: Record<string, CSSProperties> = {
   terminalBodyTaskRailMeta: {
     writingMode: "vertical-rl",
     color: "var(--text-tertiary)",
-    fontSize: 9,
+    fontSize: 11,
     lineHeight: 1,
     whiteSpace: "nowrap",
   },
@@ -1602,7 +1602,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "color-mix(in srgb, var(--text-secondary) 70%, transparent)",
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: 500,
   },
   liveTerminalBody: {
@@ -1641,7 +1641,7 @@ const styles: Record<string, CSSProperties> = {
   },
   agentMissionLabel: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0,
     textTransform: "uppercase",
   },
@@ -1709,7 +1709,7 @@ const styles: Record<string, CSSProperties> = {
   agentDetailsSummary: {
     cursor: "pointer",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     textTransform: "uppercase",
     userSelect: "none",
   },
@@ -1746,7 +1746,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 9,
+    fontSize: 11,
     textTransform: "uppercase",
   },
   agentProviderCellValue: {
@@ -1798,12 +1798,12 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--accent-live)",
-    fontSize: 10,
+    fontSize: 11,
     textTransform: "uppercase",
   },
   agentEventTime: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     flexShrink: 0,
   },
   agentEventLabel: {
@@ -2016,13 +2016,13 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-mono)",
-    fontSize: 10,
+    fontSize: 11,
   },
   terminalMapPreviewStatus: {
     minWidth: 0,
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     textTransform: "uppercase",
   },
   terminalMapPreviewBody: {
@@ -2040,7 +2040,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     whiteSpace: "pre",
     fontFamily: "var(--font-mono)",
-    fontSize: 8,
+    fontSize: 11,
     lineHeight: "8px",
     letterSpacing: 0,
   },
@@ -2054,7 +2054,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
   },
   closeButton: {
     border: "none",
@@ -2315,7 +2315,7 @@ function TerminalBodyTaskSidebar({
             <div
               style={{
                 color: "var(--text-tertiary)",
-                fontSize: 9,
+                fontSize: 11,
                 textTransform: "uppercase",
                 letterSpacing: 0.4,
               }}
@@ -2349,7 +2349,7 @@ function TerminalBodyTaskSidebar({
                   style={{
                     flexShrink: 0,
                     color: "var(--text-tertiary)",
-                    fontSize: 9,
+                    fontSize: 11,
                   }}
                 >
                   {activityAgo(entry.at)}
@@ -10451,7 +10451,7 @@ export function MagicCanvas() {
                     padding: "7px 9px 4px",
                     color: "var(--text-tertiary)",
                     fontFamily: "var(--font-ui)",
-                    fontSize: 10,
+                    fontSize: 11,
     fontWeight: 500,
                     letterSpacing: "0.04em",
                     textTransform: "uppercase",
@@ -10510,7 +10510,7 @@ export function MagicCanvas() {
                     <span
                       style={{
                         color: "var(--text-tertiary)",
-                        fontSize: 10,
+                        fontSize: 11,
                       }}
                     >
                       {labelMenuRecoveryLoading

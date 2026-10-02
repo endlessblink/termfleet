@@ -33,7 +33,7 @@
 .project-board-project-row { display: flex; align-items: center; width: 100%; gap: 9px; border: 0; border-radius: 5px; background: transparent; padding: 9px 8px; text-align: left; font-size: 12px !important; }
 .project-board-project-row:hover, .project-board-picker-option:hover { background: #232b35; }
 .project-board-project-row[aria-current="page"], .project-board-picker-option[aria-current="page"] { background: #223044; color: #bed7f3; }
-.project-board-monogram { flex: 0 0 26px; height: 26px; display: grid; place-items: center; border-radius: 5px; background: #28313d; color: #c2cedd; font-size: 9px; font-weight: 500; }
+.project-board-monogram { flex: 0 0 26px; height: 26px; display: grid; place-items: center; border-radius: 5px; background: #28313d; color: #c2cedd; font-size: 11px; font-weight: 500; }
 .project-board-project-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-board-project-count { margin-left: auto; color: var(--board-muted); font-size: 11px; }
 .project-board-main { grid-row: 1 / -1; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 28px clamp(18px, 2.4vw, 40px) 36px; container-type: inline-size; }
@@ -54,7 +54,7 @@
 .project-board-option-copy { min-width: 0; flex: 1; }
 .project-board-option-copy strong, .project-board-option-copy small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .project-board-option-copy strong { font-size: 13px; font-weight: 400; }
-.project-board-option-copy small { margin-top: 3px; color: var(--board-muted); font-size: 10px; }
+.project-board-option-copy small { margin-top: 3px; color: var(--board-muted); font-size: 11px; }
 .project-board-picker-footer { padding: 10px 16px; border-top: 1px solid var(--board-line); color: var(--board-muted); font-size: 11px; }
 .project-board-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px 16px; color: var(--board-muted); font-size: 12px; }
 .project-board-summary strong { color: #e1e6ed; font-weight: 500; }

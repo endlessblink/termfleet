@@ -152,7 +152,7 @@ export function TokenBudgetIndicator({
             signal.level === "critical" ? `inset 3px 0 0 ${color}` : "none",
           color,
           fontFamily: "var(--font-ui)",
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: 500,
           whiteSpace: "nowrap",
           cursor: "pointer",
@@ -260,7 +260,7 @@ export function TokenBudgetIndicator({
                     : "Open model picker"}
             </button>
           )}
-          <span style={{ color: "var(--text-secondary)", fontSize: 10 }}>
+          <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
               Hover to inspect · Click to keep open · Esc to close
             </span>
           </div>,

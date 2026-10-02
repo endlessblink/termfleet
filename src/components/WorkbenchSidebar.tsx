@@ -620,7 +620,7 @@ const styles: Record<string, CSSProperties> = {
   },
   mapFilterCount: {
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
   },
   projectList: {
@@ -677,7 +677,7 @@ const styles: Record<string, CSSProperties> = {
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     lineHeight: 1,
     textTransform: "none",
@@ -688,7 +688,7 @@ const styles: Record<string, CSSProperties> = {
   reconnectAgentsStatus: {
     margin: "-2px 2px 7px",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     lineHeight: 1.35,
   },
   projectRow: {
@@ -750,7 +750,7 @@ const styles: Record<string, CSSProperties> = {
   },
   projectSectionCount: {
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 400,
   },
   projectSectionLabel: {
@@ -760,7 +760,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     margin: "8px 6px 4px",
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     letterSpacing: 0,
     textTransform: "uppercase",
@@ -947,7 +947,7 @@ const styles: Record<string, CSSProperties> = {
   sidebarHeaderLabel: {
     color: "var(--text-tertiary)",
     fontWeight: 500,
-    fontSize: 9,
+    fontSize: 11,
     letterSpacing: "0.07em",
     textTransform: "uppercase",
     whiteSpace: "nowrap",
@@ -1019,7 +1019,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   agentLaneList: {
     display: "grid",
@@ -1050,7 +1050,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   compactToggle: {
     height: 20,
@@ -1064,7 +1064,7 @@ const styles: Record<string, CSSProperties> = {
     background: "var(--surface-raised)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     cursor: "pointer",
   },
@@ -1115,7 +1115,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     fontVariantNumeric: "tabular-nums",
   },
   serviceActions: {
@@ -1136,7 +1136,7 @@ const styles: Record<string, CSSProperties> = {
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     cursor: "pointer",
   },
@@ -1146,7 +1146,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   serviceMetaLine: {
     minWidth: 0,
@@ -1154,7 +1154,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   agentLaneItem: {
     minWidth: 0,
@@ -1226,7 +1226,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-raised)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   taskDot: {
     width: 6,
@@ -1380,7 +1380,7 @@ const styles: Record<string, CSSProperties> = {
   },
   launcherHint: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     whiteSpace: "nowrap",
   },
   launcherLabel: {
@@ -1388,7 +1388,7 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 8,
     marginBottom: 4,
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     textTransform: "uppercase",
     letterSpacing: 0,
   },
@@ -1832,7 +1832,7 @@ function TerminalContextMenu({
           <span
             style={{
               color: "var(--text-secondary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 400,
             }}
           >
@@ -2044,7 +2044,7 @@ function ProjectContextMenu({
           <span
             style={{
               color: "var(--text-secondary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 400,
             }}
           >
@@ -2269,7 +2269,7 @@ function NewTerminalLaunchMenu({
           <span
             style={{
               color: "var(--text-secondary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 400,
             }}
           >
@@ -3266,7 +3266,7 @@ function SessionsPanel({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ ...styles.sectionLabel, margin: 0, fontSize: 10 }}>
+              <div style={{ ...styles.sectionLabel, margin: 0, fontSize: 11 }}>
                 Recovery review
               </div>
               <button

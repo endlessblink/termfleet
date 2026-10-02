@@ -203,7 +203,7 @@ function AgentTaskSidebar({
             writingMode: "vertical-rl",
             textTransform: "uppercase",
             color: "var(--text-primary)",
-            fontSize: 10,
+            fontSize: 11,
     fontWeight: 500,
             letterSpacing: 0,
           }}
@@ -233,7 +233,7 @@ function AgentTaskSidebar({
               style={{
                 writingMode: "vertical-rl",
                 color: "var(--text-tertiary)",
-                fontSize: 9,
+                fontSize: 11,
                 lineHeight: 1,
                 whiteSpace: "nowrap",
               }}
@@ -244,7 +244,7 @@ function AgentTaskSidebar({
               style={{
                 writingMode: "vertical-rl",
                 color: "var(--text-tertiary)",
-                fontSize: 9,
+                fontSize: 11,
                 lineHeight: 1,
                 whiteSpace: "nowrap",
               }}
@@ -257,7 +257,7 @@ function AgentTaskSidebar({
             style={{
               writingMode: "vertical-rl",
               color: "var(--text-tertiary)",
-              fontSize: 9,
+              fontSize: 11,
               lineHeight: 1,
               whiteSpace: "nowrap",
             }}
@@ -314,7 +314,7 @@ function AgentTaskSidebar({
             alignItems: "center",
             gap: 8,
             color: "var(--text-tertiary)",
-            fontSize: 10,
+            fontSize: 11,
           }}
         >
           <span>{rows.length > 0 ? rows.length : "No list"}</span>
@@ -380,7 +380,7 @@ function AgentTaskSidebar({
                     whiteSpace: "nowrap",
                     color:
                       "color-mix(in srgb, var(--text-secondary) 70%, transparent)",
-                    fontSize: 9,
+                    fontSize: 11,
                     fontWeight: 500,
                   }}
                 >
@@ -414,7 +414,7 @@ function AgentTaskSidebar({
                   gap: 6,
                   minWidth: 0,
                   color: "var(--text-secondary)",
-                  fontSize: 10,
+                  fontSize: 11,
                   textDecoration: done ? "line-through" : "none",
                   textDecorationColor: done
                     ? "color-mix(in srgb, var(--text-tertiary) 58%, transparent)"
@@ -663,7 +663,7 @@ function PaneContextMenu({
               borderRadius: "var(--radius-xs)",
               background: "var(--surface-base)",
               color: "var(--text-secondary)",
-              fontSize: 10,
+              fontSize: 11,
               lineHeight: "16px",
               fontFamily: "var(--font-ui)",
             }}
@@ -723,7 +723,7 @@ function PaneContextMenu({
             style={{
               padding: "5px 9px 3px",
               color: "var(--text-tertiary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 500,
               letterSpacing: "0.04em",
               textTransform: "uppercase",
@@ -749,7 +749,7 @@ function PaneContextMenu({
             style={{
               padding: "0 9px 4px",
               color: "var(--text-tertiary)",
-              fontSize: 10,
+              fontSize: 11,
             }}
           >
             {reconnectTarget
@@ -1927,7 +1927,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
     fontWeight: 500,
                             textTransform: "uppercase",
                           }}
@@ -1982,7 +1982,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                               style={{
                                 flexShrink: 0,
                                 color: "var(--text-primary)",
-                                fontSize: 10,
+                                fontSize: 11,
                                 fontWeight: 500,
                                 textTransform: "uppercase",
                               }}
@@ -2080,7 +2080,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             borderRadius: "var(--radius-xs)",
                             background: "var(--surface-base)",
                             color: "var(--text-secondary)",
-                            fontSize: 10,
+                            fontSize: 11,
                             textTransform: "uppercase",
                           }}
                           title={
@@ -2125,7 +2125,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
                           }}
                         >
                           Path
@@ -2163,7 +2163,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
                             textTransform: "uppercase",
                           }}
                         >
@@ -2200,7 +2200,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             style={{
                               flexShrink: 0,
                               color: "var(--text-tertiary)",
-                              fontSize: 10,
+                              fontSize: 11,
                               textTransform: "uppercase",
                             }}
                           >
@@ -2230,7 +2230,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                           color: "var(--text-secondary)",
-                          fontSize: 10,
+                          fontSize: 11,
                           fontWeight: 500,
                         }}
                         title={latestMissionControlInput.text}
@@ -2250,7 +2250,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                           color: "var(--text-secondary)",
-                          fontSize: 10,
+                          fontSize: 11,
                           fontWeight: 500,
                         }}
                         title={paneOutput}
@@ -2315,7 +2315,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
     fontWeight: 500,
                             textTransform: "uppercase",
                           }}
@@ -2393,7 +2393,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             style={{
                               flexShrink: 0,
                               color: "var(--text-tertiary)",
-                              fontSize: 10,
+                              fontSize: 11,
                               textTransform: "uppercase",
                             }}
                           >
@@ -2468,7 +2468,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           borderRadius: "var(--radius-xs)",
                           background: "var(--surface-base)",
                           color: "var(--text-secondary)",
-                          fontSize: 10,
+                          fontSize: 11,
                           textTransform: "uppercase",
                           flexShrink: 0,
                         }}
@@ -2509,7 +2509,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
                             textTransform: "uppercase",
                           }}
                         >
@@ -2546,7 +2546,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
                           }}
                         >
                           Now
@@ -2708,7 +2708,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     <span
                       style={{
                         color: STATUS_COLORS[terminalStatus],
-                        fontSize: 10,
+                        fontSize: 11,
                         lineHeight: 1,
                         textTransform: "none",
                         fontWeight: 500,
@@ -2756,7 +2756,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           borderRadius: "var(--radius-xs)",
                           background: "var(--surface-base)",
                           color: "var(--text-secondary)",
-                          fontSize: 10,
+                          fontSize: 11,
                           textTransform: "uppercase",
                           flexShrink: 0,
                         }}

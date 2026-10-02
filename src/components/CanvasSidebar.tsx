@@ -88,7 +88,7 @@ const styles: Record<string, CSSProperties> = {
   },
   filterCount: {
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
   },
   list: {

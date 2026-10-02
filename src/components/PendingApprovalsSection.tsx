@@ -62,7 +62,7 @@ const styles: Record<string, CSSProperties> = {
     background: "rgba(212, 164, 79, 0.16)",
     color: "var(--accent-warning)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     whiteSpace: "nowrap",
   },
@@ -165,7 +165,7 @@ const styles: Record<string, CSSProperties> = {
     background: "rgba(212, 164, 79, 0.12)",
     color: "var(--accent-warning)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     flexShrink: 0,
   },
@@ -213,7 +213,7 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     color: "var(--text-tertiary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 400,
   },
   actionButton: {
@@ -226,7 +226,7 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid transparent",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     cursor: "pointer",
     transition: "background var(--motion-fast), color var(--motion-fast)",
@@ -370,7 +370,7 @@ export function PendingApprovalsSection({
           <span
             style={{
               color: hasApprovals ? "var(--accent-warning)" : "var(--text-tertiary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 500,
             }}
           >

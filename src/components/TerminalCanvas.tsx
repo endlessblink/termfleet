@@ -2238,7 +2238,7 @@ export function TerminalCanvas({
                 padding: "2px 6px",
                 background: danger ? "rgba(120,0,0,0.82)" : "rgba(0,0,0,0.74)",
                 color: danger ? "#ff8a8a" : "#46d369",
-                font: "10px/1.35 monospace",
+                font: "11px/1.35 monospace",
                 pointerEvents: "none",
                 whiteSpace: "pre",
                 borderRadius: 3,

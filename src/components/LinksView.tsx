@@ -364,7 +364,7 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 2,
   },
   subLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     letterSpacing: 0,
     textTransform: "uppercase",
@@ -427,7 +427,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "50%",
   },
   statusLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: "var(--text-tertiary, #8a8f93)",
   },
   dirtyDot: {
