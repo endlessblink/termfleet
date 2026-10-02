@@ -2336,6 +2336,7 @@ export function TerminalCanvas({
         <div
           className="terminal-canvas-error"
           role="status"
+          title={attachError}
           style={{
             position: "absolute",
             top: 10,
@@ -2354,7 +2355,7 @@ export function TerminalCanvas({
             whiteSpace: "pre-wrap",
           }}
         >
-          {attachError}
+          Can't reach this terminal right now. Reopen it or reconnect to try again.
         </div>
       ) : null}
       <textarea

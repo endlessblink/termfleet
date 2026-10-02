@@ -4209,7 +4209,9 @@ function CanvasNodeViewImpl({
             terminalId: currentTerminal.id,
             threw: reason,
           });
-          setCanvasNotice(`Could not reconnect the saved chat: ${reason}`);
+          // Calm one-liner in the card; the raw reason goes to the console.
+          console.warn("Could not reconnect the saved chat:", reason);
+          setCanvasNotice("Could not reconnect the saved chat. Try Connect terminal again.");
         });
     }
     let attempts = 0;
@@ -5120,7 +5122,9 @@ function CanvasNodeViewImpl({
                     data-testid="canvas-terminal-node-description"
                     style={{
                       ...styles.terminalContextValue,
-                      color: labelColor ?? "var(--text-primary)",
+                      color:
+                        labelColor ??
+                        (terminalHeaderTaskCaptured ? "var(--text-primary)" : "var(--text-tertiary)"),
                     }}
                   >
                     {stabilizedTerminalHeaderTask}
