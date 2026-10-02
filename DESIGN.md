@@ -25,72 +25,88 @@ Don't relitigate these without updating the verifier too.
 
 termfleet is a **terminal-first cockpit**. The terminal is the star; everything
 else (sidebar, command bar, explorer, map) is supporting chrome that must
-**recede**. The aesthetic is **calm, Warp-inspired**: dark, spacious, neutral,
-and built from **fills, not outlines**.
+**recede**. The aesthetic is **calm, muted near-black**: a `#0a0a0b` floor that is
+also the terminal background (no seam), a small neutral surface ladder, and **one
+muted, low-chroma accent**.
 
-Three rules drive every decision:
+Four rules drive every decision:
 
-1. **Depth comes from background steps, never borders.** Borders are
-   near-invisible hairlines used only as faint separators. There are **no
-   outlines on interactive elements** — not on rows, buttons, inputs, or focus.
-2. **State is communicated by fill intensity + text contrast**, never an edge.
-   Selected = a lighter fill + brighter text. Non-selected = transparent + muted
-   text. Hover = a subtle fill in between. (This is how Warp does it.)
-3. **The accent is neutral.** No neon, no colored brand accent competing with the
-   terminal. A single near-white accent token carries "live/active"; semantic
-   colors (success/warn/danger/info) are reserved for status only.
+1. **One accent, used in five places only:** the 2px focus ring, the 2px left edge
+   of selected rows, the active rail item / active pane border / active block
+   marker, links and the active prompt marker, and the single filled primary
+   button in a dialog (dark label). Never for status. Never light text on accent fill.
+2. **State is never fill alone.** Surface steps are only 1.04–1.29:1 apart, so
+   selected = fill **+ 2px accent edge**; hover = fill only; focus = the ring;
+   active pane = 1px accent border.
+3. **Status = glyph + word + colour** (Running ● / Waiting for you ◆ / Idle ○ /
+   Failed ▲ / Done ✓). Muted state colours, always paired with a glyph and a word.
+   Amber exists only as "Waiting for you".
+4. **Depth is a surface step plus a 1px token border.** Shadows are invisible on
+   near-black; menus and dialogs add `--elev-*` on top of a raised surface and a
+   strong border.
 
-History worth knowing: we tried neon lime (too loud / AI-slop tell), then warm
-amber (clashed with the cool-gray surfaces), then cyan (still "not it"). The
-resolution was **neutral near-white + remove the warm/cool clash entirely**, plus
-killing every outline. See §4.
+Accent variants live in `theme.css` as `:root[data-accent="A|B|C"]` (A slate blue,
+B dusty violet, C sand/clay) and change only four tokens (`--accent`,
+`--accent-hi`, `--accent-fill`, `--accent-tint`). The default is A; switch the whole
+UI with `<html data-accent="B">` in `index.html` (the design handoff calls this
+`ACCENT_VARIANT`). Run `tools/contrast-check.py` (or `tests/design-tokens.spec.ts`)
+after touching any token.
+
+History worth knowing: neon lime was too loud, warm amber clashed with cool grey,
+cyan was "not it", and a neutral near-white accent left state unreadable. Graphite
+and emerald palettes were rejected in the 2026-10 redesign.
 
 ---
 
 ## 2. Color & surface tokens
 
-Source: `src/styles/theme.css` → "Terminal Cockpit contract tokens".
+Source: `src/styles/theme.css` (the token block is the single source; the JS/canvas
+mirror is `src/lib/tokens.ts`). Old names (`--text-primary`, `--accent-live`, …)
+remain as legacy aliases that point at the new tokens and are deleted as usage
+reaches zero.
 
-### Surface ladder (depth via steps)
+### Surface ladder (identical for A/B/C)
 | Token | Value | Use |
 |---|---|---|
-| `--surface-floor` | `#15181a` | App background, top command-bar strip (darkest) |
-| `--surface-base` | `#1b1f22` | Rails, sidebars, the command-bar field (recede) |
-| `--surface-raised` | `#20252a` | Menus, popovers, icon tiles, count pills |
-| `--surface-sunken` | `#181b1d` | Inset wells |
-| `--surface-wash` | `#20252a` | Subtle gradient partner |
-| `--surface-hover` | `#2a3036` | Row/control hover fill |
-| `--surface-selected` | `#313841` | **Selected row fill** (no border) |
+| `--surface-base` | `#0a0a0b` | App floor **and** terminal background |
+| `--surface-chrome` | `#0d0d0e` | Header, rail, status bar |
+| `--surface-sidebar` | `#101012` | Sidebars, git cards, input wells |
+| `--surface-panel` | `#131315` | Pane frame, map node, task card |
+| `--surface-raised` | `#1a1a1d` | Chips, fields, buttons, menus, dialogs |
+| `--surface-hover` | `#202023` | Hover row / control |
+| `--surface-selected` | `#28282c` | Selected row (+ 2px accent edge) |
 
-### Borders (hairlines only — never an outline)
+### Borders
 | Token | Value | Use |
 |---|---|---|
-| `--border-subtle` | `rgba(255,255,255,0.05)` | Faint structural separators (panel edges) |
-| `--border-strong` | `rgba(255,255,255,0.10)` | Slightly stronger separators |
-| `--border-focus` | `rgba(255,255,255,0.16)` | Subtle ring on **text inputs only** |
+| `--border-default` | `#2a2a2e` | Hairline, decorative only |
+| `--border-strong` | `#46464b` | kbd, menus, dialogs, open card |
+| `--border-control` | `#74747b` | Fields, outlined buttons (≥3:1) |
 
 ### Text
 | Token | Value | Use |
 |---|---|---|
-| `--text-primary` | `#e6e9ec` | Primary / selected text |
-| `--text-secondary` | `#9aa3ab` | Muted / non-selected text, metadata |
+| `--text-1` | `#ececee` | Primary |
+| `--text-2` | `#a1a1a8` | Secondary |
+| `--text-3` | `#8a8a91` | Tertiary; inside selected rows it rebinds to `--text-2` (4.28:1 < 4.5) |
+| `--text-disabled` | `#5d5d63` | Never carries information |
 
-### Accent
-| Token | Value | Use |
+### Accent (variant A shown; B/C swap four values)
+| Token | A | Use |
 |---|---|---|
-| `--accent-live` | `#c4ccd2` | Neutral near-white "active/live" accent, terminal cursor. **Retint this one token to color the whole UI.** |
-| `--accent-info` | `#7dbac3` | Semantic (status only) |
-| `--accent-success` | `#7fc681` | Semantic — pty running |
-| `--accent-warning` | `#d4a44f` | Semantic — starting/stale |
-| `--accent-danger` | `#ef6f72` | Semantic — failed/destructive |
+| `--accent` | `#85a1c5` | Text, links, caret, active icon |
+| `--accent-hi` | `#9db7d8` | Link hover / pressed |
+| `--accent-fill` | `#7188a6` | Focus ring, selected edge, active indicator, filled primary button |
+| `--accent-tint` | `#1e2127` | Selection wash, active scope chip |
 
-> The accent is deliberately neutral. To introduce a colored accent later, change
-> only `--accent-live` — fills/text do not depend on a colored accent for legibility.
+### Agent state (always glyph + word)
+`--state-running #93bda1`, `--state-waiting #dcb875` (the only amber),
+`--state-idle #8a8a91`, `--state-failed #d88383`, `--state-done #81b6b8`. Pill =
+14% tint fill + 45% border of the state colour, 999px radius, 11px/500.
 
-### Shadows (neutral, not accent-tinted)
-- `--shadow-command`, `--shadow-menu`, `--shadow-active-pane` use black + faint
-  white, never colored. `--shadow-selected-row` is **`none`** (selection is a
-  fill, not an edge).
+### Elevation
+Menus/popovers/palette = `--surface-raised` + 1px `--border-strong` + `--elev-menu`;
+dialogs add `--elev-dialog` and `--scrim`.
 
 ---
 
@@ -98,9 +114,11 @@ Source: `src/styles/theme.css` → "Terminal Cockpit contract tokens".
 
 | Token | Value |
 |---|---|
-| `--radius-xs` | `6px` (chips, small controls) |
-| `--radius-sm` | `9px` (rows, buttons, inputs) |
-| `--radius-md` | `12px` (panels, terminal frame) |
+| `--radius-xs` | `4px` (kbd, tags, pane-toolbar buttons) |
+| `--radius-sm` | `6px` (chips, status-bar chips, 24px buttons) |
+| `--radius-md` | `8px` (rows, fields, ≥28px buttons, menus, palette) |
+| `--radius-lg` | `12px` (pane frame, map node, dialog, git cards) |
+| `--radius-pill` | `999px` (status pills, progress bar) |
 | `--commandbar-height` | `44px` |
 | `--pane-chrome-height` | `42px` |
 
@@ -118,15 +136,17 @@ Applied uniformly to **project rows, session rows, map (canvas) rows, explorer
 rows**. Implemented via the shared `.workspace-sidebar-row` / `.canvas-sidebar-row`
 classes in `global.css` plus per-row inline layout.
 
-| State | Background | Text | Border / outline |
+| State | Background | Text | Edge |
 |---|---|---|---|
-| Rest (non-selected) | `transparent` | `--text-secondary` (muted) | **none** |
-| Hover | `--surface-hover` | `--text-primary` | **none** |
-| Selected / active | `--surface-selected` | `--text-primary` | **none** |
+| Rest (non-selected) | `transparent` | `--text-2` | none |
+| Hover | `--surface-hover` / `--surface-raised` | `--text-1` | none |
+| Selected / active | `--surface-selected` | `--text-1` (tertiary rebinds to `--text-2`) | **2px `--accent-fill` left edge** |
+| Keyboard focus | unchanged | unchanged | 2px focus ring, inset (`outline-offset: -2px`) |
 
-- Rows set `border: none !important` and `box-shadow: none !important` — there is
-  no edge in any state.
-- Selection is unmistakable from **fill + brighter text** alone.
+- Rows set `border: none !important`; the selected edge is an inset
+  `box-shadow` (or a 2px `::before`), never a full border.
+- Selection is fill **plus** the accent edge — surface steps alone are only
+  1.04–1.29:1 apart and fail 1.4.11.
 - Project rows are buttons that opt into this system via
   `className="workspace-sidebar-row"` + `data-active`, so there is one source of
   truth, not per-component borders.
