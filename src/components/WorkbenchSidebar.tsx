@@ -2891,7 +2891,7 @@ function SessionsPanel({
         <div style={styles.title}>
           <TerminalWindow size={14} weight="duotone" />
           <span style={styles.titleStack}>
-            <span style={styles.titleName}>{activeProjectName}</span>
+            <h2 style={{ ...styles.titleName, margin: 0 }}>{activeProjectName}</h2>
             <span
               style={styles.titlePath}
               title={
@@ -3119,10 +3119,10 @@ function SessionsPanel({
                 style={styles.projectGrid}
                 aria-label="Project search results"
               >
-                <div style={styles.projectSectionLabel}>
+                <h2 style={styles.projectSectionLabel}>
                   <span>Results</span>
                   <span>{projectModel.searchResults.length}</span>
-                </div>
+                </h2>
                 {projectModel.searchResults.length > 0 ? (
                   projectModel.searchResults.map(renderProjectRow)
                 ) : (

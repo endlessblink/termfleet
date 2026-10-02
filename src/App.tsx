@@ -6,6 +6,7 @@ import { StatusBar } from "./components/StatusBar";
 import { WorkbenchSidebar } from "./components/WorkbenchSidebar";
 import { WorkspaceSurface } from "./components/WorkspaceSurface";
 import { WorkbenchHeader } from "./components/WorkbenchHeader";
+import { AttentionLiveRegion } from "./components/AttentionLiveRegion";
 import { useKeybindings } from "./hooks/useKeybindings";
 import { useRegionNavigation } from "./hooks/useRegionNavigation";
 import { reconnectSavedAgentPanes } from "./lib/agentReconnectRuntime";
@@ -24,6 +25,7 @@ function App() {
   const reconcileCanvasState = useWorkspaceStore((state) => state.reconcileCanvasState);
   const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
   const hydrating = useWorkspaceStore((state) => state.hydrating);
+  const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
 
   useEffect(() => {
     // Restore and reconnect the durable pane graph once. Late daemon sessions
@@ -125,6 +127,11 @@ function App() {
 
   return (
     <div className="app-layout" data-immersive-terminal={immersiveTerminal.enabled ? "true" : "false"}>
+      {/* One page title per mode. Tasks and Git render their own visible h1. */}
+      {workspaceMode !== "tasks" && workspaceMode !== "graph" && (
+        <h1 className="sr-only">{workspaceMode === "canvas" ? "Operations map" : "Sessions"}</h1>
+      )}
+      <AttentionLiveRegion />
       {!immersiveTerminal.enabled && <WorkbenchHeader />}
       <div className="app-main">
         {!immersiveTerminal.enabled && <WorkbenchSidebar />}

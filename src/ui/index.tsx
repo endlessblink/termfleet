@@ -97,8 +97,8 @@ export function Kbd({ className, ...rest }: HTMLAttributes<HTMLElement>) {
   return <kbd className={cx("tf-kbd", className)} {...rest} />;
 }
 
-export function SectionLabel({ className, ...rest }: HTMLAttributes<HTMLElement>) {
-  return <span className={cx("tf-section-label", className)} {...rest} />;
+export function SectionLabel({ as: Tag = "span", className, ...rest }: HTMLAttributes<HTMLElement> & { as?: "span" | "h2" | "h3" }) {
+  return <Tag className={cx("tf-section-label", className)} {...rest} />;
 }
 
 /* ---- ListRow ------------------------------------------------------------- */
