@@ -42,10 +42,17 @@ export function codexContext(rolloutText) {
   return { tokens, windowTokens };
 }
 
-export function decide({ tokens, windowTokens, percent, mode, alreadyFired, provider = "claude" }) {
-  if (mode === "off" || alreadyFired || tokens <= 0) return null;
+/** Re-remind each time the context has grown this many points past the last reminder. */
+export const RENAG_STEP = 15;
+
+export function decide({ tokens, windowTokens, percent, mode, alreadyFired, lastFiredPercent, provider = "claude" }) {
+  if (mode === "off" || tokens <= 0) return null;
   const used = (tokens / windowTokens) * 100;
   if (used < percent) return null;
+  // One reminder is not enough: an agent mid-task can miss it and keep spending. Stay quiet until
+  // the context has grown another RENAG_STEP points, then say it again, louder.
+  const last = lastFiredPercent ?? (alreadyFired ? percent : undefined);
+  if (last !== undefined && used < last + RENAG_STEP) return null;
   const rounded = Math.round(used);
   const how =
     mode === "auto"
@@ -55,8 +62,9 @@ export function decide({ tokens, windowTokens, percent, mode, alreadyFired, prov
     provider === "codex"
       ? " Do NOT wait for Codex to compact the context on its own: hand over instead, in a new Codex session."
       : "";
+  const overdue = last !== undefined ? `STILL NOT HANDED OVER (reminded at ${Math.round(last)}%, every extra turn costs money). ` : "";
   return (
-    `Context is about ${rounded}% full: hand over to a fresh instance. Write an EXPANSIVE HANDOFF.md that skips nothing relevant: ` +
+    `${overdue}Context is about ${rounded}% full: hand over to a fresh instance. Write an EXPANSIVE HANDOFF.md that skips nothing relevant: ` +
     `the original request in Noam's words and every later correction, the goal and definition of done, everything done so far with evidence, ` +
     `every file touched (with uncommitted state), decisions and why, rejected approaches, open problems, running processes/ports/builds, ` +
     `constraints and house rules, exact next steps, and the first command to run. Commit only your own files, then run ` +
@@ -64,7 +72,17 @@ export function decide({ tokens, windowTokens, percent, mode, alreadyFired, prov
   );
 }
 
-/** The advice to inject for this hook payload, or null. Fires at most once per session. */
+/** The percent recorded by the last reminder; older markers held a timestamp, which means "fired at the threshold". */
+function readLastPercent(marker) {
+  try {
+    const value = Number(readFileSync(marker, "utf8"));
+    return Number.isFinite(value) && value > 0 && value <= 100 ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The advice to inject for this hook payload, or null. Re-fires every RENAG_STEP points of growth. */
 export function handoffAdvice({ payload, provider, env = process.env }) {
   const mode = (env.TERMFLEET_CONTEXT_HANDOFF ?? "auto").toLowerCase();
   if (mode === "off") return null;
@@ -75,16 +93,20 @@ export function handoffAdvice({ payload, provider, env = process.env }) {
   const marker = join(stateDir, `${provider === "codex" ? "codex-" : ""}${String(sessionId).replace(/[^A-Za-z0-9-]/g, "")}.fired`);
   const text = readFileSync(transcript, "utf8");
   const fromCodex = provider === "codex" ? codexContext(text) : null;
+  const tokens = fromCodex ? fromCodex.tokens : contextTokens(text);
+  const windowTokens = Number(env.TERMFLEET_CONTEXT_WINDOW_TOKENS) || fromCodex?.windowTokens || 200_000;
+  const usedPercent = (tokens / windowTokens) * 100;
   const message = decide({
-    tokens: fromCodex ? fromCodex.tokens : contextTokens(text),
-    windowTokens: Number(env.TERMFLEET_CONTEXT_WINDOW_TOKENS) || fromCodex?.windowTokens || 200_000,
+    tokens,
+    windowTokens,
     percent: Number(env.TERMFLEET_CONTEXT_HANDOFF_PERCENT) || 40,
     mode,
     alreadyFired: existsSync(marker),
+    lastFiredPercent: readLastPercent(marker),
     provider,
   });
   if (!message) return null;
   mkdirSync(stateDir, { recursive: true });
-  writeFileSync(marker, String(Date.now()));
+  writeFileSync(marker, String(Math.round(usedPercent)));
   return message;
 }
