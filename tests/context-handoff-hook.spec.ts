@@ -20,13 +20,13 @@ function run(dir: string, tokens: number, env: Record<string, string> = {}) {
   }).stdout;
 }
 
-test("under the threshold stays silent; at 40% it asks, then again only after 15 more points", () => {
+test("under the threshold stays silent; at 50% it asks, then again only after 15 more points", () => {
   const dir = mkdtempSync(join(tmpdir(), "tf-ctx-"));
   expect(run(dir, 50_000)).toBe("");
-  const first = run(dir, 90_000, { TERMFLEET_CONTEXT_HANDOFF: "ask" });
-  expect(JSON.parse(first).hookSpecificOutput.additionalContext).toMatch(/45% full[\s\S]*only do it if he agrees/);
-  expect(run(dir, 100_000)).toBe("");
-  expect(JSON.parse(run(dir, 150_000)).hookSpecificOutput.additionalContext).toMatch(/STILL NOT HANDED OVER/);
+  const first = run(dir, 110_000, { TERMFLEET_CONTEXT_HANDOFF: "ask" });
+  expect(JSON.parse(first).hookSpecificOutput.additionalContext).toMatch(/55% full[\s\S]*only do it if he agrees/);
+  expect(run(dir, 120_000)).toBe("");
+  expect(JSON.parse(run(dir, 170_000)).hookSpecificOutput.additionalContext).toMatch(/STILL NOT HANDED OVER/);
   rmSync(dir, { recursive: true, force: true });
 });
 

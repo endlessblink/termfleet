@@ -24,18 +24,18 @@ test("the context size and window are read from the last Codex token_count event
   expect(codexContext("not a rollout")).toEqual({ tokens: 0, windowTokens: 0 });
 });
 
-test("a Codex session under 40% stays silent and over 40% is told to hand over in Codex", () => {
+test("a Codex session under 50% stays silent and over 50% is told to hand over in Codex", () => {
   const dir = mkdtempSync(join(tmpdir(), "tf-codex-ctx-"));
   const file = join(dir, "rollout.jsonl");
   const env = { XDG_STATE_HOME: dir } as NodeJS.ProcessEnv;
   const payload = { session_id: "codex-sess-1", transcript_path: file };
 
-  writeFileSync(file, rollout(80_000)); // ~31%
+  writeFileSync(file, rollout(100_000)); // ~39%
   expect(handoffAdvice({ payload, provider: "codex", env })).toBeNull();
 
-  writeFileSync(file, rollout(120_000)); // ~46%
+  writeFileSync(file, rollout(140_000)); // ~54%
   const advice = handoffAdvice({ payload, provider: "codex", env }) as string;
-  expect(advice).toContain("46% full");
+  expect(advice).toContain("54% full");
   expect(advice).toContain("--provider codex");
   expect(advice).toContain("Do NOT wait for Codex to compact");
 

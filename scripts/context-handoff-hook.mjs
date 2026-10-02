@@ -13,7 +13,7 @@
 // user. Modes via TERMFLEET_CONTEXT_HANDOFF: "off" | "ask" | "auto" (default).
 // "auto" lets the agent run the documented handover without asking; still once per
 // session, and the successor session gets its own marker so no chain runs away
-// unless the user opts in. Threshold: TERMFLEET_CONTEXT_HANDOFF_PERCENT (default 40),
+// unless the user opts in. Threshold: TERMFLEET_CONTEXT_HANDOFF_PERCENT (default 50),
 // window: TERMFLEET_CONTEXT_WINDOW_TOKENS (default 200000; use 1000000 for [1m]).
 import { contextTokens, decide, handoffAdvice } from "./lib/context-handoff.mjs";
 
