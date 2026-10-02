@@ -2,23 +2,33 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspaceStore } from "../stores/workspace";
+import { StatusPill as UiStatusPill } from "../ui";
+import type { AgentState } from "../lib/agentState";
 import { inferAgentWorkstream, summarizeGitMonitoring, type GitMonitorAgent, type GitMonitorGitFacts, type GitMonitorHealth, type GitMonitorProject } from "../lib/gitMonitoring";
 
 const healthCopy: Record<GitMonitorHealth, { label: string; detail: string; color: string }> = {
-  "under-control": { label: "No action needed", detail: "Agents are working normally. Nothing needs your attention right now.", color: "var(--accent-positive, #5fb878)" },
+  "under-control": { label: "No action needed", detail: "Agents are working normally. Nothing needs your attention right now.", color: "var(--state-running)" },
   "decision-ready": { label: "Ready to save", detail: "An agent finished clean work. Review it, then save it into the project.", color: "var(--state-waiting)" },
-  "agent-help": { label: "Needs your decision", detail: "An agent is blocked. Open the work below to see the question and choose what happens next.", color: "var(--accent-danger, #d96b6b)" },
+  "agent-help": { label: "Needs your decision", detail: "An agent is blocked. Open the work below to see the question and choose what happens next.", color: "var(--state-failed)" },
   checking: { label: "Checking project status", detail: "The monitor is confirming the projects before offering decisions.", color: "var(--text-secondary)" },
-  empty: { label: "No agent work tracked", detail: "There is no agent work for the monitor to assess yet.", color: "var(--text-tertiary, #8d949d)" },
+  empty: { label: "No agent work tracked", detail: "There is no agent work for the monitor to assess yet.", color: "var(--state-idle)" },
+};
+
+// Project/agent health -> one of the five shared states (glyph + word + colour).
+const healthState: Record<GitMonitorHealth, AgentState> = {
+  "under-control": "running",
+  "decision-ready": "waiting",
+  "agent-help": "failed",
+  checking: "idle",
+  empty: "idle",
 };
 
 function StatusPill({ health }: { health: GitMonitorHealth }) {
-  const copy = healthCopy[health];
-  return <span style={{ ...styles.statusPill, color: copy.color, borderColor: `${copy.color}66` }}><span style={{ ...styles.statusDot, background: copy.color }} />{copy.label}</span>;
+  return <UiStatusPill state={healthState[health]} label={healthCopy[health].label} />;
 }
 
 function Count({ value, label }: { value: number; label: string }) {
-  return <span style={styles.count}><strong>{value}</strong> {label}</span>;
+  return <span className="git-monitor-count" style={styles.count}><strong>{value}</strong> {label}</span>;
 }
 
 function AgentRow({ agent, onCombine, onOpen, combineRequested }: { agent: GitMonitorAgent; onCombine: (agent: GitMonitorAgent) => void; onOpen: (agent: GitMonitorAgent) => void; combineRequested: boolean }) {
@@ -34,8 +44,8 @@ function AgentRow({ agent, onCombine, onOpen, combineRequested }: { agent: GitMo
           <span>{agent.worktree ? "Separate work area" : "Shared project area"}</span>
           <span>Git: {!agent.gitFactsAvailable ? "still checking" : agent.dirty === true ? "changes found" : "clean"}</span>
           {agent.branch && <span>Branch: {agent.branch}</span>}
-          {agent.dirty === true && <span style={{ color: "var(--accent-warning)" }}>Changes waiting to be saved</span>}
-          {agent.gitHasConflicts === true && <span style={{ color: "var(--accent-danger)" }}>Needs your decision</span>}
+          {agent.dirty === true && <span style={{ color: "var(--state-waiting)" }}>Changes waiting to be saved</span>}
+          {agent.gitHasConflicts === true && <span style={{ color: "var(--state-failed)" }}>Needs your decision</span>}
         </div>
       </button>
       <div style={styles.agentAction}>
@@ -173,7 +183,6 @@ export function GitMonitoringView() {
 
   const content = (
     <main className={`git-monitor-shell${narrowViewport ? " git-monitor-narrow" : ""}`} style={styles.shell} data-testid="git-monitor-view" aria-label="Git work monitor">
-      <style>{responsiveStyles}</style>
       <div style={styles.navigation}>
         <button type="button" style={styles.backButton} onClick={returnToActiveTerminal} aria-label="Back to cockpit">
           <ArrowLeft size={15} weight="bold" />
@@ -187,7 +196,7 @@ export function GitMonitoringView() {
       </header>
       {summary.gitFactsPending > 0 && <div style={styles.callout} data-testid="git-monitor-facts-pending"><strong>Git status is still loading for {summary.gitFactsPending} agent{summary.gitFactsPending === 1 ? "" : "s"}.</strong><span>The monitor will show combine decisions only after the project facts are confirmed.</span></div>}
       {summary.needsAttention > 0 && <div style={styles.callout} data-testid="git-monitor-decision-callout"><strong>{summary.needsAttention} decision{summary.needsAttention === 1 ? "" : "s"} need your attention.</strong><span>Open the project below to understand the next safe action.</span></div>}
-      <aside style={styles.guide} aria-label="How statuses are decided" data-testid="git-monitor-status-guide">
+      <aside className="git-monitor-guide" style={styles.guide} aria-label="How statuses are decided" data-testid="git-monitor-status-guide">
         <strong>How to read this</strong>
         <span><b>No action needed</b> means the agent is working normally or no finished clean work is waiting.</span>
         <span><b>No agent work tracked</b> means this monitor has nothing to assess yet; it is not a clean bill of health.</span>
@@ -204,30 +213,28 @@ export function GitMonitoringView() {
 }
 
 const styles: Record<string, CSSProperties> = {
-  shell: { position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "auto", padding: "42px clamp(24px, 5vw, 72px)", background: "var(--surface-sunken)", color: "var(--text-primary)" },
+  shell: { position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "auto", padding: "28px 72px", background: "var(--surface-panel)", color: "var(--text-primary)" },
   navigation: { display: "flex", alignItems: "center", gap: 12, maxWidth: 1080, margin: "0 auto 34px" },
-  backButton: { display: "inline-flex", alignItems: "center", gap: 8, border: 0, borderRadius: 8, padding: "8px 10px", background: "var(--surface-raised)", color: "var(--text-primary)", font: "inherit", fontSize: 12, cursor: "pointer" },
+  backButton: { display: "inline-flex", alignItems: "center", gap: 8, border: 0, borderRadius: 8, height: 31, padding: "0 12px", background: "var(--surface-raised)", color: "var(--text-primary)", font: "inherit", fontSize: 12, cursor: "pointer" },
   navigationContext: { color: "var(--text-tertiary)", fontSize: 11 },
   hero: { display: "flex", justifyContent: "space-between", gap: 32, alignItems: "flex-end", maxWidth: 1080, margin: "0 auto 26px" },
   eyebrow: { fontSize: 11, textTransform: "uppercase", color: "var(--text-tertiary)" },
-  title: { margin: "7px 0 6px", fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 400 },
-  detail: { margin: 0, color: "var(--text-secondary)", fontSize: 14 },
+  title: { margin: "7px 0 6px", fontSize: "var(--font-size-display)", lineHeight: "var(--line-display)", fontWeight: 500 },
+  detail: { margin: 0, maxWidth: 560, color: "var(--text-secondary)", fontSize: 14 },
   evidence: { display: "block", marginTop: 12, color: "var(--text-tertiary)", fontSize: 11, letterSpacing: 0 },
   heroCounts: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, maxWidth: 420 },
   count: { color: "var(--text-secondary)", fontSize: 12, whiteSpace: "nowrap" },
-  statusPill: { display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid", borderRadius: 999, padding: "5px 9px", fontSize: 11, whiteSpace: "nowrap" },
-  statusDot: { width: 7, height: 7, borderRadius: "50%" },
   callout: { display: "flex", flexWrap: "wrap", gap: 10, maxWidth: 1080, margin: "0 auto 18px", padding: "14px 16px", borderRadius: 8, background: "var(--surface-raised)", color: "var(--text-secondary)", fontSize: 13 },
-  guide: { display: "grid", gap: 6, maxWidth: 1080, margin: "0 auto 22px", padding: "14px 16px", borderLeft: "2px solid var(--border-focus)", background: "var(--surface-wash)", color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.45 },
-  projectList: { maxWidth: 1080, margin: "0 auto", display: "grid", gap: 10 },
-  project: { borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.1))", background: "var(--surface-raised)", borderRadius: 12, overflow: "hidden" },
-  projectHeader: { width: "100%", display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 10, padding: "16px 18px", border: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer", font: "inherit" },
+  guide: { display: "grid", gap: 6, maxWidth: 1080, margin: "0 auto 22px", padding: "14px 18px", borderRadius: 8, background: "var(--surface-raised)", color: "var(--text-secondary)", fontSize: 12, lineHeight: 2, },
+  projectList: { maxWidth: 1080, margin: "0 auto", display: "grid", gap: 16 },
+  project: { border: "1px solid var(--border-default)", background: "var(--surface-sidebar)", borderRadius: 12, overflow: "hidden" },
+  projectHeader: { width: "100%", display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 10, padding: "14px 18px", border: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer", font: "inherit" },
   chevron: { width: 14, color: "var(--text-tertiary)" },
   projectIdentity: { display: "grid", gap: 4, flex: "1 1 180px", minWidth: 0 },
   projectEvidence: { color: "var(--text-tertiary)", fontSize: 11 },
   projectCounts: { display: "flex", flex: "1 1 100%", gap: 14, flexWrap: "wrap", justifyContent: "flex-start", paddingLeft: 28 },
-  agentList: { borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.1))", padding: "4px 18px 14px" },
-  agentRow: { display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(220px, 0.8fr)", gap: 22, padding: "18px 0", borderBottom: "1px solid var(--border-subtle, rgba(255,255,255,0.08))" },
+  agentList: { borderTop: "1px solid var(--border-default)", padding: "4px 18px 14px" },
+  agentRow: { display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(220px, 0.8fr)", gap: 22, padding: "18px 0", borderBottom: "1px solid var(--border-default)" },
   agentMain: { border: 0, padding: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer", font: "inherit", minWidth: 0 },
   agentTitleLine: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   agentName: { fontSize: 15, fontWeight: 500 },
@@ -239,23 +246,9 @@ const styles: Record<string, CSSProperties> = {
   projectWhy: { padding: "0 18px 14px 50px", color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.45 },
   nextAction: { color: "var(--text-secondary)", fontSize: 12 },
   pendingAction: { color: "var(--text-secondary)", fontSize: 12 },
-  primaryAction: { border: 0, borderRadius: 7, padding: "9px 12px", background: "var(--accent-primary)", color: "#171717", font: "inherit", fontSize: 12, fontWeight: 500, cursor: "pointer" },
-  secondaryAction: { border: 0, boxShadow: "inset 0 -1px 0 var(--accent-danger, #d96b6b)", borderRadius: 7, padding: "8px 11px", background: "transparent", color: "var(--accent-danger, #d96b6b)", font: "inherit", fontSize: 12, cursor: "pointer" },
+  primaryAction: { border: "1px solid var(--border-control)", borderRadius: 8, height: 28, padding: "0 12px", background: "var(--surface-raised)", color: "var(--text-primary)", font: "inherit", fontSize: 12, fontWeight: 500, cursor: "pointer" },
+  secondaryAction: { border: "1px solid var(--border-control)", borderRadius: 8, height: 28, padding: "0 12px", background: "transparent", color: "var(--text-primary)", font: "inherit", fontSize: 12, fontWeight: 500, cursor: "pointer" },
   empty: { display: "grid", gap: 7, padding: "36px 20px", textAlign: "center", color: "var(--text-secondary)" },
   history: { maxWidth: 1080, margin: "20px auto 0", display: "flex", flexWrap: "wrap", gap: 10, color: "var(--text-secondary)", fontSize: 12 },
   footer: { maxWidth: 1080, margin: "22px auto 0", color: "var(--text-tertiary)", fontSize: 11 },
 };
-
-const responsiveStyles = `
-  .git-monitor-shell.git-monitor-narrow { width: 100%; height: 100%; display: block !important; overflow: auto; padding: 18px 16px 24px !important; background: var(--surface-sunken) !important; }
-  .git-monitor-shell.git-monitor-narrow .git-monitor-project-header { flex-wrap: wrap; align-items: flex-start; gap: 10px; }
-  .git-monitor-shell.git-monitor-narrow .git-monitor-project-counts { width: 100%; justify-content: flex-start; padding-left: 28px; }
-  @media (max-width: 760px) {
-    .git-monitor-shell { width: 100%; height: 100%; display: block !important; overflow: auto; padding: 18px 16px 24px !important; background: var(--surface-sunken) !important; }
-    .git-monitor-hero { flex-direction: column; align-items: flex-start !important; gap: 18px !important; }
-    .git-monitor-hero-counts { justify-content: flex-start !important; max-width: none !important; }
-    .git-monitor-agent-row { grid-template-columns: 1fr !important; gap: 12px !important; }
-    .git-monitor-project-header { flex-wrap: wrap; align-items: flex-start; gap: 10px; }
-    .git-monitor-project-counts { width: 100%; justify-content: flex-start; padding-left: 28px; }
-  }
-`;

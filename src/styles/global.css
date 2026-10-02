@@ -1619,3 +1619,21 @@ button:active {
   margin-inline-end: 5px;
   vertical-align: middle;
 }
+
+/* Git work monitor (moved out of an injected <style>) */
+.git-monitor-count strong { color: var(--text-1); font-weight: var(--font-weight-medium); }
+.git-monitor-guide b, .git-monitor-guide strong { color: var(--text-1); font-weight: var(--font-weight-medium); }
+.git-monitor-project-header strong { font-size: 14px; font-weight: var(--font-weight-medium); }
+.git-monitor-project-header small { color: var(--text-2); font-size: 11px; }
+
+  .git-monitor-shell.git-monitor-narrow { width: 100%; height: 100%; display: block !important; overflow: auto; padding: 18px 16px 24px !important; background: var(--surface-panel) !important; }
+  .git-monitor-shell.git-monitor-narrow .git-monitor-project-header { flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+  .git-monitor-shell.git-monitor-narrow .git-monitor-project-counts { width: 100%; justify-content: flex-start; padding-left: 28px; }
+  @media (max-width: 760px) {
+    .git-monitor-shell { width: 100%; height: 100%; display: block !important; overflow: auto; padding: 18px 16px 24px !important; background: var(--surface-panel) !important; }
+    .git-monitor-hero { flex-direction: column; align-items: flex-start !important; gap: 18px !important; }
+    .git-monitor-hero-counts { justify-content: flex-start !important; max-width: none !important; }
+    .git-monitor-agent-row { grid-template-columns: 1fr !important; gap: 12px !important; }
+    .git-monitor-project-header { flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+    .git-monitor-project-counts { width: 100%; justify-content: flex-start; padding-left: 28px; }
+  }
