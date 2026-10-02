@@ -16,6 +16,7 @@
 // unless the user opts in. Threshold: TERMFLEET_CONTEXT_HANDOFF_PERCENT (default 50),
 // window: TERMFLEET_CONTEXT_WINDOW_TOKENS (default 200000; use 1000000 for [1m]).
 import { contextTokens, decide, handoffAdvice } from "./lib/context-handoff.mjs";
+import { handoffInjection } from "./lib/handoff-inject.mjs";
 
 export { contextTokens, decide };
 
@@ -23,7 +24,8 @@ async function main() {
   if ((process.env.TERMFLEET_CONTEXT_HANDOFF ?? "auto").toLowerCase() === "off") return;
   let input = "";
   for await (const chunk of process.stdin) input += chunk;
-  const message = handoffAdvice({ payload: JSON.parse(input || "{}"), provider: "claude" });
+  const payload = JSON.parse(input || "{}");
+  const message = [handoffInjection(payload.prompt), handoffAdvice({ payload, provider: "claude" })].filter(Boolean).join("\n\n");
   if (!message) return;
   process.stdout.write(
     `${JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: message } })}\n`,
