@@ -386,15 +386,11 @@ button::-moz-focus-inner {
   pointer-events: auto !important;
 }
 
-.session-sidebar-row:hover .session-sidebar-content,
-.session-sidebar-row:focus-within .session-sidebar-content {
+/* The action cluster (3 buttons, 25px + 3px gaps) is absolutely positioned at the
+   row's right edge. Its slot is reserved at rest so hover/focus never reflows the
+   title and meta lines; only opacity changes. */
+.session-sidebar-content {
   padding-right: 82px;
-  pointer-events: none !important;
-}
-
-.session-sidebar-row:hover .session-sidebar-content > *,
-.session-sidebar-row:focus-within .session-sidebar-content > * {
-  pointer-events: none !important;
 }
 
 .workspace-rail-button:hover {
