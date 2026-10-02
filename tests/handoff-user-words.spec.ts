@@ -55,3 +55,10 @@ test("a long session keeps the opening request and the newest messages, and says
   expect(out).not.toContain("message 5 x");
   expect(out).toContain("older messages in between are not quoted");
 });
+
+test("Codex words come from the real user turns; its own review prompts and interrupt markers are dropped", () => {
+  const turn = (text: string) => JSON.stringify({ type: "response_item", timestamp: "t", payload: { type: "message", role: "user", content: [{ type: "input_text", text }] } });
+  const rollout = [turn("# AGENTS.md instructions for x"), turn("<environment_context>"), turn("fix the gates"), turn("fix the gates"), turn("The following is the Codex agent history x")].join("\n");
+  expect(codexUserMessages(rollout).map((m: { text: string }) => m.text)).toEqual(["fix the gates"]);
+  expect(claudeUserMessages(claudeLine("[Request interrupted by user for tool use]"))).toEqual([]);
+});

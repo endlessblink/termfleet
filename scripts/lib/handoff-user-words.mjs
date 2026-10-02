@@ -12,7 +12,7 @@ const MAX_CHARS = 2_000;
 /** Typed-by-a-human text only: harness-injected blocks start with "<" or "[SYSTEM". */
 function typed(text) {
   const t = String(text ?? "").trim();
-  if (!t || t.startsWith("<") || t.startsWith("[SYSTEM") || t.startsWith("Caveat:")) return "";
+  if (!t || t.startsWith("<") || t.startsWith("[SYSTEM") || t.startsWith("Caveat:") || t.startsWith("[Request interrupted")) return "";
   return t;
 }
 
@@ -43,13 +43,20 @@ export function claudeUserMessages(transcriptText) {
 
 export function codexUserMessages(rolloutText) {
   const out = [];
+  const add = (at, raw) => {
+    const t = typed(raw);
+    // Codex's own review/guardian prompts and injected instruction files are not Noam's words.
+    if (!t || t.startsWith("The following is") || t.startsWith("# AGENTS.md") || out.at(-1)?.text === t) return;
+    out.push({ at, text: t });
+  };
   for (const line of rolloutText.split("\n")) {
-    if (!line.includes('"user_message"')) continue;
+    if (!line.includes('"user_message"') && !line.includes('"role":"user"')) continue;
     try {
       const d = JSON.parse(line);
-      if (d.payload?.type !== "user_message") continue;
-      const t = typed(d.payload.message);
-      if (t) out.push({ at: d.timestamp, text: t });
+      const pl = d.payload;
+      if (d.type === "event_msg" && pl?.type === "user_message") add(d.timestamp, pl.message);
+      else if (d.type === "response_item" && pl?.type === "message" && pl.role === "user")
+        add(d.timestamp, (pl.content ?? []).filter((b) => b?.type === "input_text").map((b) => b.text).join("\n"));
     } catch {
       /* partial line */
     }
