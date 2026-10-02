@@ -19,6 +19,7 @@ import { basename, join, resolve } from "node:path";
 import { paneSidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
 import { ancestors, argv as procArgv, isProviderProcess } from "./lib/single-chat-owner.mjs";
 import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
+import { appendUserWords, userMessagesFor } from "./lib/handoff-user-words.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -186,6 +187,7 @@ function resolveTask(options) {
         : `Read ${file} and carry out the instructions in it.`,
       title: handover ? `Continue from ${basename(file)}` : `Helper: ${basename(file)}`,
       handover,
+      file,
     };
   }
   if (options["task-file"] !== undefined) {
@@ -249,7 +251,7 @@ export function resolveCaller(env = process.env, procRoot = "/proc", selfPid = p
 async function spawnCommand(options) {
   const caller = resolveCaller();
   const parentPaneId = caller.paneId;
-  const { task, title, handover } = resolveTask(options);
+  const { task, title, handover, file: handoffFile } = resolveTask(options);
   let provider = options.provider;
   // A handover continues in the SAME kind of agent: a Codex session that hits its limit
   // continues in Codex, a Claude session in Claude, whatever --provider was typed.
@@ -262,6 +264,23 @@ async function spawnCommand(options) {
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
   if (!parentPaneId && !options.separate && (handover === true || options.replace === true)) {
     fail("cannot identify your TermFleet card; the handover was not started. Restore the exact chat-to-card binding before retrying, or use --separate to explicitly open a new card.", 2);
+  }
+  if (handover && handoffFile) {
+    // TF-076: Noam's own recent words, copied verbatim, so the dying agent cannot drop them.
+    try {
+      const sessionId =
+        caller.provider === "codex"
+          ? (process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID ?? "").trim()
+          : JSON.parse(readFileSync(paneSidecarPath(parentPaneId), "utf8"))?.sessionId;
+      const count = appendUserWords(handoffFile, userMessagesFor({ provider: caller.provider, sessionId }));
+      process.stderr.write(
+        count > 0
+          ? `termfleet-child: added Noam's last ${count} messages, verbatim, to the handoff.\n`
+          : "termfleet-child: warning: could not find your session record, so Noam's recent messages were NOT added to the handoff.\n",
+      );
+    } catch {
+      process.stderr.write("termfleet-child: warning: could not add Noam's recent messages to the handoff.\n");
+    }
   }
   const cwd = resolve(options.cwd ?? process.cwd());
   const timeoutSeconds = Number(options.timeout ?? 20);
