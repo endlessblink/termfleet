@@ -104,3 +104,6 @@ jobs:
 
       - name: Canvas renderer + interaction specs
         run: npm run verify:canvas-all
+
+      - name: Design tokens + contrast (node-only, no server)
+        run: npm run verify:design
