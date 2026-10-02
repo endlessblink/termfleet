@@ -1084,7 +1084,6 @@ export function WorkbenchHeader() {
         title="Copy details from every visible pane"
         aria-label="Copy details from every visible pane"
         onClick={() => void copyPaneDetails()}
-        style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--text-secondary)" }}
       >
         <Copy size={13} strokeWidth={1.8} />
         {copyStatus || "Copy panes"}
