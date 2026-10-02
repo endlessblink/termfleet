@@ -217,7 +217,7 @@ button::-moz-focus-inner {
 .gamification-quest-reset { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .gamification-quest-heading { gap: 9px; }
 .gamification-quest-heading > span { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; color: var(--accent-warning); background: color-mix(in srgb, var(--accent-warning) 18%, var(--surface-hover)); }
-.gamification-quest-heading > div > div { color: var(--accent-live); font-size: 11px; letter-spacing: .8px; text-transform: uppercase; }
+.gamification-quest-heading > div > div { color: var(--accent-live); font-size: 11px; letter-spacing: var(--label-caps-tracking); text-transform: uppercase; }
 .gamification-quest-heading h2 { margin: 3px 0 0; color: var(--text-primary); font-size: 20px; font-weight: 500; line-height: 1.05; }
 .gamification-quest-progress { margin-top: 16px; }
 .gamification-quest-status-row { justify-content: space-between; color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -774,7 +774,7 @@ button:active {
 .canonical-agent-board .canonical-board-title strong {
   font-size: 17px;
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .canonical-agent-board .canonical-board-title small {
@@ -966,7 +966,7 @@ button:active {
 
 .canonical-agent-board .canonical-task-id {
   font-weight: 500;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 .canonical-agent-board .canonical-task-status {

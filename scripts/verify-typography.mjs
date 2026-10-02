@@ -39,9 +39,13 @@ for (const file of sourceFiles(srcRoot)) {
     failures.push(`${rel}: visible UI must not use 600+ font weights.`);
   }
 
-  if (/letterSpacing|letter-spacing/.test(withoutTerminalFontConfig) &&
-      !/(letterSpacing|letter-spacing)\s*:\s*0\b/.test(withoutTerminalFontConfig)) {
-    failures.push(`${rel}: letter spacing must stay 0.`);
+  // Letter spacing is checked per declaration (one "letterSpacing: 0" used to satisfy
+  // a whole file): only 0 / normal / inherit and the one uppercase label token pass.
+  for (const match of withoutTerminalFontConfig.matchAll(/(?:letterSpacing|letter-spacing)\s*:\s*([^;,}\n]+)/g)) {
+    const value = match[1].trim().replace(/^["']|["']$/g, "");
+    if (!/^(0|0px|normal|inherit|var\(--label-caps-tracking\))$/.test(value)) {
+      failures.push(`${rel}: letter spacing must stay 0 or the label-caps token (found "${value}").`);
+    }
   }
 
   // The raw `monospace` keyword stays reserved for terminal surfaces; the
@@ -55,14 +59,14 @@ for (const file of sourceFiles(srcRoot)) {
   // - `outline:` is banned except `none`/`0` and the one focus-ring declaration
   //   `var(--focus-ring-width) solid var(--focus-ring-color)`.
   // - Full `border:` shorthand is allowed only in a token border colour
-  //   (--border-default|strong|control|subtle) or transparent; raw colours stay banned.
+  //   (--border-default|strong|control|subtle, or --accent-fill for active/selected rings) or transparent; raw colours stay banned.
   for (const line of text.split("\n")) {
     if (/\boutline\s*:\s*["']?(?!none|0)[^,;"'}]*\b(solid|dashed|dotted|\dpx)/.test(line) &&
         !/outline\s*:\s*var\(--focus-ring-width\)\s+solid\s+var\(--focus-ring-color\)/.test(line)) {
       failures.push(`${rel}: no hard outlines — "${line.trim()}" (use the focus-ring tokens).`);
     }
     if (rel.endsWith(".tsx") &&
-        /\bborder\s*:\s*["']\s*\d+px\s+solid\s+(?!transparent|var\(--border-(?:default|strong|control|subtle)\))(var\(--|#|rgb)/.test(line)) {
+        /\bborder\s*:\s*["']\s*\d+px\s+solid\s+(?!transparent|var\(--(?:border-(?:default|strong|control|subtle)|accent-fill)\))(var\(--|#|rgb)/.test(line)) {
       failures.push(`${rel}: no full box-borders — "${line.trim()}" (use a fill or directional separator).`);
     }
   }

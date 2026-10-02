@@ -791,7 +791,7 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid transparent",
     fontSize: 11,
     fontWeight: 500,
-    letterSpacing: 0.2,
+    letterSpacing: 0,
     whiteSpace: "nowrap",
   },
   attentionDot: {
@@ -2311,7 +2311,7 @@ function TerminalBodyTaskSidebar({
                 color: "var(--text-tertiary)",
                 fontSize: 11,
                 textTransform: "uppercase",
-                letterSpacing: 0.4,
+                letterSpacing: 0,
               }}
             >
               Recent activity
@@ -10453,7 +10453,7 @@ export function MagicCanvas() {
                     fontFamily: "var(--font-ui)",
                     fontSize: 11,
     fontWeight: 500,
-                    letterSpacing: "0.04em",
+                    letterSpacing: "var(--label-caps-tracking)",
                     textTransform: "uppercase",
                   }}
                 >

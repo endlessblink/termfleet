@@ -726,7 +726,7 @@ function PaneContextMenu({
               color: "var(--text-tertiary)",
               fontSize: 11,
               fontWeight: 500,
-              letterSpacing: "0.04em",
+              letterSpacing: "var(--label-caps-tracking)",
               textTransform: "uppercase",
             }}
           >

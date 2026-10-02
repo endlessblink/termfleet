@@ -944,7 +944,7 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-tertiary)",
     fontWeight: 500,
     fontSize: 11,
-    letterSpacing: "0.07em",
+    letterSpacing: "var(--label-caps-tracking)",
     textTransform: "uppercase",
     whiteSpace: "nowrap",
   },

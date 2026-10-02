@@ -73,6 +73,7 @@ jobs:
           npm run verify:map-terminals
           npm run verify:terminal-rendering
           npm run verify:typography
+          npm run verify:design-ratchet
 
       - name: OSS-readiness + public audit
         run: |
