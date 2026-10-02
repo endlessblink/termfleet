@@ -1053,7 +1053,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 11,
   },
   compactToggle: {
-    height: 20,
+    height: 24,
     minWidth: 34,
     display: "inline-flex",
     alignItems: "center",

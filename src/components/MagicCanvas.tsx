@@ -2071,8 +2071,8 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
-    height: 22,
-    minWidth: 22,
+    height: 24,
+    minWidth: 24,
     borderRadius: "var(--radius-sm)",
     padding: "0 5px",
     transition:
