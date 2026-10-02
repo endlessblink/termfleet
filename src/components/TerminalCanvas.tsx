@@ -19,12 +19,12 @@ import { getSharedAtlas, measureCell } from "../lib/fontAtlas";
 import { register as registerExitWatch, unregister as unregisterExitWatch } from "../lib/exitWatcher";
 import { GridBuffer } from "../lib/gridBuffer";
 import { decodeFrame } from "../lib/gridDiff";
+import { useTerminalRenderTheme } from "../lib/tokens";
 import { needsLegacyPromptRepair } from "../lib/legacyPromptRepair";
 import { mapTerminalFrameGapMs, mapTerminalTransportMode, shouldRefreshMapSnapshot, terminalCanvasImageRendering } from "../lib/mapRenderCadence";
 import {
   computeGridSize,
   mapNodeLayoutMode,
-  DEFAULT_THEME,
   renderPartial,
   renderSnapshot,
   sizeCanvasToGrid,
@@ -208,7 +208,7 @@ export function TerminalCanvas({
   command,
   cols = 80,
   rows = 24,
-  theme = DEFAULT_THEME,
+  theme: themeProp,
   renderScale = 1,
   mapProjection = false,
   reflowSafeTui = false,
@@ -224,6 +224,8 @@ export function TerminalCanvas({
   queuedInput,
   onQueuedInputSent,
 }: TerminalCanvasProps) {
+  const tokenTheme = useTerminalRenderTheme();
+  const theme = themeProp ?? tokenTheme;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -429,7 +431,7 @@ export function TerminalCanvas({
     const cellW = width * dpr;
     const cellH = height * dpr;
     if (range) {
-      octx.fillStyle = "rgba(90, 140, 220, 0.35)";
+      octx.fillStyle = theme.selectionOverlay ?? "rgba(90, 140, 220, 0.35)";
       for (let row = 0; row < buffer.rows; row += 1) {
         const span = visibleRowSpan(range, row, buffer.displayOffset, buffer.cols);
         if (!span) continue;
@@ -443,8 +445,8 @@ export function TerminalCanvas({
       const visibleRow = match.line + buffer.displayOffset;
       if (visibleRow < 0 || visibleRow >= buffer.rows) continue;
       octx.fillStyle = index === activeSearchIndexRef.current
-        ? "rgba(255, 184, 74, 0.72)"
-        : "rgba(229, 201, 92, 0.38)";
+        ? (theme.searchActiveOverlay ?? "rgba(255, 184, 74, 0.72)")
+        : (theme.searchMatchOverlay ?? "rgba(229, 201, 92, 0.38)");
       octx.fillRect(
         Math.round(match.col * cellW),
         Math.round(visibleRow * cellH),

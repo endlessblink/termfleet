@@ -45,16 +45,10 @@ import { recordCanvasNodeMovement, recordMapViewportChange } from "../lib/termin
 import type { MapViewportTrigger } from "../lib/mapViewportTrace";
 import { flushStorageWrites } from "../lib/storageGovernor";
 import { mergeEarlierSessions } from "../lib/childTerminals";
+import { IDENTITY_COLORS } from "../lib/tokens";
 
-const GROUP_COLORS = [
-  "#7aa2f7",
-  "#9ece6a",
-  "#bb9af7",
-  "#f7768e",
-  "#e0af68",
-  "#7dcfff",
-  "#ff9e64",
-];
+// Muted identity palette (--identity-1..6); the hex values live once in lib/tokens.ts.
+const GROUP_COLORS = IDENTITY_COLORS;
 const DEFAULT_TAB_EMOJI = "\u2B1B";
 const DEFAULT_TAB_TITLE = "Terminal";
 const DEFAULT_TAB_COLOR = "#7aa2f7";
