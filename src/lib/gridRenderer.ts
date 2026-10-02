@@ -24,7 +24,7 @@ export interface RenderTheme {
 
 export const DEFAULT_THEME: RenderTheme = {
   background: "#1d2022",
-  cursor: "#d99a45",
+  cursor: "#c4ccd2",
 };
 
 /**

@@ -6,9 +6,9 @@ import { inferAgentWorkstream, summarizeGitMonitoring, type GitMonitorAgent, typ
 
 const healthCopy: Record<GitMonitorHealth, { label: string; detail: string; color: string }> = {
   "under-control": { label: "No action needed", detail: "Agents are working normally. Nothing needs your attention right now.", color: "var(--accent-positive, #5fb878)" },
-  "decision-ready": { label: "Ready to save", detail: "An agent finished clean work. Review it, then save it into the project.", color: "var(--accent-primary, #d99a45)" },
+  "decision-ready": { label: "Ready to save", detail: "An agent finished clean work. Review it, then save it into the project.", color: "var(--state-waiting)" },
   "agent-help": { label: "Needs your decision", detail: "An agent is blocked. Open the work below to see the question and choose what happens next.", color: "var(--accent-danger, #d96b6b)" },
-  checking: { label: "Checking project status", detail: "The monitor is confirming the projects before offering decisions.", color: "var(--accent-primary, #d99a45)" },
+  checking: { label: "Checking project status", detail: "The monitor is confirming the projects before offering decisions.", color: "var(--text-secondary)" },
   empty: { label: "No agent work tracked", detail: "There is no agent work for the monitor to assess yet.", color: "var(--text-tertiary, #8d949d)" },
 };
 
@@ -239,7 +239,7 @@ const styles: Record<string, CSSProperties> = {
   projectWhy: { padding: "0 18px 14px 50px", color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.45 },
   nextAction: { color: "var(--text-secondary)", fontSize: 12 },
   pendingAction: { color: "var(--text-secondary)", fontSize: 12 },
-  primaryAction: { border: 0, borderRadius: 7, padding: "9px 12px", background: "var(--accent-primary, #d99a45)", color: "#171717", font: "inherit", fontSize: 12, fontWeight: 500, cursor: "pointer" },
+  primaryAction: { border: 0, borderRadius: 7, padding: "9px 12px", background: "var(--accent-primary)", color: "#171717", font: "inherit", fontSize: 12, fontWeight: 500, cursor: "pointer" },
   secondaryAction: { border: 0, boxShadow: "inset 0 -1px 0 var(--accent-danger, #d96b6b)", borderRadius: 7, padding: "8px 11px", background: "transparent", color: "var(--accent-danger, #d96b6b)", font: "inherit", fontSize: 12, cursor: "pointer" },
   empty: { display: "grid", gap: 7, padding: "36px 20px", textAlign: "center", color: "var(--text-secondary)" },
   history: { maxWidth: 1080, margin: "20px auto 0", display: "flex", flexWrap: "wrap", gap: 10, color: "var(--text-secondary)", fontSize: 12 },

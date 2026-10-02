@@ -173,7 +173,7 @@ import {
 } from "../lib/projectSidebarModel";
 
 const TERMINAL_COLORS = [
-  "#d99a45",
+  "#8aa0b8",
   "#7fc681",
   "#7dbac3",
   "#6ea8fe",

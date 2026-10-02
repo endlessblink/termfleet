@@ -21,8 +21,6 @@
   --green: #7fc681;
   --magenta: #ad8fcb;
   --red: #ef6f72;
-  --yellow: #d4a44f;
-  --orange: #d99046;
   --live: #d99a45;
   --live-muted: rgba(217, 154, 69, 0.16);
   --success-muted: rgba(127, 198, 129, 0.14);
@@ -39,7 +37,7 @@
   --canvas-sidebar-header-bg: var(--surface-raised);
   --canvas-sidebar-border: var(--border-subtle);
   --canvas-sidebar-row-selected: rgba(217, 154, 69, 0.16);
-  --canvas-terminal-icon: #d99a45;
+  --canvas-terminal-icon: var(--text-secondary);
   --canvas-file-icon: #7fc681;
   --canvas-note-icon: #8aa0b8;
   --canvas-node-icon-fg: #101319;
@@ -67,9 +65,9 @@
   --explorer-input-fg: var(--text-primary);
   --explorer-menu-bg: var(--surface-raised);
   --explorer-menu-shadow: var(--shadow-menu);
-  --explorer-workspace: #d39a4a;
-  --explorer-workspace-tab: #edbc71;
-  --explorer-workspace-shade: #8b632e;
+  --explorer-workspace: var(--text-secondary);
+  --explorer-workspace-tab: var(--text-primary);
+  --explorer-workspace-shade: var(--text-tertiary);
   --explorer-folder: #8aa0b8;
   --explorer-folder-tab: #aab8c7;
   --explorer-folder-shade: #5c6e82;
@@ -77,7 +75,7 @@
   --explorer-file: #b8c4d6;
   --explorer-file-js: #f2d351;
   --explorer-file-md: #72a7ff;
-  --explorer-file-data: #d99a52;
+  --explorer-file-data: var(--text-secondary);
   --explorer-file-code: #65c98d;
   --explorer-file-style: #c586ff;
   --explorer-file-markup: #ef766f;
@@ -134,6 +132,8 @@
   --accent-info: #7dbac3;
   --accent-success: #7fc681;
   --accent-warning: #d4a44f;
+  /* "Waiting for you" - the only amber meaning in the app (final value, from the design tokens). */
+  --state-waiting: #dcb875;
   --accent-danger: #ef6f72;
   --dock-width: 276px;
   --operations-sidebar-width: 276px;
@@ -195,7 +195,7 @@
   --terminal-ansi-bright-black: #667383;
   --terminal-ansi-bright-red: #f48b8d;
   --terminal-ansi-bright-green: #95d996;
-  --terminal-ansi-bright-yellow: #e0b969;
+  --terminal-ansi-bright-yellow: var(--accent-warning);
   --terminal-ansi-bright-blue: #8bb9ff;
   --terminal-ansi-bright-magenta: #bea4d8;
   --terminal-ansi-bright-cyan: #91cbd2;

@@ -217,7 +217,7 @@ export function LinksView() {
               <span
                 style={{
                   ...styles.projectDot,
-                  background: project.color ?? "var(--accent-primary, #d99a45)",
+                  background: project.color ?? "var(--accent-primary)",
                 }}
               />
               <div style={styles.cardText}>
@@ -387,7 +387,7 @@ const styles: Record<string, CSSProperties> = {
   },
   sessionCardActive: {
     border: "1px solid transparent",
-    boxShadow: "0 0 0 1px var(--accent-primary, #d99a45), var(--shadow-card)",
+    boxShadow: "0 0 0 1px var(--accent-primary), var(--shadow-card)",
   },
   sessionEmoji: {
     fontSize: 16,

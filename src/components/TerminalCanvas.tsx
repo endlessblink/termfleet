@@ -2302,7 +2302,7 @@ export function TerminalCanvas({
           <span data-testid="terminal-buffer-search-count" aria-live="polite" style={{ minWidth: 40, textAlign: "center", color: "#9ba3aa" }}>
             {searchMatches.length > 0 ? `${activeSearchIndex + 1}/${searchMatches.length}` : "0/0"}
           </span>
-          <button type="button" aria-label="Match case" aria-pressed={searchCaseSensitive} onClick={() => setSearchCaseSensitive((value) => !value)} style={{ color: searchCaseSensitive ? "#ffb84a" : "#9ba3aa", background: "transparent", border: 0, font: "inherit", cursor: "pointer" }}>Aa</button>
+          <button type="button" aria-label="Match case" aria-pressed={searchCaseSensitive} onClick={() => setSearchCaseSensitive((value) => !value)} style={{ color: searchCaseSensitive ? "var(--accent-live)" : "#9ba3aa", background: "transparent", border: 0, font: "inherit", cursor: "pointer" }}>Aa</button>
           <button type="button" aria-label="Previous terminal match" onClick={() => navigateSearch(-1)} disabled={searchMatches.length === 0} style={{ color: "inherit", background: "transparent", border: 0, cursor: "pointer" }}>↑</button>
           <button type="button" aria-label="Next terminal match" onClick={() => navigateSearch(1)} disabled={searchMatches.length === 0} style={{ color: "inherit", background: "transparent", border: 0, cursor: "pointer" }}>↓</button>
           <button type="button" aria-label="Close terminal search" onClick={closeSearch} style={{ color: "#9ba3aa", background: "transparent", border: 0, cursor: "pointer" }}>×</button>
@@ -2344,7 +2344,7 @@ export function TerminalCanvas({
             padding: "8px 10px",
   border: "1px solid transparent",
             borderRadius: 6,
-            color: "#f0b36a",
+            color: "var(--accent-danger)",
             background: "rgba(29, 32, 34, 0.88)",
             fontFamily: FONT_FAMILY,
             fontSize: 12,

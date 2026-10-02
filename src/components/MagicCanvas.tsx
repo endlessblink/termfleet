@@ -231,7 +231,7 @@ type TerminalOverlayBounds = {
 const TERMINAL_LABEL_COLORS = [
   { label: "Default", value: undefined },
   { label: "Cyan", value: "#7dbac3" },
-  { label: "Amber", value: "#d4a44f" },
+  { label: "Amber", value: "#dcb875" },
   { label: "Red", value: "#d96767" },
   { label: "Violet", value: "#a890d3" },
 ];
@@ -4882,7 +4882,7 @@ function CanvasNodeViewImpl({
                   style={{
                     marginLeft: 8,
                     fontSize: 11,
-                    color: "var(--text-warning, #d9a441)",
+                    color: "var(--text-secondary)",
                     maxWidth: 320,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -5080,7 +5080,7 @@ function CanvasNodeViewImpl({
                     style={{
                       marginLeft: 8,
                       fontSize: 11,
-                      color: "var(--text-warning, #d9a441)",
+                      color: "var(--text-secondary)",
                       maxWidth: 320,
                       overflow: "hidden",
                       textOverflow: "ellipsis",

@@ -2756,7 +2756,7 @@ export function createAgentWorkstream(
   store.addTab({
     title: mission,
     emoji: "\u25C6",
-    color: "#d99a45",
+    color: "#7dbac3",
     initialCwd: resolvedCwd,
     groupId,
     workstream: {
