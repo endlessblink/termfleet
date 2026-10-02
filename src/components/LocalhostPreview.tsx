@@ -57,7 +57,6 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: "var(--font-ui)",
     fontSize: 12,
     padding: "0 9px",
-    outline: "none",
   },
   button: {
     width: 28,

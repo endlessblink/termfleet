@@ -149,6 +149,10 @@
   --motion-fast: 120ms cubic-bezier(0.22, 1, 0.36, 1);
   --motion-med: 180ms cubic-bezier(0.22, 1, 0.36, 1);
   /* Previously referenced but never defined (design review P0-2). */
+  /* Keyboard focus ring (one rule in global.css). Phase 1 re-points the colour to --accent-fill. */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 1px;
+  --focus-ring-color: var(--accent-live);
   --text-muted: var(--text-tertiary);
   --accent-primary: var(--accent-live);
   --accent-positive: var(--accent-success);

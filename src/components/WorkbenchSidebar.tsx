@@ -789,7 +789,6 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
-    outline: "none",
   },
   projectHeaderActions: {
     display: "flex",
@@ -822,7 +821,6 @@ const styles: Record<string, CSSProperties> = {
     background: "transparent",
     cursor: "pointer",
     color: "var(--text-primary)",
-    outline: "none",
     boxShadow: "none",
     WebkitTapHighlightColor: "transparent",
     transition: "background var(--motion-fast), box-shadow var(--motion-fast)",
@@ -1351,7 +1349,6 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: "var(--font-ui)",
     fontSize: 13,
     padding: "0 8px",
-    outline: "none",
     transition:
       "border-color var(--motion-fast), box-shadow var(--motion-fast)",
   },
@@ -1897,7 +1894,6 @@ function TerminalContextMenu({
             style={{
               ...styles.colorSwatch,
               background: color,
-              outline: "none",
               boxShadow:
                 tab.color === color
                   ? "inset 0 0 0 2px var(--text-primary)"
@@ -1934,7 +1930,6 @@ function TerminalContextMenu({
                 tab.emoji === emoji
                   ? "var(--accent-live)"
                   : "var(--text-primary)",
-              outline: "none",
             }}
             title={emoji}
             aria-label={`Set terminal emoji ${emoji}`}
@@ -1952,7 +1947,6 @@ function TerminalContextMenu({
           style={{
             ...styles.emojiButton,
             borderColor: "var(--border-subtle)",
-            outline: "none",
           }}
           onClick={() => setShowEmojiPicker((open) => !open)}
         >

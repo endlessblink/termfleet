@@ -381,7 +381,6 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-sm)",
     color: "var(--text-primary)",
     cursor: "pointer",
-    outline: "none",
     boxShadow: "none",
     transition: "background var(--motion-fast)",
   },

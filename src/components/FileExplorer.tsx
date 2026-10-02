@@ -157,7 +157,6 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: "var(--font-ui)",
     fontSize: 13,
     padding: "0 8px",
-    outline: "none",
     transition: "border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast)",
   },
   tree: {

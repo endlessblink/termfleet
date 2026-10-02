@@ -78,7 +78,6 @@ const styles: Record<string, CSSProperties> = {
     background: "transparent",
     color: "var(--text-secondary)",
     cursor: "pointer",
-    outline: "none",
     transition: "background var(--motion-fast), color var(--motion-fast)",
   },
   collapsedSummary: {
@@ -125,7 +124,6 @@ const styles: Record<string, CSSProperties> = {
     borderRight: "1px solid transparent",
     borderBottom: "1px solid transparent",
     cursor: "pointer",
-    outline: "none",
     transition: "background var(--motion-fast), transform var(--motion-fast)",
     textAlign: "left",
     boxSizing: "border-box",
@@ -231,7 +229,6 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 500,
     cursor: "pointer",
-    outline: "none",
     transition: "background var(--motion-fast), color var(--motion-fast)",
     whiteSpace: "nowrap",
   },

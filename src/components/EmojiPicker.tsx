@@ -145,7 +145,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--surface-base)",
     border: "none",
     borderRadius: "var(--radius-sm)",
-    outline: "none",
   },
   tabs: { display: "flex", gap: 2, overflowX: "auto" },
   tab: {

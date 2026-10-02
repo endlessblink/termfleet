@@ -127,7 +127,6 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
-    outline: "none",
   },
   pinnedSection: {
     display: "flex",
@@ -192,7 +191,6 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
-    outline: "none",
   },
   list: {
     flex: 1,

@@ -2294,7 +2294,6 @@ export function TerminalCanvas({
             style={{
               width: 190,
               border: 0,
-              outline: 0,
               background: "transparent",
               color: "inherit",
               font: "inherit",

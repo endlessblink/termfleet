@@ -135,7 +135,6 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
     fontSize: 14,
-    outline: "none",
     padding: "0 6px",
   },
   meta: {
