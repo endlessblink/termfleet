@@ -23,6 +23,7 @@ import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
 import { plainCommandActivity } from "./lib/agent-status-activity.mjs";
 import { closeOtherCopies } from "./lib/single-chat-owner.mjs";
 import { handoffAdvice } from "./lib/context-handoff.mjs";
+import { handoffInjection } from "./lib/handoff-inject.mjs";
 import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
 import { durableGoalForPrompt, isDurableGoalText, isRequestText, openingGoalFromPrompt } from "./lib/agent-status-goal.mjs";
 import { lifecycleFromNotification, narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
@@ -401,7 +402,8 @@ async function main() {
     // Near 40% of the context window: hand over to a fresh Codex session instead of
     // letting Codex compact on its own.
     try {
-      const advice = handoffAdvice({ payload, provider: "codex" });
+      const injected = handoffInjection(payload?.prompt ?? payload?.user_prompt ?? payload?.userPrompt ?? payload?.text ?? payload?.message);
+      const advice = [injected, handoffAdvice({ payload, provider: "codex" })].filter(Boolean).join("\n\n");
       if (advice) {
         process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: advice } })}\n`);
       }

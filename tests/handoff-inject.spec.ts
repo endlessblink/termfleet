@@ -31,3 +31,15 @@ test("the real hook prints the handoff as additional context", () => {
   });
   expect(JSON.parse(run.stdout).hookSpecificOutput.additionalContext).toContain("the main step");
 });
+
+test("the Codex hook injects the handoff on the first prompt too", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tf-inj-"));
+  const file = join(dir, "HANDOFF.md");
+  writeFileSync(file, "# handoff\ncodex main step\n");
+  const run = spawnSync("node", ["scripts/termfleet-codex-status-hook.mjs"], {
+    input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: prompt(file), session_id: "11111111-2222-3333-4444-555555555555", cwd: dir }),
+    encoding: "utf8",
+    env: { ...process.env, XDG_STATE_HOME: dir, XDG_DATA_HOME: dir, TERMFLEET_PANE_ID: "terminal-test-pane" },
+  });
+  expect(run.stdout).toContain("codex main step");
+});
