@@ -391,6 +391,18 @@ Latest operator read-back confirms the 137-task board. Wrapping flex cross-size 
 |---|---|---|---|
 | Freelance appears under content-creation; brainiac appears under assembly-line despite separate live project folders | Reconciliation adopts only already-known destination groups; stale remembered ownership wins for previously unopened live project folders | `tests/project-reconciliation.spec.ts`, known-project/nested-folder/handover/scratch guards, installed sidebar read-back | 🟡 Live pane identities and process folders confirm both failures. Category-only freelance correction is installed; user clarified that all separate project folders need separate groups. Broader correction passes all28 behavioral cases across suite and focused browser-failure rerun; final installed state assigns brainiac and freelance separate groups. Assembly-line disappeared during startup close-record cleanup, so three-heading visual proof is incomplete; no-live handovers, scratch and ordinary internal folders retain protection. Other TF-069 concerns remain separate. |
 
+## TF-018. Historical close records during startup
+
+| Symptom | Root cause | Guard | Coverage |
+|---|---|---|---|
+| Seven live PTYs disappear during a UI-only relaunch | Hydration and live reconciliation turn historical closed PTY/provider records into fresh destructive kill calls | `tests/closed-session-authority.spec.ts`, installed UI-only restart with sanitized live PID comparison | Partial: four historical-record cases reproduced kills before the guard and now exclude cards without killing; explicit Close still persists then kills only the clicked PTY. Five focused tests pass. Installed UI-only relaunch preserves all32 live PTY IDs/PIDs and daemon1515447; zero new kill events. Prior missing-session restoration remains open. |
+
+## TF-073. Showing the pane's current provider
+
+| Symptom | Root cause | Guard | Coverage |
+|---|---|---|---|
+| Codex pane shows CLAUDE or GPT | Saved workstream provider overrides exact linked-pane provider; display helper abbreviates Codex as GPT | `tests/map-provider-identity.spec.ts`, `tests/agent-provider-identity.spec.ts`, installed exact-pane header review | Partial: rendered linked-pane precedence and CODEX naming pass, with sibling Claude identity retained. Naming regression first failed twice on GPT. Installed exact-pane review fails: CLAUDE remains visible because saved pane metadata and stale sidecars all say Claude while the live PTY has a Codex descendant. Exact runtime provider authority correction remains required. |
+
 ## 3.31. Dock startup critical path
 
 | # | Symptom | Root cause | Guard | Coverage |

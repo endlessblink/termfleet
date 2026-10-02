@@ -131,6 +131,6 @@ test("verify waiting for hydration fixes the race condition", async ({ page }) =
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-agent-provider")).toHaveText("GPT");
-  console.log("SUCCESS! canvas-terminal-agent-provider has GPT!");
+  await expect(page.getByTestId("canvas-terminal-agent-provider")).toHaveText("CODEX");
+  console.log("SUCCESS! canvas-terminal-agent-provider has CODEX!");
 });

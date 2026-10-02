@@ -7,7 +7,7 @@ import {
 } from "../src/lib/agentProviderIdentity";
 
 test("uses the user-facing agent names", () => {
-  expect(agentProviderIdentity("codex")).toBe("GPT");
+  expect(agentProviderIdentity("codex")).toBe("CODEX");
   expect(agentProviderIdentity("claude")).toBe("CLAUDE");
   expect(agentProviderIdentity("opencode")).toBe("OPENCODE");
 });
@@ -33,8 +33,7 @@ test("provides SHELL signifier identity for terminals without an agent", () => {
   expect(terminalSignifierIdentity("shell")).toBe("SHELL");
   expect(terminalSignifierIdentity(undefined)).toBe("SHELL");
   expect(terminalSignifierIdentity(null)).toBe("SHELL");
-  expect(terminalSignifierIdentity("codex")).toBe("GPT");
+  expect(terminalSignifierIdentity("codex")).toBe("CODEX");
   expect(terminalSignifierIdentity("claude")).toBe("CLAUDE");
   expect(terminalSignifierIdentity("opencode")).toBe("OPENCODE");
 });
-

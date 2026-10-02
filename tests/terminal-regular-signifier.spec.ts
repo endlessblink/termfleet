@@ -190,11 +190,11 @@ test("regular terminals without an agent display the SHELL signifier across spli
 
   // In canvas: agent provider chip appears, regular signifier is gone
   await expect(page.getByTestId("canvas-terminal-agent-provider")).toBeVisible();
-  await expect(page.getByTestId("canvas-terminal-agent-provider")).toHaveText("GPT");
+  await expect(page.getByTestId("canvas-terminal-agent-provider")).toHaveText("CODEX");
   await expect(page.getByTestId("canvas-terminal-regular-signifier")).toHaveCount(0);
 
   // In sidebar: agent provider chip appears, regular signifier is gone
   await expect(page.getByTestId("sidebar-session-agent-provider")).toBeVisible();
-  await expect(page.getByTestId("sidebar-session-agent-provider")).toContainText("GPT");
+  await expect(page.getByTestId("sidebar-session-agent-provider")).toContainText("CODEX");
   await expect(page.getByTestId("sidebar-session-regular-signifier")).toHaveCount(0);
 });

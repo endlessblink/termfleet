@@ -1,6 +1,83 @@
+# Latest Codex continuation — 2026-10-02, installed survival proven, exact provider still wrong
+
+Status: **in_progress**. This section supersedes earlier state; all original handoff material is preserved below. First command: `git status --short`. Then read the exact TF073 status/pane authority path before editing. Do not repeat the completed board or relaunch proof merely to search for an improvement.
+
+## Request and acceptance
+
+Original current request in Noam's words: “Read /media/endlessblink/data/my-projects/ai-development/devops/termfleet/HANDOFF.md. It is a handoff from the previous instance: continue exactly where it left off, and start by confirming what you understood.” Earlier user corrections remain: “says claude eevn though its codex”; “is this terminal gets the dropoff in the same terminal treatment correctly? also this should say codex”. Confirmed understanding at start; carried forward TF072 complete, TF069 partial, TF018 startup-loss guard, TF073 badge and handover identity. No task replacement. User was told exact provider fix remains insufficient after fresh installed review. Next instance should continue with that finding, not claim the label delivered.
+
+Definition of done: actual exact reported pane says CODEX from proven live provider identity, sibling Claude unchanged, no duplicate conversation writers, truthful same-card handover behavior/proven authoritative caller mapping. Keep daemon/PTys alive. TF069 three-heading proof and prior lost sessions are distinct outstanding gates; don't auto-resume. TF072 board complete, do not redo.
+
+## Latest live finding — highest priority
+
+Installed CODEX helper and linked-pane precedence are real but target header STILL CLAUDE. Disposable visual agent activated verified TermFleet window44040195, selected existing claude-and-conquer sidebar card, captured `/tmp/tf073-installed-codex-pane.png`, SHA256 `54cd72017eff4e733a7e7210f246064fb6678fb78b4a1d7558555f25cc18225a`. Header and sidebar both CLAUDE, 3 earlier visible. It restored income-zen selection afterward, no terminal input/close/resume. Parent never viewed image. First unselected screenshot `/tmp/tf073-installed-window.png` hash f5937ac6ba387ec209a6aaa6ad58fded0af486ec45dacb11999a0ce016333640 shows income-zen CLAUDE; not target proof.
+
+Exact target saved tab `79058e47-3d6e-47b9-a91d-8d4d435e1bfa`, pane `75ed203f-0d4b-4caa-aa1d-47915b3e8c38`, durable terminal id `terminal-79058e47-3d6e-47b9-a91d-8d4d435e1bfa-75ed203f-0d4b-4caa-aa1d-47915b3e8c38`. Saved terminals[0].agentProvider=claude and statusSummary.provider=claude; workstream absent. Two matching sidecars `pane-9166ec76.json` and `pane-6cb73365.json` both provider claude, sessionId22c09f9d-4764-4141-8371-98274a0f09ac, updatedAt1790859178880. Exact live daemon session PID3154693 is alive. Host read-only `ps -eo pid=,ppid=,comm=` restricted descendants proves bash3154693(ppid1515447) -> node1222609 -> codex1222622. No raw cmdline, credentials, transcripts read. This live per-pane mismatch explains why choosing linked pane over workstream alone did not repair actual header. Next candidate must trace current provider resolution and prefer proven live exact-pane process identity over stale sidecars, preserving same-cwd/multiple-chat separation and ownership protections. Candidate NOT implemented yet; regression-first required.
+
+TF073 was verifying; fresh installed failure evidence recorded and transitioned BACK TO fixing via issue CLI. Do not resolve just because all four evidence kinds exist (live-desktop evidence records failure). TF018 verifying remains because broad historical/exact all-pane restoration outstanding, but the current startup-loss safety gate passes.
+
+## What this instance changed (own uncommitted/committed scope)
+
+- `src/lib/agentProviderIdentity.ts`: codex display GPT -> CODEX only (one trailing blank removed incidentally).
+- `tests/agent-provider-identity.spec.ts`: two CODEX expectations, valid RED2 before prod and GREEN afterward.
+- `tests/map-provider-identity.spec.ts`: three aria-labels GPT agent -> CODEX agent.
+- `tests/terminal-regular-signifier.spec.ts`: two CODEX expectations.
+- `tests/test-hydration-race.spec.ts`: CODEX expectation/log.
+- `tests/terminal-summary-visual.spec.ts`: three CODEX expectations plus screenshot filename. Actual identity test at195 already test.fixme before this turn; do not count it as runtime proof.
+- Native child trace_handover owned ONLY `tests/child-terminals.spec.ts`, `tests/codex-context-handoff.spec.ts`. Added test-only Node preload redirecting /proc reads to private synthetic Node-only process ancestry so synthetic pane IDs are not rejected by actual shared Codex server ancestry. No production resolver/flags weakened. Targeted former2 failures GREEN; related child+codex-context+codex-pane-owner25 pass incl stale shared-env rejection/ambiguous same-folder/no-chat refusal.
+- `docs/regression-matrix.md`: new TF018/TF073 rows, reflect installed safety pass and provider failure.
+- `MASTER_PLAN.md`: top dated TF073 section and TF018 section updated; mixed initial dirt means don't stage wholesale without inspecting/scoping.
+- `docs/issue-registry.json`: mixed old/prior/other-lane changes; this turn TF073 transitions/evidence and TF018 evidence. NEVER blindly commit entire registry. TF018 source and focused guard, new installed/live survival; TF073 source/naming, new installed + failed visual.
+- `HANDOFF.md`: this expansive prepend, originals preserved.
+- Canonical project note state updated via user-prescribed notes.py to confirmed survival/provider failure; no model memory update.
+
+Initial unrelated dirt retained: MASTER_PLAN.md and registry mixed; two docs/visual-baselines tc008/tc009 PNGs; scripts/verify-clipboard-paste.sh; .kilo/; HANDOFF-feature-64.md; docs/reviews/; tests/scratch-eval.spec.ts. Do not revert/stage their unrelated work.
+
+## Verification, exact fresh evidence
+
+All browser checks use isolated5188 `TERMFLEET_TEST_BASE_URL=http://127.0.0.1:5188/` (existing job shell_846df28b8af0f60a, may expire after1h; shared5177 not owned). Naming RED job shell_be67c6d5ddfd992b:2 expectedCODEX receivedGPT failures,2pass. Focused provider/map/status/closed-authority job shell_77d1da1b348d11d6:31pass. Exact command `npx playwright test tests/agent-provider-identity.spec.ts tests/map-provider-identity.spec.ts tests/status-poll-loop.spec.ts tests/closed-session-authority.spec.ts`.
+
+Full former48 suite now **48passed59.1s**, job shell_b4a93b12e841ab42: `npx playwright test tests/child-terminals.spec.ts tests/context-handoff-hook.spec.ts tests/codex-context-handoff.spec.ts tests/workspace-hydration.spec.ts`. Incoming Goal old failure passed isolated and full; no prod change for it. Tests fixture failures were actual ancestry leakage, fixed only fixtures.
+
+`npm run build` exit0 tsc+Vite job shell_303b3d792cb951d6; archive6f78094aadc2b106. `npm run verify:map-terminals` PASS twice. `git diff --check` PASS. `npm run doctor` exit0 shell_4817ca539d5c68ea: protocol-compatible old daemon and new dock, no duplicated live writer, no caller pane injection (API), wiring healthy.
+
+Broader adjacent visual suite job shell_08594744077e67cd:3failed18skipped1pass; browser page close signifier and unrelated Goal/full-cwd header assertions. Don't claim all UI suite green. Focused rerun job shell_4e8242178c0be588:2pass (signifier+hydration race only; requested summary line180 matched none). Known unrelated typography violations unchanged. No Rust source changed by this turn; frontend embed compiled during release.
+
+## Installed release and no-loss relaunch — DONE gate, don't repeat
+
+Build/promote command host escalation autoapproved:
+`XDG_RUNTIME_DIR=/tmp/tf073-install-runtime TERMFLEET_BUILD_LOCK_FILE=/tmp/termfleet-build.lock npm run release:install > /tmp/tf073-release-install.log 2>&1`
+Completed session53875 exit0. Private runtime prevents canonical watchdog restart. Immutable release `0a80ec3f1ad4-ecc41e49a2b9-0406e7aa550b`, binary SHA256 `ecc41e49a2b9cf7cfb69e91b1f390a6990ef4839a624bb23b9301b84d8d28810`. Host native `npm run verify:installed-release` passes. A lean-only verifier falsely saw frontend mismatch due different runner context; native verified canonical HOME/build. Do not change manifest to make proof pass.
+
+User previously authorized UI-only relaunch; this instance disclosed brief window/focus risk, first snapped32live32alive via `/tmp/tf073-survival.mjs`, then `xdotool windowclose44040195`, waited2s, launched approved installed `/home/endlessblink/.local/bin/termfleet-desktop --dock` with DISPLAY:0 XAUTHORITY/run/user/1000/xauth_Xycgun XDG_RUNTIME_DIR/run/user/1000 DBUS socket. Only UI1891495->2332354. Host current exe confirms exact new immutable release. Canonical daemon **1515447 unchanged**. `/tmp/tf073-before-relaunch.json`, `/tmp/tf073-after-relaunch.json` safe sanitized IDs/PIDs only: all32 identical and alive, no missing/changing PID. Lifecycle delta25698bytes types agent-reconnect-already-running/failed/live-owner-rebind/skipped and recovery-restored, **zero kill events**. Original lifecycle file may contain metadata; project narrowly, don't expose raw payloads. No daemon restart or manual/provider resume command executed. Original seven prior losses remain un-restored/not automatically resumed.
+
+Current window44040195 DISPLAY:0 on second monitor x2080y54 1600x1000. Must raise/activate first and verify activewindow; another window may cover it, so blind absolute clicking affected no visible target and was stopped. Visual child restored income-zen. Host launcher process session56874 may still running; DO NOT Ctrl-C because it may own UI. Temporary snapshot exec session5308 completed; output was omitted by multi-item tool but reconstructed safe before/after files. Never duplicate release installer.
+
+## Same-card handover — confirmed limitation, NOT corrected
+
+Current API conversation `CODEX_THREAD_ID=01a0fd9c-0762-7c21-93a1-293ddf2038fc`; no TERMFLEET_PANE_ID. Exact binding lookup codex-chat-panes.json null; exact sessionId match across per-pane sidecars NONE. `/tmp/tf-caller-safe.mjs` imports resolveCaller and projects only thread id/pane env/matching binding/provider, no secrets. Native sandbox and host both resolved providercodex no parent; lean environment even omitted thread ID. Cannot choose by cwd (many chats same project). CLI current resolveCaller225; spawn249; replacement277 requires parent. Unknown real handover silently creates top-level card (existing test handover-vs-helper:243 expects this), rather than claimed same-card replacement. Previous spawn parentPaneId/replacedTabIdnull is explained. Production potential candidate fail clearly for recognized handover with no parent while retaining explicit separate/helper behavior, but NOT implemented. Requires issue lookup/record and regression plan; does not solve missing mapping. No caller identity fabrication. Next mandatory context handoff command may therefore create another top-level card; explicitly report result and never claim same-card proof.
+
+## House rules / authority / tools
+
+Read user AGENTS.md, continuation contract, lean rules. Skill router query `termfleet provider badge startup session handoff` selected regression planner/verifier, both read fully and applied, current verifier reread. ctx_compose/ctx_execute/update_plan unavailable; no goals created. Lean ctx_read/shell/search preferred, native used for script mutations/host proof. Read canonical vault ACCESS_POLICY WRITE_POLICY and `_Agent-Notes/termfleet--cfd20c48c5.md`; latest state updated authorized. Memory quick lookup had no relevant hits and no facts used, no memory citation needed. RTK.md has only rtk wrapper advice, commit trailers per user Constraint/Rejected/Tested.
+
+Parent must never view_image: new disposable native visual agent text-only. Native subagents authorized by AGENTS when materially useful; previous children complete, no ongoing edits. No screenshots/transcripts/commands/private tokens emitted. Preserve source rules Canvas2D no echo, daemon owns PTYs, unmount detaches, exact per-pane provider identity, never duplicate live conversation. No pushes or PRs requested. Shared board external agent-ops untouched. Exact context auto handoff: commit own only, one successor `termfleet-child spawn --provider codex --cwd /media/endlessblink/data/my-projects/ai-development/devops/termfleet --dropoff /media/endlessblink/data/my-projects/ai-development/devops/termfleet/HANDOFF.md`, tell Noam then STOP.
+
+## Next steps in order
+
+1. Read current TF073 record/matrix and trace actual status authority against exact target identifiers/process tree above; choose concrete correction and RED regression for liveCodex+staleClaude sidecars/pane, siblingClaude and ambiguous/multiple-writer protections.
+2. Implement minimal correction, run focused31 plus exact new test; build and map verifier; backend check/focused Rust only if backend touched.
+3. Rebuild immutable release privately, verify installed and doctor. Any UI-only relaunch same authorization persists with fresh disclosure/pre-post32survival; no daemon restart/resume. Disposable visual child must confirm exact target CODEX. Record failure honestly if not.
+4. Investigate same-card binding or safe unknown-parent failure, without cwd guess. Original TF069 exact3group proof and lost sessions remain separate pending gates. TF072 done.
+5. Commit own scoped work with trailers, keep registry/master mixed work safe. Never resolveTF073 from failed visual evidence.
+
+--- Previous full handoff follows unchanged ---
+
 # Latest Codex continuation — 2026-10-02
 
 Status: **in_progress**. This is a real Codex-to-Codex handover of this instance. Latest section supersedes old candidate/state below; original expansive handoff follows unchanged so no evidence is lost.
+
+CRITICAL latest spawn result: `termfleet-child spawn --provider codex --cwd ... --dropoff ...` succeeded but result had parentPaneId:null and replacedTabId:null. This API instance did not expose caller pane identity, so actual successor launched a new top-level card rather than replacing this card. Do NOT claim this demonstrated same-card treatment. Inspect sanitized provider/parent metadata and CLI caller identity detection; user explicitly asked about this. Commit before spawn was 0a80ec3; this critical sentence is a necessary uncommitted handoff update after result.
 
 ## Original request and later corrections
 User asked to read HANDOFF and continue exactly, confirming understanding. We confirmed board repair complete, grouping only partially verified, terminal startup-loss guard pending. User then supplied screenshot: "says claude eevn though its codex". Latest screenshot/question: "is this terminal gets the dropoff in the same terminal treatment correctly? also this should say codex". Screenshot shows claude-and-conquer pane, 3 earlier, CLAUDE badge, Codex TUI. Explain same map slot/card treatment with fresh session, NOT same provider conversation. Installed specific-pane replacement provenance remains unverified. Do not read private raw terminal transcripts or credentials.

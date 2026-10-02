@@ -140,8 +140,8 @@ function beat(dataHome: string) {
   return dir;
 }
 
-function runCli(args: string[], env: Record<string, string>) {
-  const child = spawn(process.execPath, [CLI, ...args], { env: { ...process.env, ...env } });
+function runCli(args: string[], env: Record<string, string>, preload?: string) {
+  const child = spawn(process.execPath, [...(preload ? ["--require", preload] : []), CLI, ...args], { env: { ...process.env, ...env } });
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (chunk) => (stdout += chunk));
@@ -153,10 +153,25 @@ function runCli(args: string[], env: Record<string, string>) {
 test("the spawn command hands a request to the app and prints the app's answer", async () => {
   const dataHome = mkdtempSync(join(tmpdir(), "tf-child-"));
   const dir = beat(dataHome);
+  // Synthetic pane identity must use synthetic process authority too: the test
+  // runner may itself live under a shared Codex server with an unrelated chat.
+  const preload = join(dataHome, "isolated-proc.cjs");
+  writeFileSync(preload, `
+    const fs = require("node:fs");
+    const { syncBuiltinESMExports } = require("node:module");
+    const root = ${JSON.stringify(join(dataHome, "proc"))};
+    fs.mkdirSync(root + "/" + process.pid, { recursive: true });
+    fs.writeFileSync(root + "/" + process.pid + "/stat", process.pid + " (node) S 0 1 1");
+    for (const name of ["readFileSync", "readlinkSync", "readdirSync"]) {
+      const original = fs[name];
+      fs[name] = (path, ...args) => original(typeof path === "string" && path.startsWith("/proc/") ? root + path.slice(5) : path, ...args);
+    }
+    syncBuiltinESMExports();
+  `);
   const run = runCli(["spawn", "--provider", "claude", "--task", "Write tests", "--cwd", "/work", "--timeout", "10"], {
     XDG_DATA_HOME: dataHome,
     TERMFLEET_PANE_ID: parentPaneId,
-  });
+  }, preload);
   let requestFile: string | undefined;
   for (let i = 0; i < 80 && !requestFile; i += 1) {
     requestFile = existsSync(dir) ? readdirSync(dir).find((name) => name.endsWith(".request.json")) : undefined;

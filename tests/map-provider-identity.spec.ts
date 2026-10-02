@@ -42,7 +42,7 @@ test("map provider follows its pane after switching agents, preserving the sibli
   });
   const codex = page.locator("section[data-node-id]");
   await expect(codex).toHaveCount(1);
-  await expect(codex.locator('[aria-label="GPT agent"]').first()).toBeVisible();
+  await expect(codex.locator('[aria-label="CODEX agent"]').first()).toBeVisible();
   await expect(codex.locator('[aria-label="CLAUDE agent"]')).toHaveCount(0);
   expect(await page.evaluate(() => window.__termfleetWorkspaceStore?.getState().tabs[0].terminals.find((terminal) => terminal.paneId === "claude-pane")?.agentProvider)).toBe("claude");
 
@@ -54,7 +54,7 @@ test("map provider follows its pane after switching agents, preserving the sibli
       terminal.paneId === "codex-pane" ? { ...terminal, agentProvider: undefined } : terminal,
     ) }] });
   });
-  await expect(codex.locator('[aria-label="GPT agent"]').first()).toBeVisible();
+  await expect(codex.locator('[aria-label="CODEX agent"]').first()).toBeVisible();
 
   // Saved launch metadata is still the fallback when that pane has no provider evidence.
   await page.evaluate(() => {
@@ -65,5 +65,5 @@ test("map provider follows its pane after switching agents, preserving the sibli
     ) }] });
   });
   await expect(codex.locator('[aria-label="CLAUDE agent"]').first()).toBeVisible();
-  await expect(codex.locator('[aria-label="GPT agent"]')).toHaveCount(0);
+  await expect(codex.locator('[aria-label="CODEX agent"]')).toHaveCount(0);
 });

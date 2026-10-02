@@ -54,8 +54,23 @@ test("the real Codex status hook tells a Codex session to hand over, once", () =
   const dir = mkdtempSync(join(tmpdir(), "tf-codex-hook-"));
   const file = join(dir, "rollout.jsonl");
   writeFileSync(file, rollout(130_000));
+  // Do not let the real shared Codex server's ancestry override this synthetic
+  // hook's pane: its own process tree contains only the fixture Node process.
+  const preload = join(dir, "isolated-proc.cjs");
+  writeFileSync(preload, `
+    const fs = require("node:fs");
+    const { syncBuiltinESMExports } = require("node:module");
+    const root = ${JSON.stringify(join(dir, "proc"))};
+    fs.mkdirSync(root + "/" + process.pid, { recursive: true });
+    fs.writeFileSync(root + "/" + process.pid + "/stat", process.pid + " (node) S 0 1 1");
+    for (const name of ["readFileSync", "readlinkSync", "readdirSync"]) {
+      const original = fs[name];
+      fs[name] = (path, ...args) => original(typeof path === "string" && path.startsWith("/proc/") ? root + path.slice(5) : path, ...args);
+    }
+    syncBuiltinESMExports();
+  `);
   const run = () =>
-    spawnSync(process.execPath, [join(process.cwd(), "scripts", "termfleet-codex-status-hook.mjs")], {
+    spawnSync(process.execPath, ["--require", preload, join(process.cwd(), "scripts", "termfleet-codex-status-hook.mjs")], {
       input: JSON.stringify({ hook_event_name: "UserPromptSubmit", session_id: "codex-sess-2", transcript_path: file, cwd: dir, prompt: "continue" }),
       env: {
         ...process.env,
