@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-import { listPanes, reconcileLivePanes } from '../bridge/inventory.mjs';
+import { listPanes, reconcileLivePanes, retiredTerminalIds } from '../bridge/inventory.mjs';
 import { liveness } from '../bridge/liveness.mjs';
 import { PATHS } from '../bridge/paths.mjs';
 
@@ -44,10 +44,15 @@ function expectedLiveSidebarOrder(workspace, liveIds) {
   return [...ordered, ...liveIds.filter((id) => live.delete(id))];
 }
 
-test('the phone lists each daemon-owned live terminal exactly once', async () => {
+test('the phone lists each live, still-owned terminal exactly once (no handed-over or exited ones)', async () => {
   const life = await liveness();
   assert.equal(life.reachable, true, 'the terminal daemon must be reachable for parity proof');
-  const live = [...life.byId.keys()];
+  // A handed-over or closed card keeps its daemon session on purpose, and an
+  // exited shell lingers too; neither is a terminal the operator still has.
+  const retired = retiredTerminalIds(JSON.parse(fs.readFileSync(PATHS.workspace, 'utf8')));
+  const ws0 = JSON.parse(fs.readFileSync(PATHS.workspace, 'utf8'));
+  const owned = new Set(ws0.tabs.flatMap((tab) => tab.terminals.map((term) => term.id)));
+  const live = [...life.byId].filter(([id, one]) => !one.exited && !retired.has(id) && owned.has(id)).map(([id]) => id);
   const phone = reconcileLivePanes(listPanes(), life.byId).map((pane) => pane.id);
 
   assert.equal(phone.length, new Set(phone).size, 'the phone contains duplicate terminal identities');
@@ -60,4 +65,19 @@ test('the phone lists each daemon-owned live terminal exactly once', async () =>
   assert.equal(refreshed.reachable, true, 'the terminal daemon must remain reachable during order verification');
   const afterRefresh = reconcileLivePanes(listPanes(), refreshed.byId).map((pane) => pane.id);
   assert.deepEqual(afterRefresh, phone, 'a liveness refresh moved terminals without the user moving them');
+});
+
+test('a handed-over predecessor and an exited shell are not listed, and the successor says what it continues', () => {
+  const alive = (id, extra = {}) => [id, { alive: true, exited: false, ...extra }];
+  const live = new Map([alive('old'), alive('new'), alive('dead', { exited: true }), alive('fresh')]);
+  const workspace = {
+    groups: [],
+    closedSessionIds: ['old'],
+    tabs: [{ id: 't1', terminals: [{ id: 'new' }], earlierSessions: [{ ptyIds: ['old'], title: 'before', endedAt: 5 }] }],
+  };
+  const panes = reconcileLivePanes([], live, workspace, new Map());
+  const ids = panes.map((p) => p.id).sort();
+  assert.deepEqual(ids, ['new'], 'only terminals with a card on the map are listed');
+  assert.equal(panes.find((p) => p.id === 'new').continues?.count, 1);
+  
 });

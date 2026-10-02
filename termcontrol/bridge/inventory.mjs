@@ -219,13 +219,62 @@ export function canvasSidebarView(workspace = readJson(PATHS.workspace)) {
 }
 
 /**
+ * Terminals the desktop has let go of. A handover (--dropoff) or a closed card
+ * keeps its daemon session alive on purpose, so the daemon's list alone makes
+ * every predecessor look like a live terminal. The workspace says which ones
+ * the operator no longer has: ids in closedSessionIds or in a card's
+ * earlierSessions, unless a card still owns that id right now.
+ */
+export function retiredTerminalIds(workspace) {
+  const owned = new Set();
+  const retired = new Set();
+  for (const tab of workspace?.tabs || []) {
+    for (const terminal of tab.terminals || []) if (terminal?.id) owned.add(terminal.id);
+    for (const earlier of tab.earlierSessions || []) {
+      for (const id of earlier?.ptyIds || []) retired.add(id);
+    }
+  }
+  for (const id of workspace?.closedSessionIds || []) retired.add(id);
+  for (const id of owned) retired.delete(id);
+  return retired;
+}
+
+/** For each live card, the earlier sessions it took over from (handover lineage). */
+function lineageByTerminal(workspace) {
+  const byTerminal = new Map();
+  for (const tab of workspace?.tabs || []) {
+    const earlier = tab.earlierSessions || [];
+    if (earlier.length === 0) continue;
+    const lineage = {
+      count: earlier.length,
+      lastTitle: earlier[earlier.length - 1]?.title || null,
+      lastEndedAt: Math.max(0, ...earlier.map((e) => Number(e?.endedAt) || 0)) || null,
+    };
+    for (const terminal of tab.terminals || []) if (terminal?.id) byTerminal.set(terminal.id, lineage);
+  }
+  return byTerminal;
+}
+
+/**
  * Status hooks describe agent conversations, not terminal ownership. Merge the
  * daemon's complete live set back in so ordinary shells and newly created
  * terminals cannot disappear from the phone while remaining present on the
  * desktop. The workspace supplies the same project identity and ordering.
  */
 export function reconcileLivePanes(panes, liveById, workspace = readJson(PATHS.workspace), agents = agentsByPane()) {
-  const live = liveById instanceof Map ? liveById : new Map();
+  const everyone = liveById instanceof Map ? liveById : new Map();
+  // Only terminals that are still running and that the desktop still owns. An
+  // exited shell and a handed-over predecessor both linger in the daemon.
+  const retired = retiredTerminalIds(workspace);
+  // The desktop map is the source of truth: when the workspace is readable, a
+  // terminal is listed only if a card on the map owns it. Daemon sessions with
+  // no card (orphans, predecessors, strays) stay hidden so phone and desktop agree.
+  const owned = new Set();
+  for (const tab of workspace?.tabs || []) for (const t of tab.terminals || []) if (t?.id) owned.add(t.id);
+  const mapKnown = owned.size > 0;
+  const live = new Map([...everyone].filter(([id, life]) =>
+    !life?.exited && !retired.has(id) && (!mapKnown || owned.has(id))));
+  const lineage = lineageByTerminal(workspace);
   // The conversation a running agent holds open beats whatever a status record
   // last claimed for its terminal.
   const reconciled = dedupePanes(panes).filter((pane) => live.has(pane.id)).map((pane) => {
@@ -258,8 +307,8 @@ export function reconcileLivePanes(panes, liveById, workspace = readJson(PATHS.w
 
     reconciled.push({
       id,
-      emoji: matching?.emoji || decoration.emoji || iconFor(project),
-      color: matching?.color || decoration.color || null,
+      emoji: decoration.emoji || matching?.emoji || iconFor(project),
+      color: decoration.color || matching?.color || null,
       groupName: project,
       mapGroupId: decoration.groupId || null,
       mapGroupName: decoration.groupName || null,
@@ -276,7 +325,9 @@ export function reconcileLivePanes(panes, liveById, workspace = readJson(PATHS.w
     known.add(id);
   }
 
-  return orderPanesLikeCanvasSidebar(reconciled, workspace);
+  return orderPanesLikeCanvasSidebar(reconciled, workspace).map((pane) => (
+    lineage.has(pane.id) ? { ...pane, continues: lineage.get(pane.id) } : pane
+  ));
 }
 
 export function listPanes({ maxAgeMs = null } = {}) {
@@ -303,8 +354,10 @@ export function listPanes({ maxAgeMs = null } = {}) {
     const matching = byProjectName.get(project);
     const look = {
       groupName: project,
-      emoji: matching?.emoji || (tab.groupName === project ? tab.emoji : null) || iconFor(project),
-      color: matching?.color || (tab.groupName === project ? tab.color : null) || null,
+      // The map group a card sits in decides its look, so a row never wears
+      // another project's emoji inside this group's section.
+      emoji: (tab.groupId ? tab.emoji : null) || matching?.emoji || iconFor(project),
+      color: (tab.groupId ? tab.color : null) || matching?.color || null,
     };
 
     panes.push({
