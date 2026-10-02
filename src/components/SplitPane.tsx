@@ -191,7 +191,7 @@ function AgentTaskSidebar({
           border: "none",
           borderLeft: "1px solid var(--border-subtle)",
           background:
-            "color-mix(in srgb, var(--surface-base) 78%, var(--surface-sunken))",
+            "color-mix(in srgb, var(--surface-rail) 78%, var(--surface-sunken))",
           color: "var(--text-secondary)",
           fontFamily: "var(--font-ui)",
           cursor: "pointer",
@@ -284,7 +284,7 @@ function AgentTaskSidebar({
         padding: "10px 10px 11px",
         borderLeft: "1px solid var(--border-subtle)",
         background:
-          "color-mix(in srgb, var(--surface-base) 72%, var(--surface-sunken))",
+          "color-mix(in srgb, var(--surface-rail) 72%, var(--surface-sunken))",
         color: "var(--text-secondary)",
         fontFamily: "var(--font-ui)",
         overflow: "hidden",
@@ -647,7 +647,7 @@ function PaneContextMenu({
           alignItems: "center",
           justifyContent: "space-between",
           gap: 16,
-          borderRadius: "var(--radius-sm)",
+          borderRadius: "var(--radius-md)",
           background: "transparent",
           transition: "background var(--motion-fast), color var(--motion-fast)",
         }}
@@ -660,8 +660,8 @@ function PaneContextMenu({
               height: 18,
               padding: "0 5px",
               border: "1px solid transparent",
-              borderRadius: "var(--radius-xs)",
-              background: "var(--surface-base)",
+              borderRadius: "var(--radius-sm)",
+              background: "var(--surface-rail)",
               color: "var(--text-secondary)",
               fontSize: 11,
               lineHeight: "16px",
@@ -685,7 +685,7 @@ function PaneContextMenu({
         left: x,
         background: "var(--surface-raised)",
         border: "1px solid transparent",
-        borderRadius: "var(--radius-md)",
+        borderRadius: "var(--radius-lg)",
         padding: 4,
         minWidth: 180,
         zIndex: 1000,
@@ -918,7 +918,7 @@ function MeasuringFallback() {
           style={{
             width: 132,
             height: 9,
-            borderRadius: "var(--radius-xs)",
+            borderRadius: "var(--radius-sm)",
             background: "var(--surface-hover)",
           }}
         />
@@ -938,7 +938,7 @@ function MeasuringFallback() {
             style={{
               width: `${width}%`,
               height: 10,
-              borderRadius: "var(--radius-xs)",
+              borderRadius: "var(--radius-sm)",
               background:
                 "linear-gradient(90deg, rgba(216, 222, 231, 0.42), rgba(216, 222, 231, 0.08))",
               opacity: 0.7,
@@ -1590,7 +1590,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 : panelColor
                   ? `1px solid color-mix(in srgb, ${panelColor} 42%, transparent)`
                   : "1px solid transparent",
-              borderRadius: isImmersivePane ? 0 : "var(--radius-md)",
+              borderRadius: isImmersivePane ? 0 : "var(--radius-lg)",
               boxShadow: isImmersivePane
                 ? "none"
                 : isActive
@@ -2077,8 +2077,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             justifyContent: "center",
                             padding: "0 7px",
     border: "1px solid transparent",
-                            borderRadius: "var(--radius-xs)",
-                            background: "var(--surface-base)",
+                            borderRadius: "var(--radius-sm)",
+                            background: "var(--surface-rail)",
                             color: "var(--text-secondary)",
                             fontSize: 11,
                             textTransform: "uppercase",
@@ -2465,8 +2465,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           justifyContent: "center",
                           padding: "0 7px",
                           border: "1px solid transparent",
-                          borderRadius: "var(--radius-xs)",
-                          background: "var(--surface-base)",
+                          borderRadius: "var(--radius-sm)",
+                          background: "var(--surface-rail)",
                           color: "var(--text-secondary)",
                           fontSize: 11,
                           textTransform: "uppercase",
@@ -2753,8 +2753,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           justifyContent: "center",
                           padding: "0 6px",
                           border: "1px solid transparent",
-                          borderRadius: "var(--radius-xs)",
-                          background: "var(--surface-base)",
+                          borderRadius: "var(--radius-sm)",
+                          background: "var(--surface-rail)",
                           color: "var(--text-secondary)",
                           fontSize: 11,
                           textTransform: "uppercase",

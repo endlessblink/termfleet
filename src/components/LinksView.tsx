@@ -314,7 +314,7 @@ const cardBase: CSSProperties = {
   alignItems: "center",
   gap: 10,
   padding: "10px 12px",
-  borderRadius: "var(--radius-md, 10px)",
+  borderRadius: "var(--radius-lg, 10px)",
     border: "1px solid transparent",
   background: "var(--surface-raised)",
   boxShadow: "var(--shadow-card)",

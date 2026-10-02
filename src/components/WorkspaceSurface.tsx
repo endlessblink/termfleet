@@ -76,7 +76,7 @@ const styles: Record<string, CSSProperties> = {
   terminalFrameTitle: {
     width: 132,
     height: 9,
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "var(--surface-hover)",
   },
   terminalFrameBody: {
@@ -90,7 +90,7 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalLine: {
     height: 10,
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "linear-gradient(90deg, rgba(216, 222, 231, 0.42), rgba(216, 222, 231, 0.08))",
     opacity: 0.7,
   },
@@ -129,7 +129,7 @@ function MapSurfaceFallback() {
         position: "absolute",
         inset: 0,
         background:
-          "linear-gradient(var(--canvas-grid-soft) 1px, transparent 1px), linear-gradient(90deg, var(--canvas-grid-soft) 1px, transparent 1px), linear-gradient(180deg, var(--surface-base), var(--surface-sunken))",
+          "linear-gradient(var(--canvas-grid-soft) 1px, transparent 1px), linear-gradient(90deg, var(--canvas-grid-soft) 1px, transparent 1px), linear-gradient(180deg, var(--surface-rail), var(--surface-sunken))",
         backgroundSize: "56px 56px",
       }}
     >
@@ -141,7 +141,7 @@ function MapSurfaceFallback() {
           width: 170,
           height: 42,
           border: "1px solid transparent",
-          borderRadius: "var(--radius-md)",
+          borderRadius: "var(--radius-lg)",
           background: "var(--surface-raised)",
           boxShadow: "var(--shadow-card)",
         }}

@@ -19,7 +19,7 @@ import { classifySystemPressure, type SystemPressureSnapshot, type SystemPressur
 const styles: Record<string, CSSProperties> = {
   bar: {
     height: "var(--statusbar-height)",
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     borderTop: "1px solid var(--border-subtle)",
     display: "flex",
@@ -52,7 +52,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     padding: "0 7px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "transparent",
     color: "var(--text-secondary)",
     minWidth: 0,

@@ -33,7 +33,7 @@
   --sidebar-bg: #22272a;
   --sidebar-width: 276px;
   --canvas-sidebar-width: 232px;
-  --canvas-sidebar-bg: var(--surface-base);
+  --canvas-sidebar-bg: var(--surface-rail);
   --canvas-sidebar-header-bg: var(--surface-raised);
   --canvas-sidebar-border: var(--border-subtle);
   --canvas-sidebar-row-selected: rgba(217, 154, 69, 0.16);
@@ -111,7 +111,7 @@
      Borders are near-invisible hairlines; grouping/selection use background
      steps + a small accent edge instead of outlines. */
   --surface-floor: #15181a;    /* app background */
-  --surface-base: #1b1f22;     /* rails / sidebars (recede) */
+  --surface-rail: #1b1f22;     /* rails / sidebars (recede) */
   --surface-raised: #20252a;   /* raised panels / menus */
   --surface-sunken: #181b1d;
   --surface-wash: #20252a;
@@ -143,9 +143,9 @@
   --commandbar-search-width: min(680px, calc(100vw - 620px));
   --commandbar-search-min-width: 300px;
   --pane-chrome-height: 42px;
-  --radius-xs: 6px;
-  --radius-sm: 9px;
-  --radius-md: 12px;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
   --motion-fast: 120ms cubic-bezier(0.22, 1, 0.36, 1);
   --motion-med: 180ms cubic-bezier(0.22, 1, 0.36, 1);
   /* Previously referenced but never defined (design review P0-2). */
@@ -157,7 +157,6 @@
   --accent-primary: var(--accent-live);
   --accent-positive: var(--accent-success);
   --text-warning: var(--accent-warning);
-  --radius-lg: var(--radius-md);
   --shadow-popover: var(--shadow-menu);
   --surface-2: var(--surface-raised);
   /* No blur: the desktop draws in software, and a 42px blurred card shadow

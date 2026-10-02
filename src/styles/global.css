@@ -97,12 +97,12 @@ button::-moz-focus-inner {
   background: color-mix(
     in srgb,
     var(--surface-raised) 92%,
-    var(--surface-base)
+    var(--surface-rail)
   ) !important;
   box-shadow: inset 2px 0 color-mix(
     in srgb,
     var(--session-panel-color) 58%,
-    var(--surface-base)
+    var(--surface-rail)
   ) !important;
 }
 
@@ -132,7 +132,7 @@ button::-moz-focus-inner {
   inset: 2px;
   z-index: 1;
   pointer-events: none;
-  border-radius: calc(var(--radius-sm) - 1px);
+  border-radius: calc(var(--radius-md) - 1px);
   border: 1px solid color-mix(in srgb, var(--accent-info) 72%, var(--border-subtle));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-warning) 42%, transparent);
   opacity: 0.5;
@@ -175,7 +175,7 @@ button::-moz-focus-inner {
   padding: 11px 10px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--accent-warning) 48%, var(--border-subtle));
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: linear-gradient(120deg, color-mix(in srgb, var(--accent-warning) 22%, var(--surface-raised)), color-mix(in srgb, var(--accent-info) 14%, var(--surface-raised)));
   color: var(--text-primary);
   animation: gamification-quest-celebration-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -210,7 +210,7 @@ button::-moz-focus-inner {
   max-width: calc(100vw - 24px);
   padding: 16px;
   border-top: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: linear-gradient(145deg, color-mix(in srgb, var(--accent-info) 12%, var(--surface-raised)), color-mix(in srgb, var(--accent-warning) 7%, var(--surface-raised)));
   box-shadow: var(--shadow-menu);
   animation: gamification-panel-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -241,7 +241,7 @@ button::-moz-focus-inner {
 .gamification-quest-progress-bar { height: 7px; margin-top: 9px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text-primary) 15%, transparent); }
 .gamification-quest-progress-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-info), var(--accent-warning)); transition: width 300ms ease; }
 .gamification-milestone-rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 12px; }
-.gamification-milestone-rail > div { display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border-radius: var(--radius-xs); color: var(--text-tertiary); font-size: 11px; }
+.gamification-milestone-rail > div { display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border-radius: var(--radius-sm); color: var(--text-tertiary); font-size: 11px; }
 .gamification-milestone-rail span { display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--border-subtle); border-radius: 50%; background: var(--surface-hover); }
 .gamification-milestone-rail > div[data-state="earned"] { color: var(--accent-live); }
 .gamification-milestone-rail > div[data-state="earned"] span { border-color: color-mix(in srgb, var(--accent-live) 62%, var(--border-subtle)); background: color-mix(in srgb, var(--accent-live) 18%, var(--surface-hover)); }
@@ -250,11 +250,11 @@ button::-moz-focus-inner {
 .gamification-quest-callout { gap: 6px; margin-top: 13px; color: var(--text-secondary); font-size: 11px; }
 .gamification-quest-callout span { color: var(--accent-live); }
 .gamification-quest-accept,
-.gamification-quest-focus { gap: 6px; margin-top: 14px; border: 0; border-radius: var(--radius-xs); cursor: pointer; font-size: 11px; }
-.gamification-quest-accept { padding: 8px 11px; background: var(--accent-info); color: var(--surface-base); font-weight: 500; }
+.gamification-quest-focus { gap: 6px; margin-top: 14px; border: 0; border-radius: var(--radius-sm); cursor: pointer; font-size: 11px; }
+.gamification-quest-accept { padding: 8px 11px; background: var(--accent-info); color: var(--surface-rail); font-weight: 500; }
 .gamification-quest-focus { padding: 7px 10px; background: var(--surface-hover); color: var(--text-primary); }
 .gamification-quest-reset { gap: 5px; padding: 0; font: inherit; font-size: 11px; }
-.gamification-quest-confirm { margin-right: 8px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: var(--surface-selected); color: var(--text-primary); cursor: pointer; font-size: 11px; }
+.gamification-quest-confirm { margin-right: 8px; padding: 5px 8px; border: 0; border-radius: var(--radius-sm); background: var(--surface-selected); color: var(--text-primary); cursor: pointer; font-size: 11px; }
 
 .gamification-quest-celebration strong,
 .gamification-quest-celebration span {
@@ -319,7 +319,7 @@ button::-moz-focus-inner {
   padding: 1px 6px;
   border-radius: 99px;
   background: var(--accent-warning);
-  color: var(--surface-base);
+  color: var(--surface-rail);
   font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -839,7 +839,7 @@ button:active {
   gap: 8px !important;
   align-items: center;
   padding: 12px 24px 14px !important;
-  background: var(--surface-base);
+  background: var(--surface-rail);
   border-top: 1px solid var(--border-subtle);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -900,7 +900,7 @@ button:active {
   padding: 0;
   overflow: hidden;
   border-radius: 10px;
-  background: var(--surface-base);
+  background: var(--surface-rail);
 }
 
 .canonical-agent-board .canonical-attention-heading {
