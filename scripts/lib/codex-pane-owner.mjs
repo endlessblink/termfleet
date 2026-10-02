@@ -124,9 +124,13 @@ export function resolveCodexPaneId({
       .filter(([id]) => id !== conversationId)
       .map(([, value]) => value?.paneId),
   );
+  // A window started with `resume <other chat id>` is that other chat's card.
+  const resumedElsewhere = (window) => window.args.some(
+    (arg) => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(arg) && arg !== conversationId,
+  );
   const folder = normalizeCwd(cwd);
   const sameFolder = panes(
-    windows.filter((window) => folder && window.cwd === folder && !taken.has(window.paneId)),
+    windows.filter((window) => folder && window.cwd === folder && !taken.has(window.paneId) && !resumedElsewhere(window)),
   );
   if (sameFolder.length === 1) {
     writeBinding(bindingsPath, conversationId, sameFolder[0], now);

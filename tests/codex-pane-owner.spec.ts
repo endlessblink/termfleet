@@ -89,6 +89,18 @@ test("a window already bound to another chat is ruled out, and a binding sticks"
   ).toBe("pane-kernel-2");
 });
 
+test("windows resumed with other chats are ruled out, leaving the one fresh window", () => {
+  const system = fakeSystem([
+    ...sharedService,
+    window(300, "pane-kernel-1", KERNEL, ["resume", OTHER_CHAT]),
+    window(301, "pane-kernel-2", KERNEL, ["resume", "0199bbbb-0000-7000-8000-000000000003"]),
+    window(302, "pane-kernel-3", KERNEL),
+  ]);
+  expect(
+    resolveCodexPaneId({ envPaneId: "pane-termfleet", conversationId: CHAT, cwd: KERNEL, selfPid: 120, ...system }),
+  ).toBe("pane-kernel-3");
+});
+
 test("no chat id from the shared service: write nothing", () => {
   const system = fakeSystem([...sharedService, window(300, "pane-kernel", KERNEL)]);
   expect(
