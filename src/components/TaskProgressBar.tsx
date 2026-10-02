@@ -42,20 +42,22 @@ export function TaskProgressBar({
           height: compact ? 4 : 5,
           overflow: "hidden",
           borderRadius: 999,
-          background: "color-mix(in srgb, var(--surface-raised) 80%, var(--border-subtle))",
+          background: "var(--surface-raised)",
         }}
       >
         <div
           style={{
-            width: `${progress.percent}%`,
+            width: "100%",
             height: "100%",
             borderRadius: 999,
-            background: progress.percent === 100 ? "var(--accent-live)" : "var(--accent-info)",
-            transition: "width 180ms ease-out",
+            background: progress.percent === 100 ? "var(--state-done)" : "var(--state-running)",
+            transform: `scaleX(${progress.percent / 100})`,
+            transformOrigin: "left center",
+            transition: "transform var(--dur-med) var(--ease-out)",
           }}
         />
       </div>
-      <span style={{ color: "var(--text-tertiary)", fontSize: compact ? 9 : 10, whiteSpace: "nowrap" }}>
+      <span style={{ color: "var(--text-tertiary)", fontSize: 11, whiteSpace: "nowrap" }}>
         {progress.percent}%
       </span>
     </div>
