@@ -1,0 +1,311 @@
+/* ===========================================================================
+   TermFleet UI primitives (design step 1.4). Classes only; every value is a
+   token from src/styles/theme.css. Dimensions follow the approved mocks:
+   control sizes 24/28/32, radii per size (4 kbd/tag, 6 chips + 24px buttons,
+   8 rows/fields + >=28px buttons, 12 dialogs, 999 pills).
+   Hover = fill. Selected = fill + 2px accent edge. Focus = global ring.
+   =========================================================================== */
+
+/* ---- Button ------------------------------------------------------------- */
+.tf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  position: relative;
+  border: 0;
+  background: var(--surface-raised);
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
+}
+.tf-btn--sm { height: var(--control-sm); padding: 0 10px; border-radius: var(--radius-sm); font-size: var(--font-size-xs); }
+.tf-btn--md { height: var(--control-md); padding: 0 12px; border-radius: var(--radius-md); }
+.tf-btn--lg { height: var(--control-lg); padding: 0 14px; border-radius: var(--radius-md); }
+.tf-btn:hover { background: var(--surface-hover); color: var(--text-1); }
+.tf-btn:active { background: var(--surface-selected); color: var(--text-1); }
+.tf-btn--outlined { background: transparent; border: 1px solid var(--border-control); color: var(--text-1); }
+.tf-btn--outlined:hover { background: var(--surface-hover); }
+.tf-btn--primary { background: var(--accent-fill); color: var(--surface-base); }
+.tf-btn--primary:hover { background: var(--accent); color: var(--surface-base); }
+.tf-btn--primary:active { background: var(--accent-hi); color: var(--surface-base); }
+.tf-btn--warn { background: var(--state-waiting); color: var(--surface-base); }
+.tf-btn--warn:hover { background: var(--state-waiting); color: var(--surface-base); filter: brightness(1.08); }
+.tf-btn:disabled,
+.tf-btn[aria-disabled="true"] {
+  background: var(--surface-raised);
+  color: var(--text-disabled);
+  border-color: var(--border-default);
+  cursor: default;
+  filter: none;
+}
+/* Hit area is never below 24x24, even when the visual box is smaller. */
+.tf-btn::after,
+.tf-icon-btn::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  min-width: var(--control-sm);
+  min-height: var(--control-sm);
+  width: 100%;
+  height: 100%;
+  transform: translate(-50%, -50%);
+}
+
+/* ---- IconButton --------------------------------------------------------- */
+.tf-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  position: relative;
+  border: 0;
+  background: var(--surface-raised);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.tf-icon-btn--sm { width: var(--control-sm); height: var(--control-sm); border-radius: var(--radius-xs); }
+.tf-icon-btn--md { width: var(--control-md); height: var(--control-md); border-radius: var(--radius-md); }
+.tf-icon-btn:hover { background: var(--surface-hover); color: var(--text-1); }
+.tf-icon-btn--danger { color: var(--state-failed); }
+.tf-icon-btn--danger:hover { color: var(--state-failed); }
+.tf-icon-btn:disabled { color: var(--text-disabled); cursor: default; }
+
+/* ---- Chip --------------------------------------------------------------- */
+.tf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-base);
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.tf-chip--20 { height: 20px; padding: 0 8px; }
+.tf-chip--22 { height: 22px; padding: 0 8px; }
+button.tf-chip { cursor: pointer; }
+button.tf-chip:hover { background: var(--surface-hover); color: var(--text-1); }
+.tf-chip[aria-pressed="true"],
+.tf-chip[data-active="true"] {
+  border-color: var(--accent-fill);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* ---- Status glyph + pill ------------------------------------------------ */
+.tf-status-dot {
+  --tf-state: var(--text-2);
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  background: var(--tf-state);
+}
+.tf-status-dot--running { --tf-state: var(--state-running); border-radius: 50%; }
+.tf-status-dot--waiting { --tf-state: var(--state-waiting); transform: rotate(45deg) scale(0.82); }
+.tf-status-dot--idle { --tf-state: var(--state-idle); border-radius: 50%; background: transparent; border: 1.5px solid var(--text-3); }
+.tf-status-dot--failed {
+  --tf-state: var(--state-failed);
+  width: 0;
+  height: 0;
+  background: transparent;
+  border-left: 4.5px solid transparent;
+  border-right: 4.5px solid transparent;
+  border-bottom: 8px solid var(--tf-state);
+}
+.tf-status-dot--done {
+  --tf-state: var(--state-done);
+  clip-path: polygon(14% 52%, 0 66%, 38% 100%, 100% 22%, 86% 8%, 38% 72%);
+}
+.tf-pill {
+  --tf-state: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--tf-state) var(--pill-border-pct), transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--tf-state) var(--pill-tint-pct), transparent);
+  color: var(--tf-state);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.tf-pill--running { --tf-state: var(--state-running); }
+.tf-pill--waiting { --tf-state: var(--state-waiting); }
+.tf-pill--idle { --tf-state: var(--state-idle); color: var(--text-2); }
+.tf-pill--failed { --tf-state: var(--state-failed); }
+.tf-pill--done { --tf-state: var(--state-done); }
+
+/* ---- Kbd + SectionLabel ------------------------------------------------- */
+.tf-kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-xs);
+  letter-spacing: 0;
+}
+.tf-section-label {
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--label-caps-size);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--label-caps-tracking);
+  text-transform: uppercase;
+}
+
+/* ---- ListRow ------------------------------------------------------------ */
+.tf-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.tf-row:hover { background: var(--surface-raised); color: var(--text-1); }
+.tf-row:focus-visible { outline-offset: -2px; }
+.tf-row[data-selected="true"] {
+  background: var(--surface-selected);
+  color: var(--text-1);
+  box-shadow: inset 2px 0 0 var(--accent-fill);
+  /* tertiary text inside a selected row reads as secondary (4.28:1 -> 4.5:1) */
+  --text-3: var(--text-2);
+}
+.tf-row__actions {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: flex;
+  gap: 3px;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity var(--motion-fast);
+}
+.tf-row:hover .tf-row__actions,
+.tf-row:focus-within .tf-row__actions,
+.tf-row[data-selected="true"] .tf-row__actions { opacity: 1; }
+
+/* ---- Field -------------------------------------------------------------- */
+.tf-field {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--border-control);
+  background: var(--surface-base);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-md);
+  letter-spacing: 0;
+}
+.tf-field::placeholder { color: var(--text-3); }
+.tf-field--28 { height: var(--control-md); padding: 0 10px; border-radius: var(--radius-sm); }
+.tf-field--30 { height: 30px; padding: 0 10px; border-radius: var(--radius-sm); }
+.tf-field--32 { height: var(--control-lg); padding: 0 12px; border-radius: var(--radius-md); }
+.tf-field--mono { font-family: var(--font-mono); font-size: var(--font-size-sm); }
+.tf-field:disabled { color: var(--text-disabled); border-color: var(--border-default); }
+
+/* ---- Menu --------------------------------------------------------------- */
+.tf-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--elev-menu);
+  z-index: var(--z-menu);
+}
+.tf-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.tf-menu__item:hover { background: var(--surface-hover); }
+.tf-menu__item--danger { color: var(--state-failed); }
+.tf-menu__item:disabled { color: var(--text-disabled); cursor: default; background: transparent; }
+
+/* ---- Dialog ------------------------------------------------------------- */
+.tf-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: grid;
+  place-items: center;
+  background: var(--scrim);
+}
+.tf-dialog {
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  color: var(--text-1);
+  box-shadow: var(--elev-dialog);
+}
+.tf-dialog__header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; }
+.tf-dialog__title { margin: 0; font-size: var(--font-size-md); font-weight: var(--font-weight-medium); }
+.tf-dialog__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px 14px; }
+
+/* ---- Checkbox ----------------------------------------------------------- */
+.tf-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1.5px solid var(--border-control);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+}
+.tf-checkbox:checked { border-color: var(--accent-fill); background: var(--accent-fill); }
+.tf-checkbox:checked::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: var(--surface-base);
+  clip-path: polygon(14% 52%, 0 66%, 38% 100%, 100% 22%, 86% 8%, 38% 72%);
+}
+.tf-checkbox:disabled { border-color: var(--border-default); cursor: default; }
