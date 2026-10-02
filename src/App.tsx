@@ -7,6 +7,7 @@ import { WorkbenchSidebar } from "./components/WorkbenchSidebar";
 import { WorkspaceSurface } from "./components/WorkspaceSurface";
 import { WorkbenchHeader } from "./components/WorkbenchHeader";
 import { useKeybindings } from "./hooks/useKeybindings";
+import { useRegionNavigation } from "./hooks/useRegionNavigation";
 import { reconnectSavedAgentPanes } from "./lib/agentReconnectRuntime";
 import {
   hydrateWorkspace,
@@ -19,6 +20,7 @@ startChildRequestLoop();
 
 function App() {
   useKeybindings();
+  useRegionNavigation();
   const reconcileCanvasState = useWorkspaceStore((state) => state.reconcileCanvasState);
   const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
   const hydrating = useWorkspaceStore((state) => state.hydrating);
