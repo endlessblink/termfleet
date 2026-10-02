@@ -1023,12 +1023,20 @@ function reconcileProjectGroups(
     // A card sits in the project its terminal is working in. The folder it works in
     // is remembered on the card (projectCwd), so a restart or a click that refreshes
     // the live folder never flips it back to where it began; it only moves when the
-    // terminal really enters another known project.
+    // terminal really enters another project folder.
     let tab = rawTab;
     const liveFolder = normalizeProjectPath(terminalLiveCwd(tab, liveCwds));
     const liveGroup = liveFolder ? bestProjectGroupForPath(liveFolder, nextGroups) : undefined;
     const currentGroupId = tab.groupId ? remap.get(tab.groupId) ?? tab.groupId : null;
-    if (liveFolder && liveGroup && liveGroup.id !== currentGroupId && liveFolder !== tab.projectCwd) {
+    const ownedFolder = normalizeProjectPath(tab.projectCwd ?? tab.initialCwd ?? nodesByTabId.get(tab.id)?.terminalCwd);
+    // A live terminal entering a separate folder needs its own project even
+    // before a group exists. Browsing within/above the owner and scratch work
+    // keeps the existing project; remembered ownership still wins without live cwd.
+    const separateUnknownFolder = liveFolder && !liveGroup && ownedFolder &&
+      !isScratchPath(liveFolder) &&
+      !pathBelongsToProject(liveFolder, ownedFolder) &&
+      !pathBelongsToProject(ownedFolder, liveFolder);
+    if (liveFolder && ((liveGroup && liveGroup.id !== currentGroupId) || separateUnknownFolder) && liveFolder !== tab.projectCwd) {
       tab = { ...tab, projectCwd: liveFolder };
     }
     // Path-based project membership: when nested project roots match the same cwd,

@@ -8,7 +8,7 @@ import {
   type MasterPlanTaskCacheEntry,
 } from "../lib/masterPlanTasks";
 
-export function useMasterPlanTasks(projectRoots: Array<string | null | undefined>) {
+export function useMasterPlanTasks(projectRoots: Array<string | null | undefined>, refreshKey = 0) {
   const roots = useMemo(
     () => [...new Set(projectRoots.filter((root): root is string => Boolean(root?.trim())).map((root) => root.replace(/\/+$/, "")))],
     [projectRoots.join("\n")]
@@ -46,7 +46,7 @@ export function useMasterPlanTasks(projectRoots: Array<string | null | undefined
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [rootsKey]);
+  }, [rootsKey, refreshKey]);
 
   return tasksByRoot;
 }

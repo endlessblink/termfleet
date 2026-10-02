@@ -377,6 +377,20 @@ runtime coverage.
 |---|---|---|---|---|
  | 3.30 | The cockpit is killed and relaunched while its terminals go dead | The pressure watchdog treated blocked desktop I/O as permission to SIGTERM the whole desktop process group and relaunch it; the daemon survived separately, leaving the UI and PTY state out of sync. | `python3 -m unittest tests/test_pressure_watchdog.py`, installed watchdog unit inspection, installed restart smoke | 🟡 source + watchdog contract; sustained live pressure event requires separate host reproduction |
 
+## TF-072. Project-focused Status Board
+
+Latest operator read-back confirms the 137-task board. Wrapping flex cross-size previously expanded the task pane beyond its fixed-height workspace. Constrained grid rows now give the task pane its own scrolling region at desktop and narrow sizes. Two fixed-height 80-task regressions prove wheel-down, wheel-up and final-card reachability; isolated native installed proof reaches final TASK-113 and returns to BUG-041. Final installed operator board wheel-down reaches TASK-113 and wheel-up restores BUG-041/header; independently reviewed authorized top/bottom/up captures pass.
+
+| Symptom | Root cause | Guard | Coverage |
+|---|---|---|---|
+| A selected project has empty columns despite tasks; the aggregate board crowds unrelated cards | Markdown wrappers hid IDs; stale headers applied to a differently shaped Completed table caused undefined.trim and discarded the plan. Totals covered all projects and fixed column sizing overflowed the workspace | `tests/project-plans-board.spec.ts`, `tests/canonical-agent-board.spec.ts`, `npm run build`, installed release and native project-board screenshots | 🟢 19 focused tests, frontend build, installed-release verification and browser visual review pass. Isolated installed native board reads 137 real tasks and 45 completed; independent native visual review passes with correct column counts and no overlap; actual final dock bidirectional scrolling and top/bottom task reachability pass. Persistent most-used and recent lists each cap at five; polling does not count as a visit. |
+
+## TF-069. Moving into a previously unopened project
+
+| Symptom | Root cause | Guard | Coverage |
+|---|---|---|---|
+| Freelance appears under content-creation; brainiac appears under assembly-line despite separate live project folders | Reconciliation adopts only already-known destination groups; stale remembered ownership wins for previously unopened live project folders | `tests/project-reconciliation.spec.ts`, known-project/nested-folder/handover/scratch guards, installed sidebar read-back | 🟡 Live pane identities and process folders confirm both failures. Category-only freelance correction is installed; user clarified that all separate project folders need separate groups. Broader correction passes all28 behavioral cases across suite and focused browser-failure rerun; final installed state assigns brainiac and freelance separate groups. Assembly-line disappeared during startup close-record cleanup, so three-heading visual proof is incomplete; no-live handovers, scratch and ordinary internal folders retain protection. Other TF-069 concerns remain separate. |
+
 ## 3.31. Dock startup critical path
 
 | # | Symptom | Root cause | Guard | Coverage |

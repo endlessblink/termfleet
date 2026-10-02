@@ -1,95 +1,78 @@
-# Status Board repair and project selector — continuing work
+# TermFleet continuation — 2026-10-02 19:58 Jerusalem
 
-## First command
+Status: **in_progress** overall. TF-072 board repair is **complete/resolved** with actual installed bidirectional wheel proof. TF-069 grouping source is installed; brainiac and freelance now each have their own group. Assembly-line disappeared during final UI-only startup cleanup, so the original three-heading grouping read-back remains incomplete. Continue the newly uncovered TF-018 terminal-loss investigation safely. This is a handoff from Codex to Codex, not a helper task.
 
-Run `git status --short`, then read this handoff completely. The latest parser correction is tested but **not built or installed yet**. Continue with the release installation and native proof below. Do not restart the operator's app or daemon without confirmation.
+## First command and exact next work
 
-## User request and definition of done
+Run `git status --short`, read this handoff and `/home/endlessblink/.codex/CONTINUATION_CONTRACT.md`, then `npm run issues -- check` and show TF-018, TF-069 and TF-072. Inspect source around `workspace.ts` hydration line2295 and live reconciliation2624 before doing anything to runtime. Do **not** relaunch or stop anything again until startup kill behavior is understood and guarded. The canonical daemon PID1515447 must survive. Current app PID1730900 runs the final release.
 
-Original: “tasks dont load on the termfleet' status board view” with selected claude-and-conquer showing 886 global tasks but empty columns.
+Concrete next candidate, already designed but NOT implemented: remove `daemon_kill_session` side effects from hydration/live-reconciliation branches which match timeless closed-session/provider sets, retaining their card-exclusion `continue`. Keep direct explicit close teardown intact. Reason: startup currently interprets unproven historical close records as fresh destructive authority over live PTYs; card exclusion can preserve prior closed-card protection without killing a live process. Regression-first proof: hydration/retry given a live session matching a closed ID/provider emits ZERO kill calls and still excludes its card; clicking close still persists the exact close record before killing only that exact clicked PTY, with sibling survival. Existing `tests/workspace-hydration.spec.ts` around1272 covers closed-card exclusion but does not audit kill calls. Add hydration and live-reconciliation mocks/audits, then read final candidate critically before mutation. This is a candidate, not an approved safety claim. Never weaken duplicate live writer protections.
 
-Later: “now the all projects appearns looks broken + all projects is not really usefull to me and I prefer a good looking project selector + a most used 5 prohects that updates + latest 5 projects that updte etc. use impacable design”. Screenshot showed overlapping cards in All projects.
+## User requests, corrections and authorization
 
-Deliver a working project-specific board, attractive searchable project selector, persistent five most-used and five recent projects, correct selected-project totals and responsive non-overlapping cards. Use Impeccable design. Complete source/tests/build/installed-release/native visual proof and ultimately operator's actual dock window read-back. Current status **in_progress**, issue TF-072 **verifying**. Do not claim complete from browser tests.
+Original prior-instance user: “tasks dont load on the termfleet' status board view”. Later: “now the all projects appearns looks broken + all projects is not really usefull to me and I prefer a good looking project selector + a most used 5 prohects that updates + latest 5 projects that updte etc. use impacable design”. This instance began: “Read .../HANDOFF.md. It is a handoff from the previous instance: continue exactly where it left off, and start by confirming what you understood.” Then “go”, authorizing the previously pending UI-only dock relaunch.
 
-## Implemented own files
+New reports: freelance under content-creation: “again an incorrect group. freelance should be in its own group”; board screenshot: “cant scroll up and down here”; brainiac/assembly-line screenshot: “here too, each should be in their own project... diffrent project folder = diffrent group”. This last instruction overrides the old regression requiring a concrete project's original ownership to survive a genuine live move into a different separate folder. Preserve ancestor/ordinary nested browsing, scratch and no-live handover rules.
 
-- src/lib/masterPlanTasks.ts: recursively unwrap paired Markdown around IDs/title/status; PENDING -> todo. Latest correction handles changing table headers (ID/Title/Completed) and absent status cells instead of throwing on undefined.trim(). Blank non-table lines reset header. Real claude-and-conquer MASTER_PLAN now parses 137 tasks: todo74, inProgress17, done45, unknown1.
-- src/lib/projectBoardHistory.ts new: validated localStorage termfleet.projectBoard.history.v1; selected root and visits/lastOpened; bounded100 history; frequent and recent each cap5 and exclude unavailable roots.
-- src/components/ProjectPlansBoard.tsx redesign: selected-project-only, no All projects; searchable accessible popup; quiet Projects aside with Most used and Recent; record visits on open/switch, not five-second polling; selected totals; filters and refresh retained; refreshed discovery; persisted root fallback current workspace.
-- src/components/ProjectPlansBoard.css new: restrained dark Rubik, blue accent, responsive cards no minimum980px or overlap; container queries850/600; actual shortcut counts displayed, no misleading bare5; focus styles pass own typography checks.
-- src/hooks/useMasterPlanTasks.ts optional refreshKey dependency (other consumers unchanged).
-- tests/project-plans-board.spec.ts new six tests: formatted IDs, short/changing table rows, selected totals/filters/picker, ranking/caps, persistence/no polling inflation, narrow geometry and screenshots. Latest fixture includes completed table reproducing real second crash.
-- tests/canonical-agent-board.spec.ts stale source assertion changed from All project plans to aria-label Project plans. Shared agent-ops authority unchanged.
+User most recently answered YES to: “The final scroll check keeps losing the board because the app switches back to Map. Can I use the TermFleet window for 30 seconds to verify scrolling up and down?” That check is DONE. They said “doesnt seem like you are doing anything” while wheel capture ran; immediately explained active capture, then reported successful actual top/bottom/top proof. Do not repeat the finished board check or interfere with their view without need. They know seven terminals disappeared and the cleanup cause is being investigated. No daemon restart or automatic resume has been authorized/performed. UI-only relaunch authorization persists but avoid one now because observed cleanup is destructive.
 
-## Verification and failures found
+## Delivered implementation and evidence
 
-Before latest correction: board + canonical11 =16 tests passed twice; npm run build passed; git diff --check passed. Browser visual child reviewed /tmp/tf072-board-desktop.png, narrow.png, picker.png: attractive readable, no overlap at760px. Fixed its misleading shortcut5 count feedback.
+TF-072 original files:
+- `src/lib/masterPlanTasks.ts`: recursive paired Markdown unwrapping for IDs/title, PENDING todo; differently shaped Completed header resets and absent status cell handling prevent undefined.trim; actual claude-and-conquer parses137tasks,45done,74todo,17inprogress,0blocked,1unknown.
+- NEW `src/lib/projectBoardHistory.ts`: validated bounded100 localStorage history key `termfleet.projectBoard.history.v1`, selected root, visits/lastOpened, top5 most-used/recent only available roots; polling does not increment visits.
+- `src/components/ProjectPlansBoard.tsx`: selected-project-only board, searchable selector, frequent/recent project navigation, selected totals, filtering, refresh, fallback persisted selection.
+- NEW `src/components/ProjectPlansBoard.css`: restrained Rubik/dark responsive layout; scroll fix constrained grid rows/columns, minheight0, bounded main overflowyauto. Narrow<=600 sidebar natural capped220 first row, main remainder. Flex baseline had task pane8436/8770px inside800px workspace.
+- `src/hooks/useMasterPlanTasks.ts`: optional refreshKey.
+- NEW `tests/project-plans-board.spec.ts`:8tests including formatted/changing tables, selected totals/filter/selector, history caps/persistence/no polling inflation, narrow geometry and 80-task desktop/narrow wheel top/bottom/top with no document/horizontal scroll.
+- `tests/canonical-agent-board.spec.ts`: source assertion for selected-project label.
 
-Latest correction: background ctx_shell job shell_fb4a853457a31c60 completed exit0: 13 passed19.3s using `npx playwright test tests/project-plans-board.spec.ts tests/canonical-agent-board.spec.ts tests/map-terminal-rendering.spec.ts --grep 'project|formatted|short rows|MASTER_PLAN task parser keeps summary' --reporter=line`. Includes six new tests, canonical glanceable label and parser plus selected existing map regressions. Run full new board+canonical suite once if needed (17 expected now), then build/install.
+TF-069 grouping:
+- `src/stores/workspace.ts` only project reconciliation around1023 edited: confirmed live folder uses existing deepest matching group or, when separate from remembered owner in both ancestor directions and non-scratch, becomes projectCwd even if no group yet. Existing ensureGroupForPath creates own destination group. Unknown sibling projects and true original-launch-folder return now move. No-live ownership stable. Existing nested-root/git membership protections retained. Category-only earlier candidate was rejected as too narrow.
+- `tests/project-reconciliation.spec.ts`:6new parameterized cases (freelance/scratch/ancestor/handover/nested/brainiac), exact brainiac stale assembly ownership with stationary assembly child; manual labels/emoji and repeated reconciliation/reopen stability. Updated older concrete-project excursion expectation per user override, active project context changes while viewport stays stable.
 
-Typography verifier has three **pre-existing** failures in ApproveAllDialog (two full-box-border) and EarlierSessionsChip monospace. Own styles have no violations; do not broaden fix.
+Proof: grouping baseline3expectedfail; final suite28cases:27passed,1browser context closed atpage.reload before assertions. A focused rerun of that case passed. Thus all28 behavior cases verified across run+rerun, no functional assertion failure. Board+canonical19passed. TypeScript check passed, frontend tsc/Vite finalbuild passed, `npm run verify:map-terminals` passed, independent grouping source review no blockers, git diffcheck passed. Typography has3pre-existing unrelated violations (ApproveAllDialog2borders, EarlierSessionsChipmonospace); do not broaden. No Rust source changes.
 
-Native installed proof opened redesigned board but ZERO tasks, despite real readable UTF8 file69398bytes. Node actual parsing exposed undefined.trim from stale five-column header applied to later three-column completed table. Latest source correction fixes this. Thus old installed evidence is a failed live gate; do not resolve TF072 yet.
+Final release installed/promoted: `5eb2b7fbba63-8827e431a86c-a3be2404a6a3`, binary SHA256 `8827e431a86ccaa441323e6d787fd16fd5d400e126e5300bb7b8bc0d169351d2`. Exact `/proc/1730900/exe` is that release. `npm run verify:installed-release` and host `npm run doctor` PASS. Build log `/tmp/tf072-final-release-install.log`; install exec54761 finished exit0. Used private `XDG_RUNTIME_DIR=/tmp/tf072-install-runtime TERMFLEET_BUILD_LOCK_FILE=/tmp/termfleet-build.lock` to avoid watchdog operating on canonical UI. Rust build took4m04s, frontend48.25s.
 
-## Installed release — currently stale relative to latest parser
+Actual user-approved dock wheel proof final:
+- `/tmp/tf072-authorized-top.png` SHA `8d71fa7240a2ff2656c0f324a6bad6ec92f45af390fb02598d5f5c73cf3edd70`: claude-and-conquer heading137tasks45completed74/17/0/1, BUG-041 first, scrollbar top.
+- bottom.png SHA `037342581074e8d0a15a5d82fff5a33c799b0adec4a615304c6e14749f5e372e`: fully visible last TASK-113 Keep BOTS.md current for fuel/form, scrollbar bottom.
+- up.png SHA `e90054c2a92ee5a0b616109442c0e10d513b84db7bf416d1e746104cf517cab9`: heading/counts/toolbar/BUG041 restored, scrollbar top.
+Independent disposable `visual_review` child text-only confirmed same selected project throughout, sidebar stationary, no overlap/horizontal clipping. Parent never view_image. Wheel220events delay15ms plus2/3sec settling. Earlier /tmp/tf072-final-board-up2.png and other up proof INVALID (Map from concurrent navigation), do not cite. Isolated native earlier `/tmp/tf072-native-scroll/{top,bottom,up}.png` also passed; actual final proof supersedes.
 
-Successful installation log /tmp/tf072-release-install.log. Current promoted release b0f3980a7907-c8614606f93b-523b9c9a0df1, binary SHA c8614606f93b5c2cb7287f375e1a186cbe6a1bc25a322b4df29f71530c296891. It includes redesign and first parser fix, NOT completed-table correction.
+## Runtime truth and terminal-loss findings
 
-Reinstall exact safe command with direct exec_command (escalation previously auto-approved):
-`mkdir -p /tmp/tf072-install-runtime`
-`env XDG_RUNTIME_DIR=/tmp/tf072-install-runtime TERMFLEET_BUILD_LOCK_FILE=/tmp/termfleet-build.lock npm run release:install > /tmp/tf072-release-install.log 2>&1`
-Private XDG_RUNTIME lacks session bus and avoids release script restarting watchdog/current UI. Build Rust1m26 +frontend11sec. No daemon changes necessary.
+Canonical daemon PID1515447, started~8days ago, compatible old binary release `57736947a5c5-f7f8fbe66633-7ef8031e6af0`, buildId `1:1790252608707`, protocol1. Socket `/run/user/1000/terminal-workspace/daemon.sock`. UI-only frontend updates use old daemon; preserve it. Current UI1730900 replaces1455941 which replaced1276861. Approved launcher `/home/endlessblink/.local/bin/termfleet-desktop --dock`. Exact window `0x02a00003` decimal44040195. Display`:0`, XAUTHORITY `/run/user/1000/xauth_Xycgun`, canonical runtime `/run/user/1000`. Last window moved to primary at0,72 size1920x1008 for screenshots (was second monitor2080,54 causing import capture errors). Navigation board icon relative19,236, map19,160. CtrlK failed when terminalfocused and typed phrase into a terminal earlier; use nav icons.
 
-IMPORTANT ctx_shell `npm run verify:installed-release` reported frontend checksum mismatch while direct exec_command same command passed. Host/sandbox view discrepancy. Use direct exec for installed build/verify/read-back authoritative filesystem. npm run doctor showed old active UI PID13427, compatible daemon protocol, other checks okay. Old canonical daemon binary under releases/57736947a5c5-f7f8fbe66633-7ef8031e6af0. Preserve it and PTYs.
+Fresh final prelaunch snapshot `/tmp/tf072-final-before-live.json` contains32exact daemon-live IDs/PIDs, every PID present. Raw before/after sessions JSON `/tmp/tf072-final-{before,after}-sessions.json` contain COMMANDS: never print/read output those fields or raw private transcripts. Only project sanitized IDs/PIDs/cwd/lifecycle. After final authorized UI-only close/relaunch7PIDs disappeared;25survived. Seven IDs:
+- terminal-0d559b12-55e3-467b-96c2-be5b2eb2e35a-688106ac-d3d9-462a-8b08-f752411d06fb PID1544145
+- terminal-7cde20ed-3264-4948-8ba6-c1ce83499fd2-112f5a06-bf4b-42cd-a906-09cb8230c3be PID1314767 (assembly-line)
+- terminal-a244f0e1-1a36-4acf-87f3-73be04d0ddb1-966a6e9e-b18a-4e4f-8386-b88d7ec4092e PID1630332
+- terminal-aa50c349-07c0-4503-9786-3f3edffe2283-3d7bab16-4f13-4f05-8d2b-064d030f766f PID1549497
+- terminal-b61a5f82-c972-4d5b-9c46-183fffcf543b-15a67636-4bd0-4d14-a970-7ecf074e5a99 PID1674459
+- terminal-d1ec16b7-bc99-4706-bd36-a431d275dfde-f0f5afbf-310e-4ac7-8ed9-936f00cd973e PID1345196
+- terminal-da6caf07-834d-4cdc-b811-eda14e4becc0-f852653a-8a16-405c-ba9b-23c86438909c PID1329147
 
-## Private native proof recipe already created
+Read-only group_trace investigation: `~/.local/share/terminal-workspace/sessions/terminal-lifecycle.jsonl` has intentional-kill->kill-requested->killed for all7 at16:46:31.475–16:46:32.487UTC, assembly16:46:31.862. Lexicographic exactIDorder matches startup loops. All7now in workspace.closedSessionIds (1191total). Hydration workspace.ts2295/2301 and live reconcile2624/2626 call daemon_kill_session userRequestedtrue for closedID/provider matches. Ledger each7freshspawn once, recoverable untilstartupkill, no priorclose/respawn/kill markers. No matching originaluserclose marker in app-output. Before snapshots did NOT capture workspace closedrecords; existing backups do notinclude7IDs. Therefore exact destructive calls proved, original operator authorization of records NOT proved. Do NOT claim malicious/unauthorized action or stale record certainty. Candidate described above separates startup exclusion from destructive authority; explicit directclose at3571–3648 remains.
 
-/tmp/tf072-native-proof.sh and /tmp/tf072-native-proof.log. Script creates private XDG_RUNTIME/DATA/STATE/CONFIG under /tmp/tf072-native, seeds workspace with preview tab (terminals[] so no PTY spawn), group claude-and-conquer, real project root /media/endlessblink/data/my-projects/ai-development/bots+automation/claude-and-conquer.
+Earlier relaunch lost4unsubscribed registryentries; snapshots lacked liveness and exit timing then. Do not make exhaustivepreservation claim for that run. Do not blindly resume any provider conversation. One live pane per conversation, exact per-pane sessionId sidecar required. Current records:
+- freelance tab026c100c-7027-4fc1-a13b-99b6798da8b7, projectCwdfreelance, own group project-1ml4jm namefreelance, initialcontent-creation.
+- brainiac tabc989c083-b57f-4691-a22e-24ff0b93fb91, livePID1304907 cwdbrainiac, nowprojectCwdbrainiac, own group project-ku5syu namebrainiac. Beforestaleassemblygroupihljbq.
+- assembly tab7cde20ed-3264-4948-8ba6-c1ce83499fd2 formerlyownassemblygroupihljbq, childOf23f40338..., nowabsent becausekill. Noresurrection attempted.
 
-Uses TERMFLEET_CHILD_CONTEXT=isolated-smoke (essential; bare --child is unsafe shared routing), TERMFLEET_PROJECT_ROOTS real project, TERMFLEET_INSTALL_ROOT real ~/.local/share/termfleet, TERMFLEET_CMD readlink current/termfleet, installed libexec/termfleet-desktop-launcher --child. Opens actual board via xdotool ctrl+k, type Open project board, Return. Captures ImageMagick import and tesseract OCR.
+## Issues/docs/git/process state
 
-Execute with direct exec escalation: `xvfb-run -a -s '-screen 0 1800x1100x24' dbus-run-session -- bash /tmp/tf072-native-proof.sh > /tmp/tf072-native-proof.log 2>&1`. EPERM sandbox first attempt; request marker already exists /tmp/codex-electron-host-runner-tf072-project-board.request and escalated run succeeded.
+TF-072 nowresolved with source,19tests,finalinstalled,actualbidirectional visualevidence. TF-069 remainsverifying otherordering/icon/helper concerns beyondslice; final grouping browser-render evidence clearly partial3headinggate. TF-018 remainsfixing; latestlive-desktop evidence records7startupkills andunprovencloseauthority. Issuecheck71records5surfacesPASS. `docs/issue-registry.json` has mixed concurrentchanges plusours; DO NOTstagewhole file. Preserve andcontinueeditingthroughissuesCLI; its tasknextActionfields maystillneedupdating(noCLIpatch command). Registryuncommittednotcompleteartifacthistoryuntilscopedcommit.
 
-Old screenshot /tmp/tf072-native/board.png SHA2ae4caf1b89daea5e722c6e73de230da287dedfc15c78efd7fd4d4a785b88321 visibly selected correct project, attractive layout, zero cards. Script trap kills its UI launcher PID. Improve cleanup to specific isolated process group or private daemon PID: query JSON {type:status} only /tmp/tf072-native/runtime/terminal-workspace/daemon.sock and verify /proc/pid/environ exact private XDG_RUNTIME before kill. Never pkill app names or canonical daemon. Native private daemon might remain idle from previous run.
+MASTER_PLAN top sections refreshedTF069inprogress,TF072complete,TF018inprogress. RegressionmatrixTF072green actualwheel,TF069partial. Owncode/tests/docs committed at handoff (see latestgitlog); HANDOFF includes exactpendingwork. No push/PRrequested/performed.
 
-After reinstall rerun native proof; expect137 total,74todo17progress45done1unknown (done hidden until ShowDone). Capture picker too if possible. Parent MUST NOT view_image. Use disposable visual child returning text only path/SHA/findings/visible text/uncertainty/action. Existing /root/visual_board can be reused; /root/native_proof finished read-only recipe. /root/parser_fix finished first parser; /root/trace_board explorer unsupported model failed. New successor can create visual child as authorized by AGENTS.
+Unrelateddirty: visual-baselines tc008/tc009 PNGs, scripts/verify-clipboard-paste.sh, untracked.kilo/HANDOFF-feature64/docs/reviews/tests/scratch-eval.spec.ts. Do notrevertorstage. Workers aredone/idle:group_trace (workspace+reconciletests, runtimefindings),scroll_fix(boardCSS+tests),visual_review(text-only source/screenshots),visual_board(earlierunusable). No ongoingbuildprocess. Check actualgitstatus forconcurrentedits.
 
-## Issue/docs and dirty state
+Memory used MEMORY.md1134–1141 forprojectplan/sharedqueueboundary, rollout01a03ef0-2d45-7b93-8022-39e33cb3c87b; ifusingthis memory includeexactmemorycitationinfinal. No memorywriteauthorized. Projectnotehelper summaryshouldreflect finalboardcomplete/groupingpartial/TF018diagnosis. Durabledecisions canonicalvault; sharedqueueagent-ops separatefromlocalMASTER_PLAN.
 
-TF-072 in docs/issue-registry.json required source/focused-test/installed-release/live-desktop. Existing evidence source and16-tests. State verifying. rootCause currently empty and nextAction stale; CLI has only check/list/show/create/transition/evidence, no edit. Can mutate ONLY matching record fields using JSON preserving others. Add completed-table crash, current proof, matrix ref and nextAction. Record failed native then final passed native, keep verifying until actual operator window.
+## Constraints and suggested skills
 
-Own doc additions: MASTER_PLAN.md near top TF072 in_progress (source/tests16/build/browser screenshot evidence; installation/native pending stale); docs/regression-matrix.md TF072 before3.31; docs/issue-registry.json record via CLI. These files have other agents' unrelated edits; DO NOT stage whole. Update own sections with latest evidence and status, separate own hunks if committing.
+Follow localAGENTS.md, continuationcontract, LEAN-CTX.md; context40%hardhandoffCodex->Codex via `termfleet-child spawn --provider codex --cwd <repo> --dropoff <absHANDOFF>`, one successor never tmux. Keep exactlyoneeverydaypresentcontinuouscockpittaskwhenatoolavailable; no plan/tasktool currentlyexposed, do notinventgoals. Preferleanctxctx_compose/read/search/shell, hostexec escalationforactualruntime/GUI (previousread/installUIactionautoapproved). Do notexposecredentials/env/auth/rawtranscripts.
 
-Preexisting dirty: MASTER_PLAN.md, docs/issue-registry.json, docs/visual-baselines/tc-008-terminal-typed-command.png and tc-009-terminal-split-right.png, scripts/verify-clipboard-paste.sh; untracked .kilo/, HANDOFF-feature-64.md, docs/reviews/, tests/scratch-eval.spec.ts. Preserve all. HEAD changed concurrently during work to b0f3980a7907, don't revert. Own source/test files listed above are safe stage independently.
-
-## Constraints/context already loaded
-
-Read continuation contract, runtime-truth, regression-planner/verifier skills fully. Read skill router route for impeccable project selector dashboard design, teach-impeccable/frontend-design/design-taste skill, .impeccable.md existing context. No deps added. Canonical Obsidian TermFleet note read; no vault mutations. Shared agent queue belongs external configured agent-ops and is separate from project Watchpost plan board.
-
-Use lean-ctx compose before understanding, ctx_read/search/shell; direct exec where host-native proof/escalation needed. ctx_shell permanentblocked node-p and semicolon note should not retry. Follow issue system. Keep exactly one everyday present-continuous task if tool available; no update_plan/task tool discovered, don't invent goal.
-
-Current user app untouched. Ask confirmation ONLY after new release and private native proof pass before relaunching actual user UI because user's persisted preference requires disclosure/confirmation of terminal/SSH/runtime loss risks. Explain UI brief interruption, daemon/PTYS preserved, reconnection still checked. Never ask user to run development launcher. Actual dock window proof remains gate; authorized safe other work proceed autonomously. Can async question and continue docs. Do not falsely claim complete.
-
-Read ~/.codex/RTK.md before commits (read parent): rtk prefix commands. Lore trailers Constraint, Rejected, Tested. Commit ownfiles only. User HARD40% context handover requires same-provider termfleet-child spawn --provider codex --cwd repo --dropoff absoluteHANDOFF; one successor then stop, no tmux. Project note state command via external notes.py is required, not yet done; may need escalation outside writable root. Do not write memories except explicit userrequest.
-
-Memory read actually used MEMORY.md1134–1141 only, rollout itself not opened. Final append exactly one block as last content:
-<oai-mem-citation>
-<citation_entries>
-MEMORY.md:1134-1141|note=[project plan and shared queue boundaries]
-</citation_entries>
-<rollout_ids>
-01a03ef0-2d45-7b93-8022-39e33cb3c87b
-</rollout_ids>
-</oai-mem-citation>
-
-## Next actions in order
-
-1. Review latest parser diff/tests briefly, run full board+canonical suite and build/install safe private-runtime command.
-2. Direct installed-release verify and doctor; preserve running user UI/daemon.
-3. Rerun isolated native proof and text-only visual review, verify real137tasks and selector. Fix anything found then rerun relevant guard.
-4. Update TF072 evidence/rootCause/matrixRef/nextAction and own docs, current project note. Keep unresolved user-window gate explicit.
-5. Obtain confirmation for actual UI relaunch with risk explanation; then dock surface read-back without daemon stop. If no answer final manual_action_required with exact dock check.
-6. Commit own changes with Lore trailers once verifier rules satisfied; do not stage unrelated dirtydocs wholesale. Final1–4shortplain sentences + Next steps exactcommands/checks, in_progress/manual_action_required/complete and memoryblocklast.
-
-Latest user update: “I found the remaining loading failure: a differently shaped ‘Completed’ table crashed parsing for the whole project. The fix now reads the real project’s 137 tasks. The redesigned selector and updating project shortcuts are ready; I’m finishing the installed-app checks.”
+Regressionplanner+verifier skills mandatory beforefix/commit, sourcefirstfalseablecandidate beforetrial. Read `.agents/skills/termfleet-regression-planner/SKILL.md`, verifierSKILL.md; latesthandoffskill `/home/endlessblink/.agents/skills/handoff/SKILL.md` read, AGENTSoverridesitsminimal/temp-onlypreferencebyexpansiverepoHANDOFF; temporarycopyalsosaved. Routingexactspawn-on-termfleetNO_MATCH, commandexistsat~/.local/bin/termfleet-child. Existingdesignskillwasusedforboarddon'tredesignagain. Parentneverviewimage continuingtask, use disposabletext-onlyvisualchild. Nooptimisticecho/PTY suppression, daemonownsPTYs, rendererCanvas2D, keepunrelateddirtywork. CommitsLoreConstraint/Rejected/Testedtrailers. Final1–4shortplainsentences plusNextsteps exactchecks; donotcallgroupingcompleteuntilrequiredliveproof.

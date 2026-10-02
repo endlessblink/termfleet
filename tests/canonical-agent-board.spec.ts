@@ -129,7 +129,7 @@ test.describe("canonical agent board", () => {
     const projectBoard = fs.readFileSync(path.resolve(process.cwd(), "src/components/ProjectPlansBoard.tsx"), "utf8");
     const operationsBoard = fs.readFileSync(path.resolve(process.cwd(), "src/components/AgentOperationsBoard.tsx"), "utf8");
     expect(projectBoard).toContain("useMasterPlanTasks");
-    expect(projectBoard).toContain("All project plans");
+    expect(projectBoard).toContain('aria-label="Project plans"');
     expect(projectBoard).toContain('aria-label="Search projects"');
     expect(projectBoard).toContain('aria-label="Search project plan tasks"');
     expect(projectBoard).not.toContain('aria-label="Select project plan"');

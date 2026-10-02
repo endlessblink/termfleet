@@ -1,11 +1,13 @@
-import { AlertCircle, Check, ChevronDown, ChevronRight, Copy, FolderKanban, ListTodo, RefreshCw, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertCircle, Check, ChevronDown, ChevronRight, Copy, FolderKanban, RefreshCw, Search } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
 import { taskStatusLabel, type MasterPlanTask } from "../lib/masterPlanTasks";
 import type { MasterPlanTaskStatus } from "../lib/types";
 import { useWorkspaceStore } from "../stores/workspace";
+import { PROJECT_BOARD_HISTORY_KEY, projectShortcuts, readProjectBoardHistory, recordProjectVisit } from "../lib/projectBoardHistory";
+import "./ProjectPlansBoard.css";
 
 type ProjectTask = MasterPlanTask & { projectRoot: string };
 type BoardColumn = { id: string; title: string; statuses: MasterPlanTaskStatus[]; tone: string };
@@ -42,8 +44,9 @@ export function ProjectPlansBoard() {
   const groups = useWorkspaceStore((state) => state.groups);
   const tabs = useWorkspaceStore((state) => state.tabs);
   const projectRoot = useWorkspaceStore((state) => state.projectRoot);
+  const [history, setHistory] = useState(readProjectBoardHistory);
+  const [selectedProject, setSelectedProject] = useState(() => readProjectBoardHistory().selected || projectRoot?.replace(/\/+$/, "") || "");
   const [query, setQuery] = useState("");
-  const [selectedProject, setSelectedProject] = useState("all");
   const [showDone, setShowDone] = useState(false);
   const [typeFilter, setTypeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -51,22 +54,140 @@ export function ProjectPlansBoard() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectQuery, setProjectQuery] = useState("");
   const [discoveredRoots, setDiscoveredRoots] = useState<string[]>([]);
-  useEffect(() => { void invoke<string[]>("fs_find_master_plan_roots").then(setDiscoveredRoots).catch(() => setDiscoveredRoots([])); }, []);
-  const roots = useMemo(() => [...new Set([projectRoot, ...discoveredRoots, ...groups.map((group) => group.projectRoot), ...tabs.map((tab) => tab.initialCwd)].filter((root): root is string => Boolean(root?.trim())).map((root) => root.replace(/\/+$/, "")))].sort(), [discoveredRoots, groups, projectRoot, tabs]);
-  const plans = useMasterPlanTasks(roots);
-  const tasks = useMemo<ProjectTask[]>(() => roots.flatMap((root) => (plans[root] ?? []).map((task) => ({ ...task, projectRoot: root }))), [plans, roots]);
-  const visible = useMemo(() => { const needle = query.trim().toLocaleLowerCase(); return tasks.filter((task) => (showDone || task.status !== "done") && (selectedProject === "all" || task.projectRoot === selectedProject) && (typeFilter === "all" || taskType(task) === typeFilter) && (priorityFilter === "all" || taskPriority(task) === priorityFilter) && (!needle || `${task.id} ${task.title} ${projectName(task.projectRoot)}`.toLocaleLowerCase().includes(needle))).sort((a, b) => sortOrder === "title" ? a.title.localeCompare(b.title) : sortOrder === "status" ? a.status.localeCompare(b.status) : taskPriority(a).localeCompare(taskPriority(b))); }, [query, selectedProject, showDone, sortOrder, tasks, typeFilter, priorityFilter]);
-  const counts = useMemo(() => ({ total: tasks.length, todo: tasks.filter((task) => task.status === "todo").length, progress: tasks.filter((task) => task.status === "in-progress").length, done: tasks.filter((task) => task.status === "done").length }), [tasks]);
-  const completion = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
-  const pickerRoots = roots.filter((root) => projectName(root).toLocaleLowerCase().includes(projectQuery.trim().toLocaleLowerCase()));
+  const [discoveryReady, setDiscoveryReady] = useState(false);
+  const [discoveryFailed, setDiscoveryFailed] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerButtonRef = useRef<HTMLButtonElement>(null);
+  const recordedProject = useRef("");
 
-  return <section data-testid="project-plans-board" aria-label="All project plans" style={{ display: "flex", height: "100%", minHeight: 0, background: "#000", color: "#c9d1d9", overflow: "hidden" }}>
-    <aside style={{ width: 250, flex: "0 0 250px", borderRight: "1px solid #21262d", background: "#0d1117", padding: "22px 20px", overflow: "auto" }}><div style={{ display: "flex", alignItems: "center", gap: 10, color: "#e6edf3", fontSize: 17, fontWeight: 500, marginBottom: 24 }}><FolderKanban size={16} color="#58a6ff" /> Task System</div><button type="button" onClick={() => setSelectedProject("all")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, border: 0, borderLeft: "3px solid #58a6ff", borderRadius: 8, padding: "11px 12px", background: "#161b22", color: "#58a6ff", cursor: "pointer", font: "inherit", textAlign: "left" }}><ListTodo size={15} /><span>Status Board</span></button><div style={{ borderTop: "1px solid #21262d", marginTop: 24, paddingTop: 14, color: "#8b949e", fontSize: 10, letterSpacing: 0, textTransform: "uppercase" }}>Project picker</div><p style={{ color: "#8b949e", fontSize: 11, lineHeight: 1.4, margin: "8px 0" }}>Choose from the full project catalog above.</p></aside>
-    <main style={{ flex: 1, minWidth: 0, overflow: "auto", padding: "24px 28px 32px" }}><header style={{ display: "flex", justifyContent: "space-between", gap: 20, alignItems: "flex-start", borderBottom: "1px solid #30363d", paddingBottom: 18 }}><div><div style={{ color: "#8b949e", fontSize: 11, letterSpacing: 0, textTransform: "uppercase" }}>Watchpost view · project plans</div><h1 style={{ margin: "7px 0 4px", color: "#e6edf3", fontSize: 25, fontWeight: 500, letterSpacing: 0 }}>Status Board</h1><div style={{ position: "relative", marginTop: 10 }}><button type="button" aria-expanded={pickerOpen} onClick={() => setPickerOpen((value) => !value)} style={{ display: "inline-flex", alignItems: "center", gap: 10, border: 0, borderBottom: "1px solid #30363d", borderRadius: 8, padding: "8px 12px", background: "#0d1117", color: "#c9d1d9", cursor: "pointer", font: "inherit", fontSize: 12 }}><span style={{ width: 24, height: 24, display: "grid", placeItems: "center", borderRadius: 6, background: "linear-gradient(135deg, #1f6feb, #8957e5)", color: "#fff", fontSize: 9, fontWeight: 500 }}>{selectedProject === "all" ? "ALL" : projectInitial(selectedProject)}</span><span>{selectedProject === "all" ? "All projects" : projectName(selectedProject)}</span><ChevronDown size={14} /></button>{pickerOpen && <div role="dialog" aria-label="Project picker" style={{ position: "absolute", zIndex: 5, top: 44, left: 0, width: 420, maxHeight: 500, overflow: "auto", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, padding: 12, border: 0, borderBottom: "1px solid #30363d", borderRadius: 10, background: "#161b22", boxShadow: "0 18px 48px rgba(0,0,0,.45)" }}><label style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 8, border: 0, borderBottom: "1px solid #30363d", borderRadius: 7, padding: "8px 10px", background: "#0d1117" }}><Search size={14} color="#8b949e" /><input autoFocus aria-label="Search projects" value={projectQuery} onChange={(event) => setProjectQuery(event.target.value)} placeholder="Search projects..." style={{ width: "100%", border: 0, outline: 0, background: "transparent", color: "#e6edf3", font: "inherit", fontSize: 12 }} /></label><button type="button" onClick={() => { setSelectedProject("all"); setPickerOpen(false); }} style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, border: 0, borderLeft: "3px solid #58a6ff", borderRadius: 8, padding: 10, background: "#0d1117", color: "#e6edf3", cursor: "pointer", font: "inherit", textAlign: "left" }}><span style={{ width: 40, height: 40, display: "grid", placeItems: "center", borderRadius: 8, background: "linear-gradient(135deg, #1f6feb, #8957e5)", color: "#fff", fontSize: 10, fontWeight: 500 }}>ALL</span><span><strong style={{ display: "block", fontSize: 12 }}>All projects</strong><span style={{ color: "#8b949e", fontSize: 10 }}>{roots.length} projects · {tasks.length} tracked tasks</span></span></button>{pickerRoots.map((root) => <button key={root} type="button" onClick={() => { setSelectedProject(root); setPickerOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, border: 0, borderBottom: "1px solid #30363d", borderRadius: 8, padding: 10, background: "#0d1117", color: "#c9d1d9", cursor: "pointer", font: "inherit", textAlign: "left" }}><span style={{ width: 42, height: 42, display: "grid", placeItems: "center", flex: "0 0 42px", borderRadius: 8, background: "linear-gradient(135deg, #1f6feb, #8957e5)", color: "#fff", fontSize: 11, fontWeight: 500 }}>{projectInitial(root)}</span><span style={{ minWidth: 0 }}><strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#e6edf3", fontSize: 12 }}>{projectName(root)}</strong><span style={{ display: "block", marginTop: 3, color: "#8b949e", fontSize: 10 }}>{(plans[root] ?? []).length} tasks · MASTER_PLAN.md</span></span></button>)}</div>}</div></div><div style={{ textAlign: "right", color: "#8b949e", fontSize: 11 }}><strong style={{ display: "block", color: "#e6edf3", fontSize: 20, fontWeight: 500 }}>{counts.total}</strong> tracked tasks</div></header>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "15px 0", borderBottom: "1px solid #21262d" }}><label style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 220px", minWidth: 180, border: 0, borderBottom: "1px solid #30363d", borderRadius: 5, padding: "8px 10px", background: "#0d1117" }}><Search size={14} color="#8b949e" /><input aria-label="Search project plan tasks" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tasks..." style={{ width: "100%", border: 0, outline: 0, background: "transparent", color: "#e6edf3", font: "inherit", fontSize: 12 }} /></label><select aria-label="Filter by type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} style={{ border: 0, borderBottom: "1px solid #30363d", borderRadius: 5, padding: "8px 10px", background: "#0d1117", color: "#c9d1d9", font: "inherit", fontSize: 12 }}><option value="all">All Types</option><option value="Tasks">Tasks</option><option value="Bugs">Bugs</option><option value="Issues">Issues</option></select><select aria-label="Filter by priority" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} style={{ border: 0, borderBottom: "1px solid #30363d", borderRadius: 5, padding: "8px 10px", background: "#0d1117", color: "#c9d1d9", font: "inherit", fontSize: 12 }}><option value="all">All Priorities</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option></select><select aria-label="Sort tasks" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} style={{ border: 0, borderBottom: "1px solid #30363d", borderRadius: 5, padding: "8px 10px", background: "#0d1117", color: "#c9d1d9", font: "inherit", fontSize: 12 }}><option value="priority">Priority (High → Low)</option><option value="status">Status</option><option value="title">Title</option></select><label style={{ display: "flex", alignItems: "center", gap: 6, color: "#8b949e", fontSize: 12 }}><input type="checkbox" checked={showDone} onChange={(event) => setShowDone(event.target.checked)} /> Show Done</label><button type="button" aria-label="Refresh project plans" title="Refresh" onClick={() => window.location.reload()} style={{ display: "flex", alignItems: "center", gap: 6, border: 0, borderBottom: "1px solid #30363d", borderRadius: 5, padding: "8px 10px", background: "#0d1117", color: "#c9d1d9", cursor: "pointer", font: "inherit", fontSize: 12 }}><RefreshCw size={14} /> Refresh</button></div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 22, alignItems: "center", padding: "13px 0", borderBottom: "1px solid #30363d", color: "#8b949e", fontSize: 11 }}><span>Total: <strong style={{ color: "#e6edf3" }}>{counts.total}</strong></span><span>To Do: <strong style={{ color: "#e6edf3" }}>{counts.todo}</strong></span><span>In Progress: <strong style={{ color: "#58a6ff" }}>{counts.progress}</strong></span><span>Done: <strong style={{ color: "#3fb950" }}>{counts.done}</strong></span><span>Tasks: <strong style={{ color: "#e6edf3" }}>{tasks.filter((task) => taskType(task) === "Tasks").length}</strong></span><span>Bugs: <strong style={{ color: "#f0883e" }}>{tasks.filter((task) => taskType(task) === "Bugs").length}</strong></span><span>Issues: <strong style={{ color: "#c9d1d9" }}>{tasks.filter((task) => taskType(task) === "Issues").length}</strong></span><span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>Completion: <span style={{ width: 90, height: 5, borderRadius: 3, background: "#21262d", overflow: "hidden" }}><span style={{ display: "block", width: `${completion}%`, height: "100%", background: "#3fb950" }} /></span><strong style={{ color: "#e6edf3" }}>{completion}%</strong></span></div>
-       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(190px, 1fr))", gap: 14, minWidth: 980, paddingTop: 20 }}>{columns.map((column) => { const columnTasks = visible.filter((task) => column.statuses.includes(task.status)); return <section key={column.id} aria-label={column.title} style={{ minWidth: 0 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `2px solid ${column.tone}`, padding: "0 4px 10px", color: "#e6edf3", fontSize: 12, fontWeight: 500 }}><span>{column.title}</span><span style={{ color: "#8b949e", fontWeight: 400 }}>{columnTasks.length}</span></div><div style={{ display: "grid", gap: 9, paddingTop: 10 }}>{columnTasks.map((task) => <TaskCard key={`${task.projectRoot}:${task.id}`} task={task} />)}{!columnTasks.length && <div style={{ padding: "18px 6px", color: "#484f58", fontSize: 11 }}>No tasks</div>}</div></section>; })}</div>
-       {!tasks.length && <div style={{ display: "flex", alignItems: "center", gap: 9, padding: 24, color: "#8b949e", fontSize: 12 }}><AlertCircle size={15} /> No project plans discovered from the current workspace.</div>}
-     </main>
-   </section>;
+  useEffect(() => {
+    let cancelled = false;
+    void invoke<string[]>("fs_find_master_plan_roots").then((found) => {
+      if (!cancelled) { setDiscoveredRoots(found); setDiscoveryFailed(false); }
+    }).catch(() => { if (!cancelled) setDiscoveryFailed(true); })
+      .finally(() => { if (!cancelled) setDiscoveryReady(true); });
+    return () => { cancelled = true; };
+  }, [refresh]);
+  const roots = useMemo(() => [...new Set([projectRoot, ...discoveredRoots, ...groups.map((group) => group.projectRoot), ...tabs.map((tab) => tab.initialCwd)]
+    .filter((root): root is string => Boolean(root?.trim())).map((root) => root.replace(/\/+$/, "")))].sort(), [discoveredRoots, groups, projectRoot, tabs]);
+  const plans = useMasterPlanTasks(roots, refresh);
+  const currentProject = projectRoot?.replace(/\/+$/, "") ?? "";
+  const activeProject = roots.includes(selectedProject) ? selectedProject : discoveryReady
+    ? roots.includes(currentProject) ? currentProject : roots[0] ?? "" : "";
+  useEffect(() => {
+    if (!discoveryReady || !activeProject || recordedProject.current === activeProject) return;
+    recordedProject.current = activeProject;
+    const next = recordProjectVisit(readProjectBoardHistory(), activeProject);
+    try { localStorage.setItem(PROJECT_BOARD_HISTORY_KEY, JSON.stringify(next)); } catch { /* Shortcuts still work for this visit. */ }
+    setHistory(next);
+  }, [activeProject, discoveryReady]);
+  useEffect(() => {
+    const sync = (event: StorageEvent) => { if (event.key === PROJECT_BOARD_HISTORY_KEY) setHistory(readProjectBoardHistory()); };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const closeOutside = (event: PointerEvent) => { if (!pickerRef.current?.contains(event.target as Node)) setPickerOpen(false); };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [pickerOpen]);
+  const shortcuts = useMemo(() => projectShortcuts(history, roots), [history, roots]);
+  const tasks = useMemo<ProjectTask[]>(() => (plans[activeProject] ?? []).map((task) => ({ ...task, projectRoot: activeProject })), [plans, activeProject]);
+  const visible = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    return tasks.filter((task) => (showDone || task.status !== "done") &&
+      (typeFilter === "all" || taskType(task) === typeFilter) &&
+      (priorityFilter === "all" || taskPriority(task) === priorityFilter) &&
+      (!needle || `${task.id} ${task.title}`.toLocaleLowerCase().includes(needle)))
+      .sort((a, b) => sortOrder === "title" ? a.title.localeCompare(b.title) : sortOrder === "status" ? a.status.localeCompare(b.status) : taskPriority(a).localeCompare(taskPriority(b)));
+  }, [query, showDone, sortOrder, tasks, typeFilter, priorityFilter]);
+  const done = tasks.filter((task) => task.status === "done").length;
+  const loading = !discoveryReady || Boolean(activeProject && !(activeProject in plans));
+  const pickerRoots = roots.filter((root) => root.toLocaleLowerCase().includes(projectQuery.trim().toLocaleLowerCase()));
+  const chooseProject = (root: string) => {
+    setSelectedProject(root); setPickerOpen(false); setProjectQuery(""); setQuery("");
+    pickerButtonRef.current?.focus();
+  };
+  const projectRow = (root: string) => <button type="button" key={root} className="project-board-project-row"
+    aria-label={`Open ${projectName(root)}`} aria-current={root === activeProject ? "page" : undefined}
+    title={root} onClick={() => chooseProject(root)}>
+    <span className="project-board-monogram">{projectInitial(root)}</span>
+    <span className="project-board-project-name">{projectName(root)}</span>
+    <span className="project-board-project-count">{plans[root]?.length ?? "–"}</span>
+  </button>;
+
+  return <section data-testid="project-plans-board" aria-label="Project plans" className="project-board">
+    <aside className="project-board-sidebar" aria-label="Project shortcuts">
+      <div className="project-board-sidebar-title"><FolderKanban size={17} /> Projects</div>
+      <button className="project-board-browse" type="button" onClick={() => setPickerOpen(true)}><Search size={15} /> Find a project <ChevronRight size={14} /></button>
+      <section aria-label="Most used projects" className="project-board-shortcuts"><h2>Most used <span>{shortcuts.frequent.length}</span></h2>
+        {shortcuts.frequent.map((item) => projectRow(item.root))}
+        {!shortcuts.frequent.length && <p>Your frequently opened projects will appear here.</p>}
+      </section>
+      <section aria-label="Recent projects" className="project-board-shortcuts"><h2>Recent <span>{shortcuts.recent.length}</span></h2>
+        {shortcuts.recent.map((item) => projectRow(item.root))}
+        {!shortcuts.recent.length && <p>Open a project to start your recent list.</p>}
+      </section>
+      <p className="project-board-sidebar-footnote">Shortcuts update as you open projects.</p>
+    </aside>
+    <main className="project-board-main">
+      <header className="project-board-header">
+        <div className="project-board-heading">
+          <p className="project-board-eyebrow">Status board</p>
+          <div className="project-board-picker" ref={pickerRef} onKeyDown={(event) => {
+            if (event.key === "Escape") { setPickerOpen(false); pickerButtonRef.current?.focus(); }
+          }}>
+            <button type="button" className="project-board-picker-trigger" ref={pickerButtonRef}
+              aria-label="Choose project" aria-expanded={pickerOpen} aria-controls="project-board-picker"
+              onClick={() => setPickerOpen((value) => !value)}>
+              <h1>{activeProject ? projectName(activeProject) : loading ? "Finding projects…" : "Choose a project"}</h1><ChevronDown size={20} />
+            </button>
+            {pickerOpen && <div id="project-board-picker" role="dialog" aria-label="Project picker" className="project-board-picker-panel">
+              <label className="project-board-project-search"><Search size={16} /><input autoFocus aria-label="Search projects"
+                placeholder="Find a project…" value={projectQuery} onChange={(event) => setProjectQuery(event.target.value)} /></label>
+              <div className="project-board-picker-list">{pickerRoots.map((root) => <button type="button" key={root}
+                className="project-board-picker-option" aria-label={`Open ${projectName(root)}`} aria-current={root === activeProject ? "page" : undefined}
+                onClick={() => chooseProject(root)}>
+                <span className="project-board-monogram">{projectInitial(root)}</span>
+                <span className="project-board-option-copy"><strong>{projectName(root)}</strong><small>{root}</small></span>
+                {root === activeProject ? <Check size={16} /> : <span className="project-board-project-count">{plans[root]?.length ?? "–"}</span>}
+              </button>)}
+              {!pickerRoots.length && <p className="project-board-empty">No projects match. Try a different name.</p>}</div>
+              <div className="project-board-picker-footer">{roots.length} projects</div>
+            </div>}
+          </div>
+        </div>
+        <div className="project-board-summary" aria-label="Project totals"><span><strong>{tasks.length}</strong> tasks</span><span>{done} completed</span>
+          <span className="project-board-completion" role="progressbar" aria-label="Project completion" aria-valuemin={0} aria-valuemax={100}
+            aria-valuenow={tasks.length ? Math.round(done / tasks.length * 100) : 0}><span style={{ width: `${tasks.length ? done / tasks.length * 100 : 0}%` }} /></span>
+        </div>
+      </header>
+      <div className="project-board-toolbar">
+        <label className="project-board-task-search"><Search size={16} /><input aria-label="Search project plan tasks" value={query}
+          onChange={(event) => setQuery(event.target.value)} placeholder="Search this project’s tasks…" /></label>
+        <details className="project-board-filters"><summary>Filters{typeFilter !== "all" || priorityFilter !== "all" ? " · active" : ""}</summary>
+          <div className="project-board-filter-controls">
+            <label>Type<select aria-label="Filter by type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">All types</option><option value="Tasks">Tasks</option><option value="Bugs">Bugs</option><option value="Issues">Issues</option></select></label>
+            <label>Priority<select aria-label="Filter by priority" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="all">All priorities</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option></select></label>
+            <label>Sort<select aria-label="Sort tasks" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}><option value="priority">Priority</option><option value="status">Status</option><option value="title">Title</option></select></label>
+          </div>
+        </details>
+        <label className="project-board-show-done"><input type="checkbox" checked={showDone} onChange={(event) => setShowDone(event.target.checked)} /> Show Done</label>
+        <button type="button" className="project-board-refresh" aria-label="Refresh project plans" onClick={() => setRefresh((value) => value + 1)} title="Refresh project plans"><RefreshCw size={16} /></button>
+      </div>
+      {discoveryFailed && <p role="status" className="project-board-notice">The project catalog could not be refreshed. Workspace projects are still available.</p>}
+      {loading ? <div className="project-board-loading" role="status">Loading project tasks…</div> :
+        !tasks.length ? <div className="project-board-empty-state"><AlertCircle size={22} /><h2>No readable tasks yet</h2><p>Choose another project, or add tasks to this project’s plan.</p><button type="button" onClick={() => setPickerOpen(true)}>Choose a project</button></div> :
+        <div className="project-board-columns">{columns.filter((column) => showDone || column.id !== "done").map((column) => {
+          const columnTasks = visible.filter((task) => column.statuses.includes(task.status));
+          return <section key={column.id} aria-label={column.title} className="project-board-column">
+            <h2><span className="project-board-status-dot" style={{ background: column.tone }} /><span>{column.title}</span><span className="project-board-column-count">{columnTasks.length}</span></h2>
+            <div className="project-board-cards">{columnTasks.map((task) => <TaskCard key={task.id} task={task} />)}
+              {!columnTasks.length && <p className="project-board-empty">{query || typeFilter !== "all" || priorityFilter !== "all" ? "No matching tasks" : "No tasks"}</p>}</div>
+          </section>;
+        })}</div>}
+    </main>
+  </section>;
 }

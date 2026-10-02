@@ -8,6 +8,75 @@ test.use({
   },
 });
 
+for (const destination of ["freelance", "scratch", "ancestor", "handover", "nested", "brainiac"] as const) {
+  test(`a terminal entering an unknown ${destination} folder only changes ownership for a separate real folder`, async ({ page }) => {
+    await page.goto("http://127.0.0.1:5177/", { waitUntil: "networkidle" });
+    const result = await page.evaluate((destination) => {
+      const store = (window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            reconcileProjectGroups: () => void;
+            setLiveCwd: (id: string, cwd: string) => void;
+            tabs: Array<{ id: string; groupId: string | null; projectCwd?: string }>;
+            groups: Array<{ id: string; name: string; projectRoot?: string; emoji?: string }>;
+          };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }).__termfleetWorkspaceStore;
+      if (!store) throw new Error("TermFleet test store is unavailable");
+      const root = destination === "brainiac" ? "/repo/ai-development/devops/assembly-line" : "/repo/ai-development/content-creation";
+      const target = destination === "freelance" ? "/repo/ai-development/freelance"
+        : destination === "scratch" ? "/tmp/freelance"
+        : destination === "nested" ? `${root}/new-project`
+        : destination === "handover" ? "/repo/ai-development/devops/termfleet"
+        : destination === "brainiac" ? "/repo/ai-development/devops/brainiac" : "/repo/ai-development";
+      const group = { id: "content", name: "Creative work", projectRoot: root, color: "#7aa2f7", emoji: "🎨", emojiSource: "user" };
+      const tab = (id: string) => ({
+        id, title: id, groupId: group.id, initialCwd: root,
+        terminals: [{ id: `pty-${id}`, paneId: `pane-${id}`, status: "running", cols: 80, rows: 24 }],
+        activePaneId: `pane-${id}`, splitLayout: { id: `pane-${id}`, type: "terminal" },
+      });
+      store.setState({
+        tabs: [
+          { ...tab("moving"), ...(["handover", "brainiac"].includes(destination) ? { initialCwd: target, projectCwd: root } : {}) },
+          { ...tab("staying"), ...(destination === "brainiac" ? { childOf: { parentTabId: "moving", parentPaneId: "pane-moving", requestId: "assembly-child" } } : {}) },
+        ], groups: [group], terminalGroups: [group],
+        liveCwds: {}, liveGitRoots: {}, activeTabId: "moving", activeGroupId: group.id,
+        activeGroupFilter: group.id, projectRoot: root,
+        canvasState: { nodes: [], selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 } },
+      });
+      store.getState().setLiveCwd("pty-moving", target);
+      const snapshot = () => {
+        const state = store.getState();
+        const moving = state.tabs.find((candidate) => candidate.id === "moving");
+        return {
+          movingRoot: state.groups.find((candidate) => candidate.id === moving?.groupId)?.projectRoot,
+          remembered: moving?.projectCwd,
+          originalGroup: state.groups.find((candidate) => candidate.id === group.id),
+          stayingGroup: state.tabs.find((candidate) => candidate.id === "staying")?.groupId,
+          groupCount: state.groups.length,
+        };
+      };
+      const first = snapshot();
+      store.getState().reconcileProjectGroups();
+      const second = snapshot();
+      // Rehydrate the remembered tab/group metadata without transient live cwd.
+      const saved = JSON.parse(JSON.stringify({ tabs: store.getState().tabs, groups: store.getState().groups }));
+      store.setState({ ...saved, terminalGroups: saved.groups, liveCwds: {}, liveGitRoots: {} });
+      store.getState().reconcileProjectGroups();
+      return { first, second, reopened: snapshot(), group, root, target };
+    }, destination);
+    const moves = ["freelance", "handover", "brainiac"].includes(destination);
+    expect(result.first.movingRoot).toBe(moves ? result.target : result.root);
+    expect(result.first.originalGroup).toEqual(result.group);
+    expect(result.first.stayingGroup).toBe("content");
+    expect(result.first.groupCount).toBe(moves ? 2 : 1);
+    if (moves) expect(result.first.remembered).toBe(result.target);
+    expect(result.second).toEqual(result.first);
+    expect(result.reopened).toEqual(result.first);
+  });
+}
+
 test("terminal folders reconcile into project rows without moving the map viewport", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
@@ -544,7 +613,7 @@ test("addTab and cwd changes auto-group terminals by path (live wiring)", async 
   expect(out.movedToBGroup).toBe(true);  // cwd change re-homes the terminal
 });
 
-test("a card stays in its start-folder project when its shell cds into another project", async ({ page }) => {
+test("a card joins its current project when its shell enters another project folder", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -653,15 +722,15 @@ test("a card stays in its start-folder project when its shell cds into another p
       viewport: state.canvasState.viewport,
     };
   })).toEqual({
-    tabGroupName: "bina-ve-ze",
-    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze",
-    activeProjectName: "bina-ve-ze",
-    projectRoot: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze",
+    tabGroupName: "termfleet",
+    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+    activeProjectName: "termfleet",
+    projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
     viewport: { x: -220, y: 140, zoom: 0.7 },
   });
 
   const nodeList = page.getByTestId("map-node-list");
-  await expect(nodeList).toContainText("bina-ve-ze");
+  await expect(nodeList).toContainText("termfleet");
 });
 
 test("a handover successor stays in its predecessor's project even when its shell starts elsewhere", async ({ page }) => {

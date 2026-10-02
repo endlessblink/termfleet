@@ -51,19 +51,26 @@ function normalizeStatus(raw: string | undefined): MasterPlanTaskStatus {
   if (/(^|[^a-z])done([^a-z]|$)/.test(value)) return "done";
   if (/(^|[^a-z])(blocked?|blocking)([^a-z]|$)/.test(value)) return "blocked";
   if (/(^|[^a-z])(in[_ -]?progress|progress|doing)([^a-z]|$)/.test(value)) return "in-progress";
-  if (/(^|[^a-z])(todo|backlog)([^a-z]|$)/.test(value)) return "todo";
+  if (/(^|[^a-z])(todo|backlog|pending)([^a-z]|$)/.test(value)) return "todo";
   return "unknown";
 }
 
+function unwrapMarkdown(value: string) {
+  let text = value.trim();
+  let wrapped;
+  while ((wrapped = text.match(/^(\*\*|__|~~|`)(.+)\1$/s))) text = wrapped[2].trim();
+  return text;
+}
+
 function cleanTitle(value: string) {
-  return value
+  return unwrapMarkdown(value)
     .replace(/\s+`[^`]+`\s*$/, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
 function cleanTaskId(value: string) {
-  return value.replace(/^~~|~~$/g, "").trim();
+  return unwrapMarkdown(value);
 }
 
 function cleanChecklistText(value: string) {
@@ -143,10 +150,10 @@ export function parseMasterPlanTasks(contents: string): MasterPlanTask[] {
       ? line.split("|").slice(1, -1).map((cell) => cell.trim())
       : [];
     const normalizedHeader = tableCells.map((cell) => cell.toLowerCase());
+    if (!tableCells.length) tableHeader = [];
     if (
       normalizedHeader.includes("id") &&
-      normalizedHeader.includes("title") &&
-      normalizedHeader.includes("status")
+      normalizedHeader.includes("title")
     ) {
       tableHeader = normalizedHeader;
       continue;
@@ -160,7 +167,9 @@ export function parseMasterPlanTasks(contents: string): MasterPlanTask[] {
       const statusIndex = statusColumnIndex >= 0
         ? statusColumnIndex
         : tableCells.findIndex((cell, index) => index > 0 && normalizeStatus(cell) !== "unknown");
-      const rawStatus = statusIndex >= 0 ? tableCells[statusIndex] : "Unknown";
+      const completedIndex = tableHeader.indexOf("completed");
+      const rawStatus = completedIndex >= 0 && tableCells[completedIndex]
+        ? "DONE" : (statusIndex >= 0 ? tableCells[statusIndex] : undefined) ?? "Unknown";
       const titleIndex = titleColumnIndex >= 0 ? titleColumnIndex : statusIndex === 1 ? 2 : 1;
       const title = tableCells[titleIndex] ?? tableId;
       byId.set(tableId, {
