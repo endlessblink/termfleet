@@ -203,6 +203,17 @@
   }
   .switch button[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}
 
+  /* Sort and activity filters. Chips, not menus: the list refreshes itself and
+     would close an open menu. */
+  .fleetbar{display:flex;flex-direction:column;gap:6px;margin:0 0 14px}
+  .fleetbar .chips{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none}
+  .fleetbar .chips::-webkit-scrollbar{display:none}
+  .fleetbar .lbl{flex:none;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;min-width:38px}
+  .fleetbar button{
+    flex:none;appearance:none;border:1px solid var(--line);background:transparent;color:var(--muted);
+    font:600 12px var(--ui);padding:6px 11px;border-radius:999px;min-height:32px;cursor:pointer;
+  }
+  .fleetbar button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#191512}
   .projgroup{margin-bottom:22px}
   .projhead{
     display:flex;align-items:center;gap:8px;margin:0 4px 9px;
@@ -761,7 +772,14 @@ async function fleet() {
   }
   if (mine !== view) return;
   checkVersion(r.version);
-  const panes = r.panes;
+  const sortBy = localStorage.getItem('termcontrol-sort') || 'map';
+  const windowKey = localStorage.getItem('termcontrol-window') || 'all';
+  const WINDOWS = { today: 24, '3d': 72, week: 168 };
+  const cutoff = WINDOWS[windowKey] ? Date.now() - WINDOWS[windowKey] * 3600 * 1000 : 0;
+  const lastUsed = (p) => Number(p.lastActiveAt || p.updatedAt || 0);
+  // Anything waiting on you stays visible whatever the window says.
+  const everything = r.panes;
+  const panes = everything.filter((p) => !cutoff || p.turn === 'waiting' || lastUsed(p) >= cutoff);
   const waiting = panes.filter((p) => p.turn === 'waiting');
   sub.textContent = r.daemon === false
     ? 'TermFleet is not running — showing the last known list'
@@ -769,7 +787,6 @@ async function fleet() {
       ? `${waiting.length} waiting for you`
       : `${panes.length} terminal${panes.length === 1 ? '' : 's'}`;
 
-  if (!panes.length) { main.innerHTML = '<div class="empty">No agent terminals in the last day.</div>'; return; }
 
   const attention = panes.filter((p) => p.attention);
   const attentionOpen = sessionStorage.getItem('termcontrol-attention-open') !== 'closed';
@@ -786,19 +803,49 @@ async function fleet() {
       </div>
     </details>` : '';
 
+  const chip = (key, value, label, current) =>
+    `<button data-pref="${key}" data-value="${value}" aria-pressed="${current === value}">${label}</button>`;
+  const bar = `<div class="fleetbar">
+      <div class="chips"><span class="lbl">Sort</span>
+        ${chip('sort', 'map', 'Map order', sortBy)}${chip('sort', 'recent', 'Last used', sortBy)}${chip('sort', 'needs', 'Needs you', sortBy)}</div>
+      <div class="chips"><span class="lbl">Live</span>
+        ${chip('window', 'today', 'Today', windowKey)}${chip('window', '3d', '3 days', windowKey)}${chip('window', 'week', 'Week', windowKey)}${chip('window', 'all', 'All', windowKey)}</div>
+    </div>`;
+  const hidden = everything.length - panes.length;
+  const none = panes.length ? '' : '<div class="empty">Nothing was live in this period.</div>';
+  const footer = hidden > 0 ? `<div class="empty" style="padding:8px 0 24px">${hidden} older terminal${hidden === 1 ? '' : 's'} hidden</div>` : '';
+
+  // Groups keep the map's grouping; sorting reorders the groups and the cards
+  // inside them, so "last used" puts the terminal you touched most recently first.
+  const byRecent = (a, b) => lastUsed(b) - lastUsed(a);
+  const byNeed = (a, b) => (a.turn === 'waiting' ? 0 : 1) - (b.turn === 'waiting' ? 0 : 1) || byRecent(a, b);
+  const paneOrder = sortBy === 'recent' ? byRecent : sortBy === 'needs' ? byNeed : null;
+  const shownGroups = (r.groups || [])
+    .map((g) => ({ ...g, panes: g.panes.filter((p) => panes.includes(p) || panes.some((q) => q.id === p.id)) }))
+    .filter((g) => g.panes.length)
+    .map((g) => paneOrder ? { ...g, panes: [...g.panes].sort(paneOrder) } : g);
+  if (paneOrder) shownGroups.sort((a, b) => paneOrder(a.panes[0], b.panes[0]));
+
   const mode = r.view === 'manual' ? 'manual' : 'projects';
   if (mode === 'manual') {
-    main.innerHTML = attentionPanel + panes.map(card).join('');
+    main.innerHTML = bar + attentionPanel + (paneOrder ? [...panes].sort(paneOrder) : panes).map(card).join('') + none + footer;
   } else {
-    main.innerHTML = attentionPanel + (r.groups || []).map((g) => `<section class="projgroup">
+    main.innerHTML = bar + attentionPanel + none + shownGroups.map((g) => `<section class="projgroup">
         <h2 class="projhead${g.attention === 0 ? ' needs' : ''}">
           ${g.emoji ? `<span class="pemoji" aria-hidden="true">${esc(g.emoji)}</span>` : ''}
           <span>${esc(g.project)}</span>
           <span class="count">${g.attention === 0 ? 'needs you' : g.panes.length}</span>
         </h2>
         ${g.panes.map(card).join('')}
-      </section>`).join('');
+      </section>`).join('') + footer;
   }
+
+  main.querySelectorAll('.fleetbar button').forEach((el) => {
+    el.onclick = () => {
+      localStorage.setItem(`termcontrol-${el.dataset.pref}`, el.dataset.value);
+      fleet();
+    };
+  });
 
   main.querySelectorAll('.attention-review').forEach((el) => {
     el.onclick = () => openFleetPane(el);

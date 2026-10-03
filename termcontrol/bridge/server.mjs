@@ -74,7 +74,9 @@ function serveStatic(res, name) {
  * screen, and say so.
  */
 async function currentPanes() {
-  const panes = listPanes({ maxAgeMs: MAX_AGE });
+  // Age is now the phone's own filter (today / 3 days / week / all), applied to
+  // lastActiveAt, so the bridge sends every terminal that has a card on the map.
+  const panes = listPanes({ maxAgeMs: null });
   const { reachable, byId } = await liveness();
   if (!reachable) {
     return {
@@ -95,6 +97,9 @@ async function currentPanes() {
       return {
         ...pane,
         alive: true,
+        // Last time the terminal was used: the later of what its agent last
+        // reported and the last time its own output grew. 0 when unknown.
+        lastActiveAt: Math.max(Number(p.updatedAt) || 0, life.quietForMs != null ? Date.now() - life.quietForMs : 0),
         producing: life.producing,
         quietForMs: life.quietForMs,
         // What the agent last said about itself, kept honest by what the
