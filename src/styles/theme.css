@@ -64,10 +64,10 @@
   --ansi-cyan:    #81b6b8;
   --ansi-white:   #c4c4ca;
   --ansi-bright-black: #8a8a91; /* was #667383 (3.39:1) -> 5.77:1 */
-  --terminal-bg:        var(--surface-base);
-  --terminal-fg:        #c4c4ca;
-  --terminal-cursor:    var(--text-1);       /* block caret, mock .cur 7x14 */
-  --terminal-selection-bg: var(--accent-tint);
+  --terminal-bg:        #1d2022; /* pre-redesign terminal look, restored */
+  --terminal-fg:        #e6e9ec;
+  --terminal-cursor:    #c4ccd2;
+  --terminal-selection-bg: #2a3a50;
   --diff-add-bg: color-mix(in srgb, var(--state-running) 14%, transparent);
   --diff-del-bg: color-mix(in srgb, var(--state-failed) 14%, transparent);
 
@@ -203,19 +203,19 @@
   --explorer-file-data: var(--text-2); --explorer-file-code: var(--text-2); --explorer-file-style: var(--text-2);
   --explorer-file-markup: var(--text-2); --explorer-icon-label: var(--surface-base);
   /* terminal family */
-  --terminal-ansi-black: var(--ansi-black); --terminal-ansi-red: var(--ansi-red); --terminal-ansi-green: var(--ansi-green);
-  --terminal-ansi-yellow: var(--ansi-yellow); --terminal-ansi-blue: var(--ansi-blue); --terminal-ansi-magenta: var(--ansi-magenta);
-  --terminal-ansi-cyan: var(--ansi-cyan); --terminal-ansi-white: var(--ansi-white);
-  --terminal-ansi-bright-black: var(--ansi-bright-black);
-  --terminal-ansi-bright-red: var(--ansi-red); --terminal-ansi-bright-green: var(--ansi-green);
-  --terminal-ansi-bright-yellow: var(--ansi-yellow); --terminal-ansi-bright-blue: var(--ansi-blue);
-  --terminal-ansi-bright-magenta: var(--ansi-magenta); --terminal-ansi-bright-cyan: var(--ansi-cyan);
-  --terminal-ansi-bright-white: var(--ansi-white); /* GAP: the design defines only 8 ANSI colours; brights reuse them */
-  --terminal-selection-fg: var(--text-1);
-  --terminal-scroll-track: var(--surface-base); --terminal-scroll-thumb: var(--border-strong); --terminal-scroll-thumb-hover: var(--border-control); /* (derived) */
+  --terminal-ansi-black: #0b0e12; --terminal-ansi-red: #ef6f72; --terminal-ansi-green: #7fc681;
+  --terminal-ansi-yellow: #d4a44f; --terminal-ansi-blue: #6ea8fe; --terminal-ansi-magenta: #ad8fcb;
+  --terminal-ansi-cyan: #7dbac3; --terminal-ansi-white: #e6e9ec;
+  --terminal-ansi-bright-black: #667383;
+  --terminal-ansi-bright-red: #f48b8d; --terminal-ansi-bright-green: #95d996;
+  --terminal-ansi-bright-yellow: #e0b969; --terminal-ansi-bright-blue: #8bb9ff;
+  --terminal-ansi-bright-magenta: #bea4d8; --terminal-ansi-bright-cyan: #91cbd2;
+  --terminal-ansi-bright-white: #f1f5f9;
+  --terminal-selection-fg: #f1f5f9;
+  --terminal-scroll-track: #1b2022; --terminal-scroll-thumb: #3c454a; --terminal-scroll-thumb-hover: #4c575d;
 
   --terminal-block-spine: var(--border-default); --terminal-block-marker: var(--border-control);
-  --terminal-block-marker-active: var(--accent-fill);
+  --terminal-block-marker-active: #c4ccd2;
   /* tab chrome (legacy) */
 
   /* transient text/bg tints used by a few files */

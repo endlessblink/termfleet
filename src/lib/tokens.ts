@@ -145,10 +145,7 @@ export function renderThemeFromTokens(tokens: TermfleetTokens = readTokens()): R
   return {
     background: tokens.terminalBg,
     cursor: tokens.terminalCursor,
-    colorMap: buildColorMap(tokens),
-    selectionOverlay: withAlpha(tokens.accentFill, 0.35),
-    searchActiveOverlay: withAlpha(tokens.accent, 0.55),
-    searchMatchOverlay: withAlpha(tokens.accent, 0.28),
+    // Terminal colours are the pre-redesign look: no palette re-map, default overlays.
   };
 }
 
