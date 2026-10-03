@@ -7,6 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canvasSidebarView, listPanes, reconcileLivePanes } from './inventory.mjs';
+import { transcriptPath as codexTranscript } from './adapters/codex.mjs';
+import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
 import { sendToPane, answerPrompt, sendKey, liveSessionIds } from './send.mjs';
@@ -73,6 +75,25 @@ function serveStatic(res, name) {
  * If the daemon cannot be reached we show everything rather than an empty
  * screen, and say so.
  */
+/**
+ * When a conversation file was last written is the plainest "last used" there
+ * is, and it exists even for agents that never wrote a status record (a Codex
+ * started by hand, say). 0 when the terminal has no conversation yet.
+ */
+function conversationMtime(pane) {
+  try {
+    const file = pane.provider === 'codex' ? codexTranscript(pane)
+      : pane.provider === 'claude' ? claudeTranscript(pane.cwd, pane.sessionId)
+      : null;
+    return file ? fs.statSync(file).mtimeMs : 0;
+  } catch { return 0; }
+}
+
+/** Last resort for a terminal nothing else has news of: when its process began. */
+function startedAt(pid) {
+  try { return pid ? fs.statSync(`/proc/${pid}`).ctimeMs : 0; } catch { return 0; }
+}
+
 async function currentPanes() {
   // Age is now the phone's own filter (today / 3 days / week / all), applied to
   // lastActiveAt, so the bridge sends every terminal that has a card on the map.
@@ -99,7 +120,7 @@ async function currentPanes() {
         alive: true,
         // Last time the terminal was used: the later of what its agent last
         // reported and the last time its own output grew. 0 when unknown.
-        lastActiveAt: Math.max(Number(p.updatedAt) || 0, life.quietForMs != null ? Date.now() - life.quietForMs : 0),
+        lastActiveAt: Math.max(Number(p.updatedAt) || 0, conversationMtime(p), life.quietForMs != null ? Date.now() - life.quietForMs : 0) || startedAt(life.pid),
         producing: life.producing,
         quietForMs: life.quietForMs,
         // What the agent last said about itself, kept honest by what the
