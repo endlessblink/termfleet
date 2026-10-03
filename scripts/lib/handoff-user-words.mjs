@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 export const WORDS_BEGIN = "<!-- termfleet:user-words:begin -->";
 export const WORDS_END = "<!-- termfleet:user-words:end -->";
-const MAX_CHARS = 2_000;
+const MAX_CHARS = 6_000;
 
 /** Typed-by-a-human text only: harness-injected blocks start with "<" or "[SYSTEM". */
 function typed(text) {
@@ -65,7 +65,7 @@ export function codexUserMessages(rolloutText) {
 }
 
 /** Total size of the quoted words; the newest messages win, the opening request is always kept. */
-const BUDGET_CHARS = 24_000;
+const BUDGET_CHARS = 80_000;
 
 /** The block to append: the opening request, then the newest messages that fit, verbatim (long ones cut, marked). */
 export function renderUserWords(messages) {
@@ -124,6 +124,19 @@ export function findTranscript({ provider, sessionId, home = homedir() }) {
     /* no record */
   }
   return undefined;
+}
+
+/**
+ * The caller's chat id, most trustworthy first. The pane's status record can lag or point at an
+ * older chat after /clear, resume or compaction, which silently dropped Noam's newest words; the
+ * agent's own environment id is the live one. The first id with a readable record wins.
+ */
+export function userMessagesForAny({ provider, sessionIds, home }) {
+  for (const sessionId of sessionIds) {
+    if (!sessionId || !findTranscript({ provider, sessionId, home })) continue;
+    return userMessagesFor({ provider, sessionId, home });
+  }
+  return [];
 }
 
 export function userMessagesFor({ provider, sessionId, home }) {

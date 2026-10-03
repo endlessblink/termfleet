@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error plain .mjs helper
-import { appendUserWords, claudeUserMessages, codexUserMessages, userMessagesFor, WORDS_BEGIN } from "../scripts/lib/handoff-user-words.mjs";
+import { appendUserWords, claudeUserMessages, codexUserMessages, userMessagesFor, userMessagesForAny, WORDS_BEGIN } from "../scripts/lib/handoff-user-words.mjs";
 
 const claudeLine = (content: unknown, extra = {}) => JSON.stringify({ type: "user", timestamp: "t", message: { content }, ...extra });
 
@@ -61,4 +61,15 @@ test("Codex words come from the real user turns; its own review prompts and inte
   const rollout = [turn("# AGENTS.md instructions for x"), turn("<environment_context>"), turn("fix the gates"), turn("fix the gates"), turn("The following is the Codex agent history x")].join("\n");
   expect(codexUserMessages(rollout).map((m: { text: string }) => m.text)).toEqual(["fix the gates"]);
   expect(claudeUserMessages(claudeLine("[Request interrupted by user for tool use]"))).toEqual([]);
+});
+
+test("a stale chat id is skipped: the live id's record wins, and no record at all yields nothing", () => {
+  const home = mkdtempSync(join(tmpdir(), "tf-home-"));
+  const live = "aaaaaaaa-2222-3333-4444-555555555555";
+  const stale = "bbbbbbbb-2222-3333-4444-555555555555";
+  mkdirSync(join(home, ".claude", "projects", "-proj"), { recursive: true });
+  writeFileSync(join(home, ".claude", "projects", "-proj", `${live}.jsonl`), claudeLine("typed one second before dropoff"));
+  const got = userMessagesForAny({ provider: "claude", sessionIds: ["", stale, live], home });
+  expect(got.map((m: { text: string }) => m.text)).toEqual(["typed one second before dropoff"]);
+  expect(userMessagesForAny({ provider: "claude", sessionIds: ["", stale], home })).toEqual([]);
 });

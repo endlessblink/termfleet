@@ -19,7 +19,7 @@ import { basename, join, resolve } from "node:path";
 import { paneSidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
 import { ancestors, argv as procArgv, isProviderProcess } from "./lib/single-chat-owner.mjs";
 import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
-import { appendUserWords, userMessagesFor } from "./lib/handoff-user-words.mjs";
+import { appendUserWords, userMessagesForAny } from "./lib/handoff-user-words.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -29,7 +29,7 @@ const USAGE = `termfleet-child ${VERSION} - start an agent instance as a visible
 
 usage:
   termfleet-child spawn --provider <${PROVIDERS.join("|")}> (--task "<text>" | --task-file FILE | --dropoff FILE)
-                        [--title "<card title>"] [--near PROJECT_DIR] [--separate | --replace] [--allow-thin] [--cwd DIR] [--timeout SECONDS] [--no-start-app]
+                        [--title "<card title>"] [--near PROJECT_DIR] [--separate | --replace] [--allow-thin] [--allow-no-words] [--cwd DIR] [--timeout SECONDS] [--no-start-app]
   termfleet-child status
   termfleet-child --help | --version
 
@@ -44,7 +44,7 @@ function fail(message, code = 1) {
   process.exit(code);
 }
 
-const BOOLEAN_FLAGS = new Set(["no-start-app", "separate", "replace", "allow-thin"]);
+const BOOLEAN_FLAGS = new Set(["no-start-app", "separate", "replace", "allow-thin", "allow-no-words"]);
 
 const THIN_HANDOFF_CHARS = 1500;
 /** A file missing more than this many expected parts is a briefing, not a handoff. */
@@ -269,19 +269,36 @@ async function spawnCommand(options) {
   }
   if (handover && handoffFile) {
     // TF-076: Noam's own recent words, copied verbatim, so the dying agent cannot drop them.
+    // Fail closed: a handover that silently loses Noam's last words is worse than no handover.
+    let count = 0;
     try {
-      const sessionId =
+      let fromPane;
+      try {
+        fromPane = JSON.parse(readFileSync(paneSidecarPath(parentPaneId), "utf8"))?.sessionId;
+      } catch {
+        fromPane = undefined;
+      }
+      const fromEnv =
         caller.provider === "codex"
           ? (process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID ?? "").trim()
-          : JSON.parse(readFileSync(paneSidecarPath(parentPaneId), "utf8"))?.sessionId;
-      const count = appendUserWords(handoffFile, userMessagesFor({ provider: caller.provider, sessionId }));
-      process.stderr.write(
-        count > 0
-          ? `termfleet-child: added Noam's last ${count} messages, verbatim, to the handoff.\n`
-          : "termfleet-child: warning: could not find your session record, so Noam's recent messages were NOT added to the handoff.\n",
+          : (process.env.CLAUDE_CODE_SESSION_ID ?? "").trim();
+      count = appendUserWords(
+        handoffFile,
+        userMessagesForAny({ provider: caller.provider, sessionIds: [fromEnv, fromPane] }),
       );
     } catch {
-      process.stderr.write("termfleet-child: warning: could not add Noam's recent messages to the handoff.\n");
+      count = 0;
+    }
+    if (count > 0) {
+      process.stderr.write(`termfleet-child: added Noam's last ${count} messages, verbatim, to the handoff.\n`);
+    } else if (options["allow-no-words"] === true) {
+      process.stderr.write("termfleet-child: warning: Noam's recent messages were NOT added to the handoff (--allow-no-words).\n");
+    } else {
+      fail(
+        "could not find your session record, so Noam's recent messages cannot be added to the handoff and the handover was not started. " +
+          "Anything he wrote just before this would be lost. Add them to the handoff by hand, then retry with --allow-no-words.",
+        2,
+      );
     }
   }
   const cwd = resolve(options.cwd ?? process.cwd());
