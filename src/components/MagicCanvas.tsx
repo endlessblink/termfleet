@@ -4682,6 +4682,18 @@ function CanvasNodeViewImpl({
           return;
         }
         activateTerminalNode();
+        // TF-075: selecting a card must also hand it the keyboard, or a focused
+        // command bar keeps swallowing keystrokes meant for this terminal.
+        if (node.type === "terminal" && !target.closest("input,textarea,select")) {
+          const sessionId = linkedTerminalId ?? `terminal-${terminalTabId}-${terminalPaneId}`;
+          window.requestAnimationFrame(() => {
+            document
+              .querySelector<HTMLTextAreaElement>(
+                `.terminal-canvas-input[data-terminal-session-id="${CSS.escape(sessionId)}"]`,
+              )
+              ?.focus({ preventScroll: true });
+          });
+        }
       }}
       onContextMenu={(event) => {
         if (node.type === "terminal") {

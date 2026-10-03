@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-30T18:30:57.327Z",
+  "updatedAt": "2026-10-03T11:52:47.594Z",
   "issues": [
     {
       "id": "TF-001",
@@ -2874,7 +2874,7 @@
     {
       "id": "TF-018",
       "title": "Saved terminal projects are missing after restart",
-      "state": "fixing",
+      "state": "verifying",
       "severity": "medium",
       "surface": "desktop-runtime",
       "matrixRefs": [],
@@ -2883,19 +2883,24 @@
       "guard": "Every saved project tab must remain in the hydrated workspace while stale historical sessions do not create extra tabs.",
       "evidence": [
         {
-          "kind": "live-desktop",
-          "at": "2026-08-30T20:03:16.363Z",
-          "note": "New continuous all-pane health matrix read the current dock failure directly: 12 expected preserved panes, 6 live, 2 exited/dead, and 4 with empty rendered-screen evidence. This run is failed and remains fixing."
+          "kind": "focused-test",
+          "at": "2026-10-02T17:11:31.387Z",
+          "note": "Historical closed PTY/provider hydrate and reconcile fixtures each reproduced two destructive calls before fix. After removal all four pass with card exclusion and open sibling retained; explicit Close persists then kills only clicked PTY. 5/5 pass; installed restart remains pending."
         },
         {
-          "kind": "focused-test",
-          "at": "2026-08-31T10:23:38.535Z",
-          "note": "Focused Rust regressions pass: direct-provider-root process-tree identity resolves one canonical owner, and the exact owner contract returns canonical daemon pane plus provider PID. No provider command was written."
+          "kind": "source",
+          "at": "2026-10-02T17:19:25.157Z",
+          "note": "Removed destructive kill side effects only from historical-close hydration and reconcile branches; card exclusion and explicit Close remain."
         },
         {
           "kind": "installed-release",
-          "at": "2026-08-31T10:27:54.872Z",
-          "note": "Promoted immutable release 9b0222adef3a-4908d9f4f6a9-9e5e6b43fc36 after exact-owner resolver regression passed. The currently open dock process is still the prior immutable executable, so visual dock evidence remains pending; no daemon restart or provider resume was performed."
+          "at": "2026-10-02T17:29:52.811Z",
+          "note": "Installed dock release 0a80ec3f1ad4-ecc41e49a2b9-0406e7aa550b verified binary ecc41e49a2b9cf7cfb69e91b1f390a6990ef4839a624bb23b9301b84d8d28810; running UI2332354 exact immutable path; doctor healthy."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-10-02T17:29:54.311Z",
+          "note": "Authorized UI-only relaunch1891495->2332354 retained daemon1515447. Sanitized before/after snapshots /tmp/tf073-before-relaunch.json and /tmp/tf073-after-relaunch.json: all32 live PTY IDs/PIDs alive unchanged, zero new lifecycle kill events. Startup-loss guard runtime gate passes; prior lost sessions and exact all-pane visual restoration remain unverified."
         }
       ],
       "owner": "termfleet",
@@ -3069,6 +3074,43 @@
           "type": "evidence",
           "kind": "installed-release",
           "note": "Promoted immutable release 9b0222adef3a-4908d9f4f6a9-9e5e6b43fc36 after exact-owner resolver regression passed. The currently open dock process is still the prior immutable executable, so visual dock evidence remains pending; no daemon restart or provider resume was performed."
+        },
+        {
+          "at": "2026-10-02T16:50:53.918Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-10-02 final authorized UI-only relaunch1455941->1730900 kept daemon1515447. Before32 daemon-live PIDs all existed; after7 disappeared incl assembly-line1314767. Lifecycle ledger records intentional-kill/explicit session close during launch; matching saved close records present. Authority of those records remains under investigation. Safe snapshots /tmp/tf072-final-before-live.json and before/after-sessions.json; no resume or daemon restart performed."
+        },
+        {
+          "at": "2026-10-02T17:11:31.387Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Historical closed PTY/provider hydrate and reconcile fixtures each reproduced two destructive calls before fix. After removal all four pass with card exclusion and open sibling retained; explicit Close persists then kills only clicked PTY. 5/5 pass; installed restart remains pending."
+        },
+        {
+          "at": "2026-10-02T17:19:23.395Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Historical close exclusion emits zero kills in hydration/reconcile; explicit clicked Close persists then kills exact PTY. Five focused tests pass; installed survival comparison pending."
+        },
+        {
+          "at": "2026-10-02T17:19:25.157Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Removed destructive kill side effects only from historical-close hydration and reconcile branches; card exclusion and explicit Close remain."
+        },
+        {
+          "at": "2026-10-02T17:29:52.811Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed dock release 0a80ec3f1ad4-ecc41e49a2b9-0406e7aa550b verified binary ecc41e49a2b9cf7cfb69e91b1f390a6990ef4839a624bb23b9301b84d8d28810; running UI2332354 exact immutable path; doctor healthy."
+        },
+        {
+          "at": "2026-10-02T17:29:54.311Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Authorized UI-only relaunch1891495->2332354 retained daemon1515447. Sanitized before/after snapshots /tmp/tf073-before-relaunch.json and /tmp/tf073-after-relaunch.json: all32 live PTY IDs/PIDs alive unchanged, zero new lifecycle kill events. Startup-loss guard runtime gate passes; prior lost sessions and exact all-pane visual restoration remain unverified."
         }
       ]
     },
@@ -8900,6 +8942,556 @@
           "type": "evidence",
           "kind": "installed-release",
           "note": "Release 0f8d5c2f9e2e-a0bbf20894c4-d68b99e7b590 (built from fix commit 0f8d5c2) promoted; verify:installed-release OK. Takes effect on the next UI-only relaunch; live check: paste-debug.log should show no write bursts after sidebar focus."
+        }
+      ]
+    },
+    {
+      "id": "TF-068",
+      "title": "Agent-requested child terminals timed out because the request poller was opt-in",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "termfleet-child spawn always timed out after 60s in the dock app; status showed running but not listening.",
+      "rootCause": "",
+      "guard": "tests/child-terminals.spec.ts, tests/context-handoff-hook.spec.ts; live spawn from a pane returns a childPaneId in about 1s",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Live-prove link survives app restart; add parent supervision; verify card placement and connector dots on the latest release",
+      "history": [
+        {
+          "at": "2026-10-01T09:30:57.774Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-01T09:31:05.201Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "poller opt-in gate fixed in 5d68445; live spawn OK"
+        },
+        {
+          "at": "2026-10-01T09:31:05.236Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "poller opt-in gate fixed in 5d68445; live spawn OK"
+        },
+        {
+          "at": "2026-10-01T09:31:05.275Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "poller opt-in gate fixed in 5d68445; live spawn OK"
+        },
+        {
+          "at": "2026-10-01T09:31:05.311Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "poller opt-in gate fixed in 5d68445; live spawn OK"
+        },
+        {
+          "at": "2026-10-01T09:31:05.361Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "poller opt-in gate fixed in 5d68445; live spawn OK"
+        }
+      ]
+    },
+    {
+      "id": "TF-069",
+      "title": "Sidebar order and group icons keep changing; terminals listed under wrong project",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [
+        "TF-069"
+      ],
+      "symptom": "Opening or closing a terminal reorders sidebar groups (count/current/pinned sort) and group emoji are re-derived each reconcile; some terminals show under the wrong project heading; helper terminals have no marker.",
+      "rootCause": "Reconciliation followed only already-known destinations; stale remembered ownership retained freelance under content-creation and brainiac under assembly-line. User clarified different live project folders require different groups.",
+      "guard": "tests/project-reconciliation.spec.ts plus existing sidebar order/icon/helper guards",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-02T16:40:16.639Z",
+          "note": "Updated user rule regression-first: brainiac stale assembly-line ownership, concrete unknown sibling project, and confirmed live initial-folder return failed baseline. Full28-case reconciliation run27passed/1browserclosed before assertions; affected viewport test rerun1passed. TypeScript, map source verifier and diff check pass; independent review no blockers. No-live handover, scratch/internal browsing and manual names/icons protected."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-02T16:40:16.681Z",
+          "note": "Confirmed exact brainiac shell PID1304907 cwdbrainiac and assembly-line PID1314767 cwdassembly-line; brainiac saved projectCwd wronglyassembly-line. Reconciler now permits previously unopened separate live folders to replace stale ownership; existing root containment prevents internal browsing from making spurious projects."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-02T16:50:54.029Z",
+          "note": "Final installed UI1730900 exact8827e431 release confirmed. Persisted live reconciliation assigns brainiac tabc989c083 to own brainiac group project-ku5syu and freelance026c100c to own freelance group project-1ml4jm. Assembly-line pane disappeared due startup close-record cleanup; three-heading live visual proof remains incomplete.28 behavioral cases verified suite27pass plus reload-failure focused rerun1pass. OtherTF069 concerns remain open."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify final installed live-folder correction in dock sidebar: freelance, brainiac and assembly-line each own group. Preserve scratch/internal browsing/no-live handover protections. Other TF-069 concerns remain verifying.",
+      "history": [
+        {
+          "at": "2026-10-01T10:21:10.241Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-02T16:18:58.436Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "moving through states to in review: fixes shipped, operator verifying in daily use"
+        },
+        {
+          "at": "2026-10-02T16:18:58.473Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "moving through states to in review: fixes shipped, operator verifying in daily use"
+        },
+        {
+          "at": "2026-10-02T16:18:58.510Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "moving through states to in review: fixes shipped, operator verifying in daily use"
+        },
+        {
+          "at": "2026-10-02T16:18:58.544Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "moving through states to in review: fixes shipped, operator verifying in daily use"
+        },
+        {
+          "at": "2026-10-02T16:18:58.582Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "moving through states to in review: fixes shipped, operator verifying in daily use"
+        },
+        {
+          "at": "2026-10-02T16:22:25.318Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Runtime metadata confirms freelance single active/linked pane shell cwd is outside content-creation ownership, with no freelance group. Known-destination-only reconciliation retains wrong group. User screenshot and sanitized identity baseline preserved; focused regression is being added."
+        },
+        {
+          "at": "2026-10-02T16:27:07.643Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Unknown-freelance regression fails before fix. Broad unknown-folder adoption rejected because it broke concrete-project shell-excursion protection. Narrow category-owner candidate passes full27-case project-reconciliation suite, including scratch, ancestor, nested category, handover, manual name/icon and stable reopen; tsc and diff check pass."
+        },
+        {
+          "at": "2026-10-02T16:40:16.640Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Updated user rule regression-first: brainiac stale assembly-line ownership, concrete unknown sibling project, and confirmed live initial-folder return failed baseline. Full28-case reconciliation run27passed/1browserclosed before assertions; affected viewport test rerun1passed. TypeScript, map source verifier and diff check pass; independent review no blockers. No-live handover, scratch/internal browsing and manual names/icons protected."
+        },
+        {
+          "at": "2026-10-02T16:40:16.682Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Confirmed exact brainiac shell PID1304907 cwdbrainiac and assembly-line PID1314767 cwdassembly-line; brainiac saved projectCwd wronglyassembly-line. Reconciler now permits previously unopened separate live folders to replace stale ownership; existing root containment prevents internal browsing from making spurious projects."
+        },
+        {
+          "at": "2026-10-02T16:50:54.029Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Final installed UI1730900 exact8827e431 release confirmed. Persisted live reconciliation assigns brainiac tabc989c083 to own brainiac group project-ku5syu and freelance026c100c to own freelance group project-1ml4jm. Assembly-line pane disappeared due startup close-record cleanup; three-heading live visual proof remains incomplete.28 behavioral cases verified suite27pass plus reload-failure focused rerun1pass. OtherTF069 concerns remain open."
+        }
+      ]
+    },
+    {
+      "id": "TF-070",
+      "title": "Image/text paste stops after one hung clipboard read",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "paste-debug.log: read_start never finishes, then every Ctrl+V is dropped (read_in_flight) until window restart",
+      "rootCause": "",
+      "guard": "clipboard read bounded 1.5s in backend + 3s frontend backstop; write wait bounded 2s",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "build release, relaunch UI, watch paste-debug.log while pasting an image",
+      "history": [
+        {
+          "at": "2026-10-01T12:19:15.773Z",
+          "type": "created",
+          "note": null
+        }
+      ]
+    },
+    {
+      "id": "TF-071",
+      "title": "Claude Code input garbles when it grows to a second line",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "In a map card running Claude Code, typing a long message that wraps to a second line leaves stale fragments (e.g. 'tontodays worke|din message') mixed into the input line; pane geometry is consistent (138 cols, canvas 1104px / 8px cells), so it is not the width mismatch bug",
+      "rootCause": "",
+      "guard": "Add a canvas-live test that types a long wrapping line into a real Claude-style TUI and compares the rendered rows with the grid; check damage tracking for erase-line, insert/delete-line and scroll sequences",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Reproduce with verify:canvas-live using a multi-line input; inspect which rows the diff marks dirty after a wrap",
+      "history": [
+        {
+          "at": "2026-10-01T13:28:09.260Z",
+          "type": "created",
+          "note": null
+        }
+      ]
+    },
+    {
+      "id": "TF-072",
+      "title": "Status Board hides tasks with formatted IDs",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "TF-072"
+      ],
+      "symptom": "Selected claude-and-conquer project shows empty columns despite tasks in its plan and global totals",
+      "rootCause": "Formatted task IDs and changing Completed table headers hid/crashed tasks; aggregate layout obscured project context; wrapping flex cross-size prevented vertical scrolling.",
+      "guard": "tests/project-plans-board.spec.ts",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-02T16:26:01.887Z",
+          "note": "Long-list fixed-height regressions fail before CSS correction: main grows8436/8770px inside800px host. Constrained grid correction passes both desktop1800px and narrow600px wheel-down/bottom-card/wheel-up/document-no-scroll checks. Full project/canonical board suite19passed."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-02T16:26:05.005Z",
+          "note": "Constrained grid tracks replace wrapping flex so main scroll region fits workspace; narrow sidebar uses natural capped first row. Search, selected totals, history and task cards unchanged."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-10-02T16:50:53.953Z",
+          "note": "Final release5eb2b7fbba63-8827e431a86c-a3be2404a6a3 SHA2568827e431a86ccaa441323e6d787fd16fd5d400e126e5300bb7b8bc0d169351d2 passes installed verifier and host doctor. Dock UI1730900 exact executable confirmed; canonical daemon1515447 unchanged."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-10-02T16:56:03.145Z",
+          "note": "User-authorized actual dock wheel top->bottom->top passes; independent visual review confirms same claude-and-conquer board throughout,137tasks45completed74/17/0/1, BUG041 first and finalTASK113 fully visible; sidebar stationary, no overlap/horizontal clipping. /tmp/tf072-authorized-top.png SHA8d71fa7240a2ff2656c0f324a6bad6ec92f45af390fb02598d5f5c73cf3edd70 bottomSHA037342581074e8d0a15a5d82fff5a33c799b0adec4a615304c6e14749f5e372e upSHAe90054c2a92ee5a0b616109442c0e10d513b84db7bf416d1e746104cf517cab9."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Confirm final promoted operator window scrolls from first to final card and back; selector and project totals already verified.",
+      "history": [
+        {
+          "at": "2026-10-02T13:55:09.038Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-02T13:56:15.898Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed formatted task ID parser rejection"
+        },
+        {
+          "at": "2026-10-02T13:56:42.576Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Regression confirms formatted plan returns zero tasks"
+        },
+        {
+          "at": "2026-10-02T14:01:34.413Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Parser and browser baseline reproduce zero parsed formatted IDs and missing cards; focused regression added"
+        },
+        {
+          "at": "2026-10-02T14:01:48.111Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Narrow parser candidate passes focused regressions; implementing user-requested project navigation"
+        },
+        {
+          "at": "2026-10-02T14:12:54.905Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Paired Markdown wrappers hid formatted task IDs; parser now unwraps IDs and titles. Board is scoped to a project with persistent five-item usage and recent shortcuts, searchable picker, and responsive columns."
+        },
+        {
+          "at": "2026-10-02T14:12:56.560Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "16/16 project-plans-board and canonical-agent-board tests pass; selected totals, formatted IDs, persistent rankings, polling and 760px non-overlap verified. Browser visual review confirms readable desktop, narrow and picker surfaces."
+        },
+        {
+          "at": "2026-10-02T14:13:06.406Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Installing release and checking native board, source and browser proof pass, typography has three existing unrelated failures."
+        },
+        {
+          "at": "2026-10-02T14:31:09.336Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh continuation run: all 17 project-plans-board and canonical-agent-board tests pass, including short rows and changing completed-table columns. Frontend TypeScript and Vite build pass during release installation; git diff --check passes."
+        },
+        {
+          "at": "2026-10-02T14:31:10.632Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted release bcd04ad01d4b-aaf982281658-7a768f51cf15 includes completed-table parser correction. Direct installed verifier passes, SHA256 aaf9822816581a93acd8ffd5280281d8faafea84949e03eddd0b84be5037728b. Host doctor confirms canonical daemon compatibility and preserved live PTYs; current operator UI predates installed release."
+        },
+        {
+          "at": "2026-10-02T14:32:53.718Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Isolated installed native test passes: claude-and-conquer shows 137 tasks, To Do74, In Progress17, Blocked0, Unsorted1, completed45; Show Done displays45 completed cards. Text-only independent visual review of /tmp/tf072-native/board.png, picker.png and done.png confirms searchable picker surface and no unintended overlaps or horizontal clipping. This proves the private installed surface; actual operator dock-window read-back remains pending UI-only relaunch approval."
+        },
+        {
+          "at": "2026-10-02T16:22:07.555Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Actual operator screenshot 2026-10-02 shows claude-and-conquer137tasks45completed, ToDo74 InProgress17 Blocked0 Unsorted1. Running UI now promoted bcd04ad01d4b-aaf982281658-7a768f51cf15; canonical daemon1515447 unchanged; all26 sampled session IDs preserved. User reports vertical scrolling blocked; issue remains verifying until scrolling regression and installed readback pass."
+        },
+        {
+          "at": "2026-10-02T16:26:01.887Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Long-list fixed-height regressions fail before CSS correction: main grows8436/8770px inside800px host. Constrained grid correction passes both desktop1800px and narrow600px wheel-down/bottom-card/wheel-up/document-no-scroll checks. Full project/canonical board suite19passed."
+        },
+        {
+          "at": "2026-10-02T16:26:05.005Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Constrained grid tracks replace wrapping flex so main scroll region fits workspace; narrow sidebar uses natural capped first row. Search, selected totals, history and task cards unchanged."
+        },
+        {
+          "at": "2026-10-02T16:37:10.133Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Release 5eb2b7fbba63-1d14dcd0a559-71b45faf1284 SHA256 1d14dcd0a55925e1e65ad724008c3b02058c575e43b69ea3f57903220861f107 passes installed verifier; actual dock UI PID1455941 runs same binary; doctor passes."
+        },
+        {
+          "at": "2026-10-02T16:37:10.172Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Actual operator board top reads137tasks45completed (tf072-live-board-top2.png). Isolated native installed release wheel220down reaches finalTASK113 and220up restores BUG041/header; top/bottom/up screenshots tf072-native-scroll independently reviewed. Operator-window wheel screenshots invalidated by concurrent Map navigation; repeat actual window scrolling after final grouping promotion."
+        },
+        {
+          "at": "2026-10-02T16:50:53.953Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Final release5eb2b7fbba63-8827e431a86c-a3be2404a6a3 SHA2568827e431a86ccaa441323e6d787fd16fd5d400e126e5300bb7b8bc0d169351d2 passes installed verifier and host doctor. Dock UI1730900 exact executable confirmed; canonical daemon1515447 unchanged."
+        },
+        {
+          "at": "2026-10-02T16:50:53.994Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Actual final dock board top0403d9d58de00b4ae54ece20df4bc266263b2a774e5b5058037d01bcdea13240 reads137tasks45completed74/17/0/1 withBUG041. Down reaches fully visible finalTASK113, bottomSHAf67f9e125f9609403cf024c38440cb9523f8fe64cf728d98bbffb1016efa9b19. Up retry switched toMap through concurrent operator navigation; upward actual-window proof remains pending. Isolated installed native up proof passes."
+        },
+        {
+          "at": "2026-10-02T16:56:03.145Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "User-authorized actual dock wheel top->bottom->top passes; independent visual review confirms same claude-and-conquer board throughout,137tasks45completed74/17/0/1, BUG041 first and finalTASK113 fully visible; sidebar stationary, no overlap/horizontal clipping. /tmp/tf072-authorized-top.png SHA8d71fa7240a2ff2656c0f324a6bad6ec92f45af390fb02598d5f5c73cf3edd70 bottomSHA037342581074e8d0a15a5d82fff5a33c799b0adec4a615304c6e14749f5e372e upSHAe90054c2a92ee5a0b616109442c0e10d513b84db7bf416d1e746104cf517cab9."
+        },
+        {
+          "at": "2026-10-02T16:56:03.178Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Parser, project navigation and bidirectional scrolling proven by focused regressions, final release verification, doctor and actual dock-window top/bottom/up independent visual read-back."
+        }
+      ]
+    },
+    {
+      "id": "TF-073",
+      "title": "Agent header says Claude while Codex is running",
+      "state": "fixing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "The map pane provider badge remains Claude after the pane is running Codex.",
+      "rootCause": "",
+      "guard": "Rendered header prefers current per-pane provider over stale workstream provider.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-02T17:19:19.472Z",
+          "note": "MagicCanvas resolves exact linked pane provider before saved workstream; shared provider display helper now returns CODEX."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-02T17:19:21.722Z",
+          "note": "CODEX naming first failed twice on GPT; after correction 31 provider/status/historical-close tests pass. Installed header review pending."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-10-02T17:29:55.626Z",
+          "note": "CODEX label and linked-pane provider precedence installed in 0a80ec3f1ad4-ecc41e49a2b9-0406e7aa550b; host installed checksum and running exact binary verified; doctor passes."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-10-02T17:32:06.902Z",
+          "note": "Installed visual review fails exact reported pane: /tmp/tf073-installed-codex-pane.png SHA25654cd72017eff4e733a7e7210f246064fb6678fb78b4a1d7558555f25cc18225a shows CLAUDE and3 earlier. Pane terminal-79058e47-3d6e-47b9-a91d-8d4d435e1bfa-75ed203f-0d4b-4caa-aa1d-47915b3e8c38 saved agentProvider/status provider and two sidecars say claude, but exact live daemon-owned PID3154693 bash has node1222609->codex1222622 descendant. Source precedence alone insufficient; stale per-pane provider authority must be corrected."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reproduce stale workstream provider in the rendered map, then verify the installed pane.",
+      "history": [
+        {
+          "at": "2026-10-02T17:05:03.064Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-02T17:11:47.977Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Rendered stale Claude workstream with exact linked Codex pane reproduced CLAUDE before pane-provider precedence fix. 26 focused adjacent tests pass. Current Codex label is GPT; user explicitly requests Codex wording, so text correction and installed readback remain pending."
+        },
+        {
+          "at": "2026-10-02T17:19:10.761Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Linked-pane provider regression and CODEX naming are guarded; installed header proof remains pending."
+        },
+        {
+          "at": "2026-10-02T17:19:12.701Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Linked-pane provider regression and CODEX naming are guarded; installed header proof remains pending."
+        },
+        {
+          "at": "2026-10-02T17:19:15.069Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Linked-pane provider regression and CODEX naming are guarded; installed header proof remains pending."
+        },
+        {
+          "at": "2026-10-02T17:19:16.300Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Linked-pane provider regression and CODEX naming are guarded; installed header proof remains pending."
+        },
+        {
+          "at": "2026-10-02T17:19:17.960Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Linked-pane provider regression and CODEX naming are guarded; installed header proof remains pending."
+        },
+        {
+          "at": "2026-10-02T17:19:19.472Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "MagicCanvas resolves exact linked pane provider before saved workstream; shared provider display helper now returns CODEX."
+        },
+        {
+          "at": "2026-10-02T17:19:21.722Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "CODEX naming first failed twice on GPT; after correction 31 provider/status/historical-close tests pass. Installed header review pending."
+        },
+        {
+          "at": "2026-10-02T17:29:55.626Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "CODEX label and linked-pane provider precedence installed in 0a80ec3f1ad4-ecc41e49a2b9-0406e7aa550b; host installed checksum and running exact binary verified; doctor passes."
+        },
+        {
+          "at": "2026-10-02T17:32:06.902Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed visual review fails exact reported pane: /tmp/tf073-installed-codex-pane.png SHA25654cd72017eff4e733a7e7210f246064fb6678fb78b4a1d7558555f25cc18225a shows CLAUDE and3 earlier. Pane terminal-79058e47-3d6e-47b9-a91d-8d4d435e1bfa-75ed203f-0d4b-4caa-aa1d-47915b3e8c38 saved agentProvider/status provider and two sidecars say claude, but exact live daemon-owned PID3154693 bash has node1222609->codex1222622 descendant. Source precedence alone insufficient; stale per-pane provider authority must be corrected."
+        },
+        {
+          "at": "2026-10-02T17:32:08.257Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Installed exact-pane badge still CLAUDE despite live codex descendant; investigate live per-pane status authority over stale Claude sidecars before production change."
+        }
+      ]
+    },
+    {
+      "id": "TF-074",
+      "title": "Codex dropoffs add terminals instead of replacing the caller",
+      "state": "fixing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Successive Codex handoffs create three TermFleet cards because caller pane binding is missing.",
+      "rootCause": "",
+      "guard": "Unbound handover refuses before request creation; exact chat binding selects one live pane.",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Guard silent new-card fallback and establish exact Codex chat-to-pane ownership.",
+      "history": [
+        {
+          "at": "2026-10-02T17:38:49.255Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-02T17:39:50.001Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Exact missing caller binding allows silent top-level spawn."
+        },
+        {
+          "at": "2026-10-02T17:39:51.581Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Regressing unbound Codex handover to ensure it never adds another card."
+        },
+        {
+          "at": "2026-10-02T17:41:09.151Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "RED unbound dropoff added card exit0; GREEN now refuses exit2 without request before any launch."
+        },
+        {
+          "at": "2026-10-02T17:41:10.267Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Correcting exact caller binding and preserving explicit separate/helper launches."
+        }
+      ]
+    },
+    {
+      "id": "TF-075",
+      "title": "Typing goes to the command bar instead of a map terminal",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "After launch and again later, keystrokes land in the top command bar; clicking a map card frame does not return keyboard focus to that terminal",
+      "rootCause": "",
+      "guard": "Map card click focuses that terminal input unless clicking an editable control",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Focus terminal input on card mouse-down, rebuild, verify in app",
+      "history": [
+        {
+          "at": "2026-10-03T11:52:47.593Z",
+          "type": "created",
+          "note": null
         }
       ]
     }
