@@ -83,3 +83,33 @@ test("a handover that cannot find Noam's words refuses to start instead of dropp
   expect(readdirSync(w.requests).filter((n) => n.endsWith(".request.json"))).toEqual([]);
   expect(existsSync(w.handoff)).toBe(true);
 });
+
+// TF-074: a paper-bot handover replaced the showtime-bot card because the command inherited the
+// terminal id of whichever terminal started the shared Codex service. A card bound to ANOTHER chat
+// must never be taken as this chat's card.
+test("a Codex handover never takes a card that belongs to a different chat", async () => {
+  const { resolveCaller } = await import("../scripts/termfleet-child.mjs" as string);
+  const root = mkdtempSync(join(tmpdir(), "tf-caller-"));
+  const status = join(root, "terminal-workspace", "agent-status");
+  mkdirSync(status, { recursive: true });
+  const other = "terminal-5f33e232-8443-4a86-911e-987088991a33-d0289857-842c-4b14-bbf5-aa578dc28031";
+  const mine = "terminal-1c28cded-8443-4a86-911e-987088991a33-d0289857-842c-4b14-bbf5-aa578dc28031";
+  const A = "01a0ecbf-1b15-7943-872a-49c9ee96643c";
+  const B = "01a1032a-4b83-7ae1-ba6e-964c53e937bf";
+  const saved = process.env.XDG_DATA_HOME;
+  process.env.XDG_DATA_HOME = root;
+  try {
+    writeFileSync(join(status, "codex-chat-panes.json"), JSON.stringify({ [A]: { paneId: other, at: 1 } }));
+    const proc = join(root, "proc");
+    mkdirSync(join(proc, "900"), { recursive: true });
+    writeFileSync(join(proc, "900", "stat"), "900 (node) S 0 1 1");
+    // B has no card of its own and inherited A's card id: refuse.
+    expect(resolveCaller({ CODEX_THREAD_ID: B, TERMFLEET_PANE_ID: other }, proc, 900).paneId).toBeUndefined();
+    // B bound to its own card: use that one even though the inherited id is A's.
+    writeFileSync(join(status, "codex-chat-panes.json"), JSON.stringify({ [A]: { paneId: other, at: 1 }, [B]: { paneId: mine, at: 2 } }));
+    expect(resolveCaller({ CODEX_THREAD_ID: B, TERMFLEET_PANE_ID: other }, proc, 900).paneId).toBe(mine);
+  } finally {
+    if (saved === undefined) delete process.env.XDG_DATA_HOME;
+    else process.env.XDG_DATA_HOME = saved;
+  }
+});

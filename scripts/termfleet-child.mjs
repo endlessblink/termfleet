@@ -269,6 +269,19 @@ export function resolveCaller(env = process.env, procRoot = "/proc", selfPid = p
         pane = "";
       }
     }
+    // A card another chat is bound to is not this chat's card. Falling through to the id the
+    // command inherited from whichever terminal started the shared Codex service made a paper-bot
+    // handover replace a showtime-bot card. Unknown beats wrong: the handover then refuses.
+    if (pane && threadId) {
+      try {
+        const bindings = JSON.parse(readFileSync(join(statusDir(), "codex-chat-panes.json"), "utf8"));
+        const mine = threadChain(threadId).some((id) => bindings?.[id]?.paneId === pane);
+        const other = Object.entries(bindings).some(([id, value]) => value?.paneId === pane && id !== threadId);
+        if (!mine && other) pane = "";
+      } catch {
+        /* no record: nothing to contradict the pane */
+      }
+    }
     return { provider: "codex", paneId: pane || undefined };
   }
   return { provider: envPane ? callerProvider(envPane) : undefined, paneId: envPane || undefined };

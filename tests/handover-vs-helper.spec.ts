@@ -48,7 +48,7 @@ async function spawnAndReadRequest(
 ) {
   const env: Record<string, string | undefined> = { ...process.env, XDG_DATA_HOME: dataHome, ...extraEnv };
   for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key];
-  const child = spawn(process.execPath, [CLI, "spawn", "--provider", provider, "--timeout", "10", ...args], {
+  const child = spawn(process.execPath, [CLI, "spawn", "--provider", provider, "--timeout", "10", ...args, ...(args.includes("--dropoff") ? ["--allow-no-words"] : [])], {
     env: env as NodeJS.ProcessEnv,
   });
   let stderr = "";
