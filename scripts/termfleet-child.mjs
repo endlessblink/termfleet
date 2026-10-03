@@ -19,7 +19,7 @@ import { basename, join, resolve } from "node:path";
 import { paneSidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
 import { ancestors, argv as procArgv, isProviderProcess } from "./lib/single-chat-owner.mjs";
 import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
-import { appendUserWords, userMessagesForAny } from "./lib/handoff-user-words.mjs";
+import { appendUserWords, findTranscript, userMessagesForAny } from "./lib/handoff-user-words.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -216,6 +216,25 @@ export function callerProvider(paneId) {
   }
 }
 
+/** This Codex thread, then the thread that started it, and so on (a sub-agent has a parent in its session record). */
+export function threadChain(threadId, home) {
+  const chain = [];
+  let id = threadId;
+  while (id && !chain.includes(id) && chain.length < 6) {
+    chain.push(id);
+    let parent = "";
+    try {
+      const file = findTranscript({ provider: "codex", sessionId: id, home });
+      const first = file ? readFileSync(file, "utf8").split("\n", 1)[0] : "";
+      parent = String(JSON.parse(first)?.payload?.parent_thread_id ?? "");
+    } catch {
+      parent = "";
+    }
+    id = parent;
+  }
+  return chain;
+}
+
 /**
  * Who is calling: which agent, and which TermFleet card it runs in.
  *
@@ -234,7 +253,12 @@ export function resolveCaller(env = process.env, procRoot = "/proc", selfPid = p
     let pane = "";
     try {
       const bindings = JSON.parse(readFileSync(join(statusDir(), "codex-chat-panes.json"), "utf8"));
-      pane = threadId ? String(bindings?.[threadId]?.paneId ?? "") : "";
+      // A helper thread Codex starts inside a chat (review, sub-agent) has no card of its own:
+      // its command belongs to the chat that started it, so walk up to the first bound chat.
+      for (const id of threadChain(threadId)) {
+        pane = String(bindings?.[id]?.paneId ?? "");
+        if (pane) break;
+      }
     } catch {
       /* no record yet */
     }
@@ -265,7 +289,7 @@ async function spawnCommand(options) {
   }
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
   if (!parentPaneId && !options.separate && (handover === true || options.replace === true)) {
-    fail("cannot identify your TermFleet card; the handover was not started. Restore the exact chat-to-card binding before retrying, or use --separate to explicitly open a new card.", 2);
+    fail("cannot identify your TermFleet card; the handover was not started. Do NOT retry with --separate: it leaves your old card running and adds a second one. Tell Noam this card could not be identified.", 2);
   }
   if (handover && handoffFile) {
     // TF-076: Noam's own recent words, copied verbatim, so the dying agent cannot drop them.

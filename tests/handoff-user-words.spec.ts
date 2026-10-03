@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error plain .mjs helper
 import { appendUserWords, claudeUserMessages, codexUserMessages, userMessagesFor, userMessagesForAny, WORDS_BEGIN } from "../scripts/lib/handoff-user-words.mjs";
+// @ts-expect-error plain .mjs helper
+import { threadChain } from "../scripts/termfleet-child.mjs";
 
 const claudeLine = (content: unknown, extra = {}) => JSON.stringify({ type: "user", timestamp: "t", message: { content }, ...extra });
 
@@ -72,4 +74,17 @@ test("a stale chat id is skipped: the live id's record wins, and no record at al
   const got = userMessagesForAny({ provider: "claude", sessionIds: ["", stale, live], home });
   expect(got.map((m: { text: string }) => m.text)).toEqual(["typed one second before dropoff"]);
   expect(userMessagesForAny({ provider: "claude", sessionIds: ["", stale], home })).toEqual([]);
+});
+
+test("a Codex sub-agent thread resolves to the chat that started it, so its handover finds the right card", () => {
+  const home = mkdtempSync(join(tmpdir(), "tf-home-"));
+  const parent = "01a10000-0000-7000-8000-000000000001";
+  const child = "01a10000-0000-7000-8000-000000000002";
+  const dir = join(home, ".codex", "sessions", "2026", "10", "03");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `rollout-2026-10-03T21-00-00-${parent}.jsonl`), JSON.stringify({ type: "session_meta", payload: { id: parent } }));
+  writeFileSync(join(dir, `rollout-2026-10-03T21-01-00-${child}.jsonl`), JSON.stringify({ type: "session_meta", payload: { id: child, parent_thread_id: parent } }));
+  expect(threadChain(child, home)).toEqual([child, parent]);
+  expect(threadChain(parent, home)).toEqual([parent]);
+  expect(threadChain("", home)).toEqual([]);
 });
