@@ -20,9 +20,9 @@ function run(dir: string, tokens: number, env: Record<string, string> = {}) {
   }).stdout;
 }
 
-test("under the threshold stays silent; at 40% it asks, then again only after 15 more points", () => {
+test("under the threshold stays silent; at 25% it asks, then again only after 15 more points", () => {
   const dir = mkdtempSync(join(tmpdir(), "tf-ctx-"));
-  expect(run(dir, 250_000)).toBe("");
+  expect(run(dir, 150_000)).toBe("");
   const first = run(dir, 450_000, { TERMFLEET_CONTEXT_HANDOFF: "ask" });
   expect(JSON.parse(first).hookSpecificOutput.additionalContext).toMatch(/45% full[\s\S]*only do it if he agrees/);
   expect(run(dir, 500_000)).toBe("");
