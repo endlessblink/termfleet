@@ -87,3 +87,40 @@ test("the real Codex status hook tells a Codex session to hand over, once", () =
   expect(run()).not.toContain("hand over to a fresh instance");
   rmSync(dir, { recursive: true, force: true });
 });
+
+// TF-076: a Codex goal run submits NO prompts, so a reminder tied to prompt submission never
+// reached a 55 MB chat that compacted itself 26 times. Tool events must carry it too.
+test("a goal run with no prompts still gets the handover reminder, once, from a tool event", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tf-codex-goal-"));
+  const file = join(dir, "rollout.jsonl");
+  writeFileSync(file, `${"x".repeat(5_000)}\n${rollout(130_000)}`);
+  const preload = join(dir, "isolated-proc.cjs");
+  writeFileSync(preload, `
+    const fs = require("node:fs");
+    const { syncBuiltinESMExports } = require("node:module");
+    const root = ${JSON.stringify(join(dir, "proc"))};
+    fs.mkdirSync(root + "/" + process.pid, { recursive: true });
+    fs.writeFileSync(root + "/" + process.pid + "/stat", process.pid + " (node) S 0 1 1");
+    for (const name of ["readFileSync", "readlinkSync", "readdirSync"]) {
+      const original = fs[name];
+      fs[name] = (path, ...args) => original(typeof path === "string" && path.startsWith("/proc/") ? root + path.slice(5) : path, ...args);
+    }
+    syncBuiltinESMExports();
+  `);
+  const run = () =>
+    spawnSync(process.execPath, ["--require", preload, join(process.cwd(), "scripts", "termfleet-codex-status-hook.mjs")], {
+      input: JSON.stringify({ hook_event_name: "PostToolUse", session_id: "codex-goal-1", transcript_path: file, cwd: dir, tool_name: "shell" }),
+      env: {
+        ...process.env,
+        XDG_STATE_HOME: dir,
+        XDG_DATA_HOME: dir,
+        TERMFLEET_PANE_ID: "terminal-11111111-1111-4111-8111-111111111111-22222222-2222-4222-8222-222222222222",
+      },
+      encoding: "utf8",
+    }).stdout;
+  const parsed = JSON.parse(run().trim().split("\n")[0]);
+  expect(parsed.hookSpecificOutput.hookEventName).toBe("PostToolUse");
+  expect(parsed.hookSpecificOutput.additionalContext).toContain("--provider codex");
+  expect(run()).not.toContain("hand over to a fresh instance");
+  rmSync(dir, { recursive: true, force: true });
+});

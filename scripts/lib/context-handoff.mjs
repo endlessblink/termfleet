@@ -2,7 +2,7 @@
 // Claude's transcript carries per-turn `usage`; Codex's rollout carries `token_count`
 // events with the model's context window. Without this a Codex session never hands
 // over and just runs its own "compacting context" instead.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -83,7 +83,26 @@ function readLastPercent(marker) {
 }
 
 /** The advice to inject for this hook payload, or null. Re-fires every RENAG_STEP points of growth. */
-export function handoffAdvice({ payload, provider, env = process.env }) {
+/** The last `bytes` of a file as text (whole file when smaller); a cut first line is harmless, lines are parsed one by one. */
+function readTail(file, bytes) {
+  const size = statSync(file).size;
+  if (!bytes || size <= bytes) return readFileSync(file, "utf8");
+  const fd = openSync(file, "r");
+  try {
+    const buffer = Buffer.alloc(bytes);
+    readSync(fd, buffer, 0, bytes, size - bytes);
+    return buffer.toString("utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * `throttleMs` + `tailBytes` are for events that fire on every tool call (a Codex goal run has NO
+ * prompt submissions, so the prompt hook alone never reminds it): look at most once per
+ * `throttleMs`, and only at the end of the transcript, so a 50 MB rollout is not re-read each call.
+ */
+export function handoffAdvice({ payload, provider, env = process.env, throttleMs = 0, tailBytes = 0 }) {
   const mode = (env.TERMFLEET_CONTEXT_HANDOFF ?? "auto").toLowerCase();
   if (mode === "off") return null;
   const transcript = payload?.transcript_path ?? payload?.transcriptPath;
@@ -91,7 +110,17 @@ export function handoffAdvice({ payload, provider, env = process.env }) {
   if (!transcript || !sessionId || !existsSync(transcript)) return null;
   const stateDir = join(env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "termfleet", "context-handoff");
   const marker = join(stateDir, `${provider === "codex" ? "codex-" : ""}${String(sessionId).replace(/[^A-Za-z0-9-]/g, "")}.fired`);
-  const text = readFileSync(transcript, "utf8");
+  if (throttleMs > 0) {
+    const checked = `${marker}.checked`;
+    try {
+      if (Date.now() - statSync(checked).mtimeMs < throttleMs) return null;
+      utimesSync(checked, new Date(), new Date());
+    } catch {
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(checked, "");
+    }
+  }
+  const text = readTail(transcript, tailBytes);
   const fromCodex = provider === "codex" ? codexContext(text) : null;
   const tokens = fromCodex ? fromCodex.tokens : contextTokens(text);
   const windowTokens = Number(env.TERMFLEET_CONTEXT_WINDOW_TOKENS) || fromCodex?.windowTokens || 1_000_000;

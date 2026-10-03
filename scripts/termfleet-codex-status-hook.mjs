@@ -411,6 +411,19 @@ async function main() {
       /* advice must never break the status hook */
     }
   }
+  // A goal run keeps working without any prompt being submitted, so the prompt hook above never
+  // sees it and the chat compacts itself instead of handing over. Tool events do fire: remind there.
+  const hookEvent = payload?.hook_event_name ?? payload?.hookEventName;
+  if (hookEvent === "PostToolUse") {
+    try {
+      const advice = handoffAdvice({ payload, provider: "codex", throttleMs: 60_000, tailBytes: 4_000_000 });
+      if (advice) {
+        process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: hookEvent, additionalContext: advice } })}\n`);
+      }
+    } catch {
+      /* advice must never break the status hook */
+    }
+  }
   const cwd = sidecarKeyCwd(payload);
   const filePath = statusFilePath(cwd);
   const prev = readExistingSidecar(filePath);
