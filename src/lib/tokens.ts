@@ -42,7 +42,7 @@ const FALLBACK: TermfleetTokens = {
     "#8a8a91", "#d88383", "#93bda1", "#dcb875", "#89afd6", "#c59bc0", "#81b6b8", "#ececee",
   ],
   terminalBg: "#0a0a0b",
-  terminalFg: "#ececee",
+  terminalFg: "#c4c4ca",
   terminalCursor: "#ececee",
   terminalSelectionBg: "#1e2127",
   accent: "#85a1c5",

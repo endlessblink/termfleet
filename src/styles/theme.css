@@ -62,10 +62,10 @@
   --ansi-blue:    #89afd6;
   --ansi-magenta: #c59bc0;
   --ansi-cyan:    #81b6b8;
-  --ansi-white:   #ececee;
+  --ansi-white:   #c4c4ca;
   --ansi-bright-black: #8a8a91; /* was #667383 (3.39:1) -> 5.77:1 */
   --terminal-bg:        var(--surface-base);
-  --terminal-fg:        var(--text-1);
+  --terminal-fg:        #c4c4ca;
   --terminal-cursor:    var(--text-1);       /* block caret, mock .cur 7x14 */
   --terminal-selection-bg: var(--accent-tint);
   --diff-add-bg: color-mix(in srgb, var(--state-running) 14%, transparent);
