@@ -20,11 +20,20 @@ export interface RenderTheme {
   background: string;
   /** Cursor color, "#rrggbb". */
   cursor: string;
+  /**
+   * Optional remap of the colours the Rust grid emits (xterm palette, default
+   * fg/bg, lower-case "#rrggbb") onto the design palette. See lib/tokens.ts.
+   */
+  colorMap?: ReadonlyMap<string, string>;
+  /** Selection / search-match overlay fills (any CSS colour). Defaults keep the legacy blue/amber. */
+  selectionOverlay?: string;
+  searchActiveOverlay?: string;
+  searchMatchOverlay?: string;
 }
 
 export const DEFAULT_THEME: RenderTheme = {
   background: "#1d2022",
-  cursor: "#d99a45",
+  cursor: "#c4ccd2",
 };
 
 /**
@@ -120,11 +129,16 @@ export function mapNodeLayoutMode(params: {
   return params.altScreenOnMap ? "freeze" : "reflow";
 }
 
-function resolveColors(cell: GridCell): { fg: string; bg: string } {
+function resolveColors(cell: GridCell, theme: RenderTheme): { fg: string; bg: string } {
   let fg = cell.fg;
   let bg = cell.bg;
   if (cell.inverse) {
     [fg, bg] = [bg, fg];
+  }
+  const map = theme.colorMap;
+  if (map) {
+    fg = map.get(fg) ?? fg;
+    bg = map.get(bg) ?? bg;
   }
   return { fg, bg };
 }
@@ -147,7 +161,7 @@ function drawRow(
 
   for (let col = 0; col < line.length; col += 1) {
     const cell = line[col];
-    const { bg } = resolveColors(cell);
+    const { bg } = resolveColors(cell, theme);
     const x = Math.round(col * cellW);
 
     // Background: only paint when it differs from the surface default, and
@@ -160,7 +174,7 @@ function drawRow(
 
   for (let col = 0; col < line.length; col += 1) {
     const cell = line[col];
-    const { fg } = resolveColors(cell);
+    const { fg } = resolveColors(cell, theme);
     const x = Math.round(col * cellW);
 
     if (!isBlank(cell.c)) {

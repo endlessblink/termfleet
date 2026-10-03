@@ -23,13 +23,13 @@ export interface AttentionBadge {
 const BADGES: Record<AttentionState, AttentionBadge> = {
   // Amber — YOU are the blocker: a prompt wants input, or a pane is stuck. "blocked"
   // folds in here because a stuck pane also needs a human.
-  waiting: { state: "waiting", label: "Waiting for you", color: "var(--accent-warning)" },
+  waiting: { state: "waiting", label: "Waiting for you", color: "var(--state-waiting)" },
   // Green — a command or agent turn is actively working right now (positive evidence).
-  running: { state: "running", label: "Running", color: "var(--accent-success)" },
-  unavailable: { state: "unavailable", label: "Waiting for current activity", color: "var(--text-tertiary)" },
+  running: { state: "running", label: "Running", color: "var(--state-running)" },
+  unavailable: { state: "unavailable", label: "Waiting for current activity", color: "var(--text-secondary)" },
   // Grey — empty prompt, nothing running, nobody waiting. The DEFAULT: an attached
   // shell sitting at a prompt is idle, not "running".
-  idle: { state: "idle", label: "Idle", color: "var(--text-tertiary)" },
+  idle: { state: "idle", label: "Idle", color: "var(--text-secondary)" },
 };
 
 export function badgeForAttention(state: AttentionState): AttentionBadge {

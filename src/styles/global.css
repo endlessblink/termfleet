@@ -48,67 +48,61 @@ button::-moz-focus-inner {
   border: 0;
 }
 
-:focus {
+/* One visible keyboard-focus ring for every interactive element (WCAG 2.4.7).
+   Hover stays a fill; focus is a ring. List rows inset the ring so it is not clipped. */
+:where(
+    button,
+    [role="button"],
+    [role="menuitem"],
+    [role="option"],
+    a,
+    select,
+    input,
+    textarea,
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.workspace-sidebar-row:focus-visible,
+.canvas-sidebar-row:focus-visible,
+.workspace-explorer-row:focus-visible {
+  outline-offset: -2px;
+}
+
+/* The terminal's hidden input never shows a ring; the active pane border carries focus. */
+.terminal-canvas-input:focus-visible {
   outline: none;
 }
 
-/* No hard outlines anywhere. Text inputs get a subtle ring for typing feedback;
-   buttons/rows show focus via their own hover/active fills. */
-input:focus-visible,
-textarea:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 1px var(--border-focus);
-}
-button:focus-visible,
-select:focus-visible,
-[role="button"]:focus-visible {
-  outline: none;
-}
-
-/* Rows are fill-only tiles (Warp-style): no borders, no outlines, ever.
-   State is communicated purely through background intensity + text contrast. */
+/* Rows are fill tiles: no borders. Selection/hover is a fill plus an accent edge. */
 .workspace-sidebar-row,
 .workspace-sidebar-row:focus,
 .workspace-sidebar-row:focus-visible,
 .workspace-sidebar-row:active {
   border: none !important;
   box-shadow: none !important;
-  outline: 0 !important;
 }
 
 .workspace-sidebar-row[data-active="true"] {
   background: var(--surface-selected) !important;
+  box-shadow: inset 2px 0 0 var(--accent-fill) !important;
 }
 
 .workspace-sidebar-row[data-active="false"] {
   background: transparent !important;
 }
 
-.workspace-sidebar-row[data-panel-color] {
-  background: color-mix(
-    in srgb,
-    var(--surface-raised) 92%,
-    var(--surface-base)
-  ) !important;
-  box-shadow: inset 2px 0 color-mix(
-    in srgb,
-    var(--session-panel-color) 58%,
-    var(--surface-base)
-  ) !important;
-}
-
-.workspace-sidebar-row[data-panel-color][data-active="true"] {
-  background: var(--surface-selected) !important;
-  box-shadow: inset 2px 0 color-mix(
-    in srgb,
-    var(--session-panel-color) 72%,
-    var(--surface-selected)
-  ) !important;
+/* A per-session label colour (data-panel-color) no longer draws a row edge: the only
+   edge on a row is the accent edge of the selected one. */
+.workspace-sidebar-row[data-panel-color][data-active="false"] {
+  background: transparent !important;
 }
 
 .workspace-sidebar-row[data-active="false"]:hover,
 .workspace-sidebar-row[data-active="false"]:focus-within {
-  background: var(--surface-hover) !important;
+  background: var(--surface-raised) !important;
 }
 
 .workspace-sidebar-row[data-quest-active="true"] {
@@ -123,7 +117,7 @@ select:focus-visible,
   inset: 2px;
   z-index: 1;
   pointer-events: none;
-  border-radius: calc(var(--radius-sm) - 1px);
+  border-radius: calc(var(--radius-md) - 1px);
   border: 1px solid color-mix(in srgb, var(--accent-info) 72%, var(--border-subtle));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-warning) 42%, transparent);
   opacity: 0.5;
@@ -166,7 +160,7 @@ select:focus-visible,
   padding: 11px 10px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--accent-warning) 48%, var(--border-subtle));
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: linear-gradient(120deg, color-mix(in srgb, var(--accent-warning) 22%, var(--surface-raised)), color-mix(in srgb, var(--accent-info) 14%, var(--surface-raised)));
   color: var(--text-primary);
   animation: gamification-quest-celebration-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -201,7 +195,7 @@ select:focus-visible,
   max-width: calc(100vw - 24px);
   padding: 16px;
   border-top: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: linear-gradient(145deg, color-mix(in srgb, var(--accent-info) 12%, var(--surface-raised)), color-mix(in srgb, var(--accent-warning) 7%, var(--surface-raised)));
   box-shadow: var(--shadow-menu);
   animation: gamification-panel-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -223,16 +217,16 @@ select:focus-visible,
 .gamification-quest-reset { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .gamification-quest-heading { gap: 9px; }
 .gamification-quest-heading > span { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; color: var(--accent-warning); background: color-mix(in srgb, var(--accent-warning) 18%, var(--surface-hover)); }
-.gamification-quest-heading > div > div { color: var(--accent-live); font-size: 10px; letter-spacing: .8px; text-transform: uppercase; }
+.gamification-quest-heading > div > div { color: var(--accent-live); font-size: 11px; letter-spacing: var(--label-caps-tracking); text-transform: uppercase; }
 .gamification-quest-heading h2 { margin: 3px 0 0; color: var(--text-primary); font-size: 20px; font-weight: 500; line-height: 1.05; }
 .gamification-quest-progress { margin-top: 16px; }
 .gamification-quest-status-row { justify-content: space-between; color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 .gamification-quest-status-row span { display: inline-flex; align-items: center; gap: 5px; }
 .gamification-quest-status-row .is-counting { color: var(--accent-live); font-weight: 500; }
 .gamification-quest-progress-bar { height: 7px; margin-top: 9px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text-primary) 15%, transparent); }
-.gamification-quest-progress-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-info), var(--accent-warning)); transition: width 300ms ease; }
+.gamification-quest-progress-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-info), var(--accent-warning)); }
 .gamification-milestone-rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 12px; }
-.gamification-milestone-rail > div { display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border-radius: var(--radius-xs); color: var(--text-tertiary); font-size: 10px; }
+.gamification-milestone-rail > div { display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border-radius: var(--radius-sm); color: var(--text-tertiary); font-size: 11px; }
 .gamification-milestone-rail span { display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--border-subtle); border-radius: 50%; background: var(--surface-hover); }
 .gamification-milestone-rail > div[data-state="earned"] { color: var(--accent-live); }
 .gamification-milestone-rail > div[data-state="earned"] span { border-color: color-mix(in srgb, var(--accent-live) 62%, var(--border-subtle)); background: color-mix(in srgb, var(--accent-live) 18%, var(--surface-hover)); }
@@ -241,11 +235,11 @@ select:focus-visible,
 .gamification-quest-callout { gap: 6px; margin-top: 13px; color: var(--text-secondary); font-size: 11px; }
 .gamification-quest-callout span { color: var(--accent-live); }
 .gamification-quest-accept,
-.gamification-quest-focus { gap: 6px; margin-top: 14px; border: 0; border-radius: var(--radius-xs); cursor: pointer; font-size: 11px; }
-.gamification-quest-accept { padding: 8px 11px; background: var(--accent-info); color: var(--surface-base); font-weight: 500; }
+.gamification-quest-focus { gap: 6px; margin-top: 14px; border: 0; border-radius: var(--radius-sm); cursor: pointer; font-size: 11px; }
+.gamification-quest-accept { padding: 8px 11px; background: var(--accent-info); color: var(--surface-rail); font-weight: 500; }
 .gamification-quest-focus { padding: 7px 10px; background: var(--surface-hover); color: var(--text-primary); }
-.gamification-quest-reset { gap: 5px; padding: 0; font: inherit; font-size: 10px; }
-.gamification-quest-confirm { margin-right: 8px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: var(--surface-selected); color: var(--text-primary); cursor: pointer; font-size: 11px; }
+.gamification-quest-reset { gap: 5px; padding: 0; font: inherit; font-size: 11px; }
+.gamification-quest-confirm { margin-right: 8px; padding: 5px 8px; border: 0; border-radius: var(--radius-sm); background: var(--surface-selected); color: var(--text-primary); cursor: pointer; font-size: 11px; }
 
 .gamification-quest-celebration strong,
 .gamification-quest-celebration span {
@@ -259,7 +253,7 @@ select:focus-visible,
 .gamification-quest-celebration div > span {
   margin-top: 2px;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.3;
 }
 
@@ -271,7 +265,7 @@ select:focus-visible,
   color: var(--text-secondary);
   cursor: pointer;
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 @keyframes gamification-quest-celebration-in {
@@ -310,8 +304,8 @@ select:focus-visible,
   padding: 1px 6px;
   border-radius: 99px;
   background: var(--accent-warning);
-  color: var(--surface-base);
-  font-size: 10px;
+  color: var(--surface-rail);
+  font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
@@ -331,7 +325,7 @@ select:focus-visible,
 .gamification-level-row > div:first-child { display: flex; justify-content: space-between; gap: 8px; }
 .gamification-level-row > div:first-child span:first-child { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-warning); font-weight: 500; }
 .gamification-level-bar { height: 4px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text-primary) 12%, transparent); }
-.gamification-level-bar > div { height: 100%; border-radius: inherit; background: var(--accent-warning); transition: width 300ms ease; }
+.gamification-level-bar > div { height: 100%; border-radius: inherit; background: var(--accent-warning); }
 .gamification-level-row p { margin: 7px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gamification-level-row p b { color: var(--accent-warning); font-weight: 500; }
 
@@ -343,15 +337,13 @@ select:focus-visible,
   pointer-events: auto !important;
 }
 
-.workspace-sidebar-action:hover,
-.workspace-sidebar-action:focus-visible {
+.workspace-sidebar-action:hover {
   background: var(--surface-hover) !important;
   border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
 }
 
-.workspace-sidebar-action--danger:hover,
-.workspace-sidebar-action--danger:focus-visible {
+.workspace-sidebar-action--danger:hover {
   background: var(--danger-muted) !important;
   border-color: color-mix(
     in srgb,
@@ -361,11 +353,6 @@ select:focus-visible,
   color: var(--accent-danger) !important;
 }
 
-.project-rail-main:focus-visible,
-[data-testid="project-section-toggle"]:focus-visible,
-[data-testid="project-search"]:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--border-focus) !important;
-}
 
 [data-testid="project-section-toggle"]:hover {
   background: var(--surface-hover) !important;
@@ -384,39 +371,41 @@ select:focus-visible,
   pointer-events: auto !important;
 }
 
-.session-sidebar-row:hover .session-sidebar-content,
-.session-sidebar-row:focus-within .session-sidebar-content {
+/* The action cluster (3 buttons, 25px + 3px gaps) is absolutely positioned at the
+   row's right edge. Its slot is reserved at rest so hover/focus never reflows the
+   title and meta lines; only opacity changes. */
+.session-sidebar-content {
   padding-right: 82px;
-  pointer-events: none !important;
 }
 
-.session-sidebar-row:hover .session-sidebar-content > *,
-.session-sidebar-row:focus-within .session-sidebar-content > * {
-  pointer-events: none !important;
+.workspace-rail-button {
+  position: relative;
 }
 
-.workspace-rail-button:hover,
-.workspace-rail-button:focus-visible {
+.workspace-rail-button:hover {
   background: var(--surface-hover) !important;
-  border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
 }
 
-.workspace-rail-button[data-active="true"]:hover,
-.workspace-rail-button[data-active="true"]:focus-visible {
-  background: color-mix(
-    in srgb,
-    var(--surface-selected) 82%,
-    var(--accent-live)
-  ) !important;
-  border-color: var(--border-focus) !important;
-  color: var(--accent-live) !important;
+/* Active rail item: selected fill, accent icon and a 2px accent bar on the rail edge. */
+.workspace-rail-button[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent-fill);
+}
+
+.workspace-rail-button[data-active="true"]:hover {
+  background: var(--surface-selected) !important;
+  color: var(--accent) !important;
 }
 
 .workspace-header-create-button:hover,
-.workspace-header-create-button:focus-visible,
-.workspace-primary-button:hover,
-.workspace-primary-button:focus-visible {
+.workspace-primary-button:hover {
   background: rgba(255, 255, 255, 0.08) !important;
   border-color: var(--border-focus) !important;
   color: var(--accent-live) !important;
@@ -444,26 +433,22 @@ select:focus-visible,
   box-shadow: var(--shadow-command) !important;
 }
 
-.workspace-secondary-button:hover,
-.workspace-secondary-button:focus-visible {
+.workspace-secondary-button:hover {
   background: var(--surface-hover) !important;
   border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
 }
 
-.workspace-launch-config-item:hover,
-.workspace-launch-config-item:focus-visible {
+.workspace-launch-config-item:hover {
   background: var(--surface-hover) !important;
   border-color: var(--border-strong) !important;
 }
 
 .workspace-launcher-input:focus-visible {
   border-color: var(--border-focus) !important;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07) !important;
 }
 
-.workspace-explorer-footer-button:hover,
-.workspace-explorer-footer-button:focus-visible {
+.workspace-explorer-footer-button:hover {
   background: var(--surface-hover) !important;
   border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
@@ -476,24 +461,21 @@ select:focus-visible,
     color var(--motion-fast);
 }
 
-.workspace-explorer-row[data-selected="false"]:hover,
-.workspace-explorer-row[data-selected="false"]:focus-visible {
+.workspace-explorer-row[data-selected="false"]:hover {
   background: var(--explorer-row-hover) !important;
   box-shadow: none !important;
 }
 
 .workspace-explorer-row[data-selected="true"] {
   background: var(--surface-selected) !important;
-  box-shadow: none !important;
+  box-shadow: inset 2px 0 0 var(--accent-fill) !important;
 }
 
 .workspace-explorer-row:focus-visible {
-  outline: none;
   background: var(--surface-hover) !important;
 }
 
-.workspace-explorer-context-item:hover,
-.workspace-explorer-context-item:focus-visible {
+.workspace-explorer-context-item:hover {
   background: var(--surface-hover) !important;
   color: var(--text-primary) !important;
 }
@@ -502,43 +484,34 @@ select:focus-visible,
   color: var(--accent-danger) !important;
 }
 
-.workspace-explorer-context-item--danger:hover,
-.workspace-explorer-context-item--danger:focus-visible {
+.workspace-explorer-context-item--danger:hover {
   background: var(--danger-muted) !important;
   color: var(--accent-danger) !important;
 }
 
 .workspace-terminal-settings-input:focus-visible {
   border-color: var(--border-focus) !important;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07) !important;
 }
 
-.workspace-terminal-color-swatch:hover,
-.workspace-terminal-color-swatch:focus-visible {
+.workspace-terminal-color-swatch:hover {
   border-color: var(--text-primary) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.24) !important;
 }
 
 .workspace-terminal-color-swatch[data-selected="true"] {
-  border-color: var(--text-primary) !important;
+  border-color: var(--accent-fill) !important;
 }
 
-.workspace-terminal-emoji-button:hover,
-.workspace-terminal-emoji-button:focus-visible {
+.workspace-terminal-emoji-button:hover {
   background: var(--surface-hover) !important;
-  border-color: var(--border-strong) !important;
-  transform: translateY(-1px);
 }
 
 .workspace-terminal-emoji-button[data-selected="true"] {
   background: var(--surface-selected) !important;
-  border-color: var(--border-focus) !important;
-  color: var(--accent-live) !important;
+  border-color: var(--accent-fill) !important;
+  color: var(--accent) !important;
 }
 
-.workbench-command-tool:hover,
-.workbench-command-tool:focus-visible {
+.workbench-command-tool:hover {
   background: var(--surface-hover) !important;
   border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
@@ -563,8 +536,7 @@ select:focus-visible,
   container-type: inline-size;
 }
 
-.canvas-sidebar-row[data-selected="false"]:hover,
-.canvas-sidebar-row[data-selected="false"]:focus-visible {
+.canvas-sidebar-row[data-selected="false"]:hover {
   background: var(--surface-hover) !important;
   border-color: transparent !important;
   box-shadow: none !important;
@@ -573,23 +545,17 @@ select:focus-visible,
 .canvas-sidebar-row[data-selected="true"] {
   background: var(--surface-selected) !important;
   border-color: transparent !important;
-  box-shadow: none !important;
+  box-shadow: inset 2px 0 0 var(--accent-fill) !important;
 }
 
-.canvas-sidebar-row:focus-visible {
-  outline: none;
-  outline-offset: -1px;
-}
 
-.canvas-sidebar-close:hover,
-.canvas-sidebar-close:focus-visible {
+.canvas-sidebar-close:hover {
   background: var(--surface-hover) !important;
   border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
 }
 
-.magic-canvas-button:hover,
-.magic-canvas-button:focus-visible {
+.magic-canvas-button:hover {
   background: var(--surface-hover) !important;
   border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
@@ -638,8 +604,7 @@ select:focus-visible,
   display: none;
 }
 
-.magic-canvas-chip:hover,
-.magic-canvas-chip:focus-visible {
+.magic-canvas-chip:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
 }
@@ -809,7 +774,7 @@ button:active {
 .canonical-agent-board .canonical-board-title strong {
   font-size: 17px;
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .canonical-agent-board .canonical-board-title small {
@@ -865,7 +830,7 @@ button:active {
   gap: 8px !important;
   align-items: center;
   padding: 12px 24px 14px !important;
-  background: var(--surface-base);
+  background: var(--surface-rail);
   border-top: 1px solid var(--border-subtle);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -926,7 +891,7 @@ button:active {
   padding: 0;
   overflow: hidden;
   border-radius: 10px;
-  background: var(--surface-base);
+  background: var(--surface-rail);
 }
 
 .canonical-agent-board .canonical-attention-heading {
@@ -948,7 +913,7 @@ button:active {
 
 .canonical-agent-board .canonical-attention-heading small {
   margin: 0;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .canonical-agent-board .canonical-attention-heading > span:last-child {
@@ -976,9 +941,7 @@ button:active {
   transition: background var(--motion-fast), transform var(--motion-fast);
 }
 
-.canonical-agent-board .canonical-task-row:hover,
-.canonical-agent-board .canonical-task-row:focus-visible {
-  outline: none;
+.canonical-agent-board .canonical-task-row:hover {
   background: var(--surface-hover);
 }
 
@@ -998,12 +961,12 @@ button:active {
 .canonical-agent-board .canonical-task-id,
 .canonical-agent-board .canonical-task-status {
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .canonical-agent-board .canonical-task-id {
   font-weight: 500;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 .canonical-agent-board .canonical-task-status {
@@ -1037,7 +1000,7 @@ button:active {
   justify-content: start;
   flex-wrap: wrap;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .canonical-agent-board .canonical-task-meta span + span::before {
@@ -1165,7 +1128,7 @@ button:active {
 }
 
 .canonical-agent-board .canonical-task-meta {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .canonical-agent-board .canonical-task-progress {
@@ -1215,7 +1178,7 @@ button:active {
 .canonical-agent-board .canonical-session-summary button {
   height: 29px;
   padding: 0 8px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 @keyframes workbench-popover-in {
@@ -1273,14 +1236,16 @@ button:active {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Reduced motion, on purpose: state-feedback fades (colour, background, border,
+   opacity, shadow) stay; everything that moves or pulses (translate/scale transitions,
+   keyframe animations: pulses, shimmers, entrance slides) is turned off. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
+    animation: none !important;
     scroll-behavior: auto !important;
-    transition-duration: 1ms !important;
+    transition-property: color, background-color, border-color, outline-color, opacity, box-shadow !important;
   }
 }
 
@@ -1526,8 +1491,7 @@ button:active {
   pointer-events: none !important;
 }
 
-.terminal-pane-action:hover,
-.terminal-pane-action:focus-visible {
+.terminal-pane-action:hover {
   background: var(--surface-hover) !important;
   border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
@@ -1546,8 +1510,7 @@ button:active {
   background: var(--danger-muted) !important;
 }
 
-.terminal-pane-action--danger:hover,
-.terminal-pane-action--danger:focus-visible {
+.terminal-pane-action--danger:hover {
   background: var(--danger-muted) !important;
   border-color: color-mix(
     in srgb,
@@ -1557,14 +1520,12 @@ button:active {
   color: var(--accent-danger) !important;
 }
 
-.terminal-pane-menu-item:hover,
-.terminal-pane-menu-item:focus-visible {
+.terminal-pane-menu-item:hover {
   background: var(--surface-hover) !important;
   color: var(--text-primary) !important;
 }
 
-.terminal-pane-menu-item--danger:hover,
-.terminal-pane-menu-item--danger:focus-visible {
+.terminal-pane-menu-item--danger:hover {
   background: var(--danger-muted) !important;
   color: var(--accent-danger) !important;
 }
@@ -1623,4 +1584,77 @@ button:active {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.workbench-copy-pane-details {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.workbench-copy-pane-details:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* Tertiary text is 4.28:1 on selected fills, below 4.5:1: inside selected rows it
+   reads as secondary text. --text-muted is re-declared because it aliases tertiary at :root. */
+.workspace-sidebar-row[data-active="true"],
+.canvas-sidebar-row[data-selected="true"],
+.workspace-explorer-row[data-selected="true"],
+.workbench-command-result[data-active="true"] {
+  --text-tertiary: var(--text-secondary);
+  --text-muted: var(--text-secondary);
+}
+
+.session-state-glyph {
+  margin-inline-end: 5px;
+  vertical-align: middle;
+}
+
+/* Git work monitor (moved out of an injected <style>) */
+.git-monitor-count strong { color: var(--text-1); font-weight: var(--font-weight-medium); }
+.git-monitor-guide b, .git-monitor-guide strong { color: var(--text-1); font-weight: var(--font-weight-medium); }
+.git-monitor-project-header strong { font-size: 14px; font-weight: var(--font-weight-medium); }
+.git-monitor-project-header small { color: var(--text-2); font-size: 11px; }
+
+  .git-monitor-shell.git-monitor-narrow { width: 100%; height: 100%; display: block !important; overflow: auto; padding: 18px 16px 24px !important; background: var(--surface-panel) !important; }
+  .git-monitor-shell.git-monitor-narrow .git-monitor-project-header { flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+  .git-monitor-shell.git-monitor-narrow .git-monitor-project-counts { width: 100%; justify-content: flex-start; padding-left: 28px; }
+  @media (max-width: 760px) {
+    .git-monitor-shell { width: 100%; height: 100%; display: block !important; overflow: auto; padding: 18px 16px 24px !important; background: var(--surface-panel) !important; }
+    .git-monitor-hero { flex-direction: column; align-items: flex-start !important; gap: 18px !important; }
+    .git-monitor-hero-counts { justify-content: flex-start !important; max-width: none !important; }
+    .git-monitor-agent-row { grid-template-columns: 1fr !important; gap: 12px !important; }
+    .git-monitor-project-header { flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+    .git-monitor-project-counts { width: 100%; justify-content: flex-start; padding-left: 28px; }
+  }
+
+/* The command field's input suppresses its own outline; the wrapper shows the ring. */
+.workbench-command-search:focus-within {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Visually hidden, still read by screen readers. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

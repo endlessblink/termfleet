@@ -117,6 +117,8 @@
     "verify:tauri-performance": "scripts/verify-tauri-performance.sh",
     "trace:terminal-latency": "node scripts/summarize-terminal-latency-trace.mjs",
     "verify:typography": "node scripts/verify-typography.mjs",
+    "verify:design-ratchet": "node scripts/verify-design-ratchet.mjs",
+    "verify:design": "playwright test design-tokens",
     "verify:file-explorer": "playwright test tests/file-explorer.spec.ts --reporter=line",
     "verify:visual": "scripts/verify-visual-evidence.sh",
     "tauri": "tauri",
@@ -152,6 +154,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.60.0",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19",

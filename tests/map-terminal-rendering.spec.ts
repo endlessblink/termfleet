@@ -1792,15 +1792,15 @@ test("terminal map labels can be recolored from the right-click menu", async ({
     .getByRole("menuitem", { name: "Set terminal label color Amber" })
     .click();
   // The label color tints the whole status block (no side-stripe accent since the
-  // chrome cleanup); amber #d4a44f = srgb(0.831, 0.643, 0.310).
+  // chrome cleanup); amber #dcb875 = srgb(0.863, 0.722, 0.459).
   await expect(page.getByTestId("canvas-terminal-status-block")).toHaveCSS(
     "background-image",
-    /0\.83\d* 0\.64\d* 0\.3[01]\d*/,
+    /0\.86\d* 0\.72\d* 0\.4[56]\d*/,
   );
   await page.getByRole("button", { name: "Map", exact: true }).click();
   await expect(
     page.locator('[data-pane-id="pane-color"].session-sidebar-row'),
-  ).toHaveAttribute("data-panel-color", "#d4a44f");
+  ).toHaveAttribute("data-panel-color", "#dcb875");
 
   await expect
     .poll(async () =>
@@ -1822,7 +1822,7 @@ test("terminal map labels can be recolored from the right-click menu", async ({
           ?.labelColor;
       }),
     )
-    .toBe("#d4a44f");
+    .toBe("#dcb875");
 
   await expect
     .poll(async () =>
@@ -1842,12 +1842,12 @@ test("terminal map labels can be recolored from the right-click menu", async ({
           ?.color;
       }),
     )
-    .toBe("#d4a44f");
+    .toBe("#dcb875");
 
   await page.getByRole("button", { name: "Sessions", exact: true }).click();
   await expect(
     page.locator('[data-pane-id="pane-color"].session-sidebar-row'),
-  ).toHaveAttribute("data-panel-color", "#d4a44f");
+  ).toHaveAttribute("data-panel-color", "#dcb875");
 });
 
 test("high token pressure is unmistakable on the expanded map terminal header", async ({
@@ -2367,7 +2367,7 @@ test("project emojis identify map terminals by path without using task colors", 
         };
       }),
     )
-    .toEqual({ emoji: "🚀", labelColor: "#d4a44f" });
+    .toEqual({ emoji: "🚀", labelColor: "#dcb875" });
 });
 
 test("shift-drag box-selects terminals while regular and middle drags pan the map", async ({
@@ -3488,7 +3488,7 @@ test("workspace store supports multi-select canvas movement and label colors", a
       width: 820,
       height: 460,
       terminalTabId: "missing-tab",
-      labelColor: "#d4a44f",
+      labelColor: "#dcb875",
     });
     state.selectCanvasNodes(["node-b", "node-a", "missing-node"]);
     state.moveCanvasNodes(["node-a", "node-b"], { x: 3.4, y: -2.6 });
@@ -3516,7 +3516,7 @@ test("workspace store supports multi-select canvas movement and label colors", a
   expect(result.nodes).toEqual(
     expect.arrayContaining([
       { id: "node-a", x: 13, y: 17, labelColor: "#7dbac3" },
-      { id: "node-b", x: 103, y: 197, labelColor: "#d4a44f" },
+      { id: "node-b", x: 103, y: 197, labelColor: "#dcb875" },
     ]),
   );
   expect(result.afterRemoveSelectedNodeId).toBe("node-a");
@@ -3663,7 +3663,7 @@ test("Ctrl+Z restores the last closed terminal map session from app chrome", asy
             y: 180,
             width: 820,
             height: 460,
-            labelColor: "#d4a44f",
+            labelColor: "#dcb875",
             taskBinding: { taskId: "TC-029", planPath: "MASTER_PLAN.md" },
           },
         ],
@@ -3775,7 +3775,7 @@ test("Ctrl+Z restores the last closed terminal map session from app chrome", asy
     terminalTabId: "tab-undo",
     x: 320,
     y: 180,
-    labelColor: "#d4a44f",
+    labelColor: "#dcb875",
     taskBinding: { taskId: "TC-029" },
   });
   expect(restored.selectedNodeId).toBe("node-undo");

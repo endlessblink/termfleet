@@ -7,16 +7,18 @@ import { taskStatusLabel, type MasterPlanTask } from "../lib/masterPlanTasks";
 import type { MasterPlanTaskStatus } from "../lib/types";
 import { useWorkspaceStore } from "../stores/workspace";
 import { PROJECT_BOARD_HISTORY_KEY, projectShortcuts, readProjectBoardHistory, recordProjectVisit } from "../lib/projectBoardHistory";
+import { StatusDot } from "../ui";
+import type { AgentState } from "../lib/agentState";
 import "./ProjectPlansBoard.css";
 
 type ProjectTask = MasterPlanTask & { projectRoot: string };
-type BoardColumn = { id: string; title: string; statuses: MasterPlanTaskStatus[]; tone: string };
+type BoardColumn = { id: string; title: string; statuses: MasterPlanTaskStatus[]; state: AgentState };
 const columns: BoardColumn[] = [
-  { id: "todo", title: "To Do", statuses: ["todo"], tone: "#8b949e" },
-  { id: "progress", title: "In Progress", statuses: ["in-progress"], tone: "#58a6ff" },
-  { id: "blocked", title: "Blocked", statuses: ["blocked"], tone: "#f0883e" },
-  { id: "unsorted", title: "Unsorted", statuses: ["unknown"], tone: "#8b949e" },
-  { id: "done", title: "Done", statuses: ["done"], tone: "#3fb950" },
+  { id: "todo", title: "To Do", statuses: ["todo"], state: "idle" },
+  { id: "progress", title: "In Progress", statuses: ["in-progress"], state: "running" },
+  { id: "blocked", title: "Blocked", statuses: ["blocked"], state: "waiting" },
+  { id: "unsorted", title: "Unsorted", statuses: ["unknown"], state: "idle" },
+  { id: "done", title: "Done", statuses: ["done"], state: "done" },
 ];
 
 function projectName(root: string) { const parts = root.split("/").filter(Boolean); return parts[parts.length - 1] || root; }
@@ -30,13 +32,13 @@ function taskDetails(task: ProjectTask) { return [`${task.id}: ${task.title}`, `
 function TaskCard({ task }: { task: ProjectTask }) {
   const [expanded, setExpanded] = useState(false);
   const checklist = task.checklist ?? [];
-  return <article className="watchpost-task-card" style={{ borderBottom: "1px solid #30363d", background: "#161b22", borderRadius: 6, padding: "13px 14px", transition: "border-color .18s, transform .18s" }}>
+  return <article className="watchpost-task-card" style={{ border: expanded ? "1px solid var(--border-strong)" : "1px solid var(--border-default)", background: "var(--surface-panel)", borderRadius: 8, padding: "12px 14px", transition: "border-color var(--dur-med) var(--ease-out)" }}>
     <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} style={{ display: "block", width: "100%", border: 0, padding: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer", font: "inherit" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><span style={{ color: "#8b949e", fontSize: 11, fontFamily: "var(--font-ui)" }}>{task.id}</span>{expanded ? <ChevronDown size={14} color="#8b949e" /> : <ChevronRight size={14} color="#8b949e" />}</div>
-      <strong style={{ display: "block", marginTop: 8, color: "#e6edf3", fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>{task.title}</strong>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, color: "#8b949e", fontSize: 11 }}><span>{projectName(task.projectRoot)}</span><span>{checklistSummary(task)}</span></div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><span style={{ color: "var(--text-3)", fontSize: 11, fontFamily: "var(--font-ui)" }}>{task.id}</span>{expanded ? <ChevronDown size={14} color="var(--text-3)" /> : <ChevronRight size={14} color="var(--text-3)" />}</div>
+      <strong style={{ display: "block", marginTop: 8, color: "var(--text-1)", fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>{task.title}</strong>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, color: "var(--text-2)", fontSize: 11 }}><span>{projectName(task.projectRoot)}</span><span>{checklistSummary(task)}</span></div>
     </button>
-    {expanded && <div style={{ borderTop: "1px solid #30363d", marginTop: 12, paddingTop: 10, color: "#c9d1d9", fontSize: 11, lineHeight: 1.55 }}><div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e", marginBottom: 8 }}><span>{taskStatus(task)}</span><span>{task.rawStatus}</span></div>{checklist.length ? <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>{checklist.map((item) => <li key={item.id} style={{ display: "flex", gap: 7, alignItems: "flex-start", padding: "3px 0" }}><Check size={13} color={item.status === "done" ? "#3fb950" : "#8b949e"} /><span>{item.text}</span></li>)}</ul> : <span>Open the project plan to add acceptance checks.</span>}<button type="button" aria-label={`Copy details for ${task.id}`} onClick={() => { void navigator.clipboard?.writeText(taskDetails(task)); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12, border: 0, borderBottom: "1px solid #30363d", borderRadius: 5, padding: "6px 9px", background: "#0d1117", color: "#c9d1d9", cursor: "pointer", font: "inherit", fontSize: 11 }}><Copy size={13} /> Copy task details</button></div>}
+    {expanded && <div style={{ borderTop: "1px solid var(--border-default)", marginTop: 12, paddingTop: 10, color: "var(--text-2)", fontSize: 11, lineHeight: 1.55 }}><div style={{ display: "flex", justifyContent: "space-between", color: "var(--text-3)", marginBottom: 8 }}><span>{taskStatus(task)}</span><span>{task.rawStatus}</span></div>{checklist.length ? <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>{checklist.map((item) => <li key={item.id} style={{ display: "flex", gap: 7, alignItems: "flex-start", padding: "3px 0" }}><Check size={13} color={item.status === "done" ? "var(--state-done)" : "var(--text-3)"} /><span>{item.text}</span></li>)}</ul> : <span>Open the project plan to add acceptance checks.</span>}<button type="button" aria-label={`Copy details for ${task.id}`} onClick={() => { void navigator.clipboard?.writeText(taskDetails(task)); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12, border: 0, borderRadius: 6, height: 24, padding: "0 10px", background: "var(--surface-raised)", color: "var(--text-2)", cursor: "pointer", font: "inherit", fontSize: 11 }}><Copy size={13} /> Copy task details</button></div>}
   </article>;
 }
 
@@ -183,7 +185,7 @@ export function ProjectPlansBoard() {
         <div className="project-board-columns">{columns.filter((column) => showDone || column.id !== "done").map((column) => {
           const columnTasks = visible.filter((task) => column.statuses.includes(task.status));
           return <section key={column.id} aria-label={column.title} className="project-board-column">
-            <h2><span className="project-board-status-dot" style={{ background: column.tone }} /><span>{column.title}</span><span className="project-board-column-count">{columnTasks.length}</span></h2>
+            <h2><StatusDot state={column.state} /><span>{column.title}</span><span className="project-board-column-count">{columnTasks.length}</span></h2>
             <div className="project-board-cards">{columnTasks.map((task) => <TaskCard key={task.id} task={task} />)}
               {!columnTasks.length && <p className="project-board-empty">{query || typeFilter !== "all" || priorityFilter !== "all" ? "No matching tasks" : "No tasks"}</p>}</div>
           </section>;

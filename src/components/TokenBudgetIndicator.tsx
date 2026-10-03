@@ -146,13 +146,13 @@ export function TokenBudgetIndicator({
           border: `1px solid color-mix(in srgb, ${color} ${signal.level === "normal" ? 28 : 58}%, transparent)`,
           background:
             signal.level === "normal"
-              ? "var(--surface-base)"
-              : `color-mix(in srgb, ${color} ${signal.level === "critical" ? 22 : 14}%, var(--surface-base))`,
+              ? "var(--surface-rail)"
+              : `color-mix(in srgb, ${color} ${signal.level === "critical" ? 22 : 14}%, var(--surface-rail))`,
           boxShadow:
             signal.level === "critical" ? `inset 3px 0 0 ${color}` : "none",
           color,
           fontFamily: "var(--font-ui)",
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: 500,
           whiteSpace: "nowrap",
           cursor: "pointer",
@@ -189,7 +189,7 @@ export function TokenBudgetIndicator({
               borderRadius: 7,
               background: "var(--surface-raised)",
               boxShadow:
-                "0 10px 24px color-mix(in srgb, var(--surface-base) 70%, transparent)",
+                "0 10px 24px color-mix(in srgb, var(--surface-rail) 70%, transparent)",
               color: "var(--text-primary)",
               fontFamily: "var(--font-ui)",
               fontSize: 12,
@@ -243,7 +243,7 @@ export function TokenBudgetIndicator({
                 padding: "0 10px",
                 border: `1px solid color-mix(in srgb, ${color} 52%, transparent)`,
                 borderRadius: 5,
-                background: `color-mix(in srgb, ${color} 14%, var(--surface-base))`,
+                background: `color-mix(in srgb, ${color} 14%, var(--surface-rail))`,
                 color,
                 fontFamily: "var(--font-ui)",
                 fontSize: 11,
@@ -260,7 +260,7 @@ export function TokenBudgetIndicator({
                     : "Open model picker"}
             </button>
           )}
-          <span style={{ color: "var(--text-secondary)", fontSize: 10 }}>
+          <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
               Hover to inspect · Click to keep open · Esc to close
             </span>
           </div>,

@@ -78,6 +78,9 @@ import {
   buildTerminalHeaderState,
   type TerminalHeaderState,
 } from "../lib/terminalHeaderState";
+import { StatusDot } from "../ui";
+import { IDENTITY_COLORS } from "../lib/tokens";
+import { attentionToAgentState } from "../lib/agentState";
 import { badgeForAttention } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { FileExplorer } from "./FileExplorer";
@@ -172,14 +175,8 @@ import {
   type ProjectSidebarItem,
 } from "../lib/projectSidebarModel";
 
-const TERMINAL_COLORS = [
-  "#d99a45",
-  "#7fc681",
-  "#7dbac3",
-  "#6ea8fe",
-  "#ad8fcb",
-  "#ef6f72",
-];
+// Swatch hues are the six muted identity colours (--identity-1..6).
+const TERMINAL_COLORS = [...IDENTITY_COLORS];
 const TERMINAL_EMOJIS = ["💻", "⚙️", "🚀", "🧪", "🛠️", "📦", "🔧", "🧭"];
 
 function workstreamLabel(provider?: string) {
@@ -426,7 +423,7 @@ const styles: Record<string, CSSProperties> = {
   shell: {
     height: "100%",
     display: "flex",
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     borderRight: "1px solid var(--border-subtle)",
     color: "var(--text-primary)",
     userSelect: "none",
@@ -458,15 +455,15 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     alignItems: "center",
     gap: 8,
-    padding: "12px 5px",
-    borderRight: "1px solid var(--border-subtle)",
-    background: "var(--surface-base)",
+    padding: "12px 4px",
+    borderRight: "1px solid var(--border-default)",
+    background: "var(--surface-chrome)",
   },
   railButton: {
     width: 32,
     height: 30,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     color: "var(--text-secondary)",
     display: "grid",
@@ -476,11 +473,10 @@ const styles: Record<string, CSSProperties> = {
       "background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), transform var(--motion-fast)",
   },
   railSeparator: {
-    width: 24,
+    width: 20,
     height: 1,
-    background: "var(--border-subtle)",
+    background: "var(--border-default)",
     margin: "2px 0",
-    opacity: 0.9,
   },
   railSpacer: {
     flex: 1,
@@ -492,7 +488,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
   },
   header: {
     minHeight: 56,
@@ -567,7 +563,7 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "center",
     padding: "0 7px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "var(--surface-raised)",
     color: "var(--text-secondary)",
     fontSize: 11,
@@ -577,7 +573,7 @@ const styles: Record<string, CSSProperties> = {
     height: 28,
     border: "1px solid transparent",
     borderRadius: 6,
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     display: "grid",
     placeItems: "center",
@@ -608,8 +604,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     padding: "0 6px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     fontSize: 11,
@@ -620,7 +616,7 @@ const styles: Record<string, CSSProperties> = {
   },
   mapFilterCount: {
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
   },
   projectList: {
@@ -638,7 +634,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     padding: "0 5px",
     border: "none",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "transparent",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
@@ -673,11 +669,11 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     padding: "3px 7px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     lineHeight: 1,
     textTransform: "none",
@@ -688,7 +684,7 @@ const styles: Record<string, CSSProperties> = {
   reconnectAgentsStatus: {
     margin: "-2px 2px 7px",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     lineHeight: 1.35,
   },
   projectRow: {
@@ -701,7 +697,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "5px 6px",
     border: "none",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     color: "var(--text-primary)",
     cursor: "pointer",
@@ -739,7 +735,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     padding: "0 6px",
     border: "none",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "transparent",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
@@ -750,7 +746,7 @@ const styles: Record<string, CSSProperties> = {
   },
   projectSectionCount: {
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 400,
   },
   projectSectionLabel: {
@@ -759,10 +755,10 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     gap: 8,
     margin: "8px 6px 4px",
-    color: "var(--text-tertiary)",
-    fontSize: 10,
+    color: "var(--text-secondary)",
+    fontSize: 11,
     fontWeight: 500,
-    letterSpacing: 0,
+    letterSpacing: "var(--label-caps-tracking)",
     textTransform: "uppercase",
   },
   projectRailRow: {
@@ -770,7 +766,7 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
   },
   projectRowTrailing: {
     display: "flex",
@@ -784,12 +780,11 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 6,
     padding: "0 9px",
     border: "none",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
-    outline: "none",
   },
   projectHeaderActions: {
     display: "flex",
@@ -802,7 +797,7 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     placeItems: "center",
     border: "none",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "transparent",
     color: "var(--text-secondary)",
     cursor: "pointer",
@@ -818,11 +813,10 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "6px 7px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     cursor: "pointer",
     color: "var(--text-primary)",
-    outline: "none",
     boxShadow: "none",
     WebkitTapHighlightColor: "transparent",
     transition: "background var(--motion-fast), box-shadow var(--motion-fast)",
@@ -883,7 +877,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "0 12px",
     border: "1px dashed var(--border-focus)",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "color-mix(in srgb, var(--border-focus) 12%, transparent)",
     color: "var(--text-secondary)",
     fontSize: 12,
@@ -949,8 +943,8 @@ const styles: Record<string, CSSProperties> = {
   sidebarHeaderLabel: {
     color: "var(--text-tertiary)",
     fontWeight: 500,
-    fontSize: 9,
-    letterSpacing: "0.07em",
+    fontSize: 11,
+    letterSpacing: "var(--label-caps-tracking)",
     textTransform: "uppercase",
     whiteSpace: "nowrap",
   },
@@ -995,7 +989,7 @@ const styles: Record<string, CSSProperties> = {
     margin: "0 0 8px",
     padding: "9px 10px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "color-mix(in srgb, var(--surface-raised) 78%, transparent)",
   },
   agentLaneHeader: {
@@ -1018,10 +1012,10 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     padding: "0 6px",
-    borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   agentLaneList: {
     display: "grid",
@@ -1033,8 +1027,8 @@ const styles: Record<string, CSSProperties> = {
     margin: "0 0 6px",
     padding: "7px 8px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
+    borderRadius: "var(--radius-md)",
+    background: "color-mix(in srgb, var(--surface-rail) 82%, transparent)",
   },
   compactUtilityHeader: {
     minWidth: 0,
@@ -1052,21 +1046,21 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   compactToggle: {
-    height: 20,
+    height: 24,
     minWidth: 34,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     padding: "0 7px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "var(--surface-raised)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     cursor: "pointer",
   },
@@ -1076,8 +1070,8 @@ const styles: Record<string, CSSProperties> = {
     margin: "0 0 6px",
     padding: "7px 8px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
+    borderRadius: "var(--radius-md)",
+    background: "color-mix(in srgb, var(--surface-rail) 82%, transparent)",
   },
   serviceRow: {
     minWidth: 0,
@@ -1087,7 +1081,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "5px 6px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "var(--surface-raised)",
     color: "var(--text-primary)",
     textAlign: "left",
@@ -1114,10 +1108,10 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     padding: "0 6px",
-    borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     fontVariantNumeric: "tabular-nums",
   },
   serviceActions: {
@@ -1134,11 +1128,11 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "center",
     padding: 0,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     cursor: "pointer",
   },
@@ -1148,7 +1142,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   serviceMetaLine: {
     minWidth: 0,
@@ -1156,7 +1150,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   agentLaneItem: {
     minWidth: 0,
@@ -1166,7 +1160,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "5px 6px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "transparent",
     color: "var(--text-primary)",
     textAlign: "left",
@@ -1180,7 +1174,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "6px 7px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "transparent",
     color: "var(--text-primary)",
     textAlign: "left",
@@ -1210,8 +1204,8 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-grid",
     placeItems: "center",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     cursor: "pointer",
   },
@@ -1225,10 +1219,10 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 5,
     padding: "0 6px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "var(--surface-raised)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   taskDot: {
     width: 6,
@@ -1249,8 +1243,8 @@ const styles: Record<string, CSSProperties> = {
     width: 25,
     height: 24,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-raised)",
     color: "var(--text-secondary)",
     display: "grid",
     placeItems: "center",
@@ -1262,7 +1256,7 @@ const styles: Record<string, CSSProperties> = {
     width: 30,
     height: 28,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "rgba(255, 255, 255, 0.06)",
     color: "var(--accent-live)",
     display: "grid",
@@ -1280,7 +1274,7 @@ const styles: Record<string, CSSProperties> = {
     width: "100%",
     height: 42,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "rgba(255, 255, 255, 0.06)",
     color: "var(--text-primary)",
     display: "flex",
@@ -1303,12 +1297,12 @@ const styles: Record<string, CSSProperties> = {
   contextMenu: {
     position: "fixed",
     zIndex: 1000,
-    width: 236,
+    width: 272,
     padding: 8,
-    border: "1px solid transparent",
+    border: "1px solid var(--border-strong)",
     borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
-    boxShadow: "var(--shadow-menu)",
+    boxShadow: "var(--elev-menu)",
     animation: "workbench-popover-in var(--motion-med)",
   },
   contextHeader: {
@@ -1327,7 +1321,7 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     placeItems: "center",
     borderRadius: 6,
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     fontSize: 14,
     lineHeight: 1,
   },
@@ -1351,7 +1345,6 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: "var(--font-ui)",
     fontSize: 13,
     padding: "0 8px",
-    outline: "none",
     transition:
       "border-color var(--motion-fast), box-shadow var(--motion-fast)",
   },
@@ -1359,7 +1352,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 8,
     padding: 8,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background:
       "var(--surface-wash)",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.025)",
@@ -1383,7 +1376,7 @@ const styles: Record<string, CSSProperties> = {
   },
   launcherHint: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     whiteSpace: "nowrap",
   },
   launcherLabel: {
@@ -1391,7 +1384,7 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 8,
     marginBottom: 4,
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     textTransform: "uppercase",
     letterSpacing: 0,
   },
@@ -1405,7 +1398,7 @@ const styles: Record<string, CSSProperties> = {
     height: 30,
     border: "1px solid transparent",
     borderRadius: 4,
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     fontSize: 13,
@@ -1423,8 +1416,8 @@ const styles: Record<string, CSSProperties> = {
   },
   colorSwatch: {
     width: "100%",
-    height: 22,
-    borderRadius: 4,
+    height: 24,
+    borderRadius: 6,
     border: "1px solid transparent",
     cursor: "pointer",
     transition:
@@ -1437,12 +1430,12 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 6,
   },
   emojiButton: {
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     display: "grid",
     placeItems: "center",
     border: "1px solid transparent",
-    borderRadius: 4,
+    borderRadius: 6,
     background: "var(--surface-base)",
     cursor: "pointer",
     fontSize: 13,
@@ -1494,8 +1487,8 @@ function PanelButton({ panel }: { panel: OperationsPanel }) {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
-        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+        borderColor: "transparent",
+        color: active ? "var(--accent)" : "var(--text-secondary)",
       }}
       title={title}
       aria-label={label}
@@ -1527,8 +1520,8 @@ function FileTreeButton() {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
-        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+        borderColor: "transparent",
+        color: active ? "var(--accent)" : "var(--text-secondary)",
       }}
       title={active ? "Hide files panel" : "Show files panel"}
       aria-label="Files"
@@ -1576,11 +1569,7 @@ function PreviewButton() {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active
-          ? "var(--border-focus)"
-          : hasPreviewUrl
-            ? "var(--border-subtle)"
-            : "transparent",
+        borderColor: "transparent",
         color: active ? "var(--accent-live)" : "var(--text-secondary)",
         cursor: hasPreviewUrl ? "pointer" : "not-allowed",
         opacity: hasPreviewUrl ? 1 : 0.44,
@@ -1626,8 +1615,8 @@ function DrawingBoardButton() {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
-        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+        borderColor: "transparent",
+        color: active ? "var(--accent)" : "var(--text-secondary)",
       }}
       title={
         existingBoardId ? "Show the drawing board" : "Open a drawing board"
@@ -1726,8 +1715,8 @@ function GitMonitorButton() {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
-        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+        borderColor: "transparent",
+        color: active ? "var(--accent)" : "var(--text-secondary)",
       }}
       title="Git work monitor"
       aria-label="Git work monitor"
@@ -1750,7 +1739,7 @@ function TerminalAvatar({ tab, active }: { tab: Tab; active: boolean }) {
       style={{
         ...styles.iconCell,
         color: active ? "var(--accent-live)" : "var(--text-primary)",
-        border: `1px solid ${tab.color ?? "var(--border-subtle)"}`,
+        border: "1px solid transparent",
       }}
     >
       {hasEmoji ? tab.emoji : <TerminalWindow size={13} weight="duotone" />}
@@ -1835,7 +1824,7 @@ function TerminalContextMenu({
           <span
             style={{
               color: "var(--text-secondary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 400,
             }}
           >
@@ -1897,10 +1886,9 @@ function TerminalContextMenu({
             style={{
               ...styles.colorSwatch,
               background: color,
-              outline: "none",
               boxShadow:
                 tab.color === color
-                  ? "inset 0 0 0 2px var(--text-primary)"
+                  ? "inset 0 0 0 2px var(--accent-fill)"
                   : "none",
             }}
             title={color}
@@ -1929,12 +1917,11 @@ function TerminalContextMenu({
               background:
                 tab.emoji === emoji
                   ? "var(--surface-selected)"
-                  : "var(--surface-base)",
+                  : "var(--surface-rail)",
               color:
                 tab.emoji === emoji
                   ? "var(--accent-live)"
                   : "var(--text-primary)",
-              outline: "none",
             }}
             title={emoji}
             aria-label={`Set terminal emoji ${emoji}`}
@@ -1952,7 +1939,6 @@ function TerminalContextMenu({
           style={{
             ...styles.emojiButton,
             borderColor: "var(--border-subtle)",
-            outline: "none",
           }}
           onClick={() => setShowEmojiPicker((open) => !open)}
         >
@@ -2050,7 +2036,7 @@ function ProjectContextMenu({
           <span
             style={{
               color: "var(--text-secondary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 400,
             }}
           >
@@ -2106,7 +2092,7 @@ function ProjectContextMenu({
             gap: 8,
             padding: "8px",
             border: "none",
-            borderRadius: "var(--radius-sm)",
+            borderRadius: "var(--radius-md)",
             background: "transparent",
             color: "var(--text-primary)",
             cursor: "pointer",
@@ -2136,7 +2122,7 @@ function ProjectContextMenu({
           gap: 8,
           padding: "8px 8px",
           border: "none",
-          borderRadius: "var(--radius-sm)",
+          borderRadius: "var(--radius-md)",
           background: "transparent",
           color: "var(--accent-danger)",
           cursor: "pointer",
@@ -2216,7 +2202,7 @@ function NewTerminalLaunchMenu({
           gap: 8,
           padding: "6px 7px",
           border: "1px solid transparent",
-          borderRadius: "var(--radius-sm)",
+          borderRadius: "var(--radius-md)",
           background: "transparent",
           color: "var(--text-primary)",
           cursor: "pointer",
@@ -2275,7 +2261,7 @@ function NewTerminalLaunchMenu({
           <span
             style={{
               color: "var(--text-secondary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 400,
             }}
           >
@@ -2905,7 +2891,7 @@ function SessionsPanel({
         <div style={styles.title}>
           <TerminalWindow size={14} weight="duotone" />
           <span style={styles.titleStack}>
-            <span style={styles.titleName}>{activeProjectName}</span>
+            <h2 style={{ ...styles.titleName, margin: 0 }}>{activeProjectName}</h2>
             <span
               style={styles.titlePath}
               title={
@@ -3133,10 +3119,10 @@ function SessionsPanel({
                 style={styles.projectGrid}
                 aria-label="Project search results"
               >
-                <div style={styles.projectSectionLabel}>
+                <h2 style={styles.projectSectionLabel}>
                   <span>Results</span>
                   <span>{projectModel.searchResults.length}</span>
-                </div>
+                </h2>
                 {projectModel.searchResults.length > 0 ? (
                   projectModel.searchResults.map(renderProjectRow)
                 ) : (
@@ -3272,7 +3258,7 @@ function SessionsPanel({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ ...styles.sectionLabel, margin: 0, fontSize: 10 }}>
+              <div style={{ ...styles.sectionLabel, margin: 0, fontSize: 11 }}>
                 Recovery review
               </div>
               <button
@@ -5124,18 +5110,11 @@ function SessionsPanel({
                         flexShrink: 0,
                       }}
                     >
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          background: badgeForAttention(
-                            paneBadgeAttention(terminal),
-                          ).color,
-                          marginInlineEnd: 5,
-                          verticalAlign: "middle",
-                        }}
+                      <StatusDot
+                        state={attentionToAgentState(
+                          badgeForAttention(paneBadgeAttention(terminal)).state,
+                        )}
+                        className="session-state-glyph"
                       />
                       {badgeForAttention(paneBadgeAttention(terminal)).label}
                     </span>
@@ -5823,7 +5802,7 @@ function MapPanel({
                 ...styles.mapFilterButton,
                 background: active
                   ? "var(--surface-selected)"
-                  : "var(--surface-base)",
+                  : "var(--surface-rail)",
                 color: active ? "var(--text-primary)" : "var(--text-secondary)",
                 borderColor: active ? "var(--border-strong)" : "transparent",
               }}
@@ -5854,7 +5833,7 @@ function MapPanel({
                 aria-pressed={active}
                 style={{
                   ...styles.mapFilterButton,
-                  background: active ? "var(--surface-selected)" : "var(--surface-base)",
+                  background: active ? "var(--surface-selected)" : "var(--surface-rail)",
                   color: active ? "var(--text-primary)" : "var(--text-secondary)",
                   borderColor: active ? "var(--border-strong)" : "transparent",
                 }}
@@ -5879,7 +5858,7 @@ function MapPanel({
                 ...styles.mapFilterButton,
                 background: active
                   ? "var(--surface-selected)"
-                  : "var(--surface-base)",
+                  : "var(--surface-rail)",
                 color: active ? "var(--text-primary)" : "var(--text-secondary)",
                 borderColor: active ? "var(--border-strong)" : "transparent",
               }}

@@ -14,13 +14,13 @@
   /* Floating panels ("islands") read as the app's raised surfaces. */
   --island-bg-color: var(--surface-raised);
   --color-surface-lowest: var(--surface-floor);
-  --color-surface-low: var(--surface-base);
+  --color-surface-low: var(--surface-rail);
   --color-surface-mid: var(--surface-raised);
   --color-surface-high: var(--surface-hover);
   --color-on-surface: var(--text-primary);
 
   --popup-bg-color: var(--surface-raised);
-  --popup-secondary-bg-color: var(--surface-base);
+  --popup-secondary-bg-color: var(--surface-rail);
   --popup-text-color: var(--text-primary);
 
   --input-bg-color: var(--surface-sunken);
@@ -53,8 +53,8 @@
   --button-selected-border: var(--border-focus);
   --button-selected-hover-bg: var(--surface-hover);
 
-  --border-radius-md: var(--radius-xs);
-  --border-radius-lg: var(--radius-sm);
+  --border-radius-md: var(--radius-sm);
+  --border-radius-lg: var(--radius-md);
   --shadow-island: var(--shadow-card);
   --modal-shadow: var(--shadow-menu);
 
@@ -64,14 +64,14 @@
 /* Islands: hairline edge, app radius, no heavy outline. */
 .termfleet-board .excalidraw .Island {
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
   padding: 6px;
 }
 
 /* Tool buttons: compact, quiet, selected state is a fill rather than a colour. */
 .termfleet-board .excalidraw .ToolIcon__icon {
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 .termfleet-board .excalidraw .ToolIcon__icon:hover,
@@ -102,7 +102,7 @@
   color: var(--text-tertiary);
   font-size: var(--font-size-ui-meta);
   font-weight: var(--font-weight-ui);
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 /* Hint line under the toolbar shouts on a small card. */
@@ -120,7 +120,7 @@
 
 .termfleet-board .excalidraw .zoom-actions,
 .termfleet-board .excalidraw .undo-redo-buttons {
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 
 /* Shape library and help are cloud/onboarding features that do not apply to a
@@ -134,7 +134,7 @@
 
 /* Colour swatches keep their own colours, but lose the loud active ring. */
 .termfleet-board .excalidraw .color-picker__button {
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   border-color: var(--border-subtle);
 }
 

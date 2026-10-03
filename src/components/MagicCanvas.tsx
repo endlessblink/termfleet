@@ -231,7 +231,7 @@ type TerminalOverlayBounds = {
 const TERMINAL_LABEL_COLORS = [
   { label: "Default", value: undefined },
   { label: "Cyan", value: "#7dbac3" },
-  { label: "Amber", value: "#d4a44f" },
+  { label: "Amber", value: "#dcb875" },
   { label: "Red", value: "#d96767" },
   { label: "Violet", value: "#a890d3" },
 ];
@@ -320,8 +320,8 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     cursor: "grab",
     background:
-      "linear-gradient(var(--canvas-grid-soft) 1px, transparent 1px), linear-gradient(90deg, var(--canvas-grid-soft) 1px, transparent 1px), #1b2022",
-    backgroundSize: "128px 128px, 128px 128px, auto",
+      "radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px), var(--surface-base)",
+    backgroundSize: "24px 24px, auto",
   },
   toolbar: {
     position: "absolute",
@@ -337,9 +337,8 @@ const styles: Record<string, CSSProperties> = {
     // supplies the blur (with a more-opaque @supports fallback).
     background: "color-mix(in srgb, var(--surface-raised) 70%, transparent)",
     border: "1px solid transparent",
-    borderRadius: 13,
-    boxShadow:
-      "inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 12px 34px rgba(0, 0, 0, 0.42)",
+    borderRadius: "var(--radius-lg)",
+    boxShadow: "none",
     animation: "workbench-popover-in var(--motion-med)",
     transition: "opacity var(--motion-med)",
   },
@@ -377,7 +376,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "0 10px",
     scrollSnapAlign: "start",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
@@ -416,9 +415,9 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "0 8px",
     marginRight: 2,
-    borderRadius: "var(--radius-xs)",
-    background: "color-mix(in srgb, var(--accent-info) 16%, transparent)",
-    color: "var(--accent-info)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--accent-tint)",
+    color: "var(--accent)",
     fontFamily: "var(--font-ui)",
     fontSize: 11,
     whiteSpace: "nowrap",
@@ -430,7 +429,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     padding: "0 7px 0 8px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     color: "var(--accent-live)",
     fontFamily: "var(--font-ui)",
@@ -446,7 +445,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 7,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
@@ -465,7 +464,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     color: "var(--text-secondary)",
     cursor: "pointer",
@@ -483,9 +482,9 @@ const styles: Record<string, CSSProperties> = {
     gap: 2,
     padding: 4,
     background: "color-mix(in srgb, var(--surface-raised) 82%, transparent)",
-    border: "1px solid transparent",
+    border: "1px solid var(--border-strong)",
     borderRadius: "var(--radius-md)",
-    boxShadow: "var(--shadow-menu)",
+    boxShadow: "var(--elev-menu)",
     animation: "workbench-popover-in var(--motion-fast)",
   },
   tidyMenuItem: {
@@ -495,7 +494,7 @@ const styles: Record<string, CSSProperties> = {
     height: 30,
     padding: "0 9px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "transparent",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
@@ -517,9 +516,9 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     padding: "9px 10px",
     background: "color-mix(in srgb, var(--surface-raised) 94%, transparent)",
-    border: "1px solid transparent",
+    border: "1px solid var(--border-strong)",
     borderRadius: "var(--radius-md)",
-    boxShadow: "var(--shadow-menu)",
+    boxShadow: "var(--elev-menu)",
     animation: "workbench-popover-in var(--motion-med)",
     overflowY: "auto",
   },
@@ -542,10 +541,10 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     padding: "0 6px",
-    borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   agentLaneList: {
     display: "grid",
@@ -564,8 +563,8 @@ const styles: Record<string, CSSProperties> = {
     position: "fixed",
     zIndex: 30,
     border: "1px solid transparent",
-    background: "color-mix(in srgb, var(--accent-info) 13%, transparent)",
-    borderRadius: "var(--radius-xs)",
+    background: "color-mix(in srgb, var(--accent-fill) 18%, transparent)",
+    borderRadius: "var(--radius-sm)",
     pointerEvents: "none",
   },
   toolbarDivider: {
@@ -585,9 +584,9 @@ const styles: Record<string, CSSProperties> = {
     gap: 4,
     padding: 5,
     background: "color-mix(in srgb, var(--surface-raised) 94%, transparent)",
-    border: "1px solid transparent",
+    border: "1px solid var(--border-strong)",
     borderRadius: "var(--radius-md)",
-    boxShadow: "var(--shadow-menu)",
+    boxShadow: "var(--elev-menu)",
     animation: "workbench-popover-in var(--motion-med)",
   },
   zoomReadout: {
@@ -600,8 +599,8 @@ const styles: Record<string, CSSProperties> = {
   button: {
     height: 28,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
@@ -642,10 +641,10 @@ const styles: Record<string, CSSProperties> = {
     position: "absolute",
     display: "flex",
     flexDirection: "column",
-    background: "var(--surface-raised)",
-    border: "1px solid transparent",
-    borderRadius: "var(--radius-md)",
-    boxShadow: "var(--shadow-card)",
+    background: "var(--surface-panel)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "var(--radius-lg)",
+    boxShadow: "none",
     overflow: "visible",
     transition:
       "border-color var(--motion-med), box-shadow var(--motion-med), transform var(--motion-fast)",
@@ -656,9 +655,9 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 8,
     padding: "0 9px 0 11px",
-    borderBottom: "1px solid var(--border-subtle)",
+    borderBottom: "1px solid var(--border-default)",
     background:
-      "var(--surface-raised)" /* TF-015: solid, gradients repaint slowly in software */,
+      "var(--surface-panel)" /* TF-015: solid, gradients repaint slowly in software */,
     cursor: "grab",
     userSelect: "none",
   },
@@ -707,7 +706,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     marginTop: 1,
   },
   nodeTitleActivity: {
@@ -721,7 +720,7 @@ const styles: Record<string, CSSProperties> = {
   },
   nodeTitleActivityLabel: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
@@ -734,8 +733,8 @@ const styles: Record<string, CSSProperties> = {
     alignContent: "start",
     padding: "10px 11px 11px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "color-mix(in srgb, var(--surface-base) 72%, transparent)",
+    borderRadius: "var(--radius-md)",
+    background: "color-mix(in srgb, var(--surface-rail) 72%, transparent)",
     // Reserve the tallest header layout (kicker + task row + big title row) so
     // the block keeps ONE height no matter which rows the live status renders.
     // A header that grows or drops a line resizes the terminal underneath it,
@@ -773,7 +772,7 @@ const styles: Record<string, CSSProperties> = {
     height: 24,
     padding: "0 8px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "color-mix(in srgb, var(--accent-live) 12%, var(--surface-raised))",
     color: "var(--text-primary)",
     cursor: "pointer",
@@ -792,7 +791,7 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid transparent",
     fontSize: 11,
     fontWeight: 500,
-    letterSpacing: 0.2,
+    letterSpacing: 0,
     whiteSpace: "nowrap",
   },
   attentionDot: {
@@ -814,7 +813,7 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalTaskLabel: {
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     letterSpacing: 0,
     lineHeight: "16px",
@@ -872,8 +871,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "0 6px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
-    background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--surface-rail) 82%, transparent)",
     color: "var(--text-primary)",
     fontSize: 11,
     fontWeight: 500,
@@ -904,7 +903,7 @@ const styles: Record<string, CSSProperties> = {
   terminalNowActiveLabel: {
     ...({
       color: "var(--text-tertiary)",
-      fontSize: 10,
+      fontSize: 11,
       fontWeight: 500,
       letterSpacing: 0,
       lineHeight: "16px",
@@ -928,13 +927,12 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     height: 30,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-rail)",
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
     fontSize: 15,
     fontWeight: 500,
-    outline: "none",
     padding: "0 8px",
   },
   terminalStatusGrid: {
@@ -958,7 +956,7 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalStatusFieldLabel: {
     color: "color-mix(in srgb, var(--text-secondary) 62%, transparent)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     letterSpacing: 0,
   },
@@ -1002,7 +1000,7 @@ const styles: Record<string, CSSProperties> = {
   },
   agentStatusLabel: {
     color: "var(--text-tertiary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
@@ -1055,10 +1053,10 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "0 6px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
-    background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--surface-rail) 82%, transparent)",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -1084,7 +1082,7 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     gap: 8,
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
@@ -1110,7 +1108,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     overflow: "hidden",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   agentTaskNext: {
     minWidth: 0,
@@ -1123,7 +1121,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     padding: "0 6px",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "rgba(217, 154, 69, 0.12)",
     color: "var(--accent-live)",
     fontSize: 11,
@@ -1137,8 +1135,8 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     placeItems: "center",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
-    background: "color-mix(in srgb, var(--surface-base) 86%, transparent)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--surface-rail) 86%, transparent)",
     fontSize: 14,
     lineHeight: 1,
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
@@ -1153,7 +1151,7 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     placeItems: "center",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "color-mix(in srgb, var(--surface-raised) 94%, transparent)",
     fontSize: 21,
     lineHeight: 1,
@@ -1170,8 +1168,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     padding: "0 7px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     fontSize: 11,
     fontFamily: "var(--font-ui)",
@@ -1201,10 +1199,10 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateRows: "auto auto minmax(0, 1fr) auto",
     gap: 10,
     padding: 12,
-    border: "1px solid transparent",
-    borderRadius: "var(--radius-md)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-lg)",
     background: "color-mix(in srgb, var(--surface-raised) 97%, transparent)",
-    boxShadow: "var(--shadow-menu), inset 0 1px 0 rgba(255,255,255,0.05)",
+    boxShadow: "var(--elev-dialog)",
     transform: "translate(-50%, -50%)",
     animation: "workbench-popover-in var(--motion-med)",
     cursor: "default",
@@ -1240,8 +1238,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     padding: "0 7px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
-    background: "color-mix(in srgb, var(--surface-base) 86%, transparent)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--surface-rail) 86%, transparent)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -1260,8 +1258,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     padding: "0 10px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
   },
   taskPickerInput: {
@@ -1291,17 +1289,15 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     padding: "9px 10px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "color-mix(in srgb, var(--surface-base) 76%, transparent)",
+    borderRadius: "var(--radius-md)",
+    background: "color-mix(in srgb, var(--surface-rail) 76%, transparent)",
     color: "var(--text-secondary)",
     textAlign: "left",
     cursor: "pointer",
   },
   taskPickerRowActive: {
-    border:
-      "1px solid color-mix(in srgb, var(--accent-live) 48%, var(--border-subtle))",
-    background:
-      "color-mix(in srgb, var(--accent-live) 10%, var(--surface-base))",
+    border: "1px solid var(--accent-fill)",
+    background: "var(--accent-tint)",
   },
   taskPickerTaskId: {
     color: "var(--text-primary)",
@@ -1325,7 +1321,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
   },
   taskPickerStatus: {
     height: 22,
@@ -1334,9 +1330,9 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     padding: "0 7px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     color: "var(--text-primary)",
-    fontSize: 10,
+    fontSize: 11,
     whiteSpace: "nowrap",
   },
   taskPickerFooter: {
@@ -1353,7 +1349,7 @@ const styles: Record<string, CSSProperties> = {
   },
   taskPickerLabel: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
@@ -1362,10 +1358,9 @@ const styles: Record<string, CSSProperties> = {
     height: 30,
     minWidth: 0,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    outline: "none",
+    borderRadius: "var(--radius-md)",
     padding: "0 9px",
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     color: "var(--text-primary)",
     fontSize: 12,
   },
@@ -1383,18 +1378,16 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     padding: "0 10px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     fontSize: 12,
     cursor: "pointer",
   },
   taskPickerPrimaryButton: {
-    border:
-      "1px solid color-mix(in srgb, var(--accent-live) 52%, var(--border-subtle))",
-    background:
-      "color-mix(in srgb, var(--accent-live) 13%, var(--surface-base))",
-    color: "var(--accent-live)",
+    border: "1px solid var(--accent-fill)",
+    background: "var(--accent-tint)",
+    color: "var(--accent)",
   },
   taskPickerDangerButton: {
     border:
@@ -1407,7 +1400,7 @@ const styles: Record<string, CSSProperties> = {
     placeItems: "center",
     padding: 18,
     border: "1px dashed var(--border-subtle)",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     color: "var(--text-secondary)",
     fontSize: 12,
     textAlign: "center",
@@ -1434,7 +1427,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     padding: 8,
     background:
-      "color-mix(in srgb, var(--surface-raised) 88%, var(--surface-base))",
+      "color-mix(in srgb, var(--surface-raised) 88%, var(--surface-rail))",
   },
   noteTextarea: {
     width: "100%",
@@ -1442,9 +1435,8 @@ const styles: Record<string, CSSProperties> = {
     resize: "none",
     padding: "7px 8px",
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    outline: "none",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-md)",
+    background: "var(--surface-rail)",
     color: "var(--text-primary)",
     font: "inherit",
     fontSize: 13,
@@ -1501,7 +1493,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 9,
     padding: "11px 11px 12px 13px",
     borderLeft: "1px solid var(--border-subtle)",
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     overflow: "hidden",
@@ -1521,7 +1513,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "12px 6px",
     border: "none",
     borderLeft: "1px solid var(--border-subtle)",
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     cursor: "pointer",
@@ -1531,7 +1523,7 @@ const styles: Record<string, CSSProperties> = {
     writingMode: "vertical-rl",
     textTransform: "uppercase",
     color: "var(--text-primary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     letterSpacing: 0,
   },
@@ -1542,8 +1534,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,
-    background:
-      "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+    background: "var(--accent-tint)",
     color: "var(--text-primary)",
     fontSize: 11,
     fontWeight: 500,
@@ -1551,7 +1542,7 @@ const styles: Record<string, CSSProperties> = {
   terminalBodyTaskRailMeta: {
     writingMode: "vertical-rl",
     color: "var(--text-tertiary)",
-    fontSize: 9,
+    fontSize: 11,
     lineHeight: 1,
     whiteSpace: "nowrap",
   },
@@ -1605,7 +1596,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "color-mix(in srgb, var(--text-secondary) 70%, transparent)",
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: 500,
   },
   liveTerminalBody: {
@@ -1644,7 +1635,7 @@ const styles: Record<string, CSSProperties> = {
   },
   agentMissionLabel: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0,
     textTransform: "uppercase",
   },
@@ -1679,20 +1670,19 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: 58,
     resize: "vertical",
     padding: "7px 8px",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     border: "1px solid transparent",
-    outline: "none",
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     color: "var(--text-primary)",
     font: "inherit",
     fontSize: 11,
   },
   agentComposerButton: {
     width: 34,
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     border: "1px solid transparent",
-    background: "var(--accent-live)",
-    color: "#08100c",
+    background: "var(--accent-fill)",
+    color: "var(--surface-base)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1713,7 +1703,7 @@ const styles: Record<string, CSSProperties> = {
   agentDetailsSummary: {
     cursor: "pointer",
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     textTransform: "uppercase",
     userSelect: "none",
   },
@@ -1732,25 +1722,25 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gap: 2,
     padding: "6px 7px",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     border: "1px solid transparent",
-    background: "color-mix(in srgb, var(--surface-base) 86%, transparent)",
+    background: "color-mix(in srgb, var(--surface-rail) 86%, transparent)",
   },
   agentProviderCell: {
     minWidth: 0,
     display: "grid",
     gap: 2,
     padding: "6px 7px",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     border: "1px solid transparent",
-    background: "color-mix(in srgb, var(--surface-base) 88%, transparent)",
+    background: "color-mix(in srgb, var(--surface-rail) 88%, transparent)",
   },
   agentProviderCellLabel: {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 9,
+    fontSize: 11,
     textTransform: "uppercase",
   },
   agentProviderCellValue: {
@@ -1767,9 +1757,9 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     padding: "0 8px",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     border: "1px solid transparent",
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
     color: "var(--accent-live)",
     fontSize: 11,
     textTransform: "uppercase",
@@ -1786,9 +1776,9 @@ const styles: Record<string, CSSProperties> = {
     alignContent: "start",
     gap: 2,
     padding: "6px 7px",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     border: "1px solid transparent",
-    background: "color-mix(in srgb, var(--surface-base) 92%, transparent)",
+    background: "color-mix(in srgb, var(--surface-rail) 92%, transparent)",
   },
   agentEventTop: {
     display: "flex",
@@ -1802,12 +1792,12 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--accent-live)",
-    fontSize: 10,
+    fontSize: 11,
     textTransform: "uppercase",
   },
   agentEventTime: {
     color: "var(--text-secondary)",
-    fontSize: 10,
+    fontSize: 11,
     flexShrink: 0,
   },
   agentEventLabel: {
@@ -1840,7 +1830,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     padding: 12,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background:
       "linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px), linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), rgba(0,0,0,0.18)",
     backgroundSize: "28px 28px",
@@ -1871,7 +1861,7 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "center",
     gap: 7,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
@@ -1940,7 +1930,7 @@ const styles: Record<string, CSSProperties> = {
     alignContent: "start",
     gap: 8,
     padding: 13,
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "rgba(255,255,255,0.025)",
     border: "1px solid transparent",
   },
@@ -2020,20 +2010,20 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-mono)",
-    fontSize: 10,
+    fontSize: 11,
   },
   terminalMapPreviewStatus: {
     minWidth: 0,
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     textTransform: "uppercase",
   },
   terminalMapPreviewBody: {
     minHeight: 0,
     display: "block",
     padding: "6px 7px",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "#101416",
   border: "1px solid transparent",
     overflow: "hidden",
@@ -2044,7 +2034,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     whiteSpace: "pre",
     fontFamily: "var(--font-mono)",
-    fontSize: 8,
+    fontSize: 11,
     lineHeight: "8px",
     letterSpacing: 0,
   },
@@ -2058,7 +2048,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
   },
   closeButton: {
     border: "none",
@@ -2075,9 +2065,9 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
-    height: 22,
-    minWidth: 22,
-    borderRadius: "var(--radius-sm)",
+    height: 24,
+    minWidth: 24,
+    borderRadius: "var(--radius-md)",
     padding: "0 5px",
     transition:
       "background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast)",
@@ -2091,7 +2081,7 @@ const styles: Record<string, CSSProperties> = {
     height: 14,
     border: "1px solid transparent",
     borderRadius: 3,
-    background: "var(--surface-base)",
+    background: "var(--surface-rail)",
   },
   edgeHandle: {
     background: "transparent",
@@ -2319,9 +2309,9 @@ function TerminalBodyTaskSidebar({
             <div
               style={{
                 color: "var(--text-tertiary)",
-                fontSize: 9,
+                fontSize: 11,
                 textTransform: "uppercase",
-                letterSpacing: 0.4,
+                letterSpacing: 0,
               }}
             >
               Recent activity
@@ -2353,7 +2343,7 @@ function TerminalBodyTaskSidebar({
                   style={{
                     flexShrink: 0,
                     color: "var(--text-tertiary)",
-                    fontSize: 9,
+                    fontSize: 11,
                   }}
                 >
                   {activityAgo(entry.at)}
@@ -2392,7 +2382,7 @@ function TerminalBodyTaskSidebar({
                     ...styles.terminalBodyTaskMarker,
                     background: done
                       ? "var(--accent-live)"
-                      : "color-mix(in srgb, var(--surface-base) 90%, transparent)",
+                      : "color-mix(in srgb, var(--surface-rail) 90%, transparent)",
                   }}
                   aria-hidden="true"
                 />
@@ -2794,7 +2784,7 @@ function CanvasNodeViewImpl({
     ? {
         padding: "8px 10px",
         border: `1px solid color-mix(in srgb, ${labelColor} 30%, var(--border-subtle))`,
-        borderRadius: "var(--radius-sm)",
+        borderRadius: "var(--radius-md)",
         background: `linear-gradient(90deg, color-mix(in srgb, ${labelColor} 15%, transparent), color-mix(in srgb, ${labelColor} 4%, transparent))`,
         boxShadow: "inset 0 1px 0 color-mix(in srgb, #ffffff 5%, transparent)",
       }
@@ -4219,7 +4209,9 @@ function CanvasNodeViewImpl({
             terminalId: currentTerminal.id,
             threw: reason,
           });
-          setCanvasNotice(`Could not reconnect the saved chat: ${reason}`);
+          // Calm one-liner in the card; the raw reason goes to the console.
+          console.warn("Could not reconnect the saved chat:", reason);
+          setCanvasNotice("Could not reconnect the saved chat. Try Connect terminal again.");
         });
     }
     let attempts = 0;
@@ -4667,14 +4659,10 @@ function CanvasNodeViewImpl({
             : selected
               ? 15
               : 1,
-        border: panelColor
-          ? `1px solid color-mix(in srgb, ${panelColor} 42%, transparent)`
-          : selected
-            ? "1px solid var(--border-focus)"
-            : styles.node.border,
-        boxShadow: selected
-          ? "var(--shadow-active-pane)"
-          : styles.node.boxShadow,
+        border: selected
+          ? "1px solid var(--accent-fill)"
+          : styles.node.border,
+        boxShadow: "none",
       }}
       onMouseDown={(event) => {
         if (event.button === 1) {
@@ -4729,6 +4717,12 @@ function CanvasNodeViewImpl({
             ? styles.terminalNodeHeader
             : null),
           ...(agentStatusSummary ? styles.agentNodeHeader : null),
+          // Identity colour is a 7% solid wash on the header (not an edge, not a gradient).
+          ...(panelColor
+            ? {
+                background: `color-mix(in srgb, ${panelColor} var(--identity-wash-pct), var(--surface-panel))`,
+              }
+            : null),
         }}
         onMouseDown={(event) => {
           if (event.button === 1) {
@@ -4886,7 +4880,7 @@ function CanvasNodeViewImpl({
                   style={{
                     marginLeft: 8,
                     fontSize: 11,
-                    color: "var(--text-warning, #d9a441)",
+                    color: "var(--text-secondary)",
                     maxWidth: 320,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -5084,7 +5078,7 @@ function CanvasNodeViewImpl({
                     style={{
                       marginLeft: 8,
                       fontSize: 11,
-                      color: "var(--text-warning, #d9a441)",
+                      color: "var(--text-secondary)",
                       maxWidth: 320,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -5128,7 +5122,9 @@ function CanvasNodeViewImpl({
                     data-testid="canvas-terminal-node-description"
                     style={{
                       ...styles.terminalContextValue,
-                      color: labelColor ?? "var(--text-primary)",
+                      color:
+                        labelColor ??
+                        (terminalHeaderTaskCaptured ? "var(--text-primary)" : "var(--text-tertiary)"),
                     }}
                   >
                     {stabilizedTerminalHeaderTask}
@@ -5556,7 +5552,7 @@ function CanvasNodeViewImpl({
                 void copyPaneLastReply(terminalPaneId).then((outcome) => {
                   button.title = labels[outcome];
                   button.style.color =
-                    outcome === "copied" ? "var(--accent-success)" : "var(--accent-warning)";
+                    outcome === "copied" ? "var(--state-running)" : "var(--text-secondary)";
                   window.setTimeout(() => {
                     button.title = "Copy last reply";
                     button.style.color = "";
@@ -5766,7 +5762,7 @@ function CanvasNodeViewImpl({
                         <span
                           style={{
                             ...styles.taskPickerStatus,
-                            background: `color-mix(in srgb, ${taskStatusColor(task.status)} 14%, var(--surface-base))`,
+                            background: `color-mix(in srgb, ${taskStatusColor(task.status)} 14%, var(--surface-rail))`,
                           }}
                         >
                           <span
@@ -10350,8 +10346,8 @@ export function MagicCanvas() {
               padding: 5,
               background: "var(--surface-raised)",
               borderRadius: "var(--radius-md)",
-              boxShadow: "var(--shadow-menu)",
-              border: "none",
+              boxShadow: "var(--elev-menu)",
+              border: "1px solid var(--border-strong)",
             }}
           >
             {[
@@ -10401,7 +10397,7 @@ export function MagicCanvas() {
                   gap: 9,
                   padding: "9px 10px",
                   border: "none",
-                  borderRadius: "var(--radius-sm)",
+                  borderRadius: "var(--radius-md)",
                   background: "transparent",
                   color: "var(--text-primary)",
                   fontFamily: "var(--font-ui)",
@@ -10444,8 +10440,8 @@ export function MagicCanvas() {
               padding: 6,
               background: "var(--surface-raised)",
               borderRadius: "var(--radius-md)",
-              boxShadow: "var(--shadow-menu)",
-              border: "none",
+              boxShadow: "var(--elev-menu)",
+              border: "1px solid var(--border-strong)",
             }}
           >
             {resolvedLabelMenuReconnectProvider && (
@@ -10455,9 +10451,9 @@ export function MagicCanvas() {
                     padding: "7px 9px 4px",
                     color: "var(--text-tertiary)",
                     fontFamily: "var(--font-ui)",
-                    fontSize: 10,
+                    fontSize: 11,
     fontWeight: 500,
-                    letterSpacing: "0.04em",
+                    letterSpacing: "var(--label-caps-tracking)",
                     textTransform: "uppercase",
                   }}
                 >
@@ -10480,7 +10476,7 @@ export function MagicCanvas() {
                     gap: 9,
                     padding: "9px",
                     border: "none",
-                    borderRadius: "var(--radius-sm)",
+                    borderRadius: "var(--radius-md)",
                     background: resolvedLabelMenuReconnectTarget
                       ? "color-mix(in srgb, var(--accent-info) 12%, transparent)"
                       : "transparent",
@@ -10514,7 +10510,7 @@ export function MagicCanvas() {
                     <span
                       style={{
                         color: "var(--text-tertiary)",
-                        fontSize: 10,
+                        fontSize: 11,
                       }}
                     >
                       {labelMenuRecoveryLoading
@@ -10547,7 +10543,7 @@ export function MagicCanvas() {
                   gap: 9,
                   padding: "8px 9px",
                   border: "none",
-                  borderRadius: "var(--radius-sm)",
+                  borderRadius: "var(--radius-md)",
                   background: "transparent",
                   color: "var(--text-primary)",
                   fontFamily: "var(--font-ui)",
@@ -10579,7 +10575,7 @@ export function MagicCanvas() {
                     width: 13,
                     height: 13,
                     borderRadius: 4,
-                    background: item.value ?? "var(--surface-base)",
+                    background: item.value ?? "var(--surface-rail)",
                     boxShadow: item.value
                       ? "inset 0 0 0 1px color-mix(in srgb, #ffffff 20%, transparent)"
                       : "inset 0 0 0 1px var(--border-subtle)",

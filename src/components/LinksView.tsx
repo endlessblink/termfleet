@@ -1,5 +1,6 @@
 import { CSSProperties, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceStore } from "../stores/workspace";
+import { processStatusColor } from "../lib/agentState";
 import { pathTail } from "../lib/projectDisplay";
 import type { OpenFile, Tab, TerminalRuntimeStatus } from "../lib/types";
 
@@ -32,12 +33,12 @@ interface SessionView {
 }
 
 const statusTone: Record<TerminalRuntimeStatus, string> = {
-  starting: "var(--accent-warning)",
-  running: "var(--accent-positive, #5fb878)",
-  reconnected: "var(--accent-positive, #5fb878)",
-  stale: "var(--text-tertiary, #8a8f93)",
-  failed: "var(--accent-danger, #d96b6b)",
-  exited: "var(--text-tertiary, #8a8f93)",
+  starting: processStatusColor("starting"),
+  running: processStatusColor("running"),
+  reconnected: processStatusColor("reconnected"),
+  stale: processStatusColor("stale"),
+  failed: processStatusColor("failed"),
+  exited: processStatusColor("exited"),
 };
 
 function sessionStatus(tab: Tab): { tone: string; label: string } {
@@ -217,7 +218,7 @@ export function LinksView() {
               <span
                 style={{
                   ...styles.projectDot,
-                  background: project.color ?? "var(--accent-primary, #d99a45)",
+                  background: project.color ?? "var(--accent-primary)",
                 }}
               />
               <div style={styles.cardText}>
@@ -314,7 +315,7 @@ const cardBase: CSSProperties = {
   alignItems: "center",
   gap: 10,
   padding: "10px 12px",
-  borderRadius: "var(--radius-md, 10px)",
+  borderRadius: "var(--radius-lg, 10px)",
     border: "1px solid transparent",
   background: "var(--surface-raised)",
   boxShadow: "var(--shadow-card)",
@@ -364,7 +365,7 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 2,
   },
   subLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     letterSpacing: 0,
     textTransform: "uppercase",
@@ -387,7 +388,7 @@ const styles: Record<string, CSSProperties> = {
   },
   sessionCardActive: {
     border: "1px solid transparent",
-    boxShadow: "0 0 0 1px var(--accent-primary, #d99a45), var(--shadow-card)",
+    boxShadow: "0 0 0 1px var(--accent-primary), var(--shadow-card)",
   },
   sessionEmoji: {
     fontSize: 16,
@@ -427,7 +428,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "50%",
   },
   statusLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: "var(--text-tertiary, #8a8f93)",
   },
   dirtyDot: {

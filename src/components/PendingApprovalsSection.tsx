@@ -58,11 +58,11 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     padding: "1px 6px",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "rgba(212, 164, 79, 0.16)",
     color: "var(--accent-warning)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     whiteSpace: "nowrap",
   },
@@ -70,15 +70,15 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     padding: 0,
+    flexShrink: 0,
     border: "1px solid transparent",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "transparent",
     color: "var(--text-secondary)",
     cursor: "pointer",
-    outline: "none",
     transition: "background var(--motion-fast), color var(--motion-fast)",
   },
   collapsedSummary: {
@@ -86,9 +86,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "6px 8px",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "var(--surface-raised)",
-    borderLeft: "2px solid var(--accent-warning)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     fontSize: 11,
@@ -100,7 +99,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 7,
     padding: "6px 9px",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "var(--surface-raised)",
     color: "var(--text-tertiary)",
     fontFamily: "var(--font-ui)",
@@ -118,14 +117,13 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     gap: 6,
     padding: "9px 11px",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
-    borderLeft: "3px solid var(--accent-warning)",
+    borderLeft: "1px solid transparent",
     borderTop: "1px solid transparent",
     borderRight: "1px solid transparent",
     borderBottom: "1px solid transparent",
     cursor: "pointer",
-    outline: "none",
     transition: "background var(--motion-fast), transform var(--motion-fast)",
     textAlign: "left",
     boxSizing: "border-box",
@@ -163,11 +161,11 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 3,
     padding: "1px 5px",
-    borderRadius: "var(--radius-xs)",
+    borderRadius: "var(--radius-sm)",
     background: "rgba(212, 164, 79, 0.12)",
     color: "var(--accent-warning)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     flexShrink: 0,
   },
@@ -215,23 +213,23 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     color: "var(--text-tertiary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 400,
   },
   actionButton: {
     display: "inline-flex",
     alignItems: "center",
     gap: 4,
+    minHeight: 24,
     padding: "2px 7px",
-    borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-rail)",
     border: "1px solid transparent",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     cursor: "pointer",
-    outline: "none",
     transition: "background var(--motion-fast), color var(--motion-fast)",
     whiteSpace: "nowrap",
   },
@@ -328,7 +326,7 @@ export function PendingApprovalsSection({
           <button
             type="button"
             data-testid="map-pending-approvals-approve-all"
-            style={{ ...styles.actionButton, color: "var(--accent-warning)", marginLeft: "auto" }}
+            style={{ ...styles.actionButton, color: "var(--state-waiting)", background: "transparent", marginLeft: "auto" }}
             onClick={() => setApproveAllOpen(true)}
             title="Review and approve every waiting request (Ctrl+Shift+A)"
           >
@@ -373,7 +371,7 @@ export function PendingApprovalsSection({
           <span
             style={{
               color: hasApprovals ? "var(--accent-warning)" : "var(--text-tertiary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 500,
             }}
           >
@@ -450,7 +448,7 @@ export function PendingApprovalsSection({
                     data-testid="pending-approval-jump"
                     style={{
                       ...styles.actionButton,
-                      background: isHovered ? "var(--surface-selected)" : "var(--surface-base)",
+                      background: isHovered ? "var(--surface-selected)" : "var(--surface-rail)",
                       color: isHovered ? "var(--text-primary)" : "var(--text-secondary)",
                     }}
                     onClick={(e) => {

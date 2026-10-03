@@ -64,7 +64,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: "auto",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
-    fontFamily: "monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: 12,
     userSelect: "text",
     cursor: "text",

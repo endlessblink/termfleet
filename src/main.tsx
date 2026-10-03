@@ -9,11 +9,28 @@ import { markStartupRestoring } from "./lib/startupScreen";
 import { installRendererStallTelemetry } from "./lib/rendererStallTelemetry";
 import "./styles/global.css";
 
-markStartupRestoring();
-installRendererStallTelemetry();
+const rootElement = document.getElementById("root")!;
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+if (import.meta.env.DEV && window.location.hash === "#ui-gallery") {
+  // Dev-only primitives gallery (design step 1.5): dynamic import keeps it out of
+  // the production bundle, and it never touches the workspace or the daemon.
+  rootElement.removeAttribute("inert");
+  rootElement.removeAttribute("aria-hidden");
+  document.getElementById("termfleet-startup")?.remove();
+  void import("./ui/Gallery").then(({ default: Gallery }) => {
+    ReactDOM.createRoot(rootElement).render(
+      <React.StrictMode>
+        <Gallery />
+      </React.StrictMode>
+    );
+  });
+} else {
+  markStartupRestoring();
+  installRendererStallTelemetry();
+
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}

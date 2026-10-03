@@ -21,7 +21,7 @@ import { createAgentWorkstream, createAgentWorkstreamRunId, currentAgentWorkstre
 import { promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 
 const styles = {
-  shell: { height: "100%", display: "flex", flexDirection: "column" as const, minWidth: 0, background: "var(--surface-base)" },
+  shell: { height: "100%", display: "flex", flexDirection: "column" as const, minWidth: 0, background: "var(--surface-rail)" },
   toolbar: { display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 12, alignItems: "center", padding: "16px 18px 12px", borderBottom: "1px solid var(--border-subtle)" },
   controls: { display: "flex", gap: 8, alignItems: "center", padding: "0 18px 12px", flexWrap: "wrap" as const },
   input: { flex: 1, minWidth: 220, height: 34, border: "none", borderRadius: 6, background: "var(--surface-sunken)", color: "var(--text-primary)", padding: "0 10px", boxShadow: "inset 0 0 0 1px var(--border-subtle)" },
@@ -93,7 +93,7 @@ function TaskDetail({ task, runs, onClose, onStatus, onRefresh, onLaunch }: { ta
       <label style={{ display: "grid", gap: 5, fontSize: 11, color: "var(--text-secondary)" }}>Status
         <select aria-label="Task status" style={styles.select} value={task.status} onChange={(event) => onStatus(event.target.value as CanonicalTaskStatus)}>{BOARD_STATUSES.map((status) => <option key={status} value={status}>{displayStatus(status)}</option>)}</select>
       </label>
-      {task.status !== "DONE" && <button type="button" style={{ ...styles.button, justifyContent: "center", background: "var(--accent-live)", color: "var(--surface-base)" }} onClick={onLaunch}><Play size={14} weight="fill" /> Launch agent</button>}
+      {task.status !== "DONE" && <button type="button" style={{ ...styles.button, justifyContent: "center", background: "var(--accent-live)", color: "var(--surface-rail)" }} onClick={onLaunch}><Play size={14} weight="fill" /> Launch agent</button>}
     </div>
     {run && <section className="canonical-session-summary" aria-label="Live session progress" style={{ display: "grid", gap: 7, padding: 10, marginBottom: 14, background: "var(--surface-sunken)" }}><strong><Play size={12} weight="fill" /> Execution</strong><span>{taskRunLabel(health)} · {run.agent}</span><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" style={styles.button} onClick={() => { void navigator.clipboard?.writeText(run.runId); }}>Copy ID</button><button type="button" style={styles.button} onClick={onRefresh}>Refresh</button>{["running-and-progressing", "running-but-idle", "waiting-for-input"].includes(health) && <button type="button" style={{ ...styles.button, color: "var(--accent-danger)" }} onClick={stop}>Stop</button>}</div></section>}
     {!run && <p style={{ color: "var(--text-secondary)", fontSize: 12 }}>No linked run evidence. This task is not presented as currently running.</p>}

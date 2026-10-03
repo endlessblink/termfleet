@@ -1,0 +1,22 @@
+/* Dev-only gallery (#ui-gallery). Forces the hover / active / focus looks so every
+   state of every primitive can be reviewed at once. Not part of the production bundle. */
+.tf-gallery { padding: 24px 32px; background: var(--surface-base); color: var(--text-1); font-family: var(--font-ui); min-height: 100vh; }
+.tf-gallery h1 { margin: 0 0 4px; font-size: var(--font-size-xl); font-weight: var(--font-weight-medium); }
+.tf-gallery h2 { margin: 24px 0 8px; }
+.tf-gallery__accents { display: flex; gap: 8px; margin: 12px 0 8px; }
+.tf-gallery__row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 0; }
+.tf-gallery__cell { display: grid; gap: 4px; justify-items: start; }
+.tf-gallery__cell > small { color: var(--text-3); font-size: var(--font-size-xs); }
+.tf-gallery__panel { background: var(--surface-sidebar); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 12px; width: 277px; }
+
+[data-force="focus"] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+.tf-btn[data-force="hover"] { background: var(--surface-hover); color: var(--text-1); }
+.tf-btn[data-force="active"] { background: var(--surface-selected); color: var(--text-1); }
+.tf-btn--outlined[data-force="hover"] { background: var(--surface-hover); }
+.tf-btn--primary[data-force="hover"] { background: var(--accent); color: var(--surface-base); }
+.tf-btn--primary[data-force="active"] { background: var(--accent-hi); color: var(--surface-base); }
+.tf-btn--warn[data-force="hover"] { filter: brightness(1.08); background: var(--state-waiting); color: var(--surface-base); }
+.tf-icon-btn[data-force="hover"] { background: var(--surface-hover); color: var(--text-1); }
+.tf-row[data-force="hover"] { background: var(--surface-raised); color: var(--text-1); }
+.tf-row[data-force="hover"] .tf-row__actions { opacity: 1; }
+.tf-menu__item[data-force="hover"] { background: var(--surface-hover); }

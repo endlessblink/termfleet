@@ -1,191 +1,258 @@
+/* ===========================================================================
+   TermFleet — muted near-black theme. SINGLE SOURCE for the new palette.
+   Paste as the new top section of src/styles/theme.css (see IMPLEMENTATION_PROMPT.md, Phase 1).
+   Every value comes from mocks/src/muted-tokens.json, mocks/src/build_mocks.py / build_surfaces.py
+   or the design review (§c.1–c.3). Items marked (derived) are NOT shown in the mocks.
+   Accent variant: set  <html data-accent="A|B|C">  in index.html. Default A (slate).
+   =========================================================================== */
 :root {
   color-scheme: dark;
 
-  --bg: #222628;
-  --bg-dark: #1c2022;
-  --bg-elevated: #292e31;
-  --bg-highlight: #343a3e;
-  --fg: #e0e4e7;
-  --fg-dark: #9ba3a8;
-  --fg-gutter: #717a80;
-  --border: #343a3e;
-  --border-soft: #292f33;
-  --canvas-grid: rgba(132, 145, 153, 0.055);
-  --canvas-grid-soft: rgba(132, 145, 153, 0.032);
-  --selection-bg: #203149;
-  --comment: #7c8796;
+  /* ---- Surfaces (neutral ladder, identical for A/B/C) ---- */
+  --surface-base:     #0a0a0b; /* app floor AND terminal background (no seam) */
+  --surface-chrome:   #0d0d0e; /* header, rail, status bar */
+  --surface-sidebar:  #101012; /* sidebars, git-monitor cards, input wells */
+  --surface-panel:    #131315; /* pane frame, map node, task card, git page */
+  --surface-raised:   #1a1a1d; /* chips, fields, buttons, menus, dialogs */
+  --surface-hover:    #202023; /* hover row / hover control */
+  --surface-selected: #28282c; /* selected row (+ 2px accent edge) */
+  --scrim:            rgba(0, 0, 0, 0.62); /* behind dialogs (mock .scrim) */
 
-  /* Accent colors */
-  --blue: #6ea8fe;
-  --cyan: #7dbac3;
-  --green: #7fc681;
-  --magenta: #ad8fcb;
-  --red: #ef6f72;
-  --yellow: #d4a44f;
-  --orange: #d99046;
-  --live: #d99a45;
-  --live-muted: rgba(217, 154, 69, 0.16);
-  --success-muted: rgba(127, 198, 129, 0.14);
-  --danger-muted: rgba(239, 111, 114, 0.15);
+  /* ---- Borders ---- */
+  --border-default: #2a2a2e; /* hairline, decorative only (1.38:1 vs base) */
+  --border-strong:  #46464b; /* kbd, menus, dialogs, open card (2.11:1) */
+  --border-control: #74747b; /* fields, outlined buttons, unselected indicators (4.27:1 vs base) */
 
-  /* UI mapping */
-  --tab-bg: var(--bg-dark);
-  --tab-active-bg: #181c22;
-  --tab-hover-bg: #1f242b;
-  --sidebar-bg: #22272a;
-  --sidebar-width: 276px;
-  --canvas-sidebar-width: 232px;
-  --canvas-sidebar-bg: var(--surface-base);
-  --canvas-sidebar-header-bg: var(--surface-raised);
-  --canvas-sidebar-border: var(--border-subtle);
-  --canvas-sidebar-row-selected: rgba(217, 154, 69, 0.16);
-  --canvas-terminal-icon: #d99a45;
-  --canvas-file-icon: #7fc681;
-  --canvas-note-icon: #8aa0b8;
-  --canvas-node-icon-fg: #101319;
-  --statusbar-bg: var(--bg-dark);
-  --statusbar-fg: var(--fg-dark);
+  /* ---- Text tiers ---- */
+  --text-1:        #ececee; /* primary */
+  --text-2:        #a1a1a8; /* secondary */
+  --text-3:        #8a8a91; /* tertiary — inside selected rows rebind to --text-2 (4.28:1 < 4.5) */
+  --text-disabled: #5d5d63; /* never carries information */
+
+  /* ---- Accent: variant A (slate) is the default ---- */
+  --accent:      #85a1c5; /* text, links, caret, active icon */
+  --accent-hi:   #9db7d8; /* link hover / pressed */
+  --accent-fill: #7188a6; /* focus ring, selected edge, active indicator, active pane border */
+  --accent-tint: #1e2127; /* selection wash / active chip background */
+
+  /* ---- Agent state (shared by A/B/C). Always pair with glyph + label, never colour alone ---- */
+  --state-running: #93bda1; /* filled circle  — "Running" */
+  --state-waiting: #dcb875; /* diamond        — "Waiting for you" (the ONLY amber in the app) */
+  --state-idle:    #8a8a91; /* hollow ring    — "Idle" */
+  --state-failed:  #d88383; /* triangle       — "Failed" */
+  --state-done:    #81b6b8; /* check          — "Done" */
+  /* status pill = 14% tint fill + 45% border of the state colour, 999px radius, 11px/500 */
+  --pill-tint-pct:   14%;
+  --pill-border-pct: 45%;
+
+  /* ---- Identity colours (project/group edge on pane + node headers; muted, not accent, not status) ---- */
+  --identity-1: #86979c; /* default group, used for the 7% header wash in the mocks */
+  --identity-2: #98a08a;
+  --identity-3: #9a95a8;
+  --identity-4: #a39a86;
+  --identity-5: #8b9aa8;
+  --identity-6: #a68f94;  /* (identity-2..6 = swatches in the mock "Terminal settings" popover) */
+  --identity-wash-pct: 7%; /* header = color-mix(in srgb, <identity> 7%, var(--surface-panel)) */
+
+  /* ---- Terminal ANSI (on --surface-base). Only these 8 are defined by the design; brights reuse them (gap) ---- */
+  --ansi-black:   #0a0a0b; /* (derived) = terminal bg */
+  --ansi-red:     #d88383;
+  --ansi-green:   #93bda1;
+  --ansi-yellow:  #dcb875;
+  --ansi-blue:    #89afd6;
+  --ansi-magenta: #c59bc0;
+  --ansi-cyan:    #81b6b8;
+  --ansi-white:   #ececee;
+  --ansi-bright-black: #8a8a91; /* was #667383 (3.39:1) -> 5.77:1 */
+  --terminal-bg:        var(--surface-base);
+  --terminal-fg:        var(--text-1);
+  --terminal-cursor:    var(--text-1);       /* block caret, mock .cur 7x14 */
+  --terminal-selection-bg: var(--accent-tint);
+  --diff-add-bg: color-mix(in srgb, var(--state-running) 14%, transparent);
+  --diff-del-bg: color-mix(in srgb, var(--state-failed) 14%, transparent);
+
+  /* ---- Radii (mock scale) ---- */
+  --radius-xs: 4px;    /* kbd, pane toolbar buttons, tags */
+  --radius-sm: 6px;    /* chips, small buttons, "Copy panes", status-bar chips */
+  --radius-md: 8px;    /* rows, fields, search, buttons, popover/palette */
+  --radius-lg: 12px;   /* pane frame, map node, dialog, git cards */
+  --radius-pill: 999px;/* status pills, progress bar */
+
+  /* ---- Spacing scale (px) ---- */
+  --space-2: 2px; --space-4: 4px; --space-6: 6px; --space-8: 8px;
+  --space-12: 12px; --space-16: 16px; --space-24: 24px; --space-32: 32px;
+
+  /* ---- Type ---- */
+  --font-ui:   "Rubik", "Segoe UI", "Cantarell", "Noto Sans", sans-serif;
+  --font-mono: "Hack", "DejaVu Sans Mono", monospace;       /* terminal AND data tier (paths, branches, ids, counters) */
+  --font-size-xs: 11px; --line-xs: 14px;  /* FLOOR: nothing below 11px */
+  --font-size-sm: 12px; --line-sm: 16px;
+  --font-size-md: 13px; --line-md: 18px;
+  --font-size-base: 14px; --line-base: 20px;
+  --font-size-lg: 16px; --line-lg: 22px;
+  --font-size-xl: 20px; --line-xl: 26px;
+  --font-size-display: 28px; --line-display: 34px; /* (mock-derived) git-monitor h1 only; real app is 44px */
+  --font-size-term: 12.5px; --line-term: 18.5px;   /* (mock-derived) terminal text in panes */
+  --font-weight-regular: 400; --font-weight-medium: 500; /* only two weights */
+  --label-caps-size: 11px; --label-caps-tracking: 0.04em; /* the ONE uppercase style (section labels, provider badges) */
+
+  /* ---- Controls & layout ---- */
+  --control-sm: 24px; --control-md: 28px; --control-lg: 32px; /* min hit area 24x24 via ::after expansion */
+  --commandbar-height: 44px;
   --statusbar-height: 24px;
+  --rail-width: 40px;
+  --operations-sidebar-width: 276px; /* 277px measured incl. border */
+  --pane-header-height: 72px;        /* real pane header; mock 72px */
+  --row-height-session: 54px;
+  --explorer-width: 268px;
 
-  /* Explorer design tokens */
-  --explorer-bg: #202528;
-  --explorer-titlebar-bg: #242a2d;
-  --explorer-rootbar-bg: #202528;
-  --explorer-footer-bg: #22272a;
-  --explorer-border: #343b40;
-  --explorer-fg: var(--text-primary);
-  --explorer-title-fg: var(--text-primary);
-  --explorer-root-fg: var(--text-primary);
-  --explorer-muted: var(--text-secondary);
-  --explorer-hidden: #7b8491;
-  --explorer-chevron: var(--text-secondary);
-  --explorer-row-hover: #30373b;
-  --explorer-row-selected: rgba(255, 255, 255, 0.06);
-  --explorer-root-row-bg: #30373b;
-  --explorer-input-bg: #171b1d;
-  --explorer-input-border: var(--border-subtle);
-  --explorer-input-fg: var(--text-primary);
-  --explorer-menu-bg: var(--surface-raised);
-  --explorer-menu-shadow: var(--shadow-menu);
-  --explorer-workspace: #d39a4a;
-  --explorer-workspace-tab: #edbc71;
-  --explorer-workspace-shade: #8b632e;
-  --explorer-folder: #8aa0b8;
-  --explorer-folder-tab: #aab8c7;
-  --explorer-folder-shade: #5c6e82;
-  --explorer-folder-open-bg: rgba(217, 154, 69, 0.12);
-  --explorer-file: #b8c4d6;
-  --explorer-file-js: #f2d351;
-  --explorer-file-md: #72a7ff;
-  --explorer-file-data: #d99a52;
-  --explorer-file-code: #65c98d;
-  --explorer-file-style: #c586ff;
-  --explorer-file-markup: #ef766f;
-  --explorer-icon-label: #111419;
-  --explorer-titlebar-height: 32px;
-  --explorer-footer-height: 30px;
-  --explorer-input-height: 24px;
-  --explorer-title-size: 13px;
-  --explorer-title-weight: var(--font-weight-ui);
-  --explorer-row-weight: var(--font-weight-ui);
-  --explorer-root-row-weight: var(--font-weight-ui);
-  --explorer-row-height: 27px;
-  --explorer-row-font-size: 14px;
-  --explorer-action-size: 22px;
-  --explorer-pad-x: 8px;
-  --explorer-tree-pad-y: 5px;
-  --explorer-row-margin-x: 5px;
-  --explorer-radius-sm: 4px;
-  --explorer-radius-md: 6px;
+  /* ---- Elevation (shadows are invisible on near-black: surface step + 1px border) ---- */
+  --elev-menu:   0 8px 24px rgba(0, 0, 0, 0.6);   /* popover/menu/palette: --surface-raised + 1px --border-strong */
+  --elev-dialog: 0 16px 48px rgba(0, 0, 0, 0.6);  /* dialog: --surface-raised + 1px --border-strong + --scrim */
 
-  /* Typography */
-  --font-mono: "Hack", "Geist Mono", "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
-  --font-ui: "Rubik", "Segoe UI", "Cantarell", "Noto Sans", sans-serif;
+  /* ---- z-index scale ---- */
+  --z-base: 0; --z-raised: 1; --z-sticky: 10; --z-rail: 20; --z-popover: 100;
+  --z-menu: 200; --z-dialog: 300; --z-toast: 400; --z-tooltip: 500; --z-splash: 1000;
+
+  /* ---- Motion ---- */
+  --dur-press: 80ms; --dur-fast: 120ms; --dur-med: 180ms; --dur-slow: 280ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1); /* the only easing curve */
+  --motion-fast: var(--dur-fast) var(--ease-out); /* kept: 125 existing uses */
+  --motion-med:  var(--dur-med) var(--ease-out);
+
+  /* ---- Focus ring (WCAG 2.4.7 / 1.4.11): one rule, defined once in global.css ---- */
+  --focus-ring-width: 2px;
+  --focus-ring-color: var(--accent-fill); /* 5.3–5.4:1 on base, 3.96–4.04:1 on selected rows */
+  --focus-ring-offset: 1px;               /* use outline-offset:-2px (inset) on list rows */
+}
+
+/* ---- Accent variants. Default (no attribute) = A. Switch with <html data-accent="B"> ---- */
+:root[data-accent="A"] { --accent:#85a1c5; --accent-hi:#9db7d8; --accent-fill:#7188a6; --accent-tint:#1e2127; }
+:root[data-accent="B"] { --accent:#a496c1; --accent-hi:#baacd5; --accent-fill:#8b7fa3; --accent-tint:#222027; }
+:root[data-accent="C"] { --accent:#bb967b; --accent-hi:#cead94; --accent-fill:#9d7f69; --accent-tint:#25201f; }
+/* ===========================================================================
+   LEGACY ALIASES — paste directly AFTER the new block, in the same theme.css, during Phase 1.
+  Purpose: every existing legacy variable keeps working while Phase 2 migrates surfaces.
+  Rule: an alias may only point at a NEW token. When usage of an old name hits 0, delete the alias (Phase 4).
+  Entries tagged [decide] must be re-pointed per usage in Phase 2 (accent edge/ring -> --accent-fill,
+  accent text/caret -> --accent, "waiting" meaning -> --state-waiting, anything else -> --text-2).
+  Mapping choices are the implementer's (derived from the review), NOT values shown in the mocks.
+  =========================================================================== */
+:root {
+  /* text */
+  --text-primary: var(--text-1);
+  --text-secondary: var(--text-2);
+  --text-tertiary: var(--text-3);
+  --text-muted: var(--text-3);                 /* was undefined (P0-2) */
+
+  --fg-dark: var(--text-2);                    /* legacy, 2 refs */
+  /* surfaces (old --surface-base meant "rails/sidebars"; it was renamed to --surface-rail in step 1.1 and is now this alias) */
+  --surface-rail: var(--surface-sidebar);      /* [decide] header/rail/status bar -> --surface-chrome; sidebars -> --surface-sidebar */
+  --surface-floor: var(--surface-base);
+  --surface-sunken: var(--surface-base);
+  --surface-wash: var(--surface-raised);
+  --surface-2: var(--surface-raised);          /* was undefined (P0-2) */
+  --bg-dark: var(--surface-chrome);            /* legacy, 3 refs */
+  --sidebar-bg: var(--surface-sidebar);        /* legacy, 1 ref */
+  /* borders */
+  --border: var(--border-default);             /* legacy, 3 refs */
+  --border-subtle: var(--border-default);
+  --border-focus: var(--border-strong);
+  /* accent + status */
+  --accent-live: var(--accent);                /* [decide] */
+  --accent-primary: var(--accent);             /* was undefined (P0-2) [decide] */
+
+  --accent-info: var(--state-done);
+  --accent-success: var(--state-running);
+  --accent-warning: var(--state-waiting);      /* [decide] only "Waiting for you" may stay amber; starting/stale/highlights -> --text-2 */
+  --accent-danger: var(--state-failed);
+
+  --danger-muted: color-mix(in srgb, var(--state-failed) 14%, transparent);
+  /* shadows */
+  --shadow-menu: var(--elev-menu);
+
+  --shadow-command: var(--elev-menu);
+  --shadow-card: none;                         /* mock map node / task card have no shadow */
+  --shadow-active-pane: none;                  /* active pane = 1px --accent-fill border */
+  --shadow-selected-row: none;                 /* selected row = fill + 2px --accent-fill edge (box-shadow: inset 2px 0 0) */
+  /* canvas / sidebar roles */
+
+  --canvas-terminal-icon: var(--text-2);       /* derived: mock icons are neutral */
+  --canvas-file-icon: var(--text-2);
+  --canvas-note-icon: var(--text-2);
+  --canvas-grid: rgba(255, 255, 255, 0.04);
+  --canvas-dot: #26262a; /* map dot grid (mock value: radial dot, 1px, every 24px) */    /* (derived) the mock grid is radial dots #26262a 1px / 24px — see Map checklist */
+  --statusbar-bg: var(--surface-chrome);
+  --statusbar-fg: var(--text-2);
+  --command-chip-active-bg: var(--accent-tint);
+  --command-chip-active-border: var(--accent-fill);
+  /* explorer family (49 vars -> roles; geometry vars such as --explorer-row-height stay as they are) */
+
+  --explorer-rootbar-bg: var(--surface-sidebar);
+  --explorer-border: var(--border-default);
+  --explorer-fg: var(--text-1); --explorer-title-fg: var(--text-1); --explorer-root-fg: var(--text-1);
+  --explorer-muted: var(--text-2); --explorer-hidden: var(--text-3); --explorer-chevron: var(--text-3);
+  --explorer-row-hover: var(--surface-hover);
+
+  --explorer-input-bg: var(--surface-base);
+
+  --explorer-workspace: var(--text-2); --explorer-workspace-tab: var(--text-2); --explorer-workspace-shade: var(--text-3);
+  --explorer-folder: var(--text-2); --explorer-folder-tab: var(--text-2); --explorer-folder-shade: var(--text-3);
+
+  --explorer-file: var(--text-2); --explorer-file-js: var(--text-2); --explorer-file-md: var(--text-2);
+  --explorer-file-data: var(--text-2); --explorer-file-code: var(--text-2); --explorer-file-style: var(--text-2);
+  --explorer-file-markup: var(--text-2); --explorer-icon-label: var(--surface-base);
+  /* terminal family */
+  --terminal-ansi-black: var(--ansi-black); --terminal-ansi-red: var(--ansi-red); --terminal-ansi-green: var(--ansi-green);
+  --terminal-ansi-yellow: var(--ansi-yellow); --terminal-ansi-blue: var(--ansi-blue); --terminal-ansi-magenta: var(--ansi-magenta);
+  --terminal-ansi-cyan: var(--ansi-cyan); --terminal-ansi-white: var(--ansi-white);
+  --terminal-ansi-bright-black: var(--ansi-bright-black);
+  --terminal-ansi-bright-red: var(--ansi-red); --terminal-ansi-bright-green: var(--ansi-green);
+  --terminal-ansi-bright-yellow: var(--ansi-yellow); --terminal-ansi-bright-blue: var(--ansi-blue);
+  --terminal-ansi-bright-magenta: var(--ansi-magenta); --terminal-ansi-bright-cyan: var(--ansi-cyan);
+  --terminal-ansi-bright-white: var(--ansi-white); /* GAP: the design defines only 8 ANSI colours; brights reuse them */
+  --terminal-selection-fg: var(--text-1);
+  --terminal-scroll-track: var(--surface-base); --terminal-scroll-thumb: var(--border-strong); --terminal-scroll-thumb-hover: var(--border-control); /* (derived) */
+
+  --terminal-block-spine: var(--border-default); --terminal-block-marker: var(--border-control);
+  --terminal-block-marker-active: var(--accent-fill);
+  /* tab chrome (legacy) */
+
+  /* transient text/bg tints used by a few files */
+
+}
+
+/* ===========================================================================
+LEGACY LAYOUT / GEOMETRY VARIABLES — values unchanged from the pre-redesign
+   theme (design step 1.2). These are sizes and weights, not colours, and are
+   still referenced by components. Remove each when its usage reaches 0.
+   =========================================================================== */
+:root {
+  --canvas-grid-soft: var(--canvas-grid);
+  --canvas-node-icon-fg: var(--surface-base);
+  --canvas-sidebar-width: 232px;
+  --dock-collapsed-width: var(--rail-width);
+  --pane-chrome-height: 42px;
+
   --font-size: 14px;
   --font-weight-ui: 400;
-  --font-weight-ui-emphasis: 500;
   --font-size-ui-label: 12px;
   --font-size-ui-meta: 11px;
   --font-weight-ui-label: var(--font-weight-ui);
   --font-weight-ui-status: var(--font-weight-ui);
 
-  /* Terminal Cockpit contract tokens — Warp-style: depth from fills, not borders.
-     Borders are near-invisible hairlines; grouping/selection use background
-     steps + a small accent edge instead of outlines. */
-  --surface-floor: #15181a;    /* app background */
-  --surface-base: #1b1f22;     /* rails / sidebars (recede) */
-  --surface-raised: #20252a;   /* raised panels / menus */
-  --surface-sunken: #181b1d;
-  --surface-wash: #20252a;
-  --surface-hover: #2a3036;
-  --surface-selected: #313841; /* selected row fill (no border) */
-  --border-subtle: rgba(255, 255, 255, 0.05);
-  --border-strong: rgba(255, 255, 255, 0.10);
-  --border-focus: rgba(255, 255, 255, 0.16);
-  --text-primary: #e6e9ec;
-  --text-secondary: #9aa3ab;
-  /* Dimmer meta (counts, separators, timestamps). Was used in ~19 places but never
-     defined, so it resolved to inherited color — unpredictable + failing contrast.
-     Kept legible (~4.6:1 on the dark surfaces) for small meta labels. */
-  --text-tertiary: #79818a;
-  /* Accent kept neutral/near-white (Warp barely uses a colored accent). Retint
-     this single token to color the active edge / live dot / cursor. */
-  --accent-live: #c4ccd2;
-  --accent-info: #7dbac3;
-  --accent-success: #7fc681;
-  --accent-warning: #d4a44f;
-  --accent-danger: #ef6f72;
-  --dock-width: 276px;
-  --operations-sidebar-width: 276px;
-  --sidebar-expanded-width: 562px;
-  --dock-collapsed-width: 40px;
-  --commandbar-height: 44px;
-  --commandbar-search-width: min(680px, calc(100vw - 620px));
-  --commandbar-search-min-width: 300px;
-  --pane-chrome-height: 42px;
-  --radius-xs: 6px;
-  --radius-sm: 9px;
-  --radius-md: 12px;
-  --motion-fast: 120ms cubic-bezier(0.22, 1, 0.36, 1);
-  --motion-med: 180ms cubic-bezier(0.22, 1, 0.36, 1);
-  /* No blur: the desktop draws in software, and a 42px blurred card shadow
-     roughly doubled every map/workspace redraw (TF-015 probe: p50 21ms -> 11ms,
-     p95 40ms -> 24ms). A crisp offset edge keeps the lift without the cost. */
-  --shadow-card: 0 2px 0 rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(0, 0, 0, 0.25);
-  --shadow-command: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 10px 28px rgba(0, 0, 0, 0.28);
-  --shadow-menu: 0 20px 54px rgba(0, 0, 0, 0.45);
-  --shadow-active-pane: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --shadow-selected-row: none;
-  --command-chip-active-bg: color-mix(in srgb, var(--accent-live) 13%, transparent);
-  --command-chip-active-border: color-mix(in srgb, var(--accent-live) 52%, var(--border-subtle));
-  --terminal-scroll-track: #1b2022;
-  --terminal-scroll-thumb: #3c454a;
-  --terminal-scroll-thumb-hover: #4c575d;
-  --terminal-block-rail-bg: #1a1f21;
-  --terminal-block-rail-border: #333c41;
-  --terminal-block-spine: #465158;
-  --terminal-block-marker: #657284;
-  --terminal-block-marker-active: var(--accent-live);
-  --terminal-block-context: var(--accent-info);
-  --terminal-bg: #1d2022;
-  --terminal-fg: var(--text-primary);
-  --terminal-cursor: var(--accent-live);
-  --terminal-selection-bg: #2a3a50;
-  --terminal-selection-fg: #f1f5f9;
-  --terminal-ansi-black: #0b0e12;
-  --terminal-ansi-red: var(--accent-danger);
-  --terminal-ansi-green: var(--accent-success);
-  --terminal-ansi-yellow: var(--accent-warning);
-  --terminal-ansi-blue: #6ea8fe;
-  --terminal-ansi-magenta: #ad8fcb;
-  --terminal-ansi-cyan: var(--accent-info);
-  --terminal-ansi-white: var(--text-primary);
-  --terminal-ansi-bright-black: #667383;
-  --terminal-ansi-bright-red: #f48b8d;
-  --terminal-ansi-bright-green: #95d996;
-  --terminal-ansi-bright-yellow: #e0b969;
-  --terminal-ansi-bright-blue: #8bb9ff;
-  --terminal-ansi-bright-magenta: #bea4d8;
-  --terminal-ansi-bright-cyan: #91cbd2;
-  --terminal-ansi-bright-white: #f1f5f9;
+  --explorer-titlebar-height: 32px;
+  --explorer-footer-height: 34px;
+  --explorer-input-height: 26px;
+  --explorer-title-size: 13px;
+  --explorer-title-weight: var(--font-weight-medium);
+  --explorer-root-row-weight: var(--font-weight-ui);
+  --explorer-row-height: 24px;
+  --explorer-row-font-size: 12px;
+  --explorer-action-size: 24px;
+  --explorer-pad-x: 8px;
+  --explorer-tree-pad-y: 5px;
+  --explorer-row-margin-x: 5px;
+
+  --explorer-radius-md: 6px;
 }

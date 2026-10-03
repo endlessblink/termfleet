@@ -58,19 +58,26 @@ roles before adding more component-local colors.
 
 | Token Role | Use | Contract |
 | --- | --- | --- |
-| `surface.base` | App background and terminal surround | Deep neutral, not pure black. Used for the largest planes. |
-| `surface.raised` | Dock, command bar, terminal chrome | One step above base. No unrelated panel tints. |
-| `surface.sunken` | Terminal viewport and input wells | Darker than raised, visually stable for long sessions. |
-| `surface.hover` | Row/button hover | Subtle contrast only; no glowing hover states. |
-| `border.subtle` | Region dividers | Low contrast, single-pixel. Avoid double borders. |
-| `border.focus` | Keyboard and active-pane focus | One consistent accent treatment. Focus must be visible without looking like an error. |
-| `text.primary` | Current labels and terminal chrome | High contrast, restrained. |
-| `text.secondary` | Metadata, counts, inactive labels | Muted but readable. |
-| `accent.live` | Active session, cursor, running state | Warm operational accent. Use sparingly. |
-| `accent.info` | Links, file relations, neutral command affordances | Secondary accent. Must not compete with active state. |
-| `accent.success` | Healthy run/sync state | State only. |
-| `accent.warning` | Busy, stale, or degraded state | State only. |
-| `accent.danger` | Destructive/failed state | State only. |
+The 2026-10 redesign resolves the earlier "neutral accent" versus "warm
+operational accent" conflict: the app is **near-black with one muted, low-chroma
+accent** (variant A slate blue by default; B dusty violet and C sand are one
+`<html data-accent>` attribute away). Amber is reserved for the single state
+"Waiting for you". The values live in `src/styles/theme.css`; `DESIGN.md` section 2
+lists them.
+
+| Token Role | Token | Contract |
+| --- | --- | --- |
+| Surface base | `--surface-base` | App floor and terminal background (one colour, no seam). |
+| Surface chrome | `--surface-chrome` | Header, rail, status bar. |
+| Surface sidebar | `--surface-sidebar` | Sidebars, git cards, input wells. |
+| Surface panel | `--surface-panel` | Pane frame, map node, task card. |
+| Surface raised | `--surface-raised` | Chips, fields, buttons, menus, dialogs. |
+| Hover / selected | `--surface-hover`, `--surface-selected` | Fills only; selected also carries a 2px accent edge. |
+| Border | `--border-default`, `--border-strong`, `--border-control` | Hairline / menus and dialogs / fields (3:1 or better). |
+| Text | `--text-1`, `--text-2`, `--text-3`, `--text-disabled` | Primary, secondary, tertiary (4.5:1 or better), disabled (never carries information). |
+| Accent | `--accent`, `--accent-hi`, `--accent-fill`, `--accent-tint` | Text/links, hover, ring + selected edge + active indicator + primary button, wash. Never for status. |
+| Agent state | `--state-running`, `-waiting`, `-idle`, `-failed`, `-done` | Muted, always paired with a glyph and a word. |
+| Focus ring | `--focus-ring-width`, `-color`, `-offset` | One 2px ring, defined once in `global.css`; visible without looking like an error. |
 
 No one-off accent families in individual components unless they are mapped back
 to a token role. Do not introduce new gradients, decorative glows, glass panels,

@@ -74,6 +74,8 @@ import { stableHeader } from "../lib/stableHeader";
 import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { agentReconnectCommand } from "../lib/agentReconnect";
+import { attentionToAgentState, processStatusColor } from "../lib/agentState";
+import { StatusDot } from "../ui";
 import { TaskProgressBar } from "./TaskProgressBar";
 import {
   calculatePaneBounds,
@@ -98,12 +100,12 @@ const STATUS_LABELS: Record<TerminalRuntimeStatus, string> = {
 };
 
 const STATUS_COLORS: Record<TerminalRuntimeStatus, string> = {
-  starting: "var(--accent-warning)",
-  running: "var(--accent-success)",
-  reconnected: "var(--accent-info)",
-  stale: "var(--accent-warning)",
-  failed: "var(--accent-danger)",
-  exited: "var(--text-secondary)",
+  starting: processStatusColor("starting"),
+  running: processStatusColor("running"),
+  reconnected: processStatusColor("reconnected"),
+  stale: processStatusColor("stale"),
+  failed: processStatusColor("failed"),
+  exited: processStatusColor("exited"),
 };
 
 type SplitTaskRow = {
@@ -191,7 +193,7 @@ function AgentTaskSidebar({
           border: "none",
           borderLeft: "1px solid var(--border-subtle)",
           background:
-            "color-mix(in srgb, var(--surface-base) 78%, var(--surface-sunken))",
+            "color-mix(in srgb, var(--surface-rail) 78%, var(--surface-sunken))",
           color: "var(--text-secondary)",
           fontFamily: "var(--font-ui)",
           cursor: "pointer",
@@ -203,7 +205,7 @@ function AgentTaskSidebar({
             writingMode: "vertical-rl",
             textTransform: "uppercase",
             color: "var(--text-primary)",
-            fontSize: 10,
+            fontSize: 11,
     fontWeight: 500,
             letterSpacing: 0,
           }}
@@ -220,8 +222,7 @@ function AgentTaskSidebar({
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: 6,
-                background:
-                  "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+                background: "var(--accent-tint)",
                 color: "var(--text-primary)",
                 fontSize: 11,
     fontWeight: 500,
@@ -233,7 +234,7 @@ function AgentTaskSidebar({
               style={{
                 writingMode: "vertical-rl",
                 color: "var(--text-tertiary)",
-                fontSize: 9,
+                fontSize: 11,
                 lineHeight: 1,
                 whiteSpace: "nowrap",
               }}
@@ -244,7 +245,7 @@ function AgentTaskSidebar({
               style={{
                 writingMode: "vertical-rl",
                 color: "var(--text-tertiary)",
-                fontSize: 9,
+                fontSize: 11,
                 lineHeight: 1,
                 whiteSpace: "nowrap",
               }}
@@ -257,7 +258,7 @@ function AgentTaskSidebar({
             style={{
               writingMode: "vertical-rl",
               color: "var(--text-tertiary)",
-              fontSize: 9,
+              fontSize: 11,
               lineHeight: 1,
               whiteSpace: "nowrap",
             }}
@@ -284,7 +285,7 @@ function AgentTaskSidebar({
         padding: "10px 10px 11px",
         borderLeft: "1px solid var(--border-subtle)",
         background:
-          "color-mix(in srgb, var(--surface-base) 72%, var(--surface-sunken))",
+          "color-mix(in srgb, var(--surface-rail) 72%, var(--surface-sunken))",
         color: "var(--text-secondary)",
         fontFamily: "var(--font-ui)",
         overflow: "hidden",
@@ -314,7 +315,7 @@ function AgentTaskSidebar({
             alignItems: "center",
             gap: 8,
             color: "var(--text-tertiary)",
-            fontSize: 10,
+            fontSize: 11,
           }}
         >
           <span>{rows.length > 0 ? rows.length : "No list"}</span>
@@ -380,7 +381,7 @@ function AgentTaskSidebar({
                     whiteSpace: "nowrap",
                     color:
                       "color-mix(in srgb, var(--text-secondary) 70%, transparent)",
-                    fontSize: 9,
+                    fontSize: 11,
                     fontWeight: 500,
                   }}
                 >
@@ -414,7 +415,7 @@ function AgentTaskSidebar({
                   gap: 6,
                   minWidth: 0,
                   color: "var(--text-secondary)",
-                  fontSize: 10,
+                  fontSize: 11,
                   textDecoration: done ? "line-through" : "none",
                   textDecorationColor: done
                     ? "color-mix(in srgb, var(--text-tertiary) 58%, transparent)"
@@ -495,7 +496,7 @@ function PaneToolbar({ paneId, tabId, canClose, visible }: PaneToolbarProps) {
 
   const btnStyle: CSSProperties = {
     width: 24,
-    height: 22,
+    height: 24,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -636,8 +637,8 @@ function PaneContextMenu({
       <div
         className={`terminal-pane-menu-item${danger ? " terminal-pane-menu-item--danger" : ""}`}
         style={{
-          minHeight: 30,
-          padding: "6px 9px",
+          minHeight: 28,
+          padding: "4px 8px",
           margin: "0 4px",
           fontSize: 12,
           cursor: "pointer",
@@ -659,13 +660,13 @@ function PaneContextMenu({
             style={{
               height: 18,
               padding: "0 5px",
-              border: "1px solid transparent",
+              border: "1px solid var(--border-strong)",
               borderRadius: "var(--radius-xs)",
-              background: "var(--surface-base)",
+              background: "transparent",
               color: "var(--text-secondary)",
-              fontSize: 10,
+              fontSize: 11,
               lineHeight: "16px",
-              fontFamily: "var(--font-ui)",
+              fontFamily: "var(--font-mono)",
             }}
           >
             {shortcut}
@@ -684,12 +685,12 @@ function PaneContextMenu({
         top: y,
         left: x,
         background: "var(--surface-raised)",
-        border: "1px solid transparent",
+        border: "1px solid var(--border-strong)",
         borderRadius: "var(--radius-md)",
         padding: 4,
         minWidth: 180,
         zIndex: 1000,
-        boxShadow: "var(--shadow-menu)",
+        boxShadow: "var(--elev-menu)",
         animation: "workbench-popover-in var(--motion-med)",
       }}
     >
@@ -723,9 +724,9 @@ function PaneContextMenu({
             style={{
               padding: "5px 9px 3px",
               color: "var(--text-tertiary)",
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 500,
-              letterSpacing: "0.04em",
+              letterSpacing: "var(--label-caps-tracking)",
               textTransform: "uppercase",
             }}
           >
@@ -749,7 +750,7 @@ function PaneContextMenu({
             style={{
               padding: "0 9px 4px",
               color: "var(--text-tertiary)",
-              fontSize: 10,
+              fontSize: 11,
             }}
           >
             {reconnectTarget
@@ -918,7 +919,7 @@ function MeasuringFallback() {
           style={{
             width: 132,
             height: 9,
-            borderRadius: "var(--radius-xs)",
+            borderRadius: "var(--radius-sm)",
             background: "var(--surface-hover)",
           }}
         />
@@ -938,7 +939,7 @@ function MeasuringFallback() {
             style={{
               width: `${width}%`,
               height: 10,
-              borderRadius: "var(--radius-xs)",
+              borderRadius: "var(--radius-sm)",
               background:
                 "linear-gradient(90deg, rgba(216, 222, 231, 0.42), rgba(216, 222, 231, 0.08))",
               opacity: 0.7,
@@ -1584,18 +1585,14 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              background: "var(--surface-sunken)",
+              background: "var(--surface-panel)",
               border: isImmersivePane
                 ? "none"
-                : panelColor
-                  ? `1px solid color-mix(in srgb, ${panelColor} 42%, transparent)`
-                  : "1px solid transparent",
-              borderRadius: isImmersivePane ? 0 : "var(--radius-md)",
-              boxShadow: isImmersivePane
-                ? "none"
                 : isActive
-                  ? "var(--shadow-active-pane)"
-                  : "0 0 0 1px rgba(0, 0, 0, 0.12)",
+                  ? "1px solid var(--accent-fill)"
+                  : "1px solid var(--border-default)",
+              borderRadius: isImmersivePane ? 0 : "var(--radius-lg)",
+              boxShadow: "none",
               transition: isImmersivePane
                 ? "none"
                 : "box-shadow var(--motion-med), border-color var(--motion-med), background var(--motion-med)",
@@ -1765,21 +1762,6 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 }}
               />
             )}
-            {isActive && !isImmersivePane && (
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 1,
-                  background:
-                    "linear-gradient(90deg, transparent, var(--accent-live) 8%, var(--accent-live) 92%, transparent)",
-                  zIndex: 2,
-                }}
-              />
-            )}
             {isImmersivePane && (
               <div
                 role="toolbar"
@@ -1794,9 +1776,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   gap: 8,
                   padding: "7px 8px",
                   borderRadius: 8,
-                  background: "rgba(29, 34, 36, 0.94)",
-    border: "1px solid transparent",
-                  boxShadow: "0 12px 32px rgba(0,0,0,0.35)",
+                  background: "var(--surface-raised)",
+                  border: "1px solid var(--border-strong)",
+                  boxShadow: "var(--elev-menu)",
                   color: "var(--text-primary)",
                   fontFamily: "var(--font-ui)",
                 }}
@@ -1828,11 +1810,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     alignItems: "center",
                     gap: 7,
                     padding: "0 10px",
-                    border:
-                      "1px solid color-mix(in srgb, var(--accent-live) 42%, transparent)",
+                    border: "1px solid var(--accent-fill)",
                     borderRadius: 6,
-                    background:
-                      "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+                    background: "var(--accent-tint)",
                     color: "var(--text-primary)",
                     fontSize: 12,
                     fontWeight: 500,
@@ -1860,14 +1840,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     : isShellSummaryPane
                       ? "7px 8px 6px"
                       : "0 7px",
-                  borderBottom: "1px solid var(--border-subtle)",
+                  borderBottom: "1px solid var(--border-default)",
                   background: panelColor
-                    ? `color-mix(in srgb, ${panelColor} ${isActive ? 14 : 7}%, ${
-                        isActive ? "#202527" : "#1d2224"
-                      })`
-                    : isActive
-                      ? "#202527"
-                      : "#1d2224",
+                    ? `color-mix(in srgb, ${panelColor} var(--identity-wash-pct), var(--surface-panel))`
+                    : "var(--surface-panel)",
                   color: "var(--text-secondary)",
                   cursor: "default",
                 }}
@@ -1927,7 +1903,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
     fontWeight: 500,
                             textTransform: "uppercase",
                           }}
@@ -1982,7 +1958,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                               style={{
                                 flexShrink: 0,
                                 color: "var(--text-primary)",
-                                fontSize: 10,
+                                fontSize: 11,
                                 fontWeight: 500,
                                 textTransform: "uppercase",
                               }}
@@ -2045,15 +2021,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         }}
                         title={splitAttention.label}
                       >
-                        <span
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: splitAttention.color,
-                            flexShrink: 0,
-                          }}
-                        />
+                        <StatusDot state={attentionToAgentState(splitAttentionState)} />
                         {splitAttention.label}
                       </span>
                       {budgetSignal ? (
@@ -2077,10 +2045,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             justifyContent: "center",
                             padding: "0 7px",
     border: "1px solid transparent",
-                            borderRadius: "var(--radius-xs)",
-                            background: "var(--surface-base)",
+                            borderRadius: "var(--radius-sm)",
+                            background: "var(--surface-rail)",
                             color: "var(--text-secondary)",
-                            fontSize: 10,
+                            fontSize: 11,
                             textTransform: "uppercase",
                           }}
                           title={
@@ -2125,7 +2093,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
                           }}
                         >
                           Path
@@ -2163,7 +2131,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
                             textTransform: "uppercase",
                           }}
                         >
@@ -2200,7 +2168,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             style={{
                               flexShrink: 0,
                               color: "var(--text-tertiary)",
-                              fontSize: 10,
+                              fontSize: 11,
                               textTransform: "uppercase",
                             }}
                           >
@@ -2230,7 +2198,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                           color: "var(--text-secondary)",
-                          fontSize: 10,
+                          fontSize: 11,
                           fontWeight: 500,
                         }}
                         title={latestMissionControlInput.text}
@@ -2250,7 +2218,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                           color: "var(--text-secondary)",
-                          fontSize: 10,
+                          fontSize: 11,
                           fontWeight: 500,
                         }}
                         title={paneOutput}
@@ -2315,7 +2283,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
     fontWeight: 500,
                             textTransform: "uppercase",
                           }}
@@ -2393,7 +2361,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             style={{
                               flexShrink: 0,
                               color: "var(--text-tertiary)",
-                              fontSize: 10,
+                              fontSize: 11,
                               textTransform: "uppercase",
                             }}
                           >
@@ -2433,15 +2401,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         }}
                         title={splitAttention.label}
                       >
-                        <span
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: splitAttention.color,
-                            flexShrink: 0,
-                          }}
-                        />
+                        <StatusDot state={attentionToAgentState(splitAttentionState)} />
                         {splitAttention.label}
                       </span>
                       {budgetSignal && (
@@ -2465,10 +2425,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           justifyContent: "center",
                           padding: "0 7px",
                           border: "1px solid transparent",
-                          borderRadius: "var(--radius-xs)",
-                          background: "var(--surface-base)",
+                          borderRadius: "var(--radius-sm)",
+                          background: "var(--surface-rail)",
                           color: "var(--text-secondary)",
-                          fontSize: 10,
+                          fontSize: 11,
                           textTransform: "uppercase",
                           flexShrink: 0,
                         }}
@@ -2509,7 +2469,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
                             textTransform: "uppercase",
                           }}
                         >
@@ -2546,7 +2506,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
-                            fontSize: 10,
+                            fontSize: 11,
                           }}
                         >
                           Now
@@ -2708,7 +2668,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     <span
                       style={{
                         color: STATUS_COLORS[terminalStatus],
-                        fontSize: 10,
+                        fontSize: 11,
                         lineHeight: 1,
                         textTransform: "none",
                         fontWeight: 500,
@@ -2753,10 +2713,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           justifyContent: "center",
                           padding: "0 6px",
                           border: "1px solid transparent",
-                          borderRadius: "var(--radius-xs)",
-                          background: "var(--surface-base)",
+                          borderRadius: "var(--radius-sm)",
+                          background: "var(--surface-rail)",
                           color: "var(--text-secondary)",
-                          fontSize: 10,
+                          fontSize: 11,
                           textTransform: "uppercase",
                           flexShrink: 0,
                         }}
