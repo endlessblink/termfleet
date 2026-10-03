@@ -527,6 +527,24 @@ export function WorkbenchHeader() {
   const [commandValue, setCommandValue] = useState("");
   const [commandStatus, setCommandStatus] = useState("");
   const [commandOpen, setCommandOpen] = useState(false);
+  // TF-075: the command bar must only keep focus when the user asked for it
+  // (click, Ctrl+K / Ctrl+Shift+P / Ctrl+; / F6). Any other focus grab (browser
+  // default focus at launch, a stray focus request) hands the keyboard back to
+  // the active terminal instead of swallowing its keystrokes.
+  const commandIntentUntilRef = useRef(0);
+  useEffect(() => {
+    const markIntent = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const asks =
+        event.key === "F6" ||
+        (event.ctrlKey && (event.key === ";" || event.code === "Semicolon")) ||
+        ((event.ctrlKey || event.metaKey) && key === "k") ||
+        (event.ctrlKey && event.shiftKey && key === "p");
+      if (asks) commandIntentUntilRef.current = Date.now() + 800;
+    };
+    window.addEventListener("keydown", markIntent, true);
+    return () => window.removeEventListener("keydown", markIntent, true);
+  }, []);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [copyStatus, setCopyStatus] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -552,6 +570,7 @@ export function WorkbenchHeader() {
   const setScopedCommand = useCallback((prefix: string) => {
     setCommandValue(prefix);
     setCommandOpen(true);
+    commandIntentUntilRef.current = Date.now() + 800;
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
 
@@ -1038,7 +1057,13 @@ export function WorkbenchHeader() {
           <span style={styles.contextCrumbPath}>{pathTail(crumbRoot)}</span>
         )}
       </span>
-      <div className="workbench-command-search" style={{ ...styles.search, ...(commandOpen ? styles.searchActive : null) }}>
+      <div
+        className="workbench-command-search"
+        style={{ ...styles.search, ...(commandOpen ? styles.searchActive : null) }}
+        onPointerDownCapture={() => {
+          commandIntentUntilRef.current = Date.now() + 800;
+        }}
+      >
         <span style={styles.searchIcon}>
           <Command size={13} strokeWidth={1.8} />
         </span>
@@ -1048,7 +1073,23 @@ export function WorkbenchHeader() {
           value={commandValue}
           placeholder={commandStatus || "Command, session, file, or workspace action"}
           aria-label="Workspace command"
-          onFocus={() => setCommandOpen(true)}
+          onFocus={(event) => {
+            if (Date.now() > commandIntentUntilRef.current) {
+              const activeId = useWorkspaceStore.getState().activeTerminalId;
+              const terminalInput = activeId
+                ? document.querySelector<HTMLTextAreaElement>(
+                    `.terminal-canvas-input[data-terminal-session-id="${CSS.escape(activeId)}"]`,
+                  )
+                : null;
+              if (terminalInput) {
+                terminalInput.focus({ preventScroll: true });
+              } else {
+                event.currentTarget.blur();
+              }
+              return;
+            }
+            setCommandOpen(true);
+          }}
           onBlur={() => window.setTimeout(() => setCommandOpen(false), 120)}
           onChange={(event) => {
             setCommandValue(event.target.value);
