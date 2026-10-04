@@ -97,6 +97,7 @@
     "perf:work-profile": "node scripts/summarize-work-profile.mjs",
     "verify:terminal-geometry": "node scripts/verify-terminal-geometry.mjs",
     "verify:performance-sampler": "python3 -m unittest tests.test_performance_sampler",
+    "verify:cockpit-heartbeat": "python3 -B -m unittest tests.test_cockpit_heartbeat tests.test_pressure_watchdog && node tests/cockpit-heartbeat.test.mjs",
     "verify:tui-color-env": "scripts/verify-tui-color-env.sh",
     "verify:tauri-dev-performance": "scripts/verify-tauri-dev-performance.sh",
     "verify:standalone-daemon": "scripts/verify-standalone-daemon-smoke.sh",

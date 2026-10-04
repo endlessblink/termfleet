@@ -1,3 +1,4 @@
+mod cockpit_health;
 mod agent_connect;
 mod agent_lifecycle;
 mod bidi;
@@ -135,6 +136,7 @@ pub fn run() {
             commands::fs_open_external,
             commands::fs_write_file,
             commands::cockpit_snapshot_write,
+            commands::cockpit_heartbeat_write,
             commands::workspace_layout_save,
             commands::workspace_layout_load,
             commands::workspace_persisted_sessions,

@@ -8,6 +8,17 @@
 // rendered identity. It posts to loopback and has a local Tauri fallback.
 
 import { invoke } from "@tauri-apps/api/core";
+import { startCockpitHeartbeat } from "./cockpitHeartbeat";
+
+// Independent of pane mounts, snapshot contents and snapshot IO.
+if (typeof window !== "undefined") {
+  const stopHeartbeat = startCockpitHeartbeat(
+    () => invoke("cockpit_heartbeat_write"),
+    (tick, interval) => window.setInterval(tick, interval),
+    (timer) => window.clearInterval(timer as number),
+  );
+  import.meta.hot?.dispose(stopHeartbeat);
+}
 
 export interface CockpitSnapshotEntry {
   paneId: string;

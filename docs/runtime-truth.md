@@ -114,3 +114,21 @@ npm run verify:reboot-rehearsal   # per-pane verdict from copies of live checkpo
 npm run doctor                    # status pipeline health
 node scripts/termfleetctl.mjs sessions list --json   # what is live right now
 ```
+
+## TC-199 desktop liveness (source implemented, installed verification pending)
+
+The desktop writes a tiny, content-free heartbeat every 10 s to
+`$XDG_RUNTIME_DIR/termfleet/cockpit-heartbeat-<desktop-pid>`, independently of
+pane mounts and content snapshot writes. The writer is atomic and owner-only.
+The watchdog prefers this per-PID file, falling back to the content snapshot for
+older installed desktops. Only a write strictly after the selected desktop's
+start counts. Missing, older or future-dated files are unknown, not a recycle
+trigger; independent blocked/missing-process rules still apply.
+
+Defaults are 180 s startup grace, 90 s staleness and three consecutive stale
+polls. CPU progress gives 180 s staleness grace. A fresh write or a different
+desktop resets the streak. Snapshot content writes run on a blocking worker,
+with a 3 s caller deadline and a worker-owned single-flight guard; a deadline
+never releases the guard before the worker finishes. The independent heartbeat
+has a separate single-flight guard. Verify the installed watcher script inode
+and current desktop heartbeat before claiming the source change is active.

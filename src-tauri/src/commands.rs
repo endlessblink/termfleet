@@ -2681,7 +2681,43 @@ pub fn fs_write_file(path: String, contents: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn cockpit_snapshot_write(contents: String) -> Result<(), String> {
+pub async fn cockpit_snapshot_write(contents: String) -> Result<(), String> {
+    let Some(permit) = crate::cockpit_health::SNAPSHOT_WRITER.try_acquire() else {
+        return Ok(()); // Keep at most one blocking writer, even after a deadline.
+    };
+    let write = tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit; // Worker owns the guard; timeout does not release it.
+        let started = std::time::Instant::now();
+        let result = write_cockpit_snapshot(contents);
+        if started.elapsed() > std::time::Duration::from_secs(2) {
+            eprintln!("cockpit snapshot write slow: {} ms", started.elapsed().as_millis());
+        }
+        result
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(3), write)
+        .await.map_err(|_| "Cockpit snapshot write deadline exceeded".to_string())?
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn cockpit_heartbeat_write() -> Result<(), String> {
+    let Some(permit) = crate::cockpit_health::HEARTBEAT_WRITER.try_acquire() else {
+        return Ok(());
+    };
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| "Runtime directory unavailable".to_string())?;
+    let write = tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
+        crate::cockpit_health::write_heartbeat(&runtime, std::process::id())
+            .map(|_| ()).map_err(|error| error.to_string())
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(3), write)
+        .await.map_err(|_| "Cockpit heartbeat deadline exceeded".to_string())?
+        .map_err(|error| error.to_string())?
+}
+
+fn write_cockpit_snapshot(contents: String) -> Result<(), String> {
     use std::io::Write;
     const MAX_TRACE_BYTES: u64 = 25 * 1024 * 1024;
 

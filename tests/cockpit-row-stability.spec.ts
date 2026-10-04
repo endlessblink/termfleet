@@ -209,7 +209,9 @@ test("canvas terminal Task keeps a concrete render-time fallback when stabilizat
 });
 
 test("snapshot writes discard stale panes without dropping current dock evidence", () => {
-  const writer = rustCommands.slice(rustCommands.indexOf("pub fn cockpit_snapshot_write"));
+  const writerStart = rustCommands.indexOf("fn write_cockpit_snapshot(");
+  expect(writerStart).toBeGreaterThan(-1);
+  const writer = rustCommands.slice(writerStart, rustCommands.indexOf("/// Path of the durable workspace-layout mirror", writerStart));
   expect(writer).toContain("terminals.retain");
   expect(writer).toContain("Working toward:");
   expect(writer).not.toContain("return Ok(());");

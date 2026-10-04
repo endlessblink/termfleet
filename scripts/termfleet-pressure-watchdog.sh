@@ -20,8 +20,10 @@ HOST_ALERT_COOLDOWN_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_HOST_ALERT_COOLDOWN:-
 BLOCKED_CONFIRMATIONS="${TERMFLEET_PRESSURE_WATCHDOG_BLOCKED_CONFIRMATIONS:-3}"
 WEBKIT_MISSING_CONFIRMATIONS="${TERMFLEET_PRESSURE_WATCHDOG_WEBKIT_MISSING_CONFIRMATIONS:-6}"
 COCKPIT_SNAPSHOT_PATH="${TERMFLEET_COCKPIT_SNAPSHOT_PATH:-${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/agent-status/termfleet-cockpit-snapshot.json}"
-COCKPIT_HEARTBEAT_STALE_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_COCKPIT_HEARTBEAT_STALE_SECONDS:-45}"
-COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS:-60}"
+COCKPIT_HEARTBEAT_STALE_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_COCKPIT_HEARTBEAT_STALE_SECONDS:-90}"
+COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS:-180}"
+COCKPIT_HEARTBEAT_CONFIRMATIONS="${TERMFLEET_PRESSURE_WATCHDOG_COCKPIT_HEARTBEAT_CONFIRMATIONS:-3}"
+COCKPIT_HEARTBEAT_BUSY_GRACE_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_COCKPIT_HEARTBEAT_BUSY_GRACE_SECONDS:-180}"
 HOST_PRESSURE_CONFIRMATIONS="${TERMFLEET_PRESSURE_WATCHDOG_HOST_PRESSURE_CONFIRMATIONS:-12}"
 DESKTOP_BLOCKED_IO_THRESHOLD="${TERMFLEET_PRESSURE_WATCHDOG_DESKTOP_BLOCKED_IO_THRESHOLD:-20}"
 AUDIT_SCRIPT="${TERMFLEET_PRESSURE_AUDIT_SCRIPT:-$HOME/.local/bin/termfleet-system-audit}"
@@ -44,6 +46,11 @@ webkit_missing_count=0
 desktop_blocked_count=0
 host_memory_pressure_count=0
 host_io_pressure_count=0
+cockpit_stale_count=0
+previous_desktop_pid=""
+previous_ui_ticks=0
+previous_webkit_ticks=0
+previous_webkit_pid=""
 
 record_watchdog_heartbeat() {
   local stage="$1" tmp
@@ -140,11 +147,43 @@ record_desktop_sample() {
 
 cockpit_heartbeat_age_seconds() {
   local now_epoch="$1" snapshot_epoch
-  snapshot_epoch="$(stat -c %Y "$COCKPIT_SNAPSHOT_PATH" 2>/dev/null || printf '0')"
+  snapshot_epoch="$(stat -c %Y "${COCKPIT_HEARTBEAT_PATH:-$COCKPIT_SNAPSHOT_PATH}" 2>/dev/null || printf '0')"
   if [[ "$snapshot_epoch" =~ ^[0-9]+$ ]] && (( snapshot_epoch > 0 && snapshot_epoch <= now_epoch )); then
     printf '%s\n' "$((now_epoch - snapshot_epoch))"
   else
     printf '%s\n' 2147483647
+  fi
+}
+
+# Pure decision, replayed with fake clocks in test_cockpit_heartbeat.py.
+# An old window's file is never evidence about a new window. Missing/future
+# writes are unknown; independent blocked/missing-process checks still apply.
+cockpit_heartbeat_decision() {
+  local pid="$1" started="$2" now="$3" written="$4" count="$5" busy="$6" owner="$7"
+  local value age limit="$COCKPIT_HEARTBEAT_STALE_SECONDS"
+  for value in "$pid" "$started" "$now" "$written" "$count" "$busy" "$owner"; do
+    [[ "$value" =~ ^[0-9]+$ ]] || { printf 'unobserved 0\n'; return 0; }
+  done
+  if (( pid <= 1 || started <= 0 || owner != pid || now < started || written <= started || written > now )); then
+    printf 'unobserved 0\n'; return 0
+  fi
+  if (( now - started < COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS )); then
+    printf 'startup 0\n'; return 0
+  fi
+  age=$((now - written))
+  if (( age < limit )); then
+    printf 'fresh 0\n'; return 0
+  fi
+  # Progressing CPU is not proof of a healthy renderer, but allows a longer
+  # grace before a content/IO stall is allowed to interrupt the operator.
+  if (( busy > 0 && age < COCKPIT_HEARTBEAT_BUSY_GRACE_SECONDS )); then
+    printf 'busy 0\n'; return 0
+  fi
+  count=$((count + 1))
+  if (( count >= COCKPIT_HEARTBEAT_CONFIRMATIONS )); then
+    printf 'stale %s\n' "$COCKPIT_HEARTBEAT_CONFIRMATIONS"
+  else
+    printf 'confirming %s\n' "$count"
   fi
 }
 
@@ -217,7 +256,39 @@ while :; do
   swap_used_kb=$((swap_total_kb - swap_free_kb))
   sample_counter=$((sample_counter + 1))
   now_epoch="$(date +%s)"
+  # Prefer the independent per-desktop heartbeat. Retain snapshot fallback
+  # while upgrading an older desktop; only writes AFTER its start count.
+  COCKPIT_HEARTBEAT_PATH="$RUNTIME_DIR/termfleet/cockpit-heartbeat-${desktop_pid:-0}"
+  if [[ ! -f "$COCKPIT_HEARTBEAT_PATH" ]]; then
+    COCKPIT_HEARTBEAT_PATH="$COCKPIT_SNAPSHOT_PATH"
+  fi
+  cockpit_heartbeat_epoch="$(stat -c %Y "$COCKPIT_HEARTBEAT_PATH" 2>/dev/null || printf '0')"
   cockpit_heartbeat_age="$(cockpit_heartbeat_age_seconds "$now_epoch")"
+  ui_metrics="$(read_proc_state_and_ticks "${desktop_pid:-0}")"
+  webkit_metrics="$(read_proc_state_and_ticks "${webkit_pid:-0}")"
+  read -r _ ui_ticks <<<"$ui_metrics"
+  read -r _ webkit_ticks <<<"$webkit_metrics"
+  cockpit_cpu_progress=0
+  if [[ "$previous_desktop_pid" != "$desktop_pid" ]]; then
+    cockpit_stale_count=0
+    cockpit_cpu_progress=1
+    webkit_blocked_count=0
+    webkit_missing_count=0
+    desktop_blocked_count=0
+  elif (( ui_ticks > previous_ui_ticks || webkit_ticks > previous_webkit_ticks )) || [[ "$previous_webkit_pid" != "$webkit_pid" ]]; then
+    cockpit_cpu_progress=1
+  fi
+  previous_desktop_pid="$desktop_pid"
+  previous_webkit_pid="$webkit_pid"
+  previous_ui_ticks="$ui_ticks"
+  previous_webkit_ticks="$webkit_ticks"
+  desktop_start_epoch=0
+  if [[ "$desktop_age_seconds" =~ ^[0-9]+$ ]]; then
+    desktop_start_epoch=$((now_epoch - desktop_age_seconds))
+  fi
+  read -r cockpit_health cockpit_stale_count < <(cockpit_heartbeat_decision \
+    "${desktop_pid:-0}" "$desktop_start_epoch" "$now_epoch" "$cockpit_heartbeat_epoch" \
+    "$cockpit_stale_count" "$cockpit_cpu_progress" "${desktop_pid:-0}")
   desktop_blocked_io_confirmed=0
   if awk -v value="$io_psi" -v threshold="$DESKTOP_BLOCKED_IO_THRESHOLD" 'BEGIN { exit !(value >= threshold) }'; then
     desktop_blocked_io_confirmed=1
@@ -269,9 +340,9 @@ while :; do
   elif (( webkit_missing_count >= WEBKIT_MISSING_CONFIRMATIONS )); then
     reason="webkit-missing"
     detail="desktop_pid=$desktop_pid desktop_pgid=$desktop_pgid consecutive_samples=$webkit_missing_count"
-  elif [[ "$desktop_age_seconds" =~ ^[0-9]+$ ]] && (( desktop_age_seconds >= COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS )) && (( cockpit_heartbeat_age >= COCKPIT_HEARTBEAT_STALE_SECONDS )); then
+  elif [[ "$cockpit_health" == stale ]]; then
     reason="cockpit-heartbeat-stale"
-    detail="desktop_pid=$desktop_pid desktop_pgid=$desktop_pgid desktop_age_seconds=$desktop_age_seconds heartbeat_age_seconds=$cockpit_heartbeat_age snapshot=$COCKPIT_SNAPSHOT_PATH"
+    detail="desktop_pid=$desktop_pid desktop_pgid=$desktop_pgid desktop_age_seconds=$desktop_age_seconds heartbeat_age_seconds=$cockpit_heartbeat_age heartbeat=$COCKPIT_HEARTBEAT_PATH consecutive_samples=$cockpit_stale_count"
   elif (( desktop_blocked_count >= BLOCKED_CONFIRMATIONS )) && (( desktop_blocked_io_confirmed == 1 )); then
     reason="desktop-blocked"
     detail="pid=$desktop_pid rss_kb=$desktop_rss pgid=$desktop_pgid state=$desktop_state memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi"
@@ -346,6 +417,12 @@ while :; do
       if [[ "$RECOVER" == "1" && "$recovery_allowed" == "1" && ( "$reason" == webkit-blocked || "$reason" == webkit-missing || "$reason" == desktop-blocked || "$reason" == cockpit-heartbeat-stale ) && "$recovery_pgid" =~ ^[0-9]+$ && "$recovery_pgid" -gt 1 ]]; then
         recovery_planned=1
         recovery_text="renderer is blocked; desktop group will be recycled and relaunched"
+      fi
+      if [[ "$reason" == cockpit-heartbeat-stale ]]; then
+        recovery_text="snapshot not updated; automatic recovery is disabled or unavailable; desktop will remain running"
+        if (( recovery_planned == 1 )); then
+          recovery_text="snapshot not updated; desktop group will be recycled and relaunched"
+        fi
       fi
       if command -v notify-send >/dev/null 2>&1 && [[ -S "${NOTIFY_BUS#unix:path=}" ]]; then
         DISPLAY="$NOTIFY_DISPLAY" DBUS_SESSION_BUS_ADDRESS="$NOTIFY_BUS" \
