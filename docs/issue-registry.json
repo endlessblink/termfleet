@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-03T11:52:47.594Z",
+  "updatedAt": "2026-10-04T09:21:36.126Z",
   "issues": [
     {
       "id": "TF-001",
@@ -2221,7 +2221,7 @@
           "at": "2026-09-27T09:29:27.330Z",
           "type": "evidence",
           "kind": "live-desktop",
-          "note": "2026-09-27 12:23:53 dock log shows release 2732 launched; incident samples at +55s report foreground process R and heartbeat age 9s, then heartbeat ages 1–6s at +117–242s. Current dock screenshot at 12:25:22 shows workspace and terminal prompt, so startup eventually paints after about 89 seconds. The exact delay source within WebKit, durable layout loading, and daemon reconciliation remains unmeasured; launch responsiveness is not fixed."
+          "note": "2026-09-27 12:23:53 dock log shows release 2732 launched; incident samples at +55s report foreground process R and heartbeat age 9s, then heartbeat ages 1\u20136s at +117\u2013242s. Current dock screenshot at 12:25:22 shows workspace and terminal prompt, so startup eventually paints after about 89 seconds. The exact delay source within WebKit, durable layout loading, and daemon reconciliation remains unmeasured; launch responsiveness is not fixed."
         },
         {
           "at": "2026-09-27T09:42:19.302Z",
@@ -2365,7 +2365,7 @@
           "at": "2026-09-28T09:40:20.021Z",
           "type": "evidence",
           "kind": "live-desktop",
-          "note": "2026-09-28 fresh read-only live capture: dock UI PID 3259370 and WebKit PID 3259398 remain on promoted release 353017b7354a-b11df5c09703-457ceb2bda9d; UI state S in poll_schedule_timeout, not D; cgroup I/O PSI near zero and system I/O PSI avg10 was 1.39%; memory pressure near zero. PTY daemon PID 1515447 remained alive. Over a separate 5-second /proc stat sample, UI accumulated 109 CPU ticks and WebKit 103; host CPU PSI avg10 ranged 7.24–9.24% and other host processes were using multiple cores. This supports concurrent app and host CPU activity but does not identify the hot function or prove keyboard latency. Existing geometry log is stale (Sep 24); no fresh key-to-paint measurement, no code change, no restart, and no performance improvement claimed. Snapshot: /tmp/termfleet/incident-snapshots/desktop-20260928T093714Z-3259370."
+          "note": "2026-09-28 fresh read-only live capture: dock UI PID 3259370 and WebKit PID 3259398 remain on promoted release 353017b7354a-b11df5c09703-457ceb2bda9d; UI state S in poll_schedule_timeout, not D; cgroup I/O PSI near zero and system I/O PSI avg10 was 1.39%; memory pressure near zero. PTY daemon PID 1515447 remained alive. Over a separate 5-second /proc stat sample, UI accumulated 109 CPU ticks and WebKit 103; host CPU PSI avg10 ranged 7.24\u20139.24% and other host processes were using multiple cores. This supports concurrent app and host CPU activity but does not identify the hot function or prove keyboard latency. Existing geometry log is stale (Sep 24); no fresh key-to-paint measurement, no code change, no restart, and no performance improvement claimed. Snapshot: /tmp/termfleet/incident-snapshots/desktop-20260928T093714Z-3259370."
         },
         {
           "at": "2026-09-28T10:09:04.291Z",
@@ -2395,7 +2395,7 @@
           "at": "2026-09-28T10:30:21.496Z",
           "type": "evidence",
           "kind": "live-desktop",
-          "note": "2026-09-28 13:26 IDT: continuous sampler confirmed UI PID 1555124 and WebKit PID 1555215 alive; over 16 minutes their cumulative CPU ticks rose 28,896→45,460 (~17% of one core) and 77,731→136,774 (~61% of one core). At 13:26 WebKit was ~58% CPU; host I/O PSI avg10 was 8.58% some / 7.44% full, while app cgroup I/O pressure remained near zero. Geometry records for the inspected terminal stayed at x=366,y=101,size=1104x731 and displayOffset=0; the two-second geometry timer only reads/logs bounds. Source map movement is explicit pan mousemove / drag, zoom controls, or one-time startup rescue for an off-screen target. No fresh input-latency event exists after 12:44, so no live typing-to-paint correlation yet. Daemon PID 1515447 remains alive; no restart."
+          "note": "2026-09-28 13:26 IDT: continuous sampler confirmed UI PID 1555124 and WebKit PID 1555215 alive; over 16 minutes their cumulative CPU ticks rose 28,896\u219245,460 (~17% of one core) and 77,731\u2192136,774 (~61% of one core). At 13:26 WebKit was ~58% CPU; host I/O PSI avg10 was 8.58% some / 7.44% full, while app cgroup I/O pressure remained near zero. Geometry records for the inspected terminal stayed at x=366,y=101,size=1104x731 and displayOffset=0; the two-second geometry timer only reads/logs bounds. Source map movement is explicit pan mousemove / drag, zoom controls, or one-time startup rescue for an off-screen target. No fresh input-latency event exists after 12:44, so no live typing-to-paint correlation yet. Daemon PID 1515447 remains alive; no restart."
         },
         {
           "at": "2026-09-28T11:00:32.687Z",
@@ -5476,7 +5476,7 @@
         {
           "kind": "focused-test",
           "at": "2026-09-23T16:16:35.896Z",
-          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task — just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
+          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task \u2014 just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
         }
       ],
       "owner": "termfleet",
@@ -5700,7 +5700,7 @@
           "at": "2026-09-23T16:16:35.896Z",
           "type": "evidence",
           "kind": "focused-test",
-          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task — just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
+          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task \u2014 just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
         }
       ]
     },
@@ -6768,7 +6768,7 @@
         {
           "kind": "focused-test",
           "at": "2026-09-23T16:03:04.923Z",
-          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m…)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
+          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m\u2026)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
         }
       ],
       "owner": "termfleet",
@@ -6830,7 +6830,7 @@
           "at": "2026-09-23T16:03:04.923Z",
           "type": "evidence",
           "kind": "focused-test",
-          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m…)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
+          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m\u2026)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
         }
       ]
     },
@@ -7990,19 +7990,19 @@
       "severity": "medium",
       "surface": "logic",
       "matrixRefs": [],
-      "symptom": "in-control-kernel Codex card: Task 'No task declared', Goal 'Not captured' — the opening request picked was Codex's injected '# AGENTS.md instructions' block (new wording, no 'for <path>').",
+      "symptom": "in-control-kernel Codex card: Task 'No task declared', Goal 'Not captured' \u2014 the opening request picked was Codex's injected '# AGENTS.md instructions' block (new wording, no 'for <path>').",
       "rootCause": "",
       "guard": "playwright test goal-from-conversation task-line-live-records (live: no recent Codex chat opens with machine-written text)",
       "evidence": [
         {
           "kind": "source",
           "at": "2026-09-27T08:45:16.811Z",
-          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>…' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project…') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only …' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
+          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\u2026' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project\u2026') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only \u2026' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
         },
         {
           "kind": "focused-test",
           "at": "2026-09-27T08:45:17.113Z",
-          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only …' leaks on first run, now 0."
+          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only \u2026' leaks on first run, now 0."
         }
       ],
       "owner": "termfleet",
@@ -8052,13 +8052,13 @@
           "at": "2026-09-27T08:45:16.812Z",
           "type": "evidence",
           "kind": "source",
-          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>…' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project…') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only …' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
+          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\u2026' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project\u2026') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only \u2026' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
         },
         {
           "at": "2026-09-27T08:45:17.113Z",
           "type": "evidence",
           "kind": "focused-test",
-          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only …' leaks on first run, now 0."
+          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only \u2026' leaks on first run, now 0."
         }
       ]
     },
@@ -8072,7 +8072,7 @@
         "6.14"
       ],
       "symptom": "Each wheel gesture jumps past several lines in Codex sessions, making it hard to read agent output.",
-      "rootCause": "Pixel-mode wheel input was interpreted at full scale before being sent to the Codex alternate-screen mouse-report path, so one 99–100 px gesture emitted about five rows. Pixel deltas are now reduced by 4x and fractional movement is accumulated; line and page units keep their existing semantics.",
+      "rootCause": "Pixel-mode wheel input was interpreted at full scale before being sent to the Codex alternate-screen mouse-report path, so one 99\u2013100 px gesture emitted about five rows. Pixel deltas are now reduced by 4x and fractional movement is accumulated; line and page units keep their existing semantics.",
       "guard": "tests/terminal-viewport.spec.ts pixel wheel sensitivity and fractional remainder regressions; installed Codex pane wheel readback",
       "evidence": [
         {
@@ -8264,7 +8264,7 @@
           "type": "transition",
           "from": "reopened",
           "to": "reproducing",
-          "note": "Live wheel-route diagnostics reproduce app-pages with deltaY=±99 and rows=0 for repeated events; hasHistory=false and no mouse-reporting route confirm the app fallback is receiving sub-page fractions that never produce a key in this code version."
+          "note": "Live wheel-route diagnostics reproduce app-pages with deltaY=\u00b199 and rows=0 for repeated events; hasHistory=false and no mouse-reporting route confirm the app fallback is receiving sub-page fractions that never produce a key in this code version."
         },
         {
           "at": "2026-09-28T13:09:33.768Z",
@@ -9492,6 +9492,120 @@
           "at": "2026-10-03T11:52:47.593Z",
           "type": "created",
           "note": null
+        }
+      ]
+    },
+    {
+      "id": "TF-077",
+      "title": "Prevent heartbeat stalls from recycling a healthy desktop",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "An old snapshot after relaunch or a short snapshot IO stall makes the watchdog recycle a healthy cockpit.",
+      "rootCause": "",
+      "guard": "tests.test_cockpit_heartbeat; tests.test_pressure_watchdog; cockpit-heartbeat.test.mjs; cockpit_health tests; installed heartbeat and watchdog identity readback",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-04T06:26:31.673Z",
+          "note": "TC-199: current-desktop heartbeat and conservative watchdog decision; original unrelated edits preserved. Installed activation pending."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-04T06:34:48.007Z",
+          "note": "9/12 baseline failures reproduced before edits; now 37 Python, 2 frontend heartbeat cases, 2 Cargo-integrated Rust and 2 existing snapshot guards pass. tsc/Vite/map/renderer gates and isolated release build pass. Actual candidate on private Xvfb: worker blocked in FIFO open for 61 seconds while 7 heartbeat writes continued; owner-only file; private UI/daemon cleaned; zero signals to production. Report: /home/endlessblink/Documents/Codex/2026-10-03/task/termfleet-tc199/verification.json."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-10-04T09:21:36.042Z",
+          "note": "User-approved candidate 98d2508ebff6-8a596f5f9d5e-b23b2b7ff1e9 atomically promoted; canonical installed-release verifier passes. Running /proc/1656110/exe SHA256 equals 8a596f5f9d5e180d603b7a04ee24dfcee23668b976571732bc0891b138b88740. Archived frontend digest verified independently of retired build checkout."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-10-04T09:21:36.091Z",
+          "note": "Dock launcher replaced UI only. Actual TermFleet screenshot inspected; independent heartbeat advances and UI PID1656110 remains stable beyond 180-second startup grace. Daemon18932 and all29 session IDs/PTY PIDs unchanged. Watchdog1655916 executes installed script inode/hash. Host doctor ownership/daemon safety pass; one broader doctor failure compares unrelated canonical target build SHA against scoped candidate, while direct installed/candidate/running SHA verification passes. Evidence: /home/endlessblink/Documents/Codex/2026-10-03/task/termfleet-tc199/activation"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify focused guards and installed runtime without disturbing the PTY daemon.",
+      "history": [
+        {
+          "at": "2026-10-04T06:22:31.371Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-04T06:22:31.423Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "TC-199; distinct from notification eligibility TF-028. Preserved incident report docs/reviews/cockpit-heartbeat-stale-2026-10-02.md."
+        },
+        {
+          "at": "2026-10-04T06:22:31.453Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Before production edits, 9 of 12 replay tests failed against the actual old watchdog branch, including old snapshot on relaunch and a 60-second write stall."
+        },
+        {
+          "at": "2026-10-04T06:22:31.483Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Fake-clock decision replay covers stale and healthy cases without signals or sleeps."
+        },
+        {
+          "at": "2026-10-04T06:22:31.513Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Per-desktop runtime heartbeat, independent bounded writers, async snapshot deadline, startup grace and repeated stale confirmation."
+        },
+        {
+          "at": "2026-10-04T06:26:31.673Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-199: current-desktop heartbeat and conservative watchdog decision; original unrelated edits preserved. Installed activation pending."
+        },
+        {
+          "at": "2026-10-04T06:26:31.704Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Before fix: 9/12 decision failures. After: 37 Python tests; two frontend timer/retry scenarios; two Cargo-integrated cockpit_health tests; tsc, Vite, map and renderer gates pass in isolated source checkout."
+        },
+        {
+          "at": "2026-10-04T06:26:31.740Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source proof passes; prepare scoped immutable release, then verify installed per-PID heartbeat and running watchdog inode. Do not claim runtime activation."
+        },
+        {
+          "at": "2026-10-04T06:34:48.007Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "9/12 baseline failures reproduced before edits; now 37 Python, 2 frontend heartbeat cases, 2 Cargo-integrated Rust and 2 existing snapshot guards pass. tsc/Vite/map/renderer gates and isolated release build pass. Actual candidate on private Xvfb: worker blocked in FIFO open for 61 seconds while 7 heartbeat writes continued; owner-only file; private UI/daemon cleaned; zero signals to production. Report: /home/endlessblink/Documents/Codex/2026-10-03/task/termfleet-tc199/verification.json."
+        },
+        {
+          "at": "2026-10-04T09:21:36.042Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "User-approved candidate 98d2508ebff6-8a596f5f9d5e-b23b2b7ff1e9 atomically promoted; canonical installed-release verifier passes. Running /proc/1656110/exe SHA256 equals 8a596f5f9d5e180d603b7a04ee24dfcee23668b976571732bc0891b138b88740. Archived frontend digest verified independently of retired build checkout."
+        },
+        {
+          "at": "2026-10-04T09:21:36.091Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Dock launcher replaced UI only. Actual TermFleet screenshot inspected; independent heartbeat advances and UI PID1656110 remains stable beyond 180-second startup grace. Daemon18932 and all29 session IDs/PTY PIDs unchanged. Watchdog1655916 executes installed script inode/hash. Host doctor ownership/daemon safety pass; one broader doctor failure compares unrelated canonical target build SHA against scoped candidate, while direct installed/candidate/running SHA verification passes. Evidence: /home/endlessblink/Documents/Codex/2026-10-03/task/termfleet-tc199/activation"
+        },
+        {
+          "at": "2026-10-04T09:21:36.125Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Source, regression, private packaged FIFO-stall and actual installed-desktop liveness/preservation evidence recorded. No daemon restart; future unrelated failures require distinct evidence."
         }
       ]
     }

@@ -115,7 +115,7 @@ npm run doctor                    # status pipeline health
 node scripts/termfleetctl.mjs sessions list --json   # what is live right now
 ```
 
-## TC-199 desktop liveness (source implemented, installed verification pending)
+## TC-199 desktop liveness (activated and verified 2026-10-04)
 
 The desktop writes a tiny, content-free heartbeat every 10 s to
 `$XDG_RUNTIME_DIR/termfleet/cockpit-heartbeat-<desktop-pid>`, independently of
@@ -132,3 +132,5 @@ with a 3 s caller deadline and a worker-owned single-flight guard; a deadline
 never releases the guard before the worker finishes. The independent heartbeat
 has a separate single-flight guard. Verify the installed watcher script inode
 and current desktop heartbeat before claiming the source change is active.
+
+Installed acceptance: candidate `98d2508ebff6-8a596f5f9d5e-b23b2b7ff1e9` runs as UI1656110 with the expected binary checksum and a fresh per-PID heartbeat beyond startup grace. Watchdog1655916 executes the current script inode/hash. Daemon18932 and all29 session IDs/PTY PIDs survive unchanged. Canonical installed-release verification passes against archived frontend provenance. The broad doctor still compares against a different primary target build and reports one artifact mismatch; do not call that diagnostic fully green. Evidence is in the TC-199 activation report.
