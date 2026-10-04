@@ -828,8 +828,6 @@ function purposeFromTranscript(output?: string | null) {
   if (afterWorking) return afterWorking;
   const promptBeforeWorking = findPurpose(lines.slice(Math.max(0, lastWorkingIndex - 8), lastWorkingIndex), true);
   if (promptBeforeWorking) return promptBeforeWorking;
-  const progressBeforeWorking = findPurpose(lines.slice(Math.max(0, lastWorkingIndex - 8), lastWorkingIndex));
-  if (progressBeforeWorking) return progressBeforeWorking;
   return undefined;
 }
 

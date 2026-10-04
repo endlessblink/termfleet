@@ -274,6 +274,14 @@ function lineageByTerminal(workspace) {
   return byTerminal;
 }
 
+/** An explicitly pinned operator Goal belongs to the exact owned pane, never cwd. */
+export function attachOperatorGoal(pane, workspace) {
+  const terminal=(workspace?.tabs || []).flatMap(tab=>tab.terminals || []).find(item=>item.id===pane.id);
+  const goal=terminal?.mainUserAsk;
+  return goal?.source==='manual' && typeof goal.text==='string' && goal.text.trim() && Number.isFinite(goal.updatedAt)
+    ? {...pane,operatorGoal:{text:goal.text,source:'manual',updatedAt:goal.updatedAt}} : pane;
+}
+
 /**
  * Status hooks describe agent conversations, not terminal ownership. Merge the
  * daemon's complete live set back in so ordinary shells and newly created
@@ -345,7 +353,7 @@ export function reconcileLivePanes(panes, liveById, workspace = readWorkspace(),
   }
 
   return orderPanesLikeCanvasSidebar(reconciled, workspace).map((pane) => (
-    lineage.has(pane.id) ? { ...pane, continues: lineage.get(pane.id) } : pane
+    attachOperatorGoal(lineage.has(pane.id) ? { ...pane, continues: lineage.get(pane.id) } : pane, workspace)
   ));
 }
 
@@ -402,7 +410,7 @@ export function listPanes({ maxAgeMs = null } = {}) {
     });
   }
 
-  return orderPanesLikeCanvasSidebar(dedupePanes(panes), workspace);
+  return orderPanesLikeCanvasSidebar(dedupePanes(panes), workspace).map(pane=>attachOperatorGoal(pane,workspace));
 }
 
 /** One daemon pane id is one terminal, even when old sidecar filenames remain. */

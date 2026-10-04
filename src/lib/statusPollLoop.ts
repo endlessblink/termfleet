@@ -1,3 +1,5 @@
+import {sessionAuthorityEnabled} from "./sessionStateAdapter";
+import {startSessionEventWatcher} from "./sessionEventWatcher";
 // Central status poll (2026-07-04): ONE loop that keeps every terminal's header
 // context fresh, regardless of which components happen to be mounted or selected.
 //
@@ -76,7 +78,7 @@ function latestTabForPollTarget(tabs: Tab[], target: StatusPollTarget) {
 function shouldPollTarget(target: StatusPollTarget, activeTabId: string | null | undefined, now: number) {
   const key = panePollKey(target.tab, target.terminal);
   const lastPolledAt = lastPolledByPane.get(key) ?? 0;
-  const minInterval = target.tab.id === activeTabId ? ACTIVE_PANE_MIN_POLL_MS : BACKGROUND_PANE_MIN_POLL_MS;
+  const minInterval = sessionAuthorityEnabled() && target.terminal.sessionSnapshotV2 ? 30000 : target.tab.id === activeTabId ? ACTIVE_PANE_MIN_POLL_MS : BACKGROUND_PANE_MIN_POLL_MS;
   if (now - lastPolledAt < minInterval) return false;
   lastPolledByPane.set(key, now);
   return true;
@@ -528,6 +530,7 @@ async function pollOnce() {
 export function startStatusPollLoop() {
   if (started || typeof window === "undefined") return;
   started = true;
+  void startSessionEventWatcher();
   void pollOnce();
   window.setInterval(() => void pollOnce(), POLL_INTERVAL_MS);
 }

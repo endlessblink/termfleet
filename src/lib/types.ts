@@ -88,6 +88,12 @@ export interface TerminalMainUserAsk {
 }
 
 export interface TerminalState {
+  /** Shadow event authority; deliberately not persisted across browser clock epochs. */
+  /** Explicit v2 publisher events; ephemeral and identity-fenced, never inferred from polling. */
+  sessionSnapshotV2?: import("../../shared/sessionSnapshot.mjs").SessionSnapshot;
+  statusEventPaneId?: string;
+  sessionEventsV2?: import("../../shared/sessionEnvelope.mjs").SessionEnvelope[];
+  sessionStateV2?: import("../../shared/sessionState.mjs").SessionState;
   /** Completion explicitly opened for review by the operator, persisted per pane. */
   reviewedCompletionAt?: number;
   reviewedCompletionSessionId?: string;
@@ -321,6 +327,9 @@ export interface WorkstreamStatusSummary {
   completedByCommand?: boolean;
   /** Explicit provider turn-end event, distinct from process exit or silence. */
   completedAt?: number;
+  completionSource?: "hook-stop" | "vendor-turn-complete" | "done-command";
+  questionId?: string;
+  reportedEventKind?: "turn-started" | "turn-completed";
   waitingReason?: "approval" | "input" | "blocked";
   path: string;
   now: string;

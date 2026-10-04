@@ -1,3 +1,4 @@
+import {authoritativeSessionView} from "../lib/sessionStateAdapter";
 import { CSSProperties, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Activity, Bot, CirclePlay, Folder, Gauge, Layers3, Server, TerminalSquare } from "lucide-react";
@@ -106,6 +107,7 @@ export function StatusBar() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeTerminal = activeTab?.terminals.find((terminal) => terminal.paneId === activeTab.activePaneId);
+  const activeSession=authoritativeSessionView(activeTerminal?.sessionStateV2);
   const activeStatus = activeTerminal?.status ?? (activeTerminalId ? "running" : "idle");
   const statusColor = processStatusColor(activeStatus);
   const tabCount = tabs.length;
@@ -221,6 +223,9 @@ export function StatusBar() {
       </div>
 
       <div style={styles.right}>
+        {activeSession && <span style={styles.chip} title={activeSession.reason} data-testid="session-authority-status">
+          {activeSession.lifecycle==='finished' ? 'Completed' : activeSession.lifecycle==='unknown' ? 'Status unavailable' : activeSession.lifecycle}
+        </span>}
         <span style={styles.chip} title={activeTerminal?.lastError ?? `PTY ${activeStatus}`}>
           <span
             style={{

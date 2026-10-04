@@ -350,6 +350,9 @@ export function summaryFromSidecar(sidecar, payload) {
     completedByCommand: completedByDoneCommand(sidecar),
     completedAt: sidecar?.turn === "idle" ? sidecar.completedAt ??
       (["claude-narration", "codex-narration"].includes(sidecar.source ?? "") ? sidecar.updatedAt : undefined) : undefined,
+    reportedEventKind: ["codex-user-prompt", "user-prompt"].includes(sidecar.source ?? "") ? "turn-started" : undefined,
+    completionSource: sidecar.turn === "idle" && ["claude-narration", "codex-narration"].includes(sidecar.source ?? "")
+      ? "hook-stop" : undefined,
     waitingReason: sidecar?.turn === "waiting"
       ? ["permission_request", "permission_prompt"].includes(sidecar.turnReason ?? "") ? "approval"
         : sidecar.turnReason === "operator_question" ? "input" : undefined

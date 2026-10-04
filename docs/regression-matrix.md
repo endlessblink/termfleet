@@ -449,3 +449,13 @@ TC-199/TF-077 unified acceptance: clean-source release `b4ecac5f18ea-9e0b177f190
 Expanded hook suite retains three baseline failures (last completed task and two durable about-what Goal fixtures). See `docs/desktop-terminal-navigation-tc202.md`; unchanged-baseline reproduction recorded. No installed/native completion claim.
 
 TC-202 follow-up: the expanded integrated status/presentation suite passes 595 with 4 existing fixmes, and 10 synthetic browser fixtures cover provider replacement, navigation and persisted review. Explicit about-what provenance survives same-conversation follow-ups/tools; new conversations replace it. A completed task-list title cannot prefer its first task copied into a legacy prompt. Exact PTY provider replacement clears displaced-provider metadata; unknown/error retains attribution. Transport attachment alone says Status unavailable, and slash command echoes cannot resurrect prior-turn purpose. Original failures and baseline reproduction are recorded in `docs/desktop-mobile-integration-tc202.md`. Native/installed and full reducer parity remain partial.
+
+### Session authority v2 — isolated producer/consumer checkpoint
+
+| Surface | Symptom/root cause | Guard | Coverage |
+| --- | --- | --- | --- |
+| Durable status | Concurrent sidecar updates lose ordering; late tools/foreign sessions resurrect completed work. | session-event-journal.spec.ts; unified-session-state.spec.ts; unified-session-projection.spec.ts | Source: ordered append/replay, partial crash tails, exact binding, sticky typed questions and completion pass. Native continuity still required. |
+| Shared consumers | Desktop/bridge/mobile infer different Task/Goal/Now; polls extend stale Working. | session-consumers.spec.ts; actual header/badge projection fixtures | Source: same durable-head projection and actual escaped mobile-card function pass; watcher/SSE/runtime/visual parity not yet exercised. |
+| Goal/Task | Screenshot-path metadata becomes Goal; full authored checklist loses Task during compaction. | terminal-header-state.spec.ts; terminal-header-view-model.spec.ts; agent-status-summary.spec.ts | Original pure assertions now active/pass. Durable shell map title changed in source; original rendered assertion remains fixme pending browser proof. |
+
+Fresh unblocked source subset604/604, final producer/consumer50/49, frontend build, offline Cargo check and watcher-name Rust1/1 pass. The two blocked hook/HTTP specs are explicitly excluded; previous21 infrastructure failures remain open. Native Canvas2D, rendered mobile/map, installed release, agent-process/input intent and final canonical clean-tree acceptance remain partial. Full scope and exact limits: `docs/session-authority-v2-checkpoint.md`.

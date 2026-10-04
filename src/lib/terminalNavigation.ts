@@ -1,3 +1,4 @@
+import {authoritativeSessionView} from "./sessionStateAdapter";
 import type { Tab } from './types';
 
 /** Operator focus only. Unknown history keeps its existing relative order. */
@@ -31,6 +32,13 @@ export interface TerminalAttentionTarget {
 /** Only reported status/completion qualifies. Silence and terminal output never do. */
 export function terminalAttentionTargets(tabs: Tab[]): TerminalAttentionTarget[] {
   return tabs.flatMap(tab=>tab.terminals.flatMap(pane=>{
+    const view=authoritativeSessionView(pane.sessionStateV2);
+    if(view) {
+      const eventAt=view.completion?.at ?? pane.sessionStateV2?.lastEventAt ?? 0;
+      const kind:TerminalAttentionTarget['kind']|null=view.lifecycle==='waiting' ? view.question?.reason==='approval' ? 'approval':'waiting' :
+        view.lifecycle==='finished' && eventAt && (pane.reviewedCompletionSessionId!==view.identity.sessionId || (pane.reviewedCompletionAt ?? 0)<eventAt) ? 'completed':null;
+      return kind ? [{tabId:tab.id,paneId:pane.paneId,kind,eventAt,sessionId:view.identity.sessionId}]:[];
+    }
     const summary=pane.statusSummary;
     if (pane.status==='exited'||pane.status==='failed'||!summary || summary.confidence!=='high') return [];
     const eventAt=summary.completedAt && (summary.status==='idle'||summary.status==='done') ? summary.completedAt : summary.updatedAt ?? 0;

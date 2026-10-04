@@ -558,6 +558,9 @@ const noticeSummary=content=>{if(content==='Technical context')return ui('Techni
 const deliveryError=message=>{const errors=[[/request changed|question changed|no longer current/i,'The question changed. Refresh and review it again.','השאלה השתנתה. רעננו ובדקו אותה שוב.'],[/already.*(sent|dispatch)|already answered/i,'An answer has already been sent. Check the terminal.','תשובה כבר נשלחה. בדקו במסוף.'],[/Custom answers are disabled/i,'Custom answers are disabled until this terminal form is verified.','תשובות אישיות מושבתות עד לאימות הטופס הזה.']];const known=errors.find(([pattern])=>pattern.test(message));return known?ui(known[1],known[2]):message;};
 const technicalTask=text=>/^\s*(?:Read|Open)\s+\/[^\n]+\/HANDOFF[^\n/]*\.md\.?\s*$/i.test(String(text || ''));
 let visitNotice=null,focusedPane=null;
+// Same-origin authenticated event stream; polling remains a missed-event check.
+const sessionEvents=typeof EventSource==='function' ? new EventSource('/api/session-events') : null;
+if(sessionEvents) sessionEvents.onmessage=()=>{if(!focusedPane) fleet();};
 const recordVisit=id=>fetch('/api/visit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id}),signal:AbortSignal.timeout(6000)}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error);visitNotice=null;return result;}).catch(()=>{visitNotice=id;const status=document.getElementById('chat-status');if(status && location.hash==='#'+id)status.textContent=ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.');});
 const projectLabel=name=>name==='freelance-desk'?'Freelance Desk':String(name || 'Agent');
 const icons={back:'M15 5l-7 7 7 7',copy:'M9 7h10v14H9z M5 17V3h10',attach:'M8 12l6-6a4 4 0 015 5l-9 9a6 6 0 01-8-8l10-10',terminal:'M5 7l5 5-5 5 M13 17h6',search:'M10 18a8 8 0 110-16 8 8 0 010 16z M16 16l6 6'};
@@ -974,7 +977,8 @@ async function fleet() {
 }
 
 function card(p) {
-  const state = p.turn === 'waiting'
+  const session=p.sessionAuthority ? p.sessionViewV2 : null;
+  const state = session ? ({working:'working',waiting:'needs your answer',finished:'completed',unknown:'status unavailable',interrupted:'interrupted',ended:'ended',crashed:'crashed',idle:'idle'}[session.lifecycle] || 'status unavailable') : p.turn === 'waiting'
     ? 'needs your answer'
     : p.producing ? 'live now' : p.turn === 'working' ? 'running but quiet' : 'idle';
   return `<button class="pane ${p.turn}" data-id="${esc(p.id)}"
@@ -983,15 +987,18 @@ function card(p) {
       <span class="dot ${p.turn}" aria-hidden="true"></span>
       ${p.emoji ? `<span class="emoji" aria-hidden="true">${esc(p.emoji)}</span>` : ''}
       <span class="project" dir="auto">${esc(p.project)}</span>
-      <span class="badge">${esc(p.provider)} · ${localStorage.getItem('termcontrol-sort')==='recent'?(p.lastUsedAt?ago(p.lastUsedAt):ui('use unknown','פתיחה לא ידועה')):ago(p.updatedAt)}</span>
+      <span class="badge">${esc(session ? state : p.provider)} · ${localStorage.getItem('termcontrol-sort')==='recent'?(p.lastUsedAt?ago(p.lastUsedAt):ui('use unknown','פתיחה לא ידועה')):ago(p.updatedAt)}</span>
     </div>
-    <div dir="auto" class="task${p.task ? '' : ' none'}">${esc(technicalTask(p.task)?ui('Technical startup context — open the conversation for details','הנחיית פתיחה טכנית — פרטים בתוך השיחה'):p.task || ui('no task declared','לא הוגדרה משימה'))}</div>
+    ${session ? `<div dir="auto" class="task" data-session-field="task">Task: ${esc(session.task?.label || 'Task not captured')}</div>
+      <div dir="auto" class="task" data-session-field="goal">Goal: ${esc(session.goal?.label || 'Goal not captured')}</div>
+      <div dir="auto" class="task${session.now?.stale ? ' none' : ''}" data-session-field="now">Now: ${esc(session.now ? (session.now.stale ? 'Last: ' : '') + session.now.label : state)}</div>` :
+      `<div dir="auto" class="task${p.task ? '' : ' none'}">${esc(technicalTask(p.task)?ui('Technical startup context — open the conversation for details','הנחיית פתיחה טכנית — פרטים בתוך השיחה'):p.task || ui('no task declared','לא הוגדרה משימה'))}</div>`}
     ${p.turn === 'waiting' ? '<div class="state">Needs your answer</div>' : ''}
     ${statusHtml(p)}
-    ${p.producing
+    ${!session && p.producing
         ? `<div class="livemark"><span class="dot producing" aria-hidden="true"></span>Live now</div>
            ${p.lastLine ? `<div class="tail">${trace(p.pulse)}<span class="text">${esc(p.lastLine)}</span></div>` : ''}`
-        : p.turn === 'working'
+        : !session && p.turn === 'working'
           ? '<div class="livemark quiet"><span class="dot working" aria-hidden="true"></span>Running, quiet for ' + quietFor(p.quietForMs) + '</div>'
           : ''}
   </button>`;

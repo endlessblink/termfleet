@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-04T22:14:39.370Z",
+  "updatedAt": "2026-10-04T23:47:44.936Z",
   "issues": [
     {
       "id": "TF-001",
@@ -5496,17 +5496,17 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-10-04T22:14:38.944Z",
-          "note": "Integrated candidate: 595 status/header/navigation pass, 4 existing fixmes; original completed-title/Goal failures diagnosed and fixed; explicit about-what legacy migration guarded. 10 synthetic browser pass. Native/full selector proof pending."
+          "at": "2026-10-04T23:47:44.869Z",
+          "note": "Independent Goal/Task/Now provenance, durable plan updates, no stale activity-as-Goal; raw artifact-path metadata rejected. Live durable map title precedence corrected; rendered guard pending. See v2 checkpoint."
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-04T22:14:39.052Z",
-          "note": "Integrated candidate: 595 status/header/navigation pass, 4 existing fixmes; original completed-title/Goal failures diagnosed and fixed; explicit about-what legacy migration guarded. 10 synthetic browser pass. Native/full selector proof pending."
+          "at": "2026-10-04T23:47:44.902Z",
+          "note": "Original screenshot/checklist/pre-Working/older-run pure assertions active/pass; 604 source subset and final50 producer/consumer pass. Browser map fixture still fixme, native/installed proof pending."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Integrate the hash-verified desktop/mobile candidate and verify installed/native behavior after approved release; full v2 selector and known fixmes remain open. See docs/desktop-mobile-integration-tc202.md.",
+      "nextAction": "Verify isolated v2 hook/worker, map/mobile rendered and native Canvas2D/PTY acceptance; collect shadow soak evidence before activation and canonical Git promotion. Preserve all26 original WIP files. See docs/session-authority-v2-checkpoint.md.",
       "history": [
         {
           "at": "2026-09-13T06:02:44.981Z",
@@ -5779,6 +5779,37 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Integrated candidate: 595 status/header/navigation pass, 4 existing fixmes; original completed-title/Goal failures diagnosed and fixed; explicit about-what legacy migration guarded. 10 synthetic browser pass. Native/full selector proof pending."
+        },
+        {
+          "at": "2026-10-04T22:41:58.847Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Continue isolated captured Task Goal Now authority and retained full text; legacy fixmes explicitly tracked."
+        },
+        {
+          "at": "2026-10-04T23:47:44.869Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Independent Goal/Task/Now provenance, durable plan updates, no stale activity-as-Goal; raw artifact-path metadata rejected. Live durable map title precedence corrected; rendered guard pending. See v2 checkpoint."
+        },
+        {
+          "at": "2026-10-04T23:47:44.902Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Original screenshot/checklist/pre-Working/older-run pure assertions active/pass; 604 source subset and final50 producer/consumer pass. Browser map fixture still fixme, native/installed proof pending."
+        },
+        {
+          "at": "2026-10-04T23:47:44.936Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Four pure fixmes guarded; map visual/runtime acceptance remains open."
+        },
+        {
+          "at": "2026-10-04T23:47:44.962430+00:00",
+          "type": "next-action",
+          "note": "Verify isolated v2 hook/worker, map/mobile rendered and native Canvas2D/PTY acceptance; collect shadow soak evidence before activation and canonical Git promotion. Preserve all26 original WIP files. See docs/session-authority-v2-checkpoint.md."
         }
       ]
     },
@@ -6840,17 +6871,17 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-10-04T22:14:39.296Z",
-          "note": "Integrated exact PTY provider replacement fixtures 6/6 pass; combined suite 595 pass/4 existing fixmes, canvas fixture verifier 104 pass/1 skip, Rust check pass. Attached transport alone never claims agent Working/Idle. Native release gate pending."
+          "at": "2026-10-04T23:47:44.770Z",
+          "note": "Durable v2 publishers and shared desktop/bridge/mobile selector paths implemented in isolated shadow candidate. Canonical26 WIP hashes and TF-078 unchanged. Exact limits: docs/session-authority-v2-checkpoint.md."
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-04T22:14:39.328Z",
-          "note": "Integrated exact PTY provider replacement fixtures 6/6 pass; combined suite 595 pass/4 existing fixmes, canvas fixture verifier 104 pass/1 skip, Rust check pass. Attached transport alone never claims agent Working/Idle. Native release gate pending."
+          "at": "2026-10-04T23:47:44.806Z",
+          "note": "604 unblocked source tests pass; final publisher/consumer/Codex50 pass; build and offline Cargo check pass; watcher Rust1/1. Hook/HTTP infrastructure and native/rendered acceptance remain blocked/open."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Integrate the hash-verified desktop/mobile candidate and verify installed/native behavior after approved release; full v2 selector and known fixmes remain open. See docs/desktop-mobile-integration-tc202.md.",
+      "nextAction": "Verify isolated v2 hook/worker, map/mobile rendered and native Canvas2D/PTY acceptance; collect shadow soak evidence before activation and canonical Git promotion. Preserve all26 original WIP files. See docs/session-authority-v2-checkpoint.md.",
       "history": [
         {
           "at": "2026-09-23T08:22:01.081Z",
@@ -6967,6 +6998,37 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Integrated exact PTY provider replacement fixtures 6/6 pass; combined suite 595 pass/4 existing fixmes, canvas fixture verifier 104 pass/1 skip, Rust check pass. Attached transport alone never claims agent Working/Idle. Native release gate pending."
+        },
+        {
+          "at": "2026-10-04T22:41:58.816Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Continue isolated v2 status contract: ordering, completion provenance, reconnect fences, approval resolution and consumer parity. No canonical writes or runtime restart."
+        },
+        {
+          "at": "2026-10-04T23:47:44.770Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Durable v2 publishers and shared desktop/bridge/mobile selector paths implemented in isolated shadow candidate. Canonical26 WIP hashes and TF-078 unchanged. Exact limits: docs/session-authority-v2-checkpoint.md."
+        },
+        {
+          "at": "2026-10-04T23:47:44.806Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "604 unblocked source tests pass; final publisher/consumer/Codex50 pass; build and offline Cargo check pass; watcher Rust1/1. Hook/HTTP infrastructure and native/rendered acceptance remain blocked/open."
+        },
+        {
+          "at": "2026-10-04T23:47:44.839Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source candidate saved for verification; no default activation or installed/native claim."
+        },
+        {
+          "at": "2026-10-04T23:47:44.962430+00:00",
+          "type": "next-action",
+          "note": "Verify isolated v2 hook/worker, map/mobile rendered and native Canvas2D/PTY acceptance; collect shadow soak evidence before activation and canonical Git promotion. Preserve all26 original WIP files. See docs/session-authority-v2-checkpoint.md."
         }
       ]
     },

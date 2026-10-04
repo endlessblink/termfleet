@@ -1,3 +1,4 @@
+import {ptySessionEnvelope} from "../lib/sessionProcessEvents";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerminal } from "@xterm/xterm";
@@ -721,6 +722,7 @@ export function TerminalComponent({
       id?: string;
       status?: TerminalRuntimeStatus;
       reused?: boolean;
+      sessionEventsV2?: TerminalState["sessionEventsV2"];
       previewUrl?: string;
       currentActivity?: string;
       activityKind?: WorkstreamActivityKind;
@@ -765,6 +767,7 @@ export function TerminalComponent({
             activityUpdatedAt: updates.currentActivity
               ? Date.now()
               : previous?.activityUpdatedAt,
+            sessionEventsV2:updates.sessionEventsV2 ?? previous?.sessionEventsV2,
             durableActivity:
               updates.durableActivity ?? previous?.durableActivity,
             activeRunId: updates.activeRunId ?? previous?.activeRunId,
@@ -1743,6 +1746,10 @@ export function TerminalComponent({
         previousTerminal?.statusSummary?.provider;
       const taskLineup =
         tab?.workstream?.taskLineup ?? previousTerminal?.taskLineup;
+      // Backend exit provenance belongs to this exact PTY and bound publisher run.
+      // It never proves the agent completed the assigned work.
+      const processEvent=ptySessionEnvelope(previousTerminal,details);
+      if(processEvent) updateTerminalRuntime({sessionEventsV2:[processEvent]});
       const recoveryDecision = autoRecoveryDecision({
         provider,
         taskStatuses: taskLineup?.map((task) => task.status),

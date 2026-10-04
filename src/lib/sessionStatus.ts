@@ -1,3 +1,5 @@
+import {authoritativeSessionView} from "./sessionStateAdapter";
+import type {SessionState} from "../../shared/sessionState.mjs";
 import type { AttentionState } from "./terminalAttention";
 import { terminalScreenAttention } from "./operatorQuestionState";
 
@@ -60,6 +62,7 @@ export function sessionAttention(input: { summaryStatus?: string | null }): Atte
  */
 export function paneBadgeAttention(
   terminal?: {
+    sessionStateV2?:SessionState;
     statusSummary?: {
       status?: string | null;
       updatedAt?: number | null;
@@ -71,6 +74,8 @@ export function paneBadgeAttention(
   } | null,
   fallbackStatus?: string | null,
 ): AttentionState {
+  const view=authoritativeSessionView(terminal?.sessionStateV2);
+  if (view) return view.attention === "needs-attention" ? "waiting" : view.attention;
   const screenAttention = terminalScreenAttention(terminal?.terminalVisibleText);
   const screenUpdatedAt = terminal?.terminalVisibleTextUpdatedAt ?? 0;
   // When the agent last REPORTED, not when the app last re-wrote the store: a view

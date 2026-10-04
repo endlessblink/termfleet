@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { projectSessionState } from "../lib/sessionStateAdapter";
 import type {
   CanvasNode,
   CanvasState,
@@ -3748,6 +3749,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         t.id === id
           ? (() => {
               const updated = { ...t, ...updates };
+              if (updates.terminals) updated.terminals=updates.terminals.map(pane => ({...pane,
+                sessionStateV2:projectSessionState(t.terminals.find(previous=>previous.paneId===pane.paneId),pane),
+              }));
               if (updates.workstream) {
                 const completesRun = updates.workstream.status === "done" || updates.workstream.phase === "complete";
                 updated.workstream = {

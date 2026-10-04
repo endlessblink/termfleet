@@ -1471,7 +1471,7 @@ test("shows the main user ask in Task while current activity stays in title and 
 
 // Known gap (launch audit 2026-09-30): a shell-provider pane whose only evidence is a
 // todo-write checklist now reads "Task not captured" instead of the compacted item.
-test.fixme("compacts raw checklist task text for the visible Task row", () => {
+test("compacts raw checklist task text for the visible Task row", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: {
       id: "g-bina",
@@ -3635,7 +3635,7 @@ test("fully-completed task list shows the outcome, not 'Awaiting next action'", 
 // KNOWN GAP (tracked): a todo-write task scoped to an OLD run still outranks a newer
 // run's ask because sidecar summaries are not run-scoped. Needs a run-scoping rule in
 // resolveTaskIdentity, not an expectation tweak.
-test.fixme("stale scoped todo-write summary does not own a newer run", () => {
+test("stale scoped todo-write summary does not own a newer run", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: {
       id: "g-termfleet",

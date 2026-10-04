@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {publishSessionEvent} from "./lib/session-event-journal.mjs";
 // Claude Code PostToolUse hook: writes the agent's REAL task list + current activity
 // to a sidecar file keyed by cwd, which termfleet's status worker reads. Free +
 // accurate (no model), no terminal pollution (file, not /dev/tty). Safe to install
@@ -494,13 +495,17 @@ async function main() {
       cwd,
       agentPid: agentPid("claude"),
     });
-    if (payload.hook_event_name === "SessionEnd") process.exit(0);
+    if (payload.hook_event_name === "SessionEnd") {
+      try {await publishSessionEvent({paneId,provider:"claude",payload,sidecar:{sessionId:payload.session_id},at:Date.now()});}catch(error){console.error("termfleet session end journal:",error.message);}
+      process.exit(0);
+    }
   }
   if (payload.hook_event_name === "SessionStart" || payload.hook_event_name === "UserPromptSubmit") {
     // One chat, one terminal: an older copy of this chat in another terminal is closed.
     closeOtherCopies({ provider: "claude", conversationId: String(payload?.session_id ?? ""), paneId });
     if (payload.hook_event_name === "SessionStart") {
       stampProviderAtSessionStart({ payload, cwd, paneId });
+      try {await publishSessionEvent({paneId,provider:"claude",payload,sidecar:{sessionId:payload.session_id},at:Date.now()});}catch(error){console.error("termfleet session start journal:",error.message);}
       process.exit(0);
     }
   }
@@ -722,6 +727,16 @@ async function main() {
       if (!sidecar.now) sidecar.now = nowFromTodos(onDisk.todos);
     }
   }
+  // Additive durable authority. Existing sidecar metadata remains the compatibility view.
+  try {
+    const head=await publishSessionEvent({paneId,provider:"claude",payload,sidecar,at:sidecar.updatedAt});
+    if(head) {
+      sidecar.sessionEventBinding=head.identity;
+      sidecar.sessionEventSeq=head.seq;
+      sidecar.turn=head.state.lifecycle==="waiting" ? "waiting" : ["finished","idle","ended"].includes(head.state.lifecycle) ? "idle" : head.state.lifecycle==="working" ? "working" : "unknown";
+      if(head.state.question) sidecar.turnReason=head.state.question.reason==="approval" ? "permission_request" : "operator_question";
+    }
+  } catch(error) { console.error("termfleet session event journal:",error.message); }
   if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {
     process.exit(0);
   }

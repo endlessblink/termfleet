@@ -937,10 +937,15 @@ export function buildShellTerminalHeaderViewModel(input: {
     taskIdentity.source !== "task-tool" && taskIdentity.source !== "missing"
       ? taskIdentity.text
       : undefined;
+  // A declared checklist keeps its full rawText. Validate its authored first sentence
+  // before compacting the visible label; trailing workflow instructions are not Task.
+  const declaredTaskSentence = taskIdentity.source === "task-tool"
+    ? taskIdentity.text?.split(/(?<=[.!?])\s+/)[0]?.trim()
+    : undefined;
   const identityTaskDescriptionText =
     taskIdentity.source === "missing"
       ? undefined
-      : compactHeaderGoal(taskIdentity.text);
+      : compactHeaderGoal(declaredTaskSentence ?? taskIdentity.text);
   // The user's own words are gated leniently: informal phrasing and typos are
   // still what they asked for. Declared task text gets the authoritative gate.
   // The identity may be labelled `sidecar-todo` even when it IS the operator's ask
@@ -963,7 +968,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     identityTaskDescriptionText ?? "",
   );
   const identityTaskContainsTerminalChrome = /(?:https?:\/\/|(?:^|\s)\/(?:tmp|home|media|usr|etc|var)\/)/i.test(
-    compactHeaderGoal(taskIdentity.text) ?? "",
+    declaredTaskSentence ?? compactHeaderGoal(taskIdentity.text) ?? "",
   );
   const identityTaskIsProcessInstruction =
     /\b(?:use|apply|follow|invoke)\s+(?:the\s+)?(?:skill|skills|agent|reviewer|harness|workflow|tool)\b/i.test(
@@ -991,7 +996,7 @@ export function buildShellTerminalHeaderViewModel(input: {
       // agent-produced checklist line gets the strict authoritative gate.
       identityIsUserAsk
       ? qualityCheckUserAskLabel(identityTaskCandidate)
-      : qualityCheckAuthoritativeTaskLabel(identityTaskCandidate)
+      : qualityCheckAuthoritativeTaskLabel(declaredTaskSentence ?? identityTaskCandidate, declaredTaskSentence ? {maxLength:220} : {})
     : { ok: false as const, reason: "empty" as const };
   const rejectedIdentityTaskText =
     identityTaskDescriptionText && !identityTaskQuality.ok
