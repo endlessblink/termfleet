@@ -61,7 +61,7 @@ export function pendingAsk(pane, {
 }
 
 function askId(pane, ask) {
-  const source = ask.sourceId ? [ask.sourceId] : [pane.updatedAt, pane.turnReason];
+  const source = ask.sourceId ? [ask.sourceId, ask.questionIndex ?? ''] : [pane.updatedAt, pane.turnReason];
   return [pane.provider, pane.sessionId, ...source, ask.kind, ask.title]
     .map((value) => String(value || ''))
     .join(':');
@@ -152,6 +152,7 @@ export function questionFromRecords(pane, lines, screen = '') {
       const ask = {
         kind: 'question',
         sourceId: b.id,
+        questionIndex: questions.indexOf(q), questionCount: questions.length, multiSelect: Boolean(q.multiSelect),
         title: String(q.question || 'The agent is asking you something.').slice(0, 200),
         header: String(q.header || '').slice(0, 40),
         options,
@@ -160,4 +161,28 @@ export function questionFromRecords(pane, lines, screen = '') {
     }
   }
   return null;
+}
+
+// Tool-result records are the destination's acknowledgment. A key-write ack
+// alone is never proof that the agent received an answer.
+export function questionResultsFromRecords(lines) {
+  const results=[];
+  for (const line of lines) {
+    let record; try {record=typeof line==='string'?JSON.parse(line):line;} catch {continue;}
+    if (record.message?.role !== 'user') continue;
+    for (const block of Array.isArray(record.message.content)?record.message.content:[]) {
+      if(block.type!=='tool_result' || !block.tool_use_id) continue;
+      const text=typeof block.content==='string'?block.content:JSON.stringify(block.content);
+      if(!/answered your questions|User declined to answer|"answers"\s*:/.test(text || '')) continue;
+      let answers=[];
+      try {const data=JSON.parse(text);if(data.answers && typeof data.answers==='object')answers=Object.values(data.answers).filter(value=>typeof value==='string');} catch {}
+      results.push({sourceId:block.tool_use_id,declined:/User declined to answer/.test(text),text,answers});
+    }
+  }
+  return results.slice(-12);
+}
+export function questionResults(pane) {
+  if(pane.provider!=='claude') return [];
+  const file=claudeTranscript(pane.cwd,pane.sessionId);
+  return file?questionResultsFromRecords(tailLines(file,256*1024)):[];
 }

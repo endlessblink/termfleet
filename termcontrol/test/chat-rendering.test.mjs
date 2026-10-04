@@ -98,7 +98,7 @@ test('a box-drawn terminal table becomes a real table', () => {
 
 test('lists, code and emphasis render, and markup in the text stays inert', () => {
   const out = richText('Next steps:\n- Check the **event URL**\n- Run `npm test`\n\n```\n<script>x</script>\n```\n<img src=x onerror=alert(1)>');
-  assert.match(out, /<ul><li dir="ltr">Check the <strong>event URL<\/strong><\/li><li dir="ltr">Run <code>npm test<\/code><\/li><\/ul>/);
+  assert.match(out, /<ul dir="ltr"><li dir="ltr">Check the <strong>event URL<\/strong><\/li><li dir="ltr">Run <code>npm test<\/code><\/li><\/ul>/);
   assert.match(out, /<pre><code>&lt;script&gt;x&lt;\/script&gt;<\/code><\/pre>/);
   assert.doesNotMatch(out, /<img|<script/);
 });
@@ -113,6 +113,7 @@ test('a three-column table becomes one labelled card per row on a phone', () => 
 test('direction follows the language a line is mostly written in', () => {
   assert.match(richText('💬 `מעצבים עם AI` WhatsApp group'), /<p dir="ltr">/);
   assert.match(richText('שלחתי את ההודעה לקבוצת WhatsApp'), /<p dir="rtl">/);
+  assert.match(richText('- להכין את ההצעה\n- Review scope'), /<ul dir="rtl"><li dir="rtl">.*<li dir="ltr">Review scope/);
 });
 
 test('the phone preserves aligned spaces in an assistant message', async () => {
@@ -122,7 +123,7 @@ test('the phone preserves aligned spaces in an assistant message', async () => {
     const message = 'Task       Status\nSync       Running';
     const style = html.match(/<style>([\s\S]*?)<\/style>/)?.[1];
     assert.ok(style, 'phone styles found');
-    await page.setContent(`<style>${style}</style><div class="msg assistant"><div class="bubble richbubble">${richText(message)}</div></div>`);
+    await page.setContent(`<style>${style}</style><main><div class="msg assistant"><div class="bubble richbubble">${richText(message)}</div></div></main>`);
     assert.equal(await page.locator('.rich p').innerText(), message);
   } finally {
     await browser.close();

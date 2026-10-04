@@ -28,3 +28,12 @@ test('only real conversation roles become Codex chat messages', () => {
     kind: 'assistant', at: '2026-09-24T08:00:00Z', text: 'I can help with that.',
   });
 });
+
+test('technical provenance collapses machinery while retaining exact debug text and real code',()=>{
+ const raw='Base directory for this skill: /synthetic/.agents/skills/example\n# internal loader';
+ const technical=messageFromRecord({timestamp:'2026-10-04',payload:{type:'message',role:'user',content:[{type:'input_text',text:raw}]}});
+ assert.deepEqual(technical,{kind:'notice',text:'Technical context',details:raw,technical:true,at:'2026-10-04'});
+ const genuine='הנה הדוגמה שביקשת:\n```xml\n<system-reminder>example</system-reminder>\n```\nUse HANDOFF.md when you want to read it.';
+ assert.equal(clean(genuine),genuine);assert.equal(messageFromRecord({payload:{type:'message',role:'assistant',content:[{type:'output_text',text:genuine}]}}).kind,'assistant');
+ const meta=messageFromRecord({isMeta:true,payload:{type:'message',role:'user',content:[{type:'input_text',text:'opaque harness payload'}]}});assert.equal(meta.kind,'notice');assert.equal(meta.details,'opaque harness payload');
+});
