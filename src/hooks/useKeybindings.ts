@@ -1,3 +1,4 @@
+import { cycleRecentTerminal, focusNextAttentionTerminal, recentTerminalCycle } from "../lib/terminalNavigationActions";
 import { useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useWorkspaceStore, createNewTab, splitActivePane, closeActivePane } from "../stores/workspace";
@@ -55,6 +56,20 @@ export function useKeybindings() {
       }
 
       const store = useWorkspaceStore.getState();
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      // Reserved cockpit chords also work inside terminals. Plain terminal control
+      // keys retain their existing guard below. A modal/form owns its keyboard.
+      if (e.ctrlKey && e.altKey && !e.metaKey && !e.shiftKey &&
+          !e.getModifierState("AltGraph") &&
+          !document.querySelector('[role="dialog"][aria-modal="true"]')) {
+        if (["PageDown", "PageUp", "Home", "n", "N"].includes(e.key)) {
+          e.preventDefault(); e.stopImmediatePropagation();
+          if (e.key === "PageDown" || e.key === "PageUp") cycleRecentTerminal(e.key === "PageDown" ? 1 : -1);
+          else if (e.key === "Home") focusNextAttentionTerminal();
+          else window.dispatchEvent(new CustomEvent("workspace:new-agent-terminal"));
+          return;
+        }
+      }
 
       if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "z") {
         const terminalFocused = terminalHasKeyboardFocus();
@@ -204,7 +219,18 @@ export function useKeybindings() {
 
     }
 
+    const endCycle = (e: KeyboardEvent) => { if (!e.ctrlKey || !e.altKey) recentTerminalCycle.reset(); };
+    const resetCycle = () => recentTerminalCycle.reset();
+    window.addEventListener("keyup", endCycle, true);
+    window.addEventListener("blur", resetCycle);
+    window.addEventListener("pointerdown", resetCycle, true);
     window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", endCycle, true);
+      window.removeEventListener("blur", resetCycle);
+      window.removeEventListener("pointerdown", resetCycle, true);
+      recentTerminalCycle.reset();
+    };
   }, []);
 }

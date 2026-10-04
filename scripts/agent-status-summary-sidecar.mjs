@@ -265,7 +265,6 @@ export function summaryFromSidecar(sidecar, payload) {
   const now = sidecar?.turn === "working"
     ? contextualWorkingActivity(rawNow, lastDone?.content, contextPath)
     : rawNow;
-  const working = Boolean(active);
   // Title = the agent's CURRENT task, preferring its human-readable `activeForm` over the
   // terse subject. When nothing is live (all complete), fall back to the LAST completed
   // task — a clean summary of what was just done. NEVER fall back to `now` (the momentary
@@ -338,6 +337,7 @@ export function summaryFromSidecar(sidecar, payload) {
   return {
     ...fallback,
     provider: sidecar?.provider ?? fallback.provider,
+    sessionId: sidecar?.sessionId,
     updatedAt: typeof sidecar?.updatedAt === "number" ? sidecar.updatedAt : fallback.updatedAt,
     task: activityTitle,
     userTask: userTask || undefined,
@@ -348,18 +348,22 @@ export function summaryFromSidecar(sidecar, payload) {
       ? "plan-explanation"
       : sidecar?.mainTaskSource,
     completedByCommand: completedByDoneCommand(sidecar),
+    completedAt: sidecar?.turn === "idle" ? sidecar.completedAt ??
+      (["claude-narration", "codex-narration"].includes(sidecar.source ?? "") ? sidecar.updatedAt : undefined) : undefined,
+    waitingReason: sidecar?.turn === "waiting"
+      ? ["permission_request", "permission_prompt"].includes(sidecar.turnReason ?? "") ? "approval"
+        : sidecar.turnReason === "operator_question" ? "input" : undefined
+      : undefined,
     now: now || fallback.now,
     status:
       sidecar?.turn === "idle"
         ? "idle"
         : sidecar?.turn === "waiting"
           ? "waiting"
-          : sidecar?.turn === "working" || working
+          : sidecar?.turn === "working"
             ? "working"
-            : visibleTodos.length > 0
-              ? "idle"
-              : fallback.status,
-    confidence: "high",
+            : "unavailable",
+    confidence: sidecar?.turn ? "high" : "low",
     tasks: extractedItems(visibleTodos.map(todoToTaskText)),
     // These tasks ARE the agent's real Claude TodoWrite list (captured by the
     // status hook), not heuristic summary items. Generic lifecycle placeholders

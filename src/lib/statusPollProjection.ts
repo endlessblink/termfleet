@@ -24,7 +24,20 @@ function validPaneGoal(value: string | undefined, source: string | undefined) {
 }
 
 export function terminalMatchesPollTarget(candidate: TerminalState, target: TerminalState) {
-  return candidate.id === target.id || candidate.paneId === target.paneId;
+  return candidate.paneId === target.paneId;
+}
+
+
+/** Reject asynchronous results if the exact pane was replaced or changed runs. */
+export function pollTargetMatchesRun(candidate: TerminalState, target: TerminalState) {
+  return terminalMatchesPollTarget(candidate, target) &&
+    candidate.activeRunId === target.activeRunId &&
+    candidate.providerSessionId === target.providerSessionId &&
+    candidate.statusSummary?.sessionId === target.statusSummary?.sessionId;
+}
+
+export function reportedSessionChanged(previous: TerminalState["statusSummary"], next: TerminalState["statusSummary"]) {
+  return Boolean(previous?.sessionId && next?.sessionId && previous.sessionId !== next.sessionId);
 }
 
 /** Keep a previously accepted pane Goal when a live-status projection omits it. */
@@ -32,6 +45,7 @@ export function preserveDurablePaneGoal(
   previous: TerminalState["statusSummary"] | undefined,
   next: NonNullable<TerminalState["statusSummary"]>,
 ) {
+  if (reportedSessionChanged(previous, next)) return next;
   if (
     validPaneGoal(next.mainTask, next.mainTaskSource)
   ) return next;
@@ -119,6 +133,8 @@ export function projectStatusPollResult(
   result: AgentStatusSummarizerResult,
   updatedAt: number,
 ): Partial<TerminalState> | null {
+  const newSession = reportedSessionChanged(terminal.statusSummary, result.summary);
+  const retainedAsk = newSession && terminal.mainUserAsk?.source !== "manual" ? undefined : terminal.mainUserAsk;
   const durableGoal =
     Boolean(result.summary.mainTask?.trim()) &&
       validPaneGoal(result.summary.mainTask, result.summary.mainTaskSource) ||
@@ -138,17 +154,17 @@ export function projectStatusPollResult(
       ),
       statusSummary: {
         ...result.summary,
-        task: terminal.statusSummary?.task ?? result.summary.task,
-        now: "Idle — no work is running",
-        status: "idle",
-        confidence: "high",
+        task: newSession ? result.summary.task : terminal.statusSummary?.task ?? result.summary.task,
+        now: "Status unavailable",
+        status: "unavailable",
+        confidence: "low",
       },
       statusSummaryUpdatedAt: updatedAt,
       statusSummarySource: "sidecar",
       statusSummaryError: undefined,
-      mainUserAsk: terminal.mainUserAsk,
-      taskLine: terminal.taskLine,
-      taskLineup: terminal.taskLineup,
+      mainUserAsk: retainedAsk,
+      taskLine: newSession ? undefined : terminal.taskLine,
+      taskLineup: newSession ? [] : terminal.taskLineup,
       nowLine: null,
     };
   }
@@ -175,14 +191,14 @@ export function projectStatusPollResult(
   // The pane's task is not invalidated by the agent going quiet — only its live
   // activity is. Keeping the last real task (with the badge reading unavailable) is
   // both truer and more useful than replacing it with a placeholder.
-  const knownTask = terminal.statusSummary?.task?.trim();
+  const knownTask = newSession ? undefined : terminal.statusSummary?.task?.trim();
   const lastRealTask =
     knownTask &&
     !/^(?:Task not captured|Activity not captured|Status unavailable|Idle|Working|Ready|Unknown)$/i.test(
       knownTask,
     )
       ? knownTask
-      : terminal.mainUserAsk?.text?.trim() || undefined;
+      : retainedAsk?.text?.trim() || undefined;
 
   return {
     agentProvider: stableAgentProvider(
@@ -195,7 +211,7 @@ export function projectStatusPollResult(
       now: "Status unavailable",
       status: "unavailable",
       provider: terminal.statusSummary?.provider ?? result.summary.provider,
-      confidence: "high",
+      confidence: "low",
       completedByCommand:
         result.summary.completedByCommand ||
         terminal.statusSummary?.completedByCommand ||
@@ -211,7 +227,8 @@ export function projectStatusPollResult(
     // declared" and the TASKS panel to "No list" while both were known. Only the live
     // lines above go unavailable — the badge and the activity line carry that fact, so
     // keeping these cannot make the pane look busy.
-    mainUserAsk: terminal.mainUserAsk,
-    taskLineup: terminal.taskLineup,
+    mainUserAsk: retainedAsk,
+    taskLineup: newSession ? [] : terminal.taskLineup,
+    ...(newSession ? {taskLine: undefined, nowLine: null} : {}),
   };
 }

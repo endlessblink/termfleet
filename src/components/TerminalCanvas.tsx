@@ -1,3 +1,4 @@
+import { isTerminalNavigationShortcut } from "../lib/terminalNavigation";
 // TC-017b/c/d — Canvas2D terminal renderer with input.
 //
 // Attaches the headless-VT grid, subscribes to the Rust binary dirty-diff
@@ -1400,6 +1401,8 @@ export function TerminalCanvas({
   // focused. stopPropagation also prevents the bubble handler from double-sending.
   useEffect(() => {
     const onCaptureKeyDown = (event: KeyboardEvent) => {
+      // Dedicated operator-requested cockpit navigation belongs to the window.
+      if (isTerminalNavigationShortcut(event)) return;
       if (!terminalOwnsKeyboard()) return;
       // The terminal already owns keyboard focus for ordinary typing. Calling
       // focus() here also reclaims the PTY and updates the workspace store on

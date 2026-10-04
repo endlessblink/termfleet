@@ -41,8 +41,9 @@ export function reconcileSessionStatus(signals: SessionSignals): SessionStatus {
   if (status === "waiting" || status === "blocked") return waiting;
   if (status === "working") return running;
   if (status === "unavailable") return unavailable;
-  // idle / done / stopped / unknown → idle.
-  return idle;
+  if (status === "idle" || status === "done" || status === "stopped") return idle;
+  // Silence, missing hooks, and unknown state are not proof of a finished turn.
+  return unavailable;
 }
 
 /** Convenience wrapper for callers that only have the agent's reported status. */

@@ -64,6 +64,9 @@ export function cwdSidecarFileName(cwd: unknown): string {
 const SIDECAR_TTL_MS = 30 * 60 * 1000;
 
 export interface AgentStatusSidecar {
+  source?: string;
+  turnReason?: string;
+  completedAt?: number;
   provider?: AgentProvider;
   cwd?: string;
   updatedAt?: number;
@@ -473,7 +476,6 @@ export function summaryFromSidecar(
   sidecar: AgentStatusSidecar,
   fallback: AgentStatusSummary,
 ): AgentStatusSummary {
-  const todos = Array.isArray(sidecar?.todos) ? sidecar.todos : [];
   const visibleTodos = visibleSidecarTodos(sidecar);
   const rawNow = cleanText(sidecar?.now);
   const settledNarration = cleanText(sidecar?.narration);
@@ -509,7 +511,6 @@ export function summaryFromSidecar(
       : liveNow && (readsAsActivity(liveNow) || Boolean(idleNow))
         ? liveNow
         : fallback.now;
-  const working = Boolean(todos.find((todo) => todo?.status === "in_progress"));
   // Title = the agent's CURRENT task, preferring its human-readable `activeForm` over
   // the terse subject. When nothing is live (all complete), fall back to the LAST
   // completed task. NEVER fall back to `now` (momentary raw tool activity) as the
@@ -639,6 +640,7 @@ export function summaryFromSidecar(
   return {
     ...fallback,
     provider: sidecar.provider ?? fallback.provider,
+    sessionId: sidecar.sessionId,
     // Carry the HOOK's own write time so the badge reconciler can tell a live turn (hook
     // firing) from a finished one (hook went silent) — immune to a ticking status bar.
     updatedAt:
@@ -664,6 +666,12 @@ export function summaryFromSidecar(
         ? sidecar.mainTaskSource ?? "plan-explanation"
         : sidecar?.mainTaskSource,
     completedByCommand: sidecarCompletedByCommand(sidecar),
+    completedAt: sidecar.turn === "idle" ? sidecar.completedAt ??
+      (["claude-narration", "codex-narration"].includes(sidecar.source ?? "") ? sidecar.updatedAt : undefined) : undefined,
+    waitingReason: sidecar.turn === "waiting"
+      ? ["permission_request", "permission_prompt"].includes(sidecar.turnReason ?? "") ? "approval"
+        : sidecar.turnReason === "operator_question" ? "input" : undefined
+      : undefined,
     now: now || fallback.now,
     // The hook's explicit turn state is authoritative: a Stop event means the turn
     // ended even if an in-progress todo was never marked complete (the stale-Running
@@ -673,12 +681,10 @@ export function summaryFromSidecar(
         ? "idle"
         : sidecar?.turn === "waiting"
           ? "waiting"
-          : sidecar?.turn === "working" || working
+          : sidecar?.turn === "working"
             ? "working"
-            : todos.length > 0
-              ? "idle"
-              : fallback.status,
-    confidence: "high",
+            : "unavailable",
+    confidence: sidecar.turn ? "high" : "low",
     tasks: extractedItems(visibleTodos.map(todoToTaskText)),
     // These ARE the agent's real task list (captured by the status hook), not
     // heuristic summary items — flag them as the authoritative `todo-write` source.

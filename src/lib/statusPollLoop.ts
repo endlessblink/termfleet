@@ -26,6 +26,8 @@ import {
   projectStatusPollResult,
   statusPollProjectionChanged,
   terminalMatchesPollTarget,
+  pollTargetMatchesRun,
+  reportedSessionChanged,
 } from "./statusPollProjection";
 
 
@@ -62,10 +64,13 @@ function panePollKey(tab: Tab, terminal: TerminalState) {
 }
 
 function latestTabForPollTarget(tabs: Tab[], target: StatusPollTarget) {
-  return tabs.find((candidate) => candidate.id === target.tab.id) ??
-    tabs.find((candidate) =>
-      candidate.terminals.some((terminal) => terminal.paneId === target.terminal.paneId),
-    );
+  const tab = tabs.find((candidate) => candidate.id === target.tab.id);
+  const terminal = tab?.terminals.find((candidate) => terminalMatchesPollTarget(candidate, target.terminal));
+  // A delayed read belongs to the run it started in. Never redirect it to a
+  // successor tab or a new agent occupying the same pane after handover/reconnect.
+  if (!tab || !terminal || !pollTargetMatchesRun(terminal, target.terminal) ||
+      tab.workstream?.providerSessionId !== target.tab.workstream?.providerSessionId) return undefined;
+  return tab;
 }
 
 function shouldPollTarget(target: StatusPollTarget, activeTabId: string | null | undefined, now: number) {
@@ -128,6 +133,7 @@ function applyAgentLifecycle(
         now: "",
         ...stored,
         status: lifecycle.state,
+        ...(lifecycle.state === "unavailable" ? {now: "Status unavailable", confidence: "low" as const} : {}),
         updatedAt: lifecycle.updatedAtMs,
         statusFromAgentLog: true,
       };
@@ -181,7 +187,8 @@ async function pollOnce() {
           // Fast, independent evidence first: the badge never waits on the summary.
           const alivePromise = readPaneAgentAlive(key);
           const lifecyclePromise = alivePromise.then((alive) => (alive ? readPaneAgentLifecycle(key) : null));
-          const summaryPromise = summaryInFlight.get(key) ?? summarizeAgentStatus({
+          const summaryKey = `${key}:${terminal.activeRunId ?? ""}:${terminal.providerSessionId ?? tab.workstream?.providerSessionId ?? ""}`;
+          const summaryPromise = summaryInFlight.get(summaryKey) ?? summarizeAgentStatus({
           paneId: key,
           sessionId: tab.workstream?.providerSessionId,
           userTask: tab.workstream?.kind === "agent" ? tab.workstream.mission ?? tab.workstream.prompt : undefined,
@@ -205,9 +212,9 @@ async function pollOnce() {
           // cannot invent a new goal for a pane.
           contextTaskSummarizer: null,
           });
-          if (!summaryInFlight.has(key)) {
-            summaryInFlight.set(key, summaryPromise);
-            void summaryPromise.finally(() => summaryInFlight.delete(key)).catch(() => undefined);
+          if (!summaryInFlight.has(summaryKey)) {
+            summaryInFlight.set(summaryKey, summaryPromise);
+            void summaryPromise.finally(() => summaryInFlight.delete(summaryKey)).catch(() => undefined);
           }
           const [agentAlive, lifecycle, summaryOrTimeout] = await Promise.all([
             alivePromise,
@@ -301,6 +308,7 @@ async function pollOnce() {
         ? {
             statusFromAgentLog: true,
             status: lifecycle.state,
+            ...(lifecycle.state === "unavailable" ? {now: "Status unavailable", confidence: "low" as const} : {}),
             updatedAt:
               storedBeforeWrite?.status === lifecycle.state && storedBeforeWrite.updatedAt
                 ? storedBeforeWrite.updatedAt
@@ -422,6 +430,7 @@ async function pollOnce() {
         // Never clobber a live declared task list with a modeled line.
         if (latestTerminal.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite && !contextual && !lifecycleSummary) continue;
         const updatedAt = Date.now();
+        const newSession = reportedSessionChanged(latestTerminal.statusSummary, result.summary);
         const withGoal = preserveDurablePaneGoal(latestTerminal.statusSummary, result.summary);
         const projectedSummary = lifecycleSummary
           ? withGoal
@@ -443,7 +452,7 @@ async function pollOnce() {
           candidateAsk.split(/\s+/).length > previousAsk.split(/\s+/).length;
         const mainUserAsk = result.source === "sidecar" || askImproves
           ? mainUserAskFromSummary(projectedSummary, "status-sidecar", {
-              previous: latestTerminal.mainUserAsk,
+              previous: newSession && latestTerminal.mainUserAsk?.source !== "manual" ? undefined : latestTerminal.mainUserAsk,
               runId: latestTerminal.activeRunId,
               now: updatedAt,
             })
@@ -452,10 +461,11 @@ async function pollOnce() {
           ? taskLineupFromExtractedItems(projectedSummary.tasks, "todo-write", "pending", updatedAt, latestTerminal.activeRunId)
           : undefined;
         const taskLine = preferPaneTaskLine(
-          latestTerminal.taskLine,
+          newSession ? null : latestTerminal.taskLine,
           result.taskLine,
         );
         const projection: Partial<TerminalState> = {
+          ...(newSession ? {taskLineup: [],taskLine: undefined} : {}),
           ...(taskLineup && taskLineup.length > 0 ? { taskLineup } : {}),
           ...(taskLine ? { taskLine } : {}),
           nowLine: result.nowLine ?? null,

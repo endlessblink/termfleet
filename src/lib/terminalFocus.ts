@@ -22,5 +22,5 @@ export const TERMINAL_INPUT_CLASS = "terminal-canvas-input";
 export function terminalHasKeyboardFocus(): boolean {
   if (typeof document === "undefined") return false;
   const active = document.activeElement;
-  return active instanceof HTMLElement && active.classList.contains(TERMINAL_INPUT_CLASS);
+  return active instanceof HTMLElement && (active.classList.contains(TERMINAL_INPUT_CLASS) || active.classList.contains("xterm-helper-textarea"));
 }

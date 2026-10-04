@@ -88,6 +88,9 @@ export interface TerminalMainUserAsk {
 }
 
 export interface TerminalState {
+  /** Completion explicitly opened for review by the operator, persisted per pane. */
+  reviewedCompletionAt?: number;
+  reviewedCompletionSessionId?: string;
   id: string; // PTY ID
   paneId: string; // Which split pane this belongs to
   cols: number;
@@ -296,6 +299,8 @@ export interface WorkstreamCockpitObject {
 }
 
 export interface WorkstreamStatusSummary {
+  /** Provider conversation owning these labels; never carry text across sessions. */
+  sessionId?: string;
   task: string;
   // The status hook's own last-write time (ms epoch). It fires on prompt/tool/turn-end
   // events and STOPS when the turn ends, so the badge reconciler uses it to tell a live
@@ -314,6 +319,9 @@ export interface WorkstreamStatusSummary {
   // True only when the status hook observed a completed `$done` or `/done` turn.
   // Kept separate from lifecycle because a completed turn is also correctly Idle.
   completedByCommand?: boolean;
+  /** Explicit provider turn-end event, distinct from process exit or silence. */
+  completedAt?: number;
+  waitingReason?: "approval" | "input" | "blocked";
   path: string;
   now: string;
   status: WorkstreamStatusSummaryLifecycle;
