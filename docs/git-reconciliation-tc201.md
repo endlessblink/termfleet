@@ -32,3 +32,9 @@ The historical `release/public-preview-preparation` v0.1.2 branch retains its un
 - `npm run verify:map-terminals`, `npm run verify:terminal-rendering`:passed.
 - `npm run issues -- check`:76 issue records and5 failure surfaces valid.
 - Focused Cargo heartbeat tests pass2/2. The unified production build/install/live acceptance are the next gates. Do not mark TC-201 complete until installed/running/shared target hashes match, doctor passes, the original PTY IDs/PIDs and daemon survive, and one registered checkout has an empty status.
+
+## Completed acceptance — 2026-10-04
+
+release `b4ecac5f18ea-9e0b177f1906-9b58af6507ab`; source `b4ecac5f18ea18e57dfb62c0bde456c022e2ee96`; UI4142165; binary SHA256 `9e0b177f190608ff7a07023761079ae48ef191e05aa7b6a7a441f079758b7522`; watchdog4133321; daemon18932; all32 original PTY IDs/PIDs preserved. Canonical installer/frontend/optimized Rust build passes; actual target/install/running checksums match. Host doctor returns DOCTOR_OK; selected release manifest matches its clean source commit. UI remains alive with a fresh heartbeat past180s startup grace and current watchdog inode/hash. All32 before-install PTY IDs/PIDs and the daemon survive unchanged. Actual window screenshot inspected; current snapshot13 map entries match live daemon IDs with reconnected status.
+
+All focused guards, Cargo tests/check, source verifiers, issue validation and diff checks pass. One registered checkout; all relevant retained work committed and original experiments/local artifacts independently recoverable. The final evidence-only receipt commit follows installed source b4ecac5; it changes no runtime, test or build input. Therefore the manifest honestly retains b4ecac5 as compiled source, while the final checkout also contains its acceptance receipt. No push/publication occurred.

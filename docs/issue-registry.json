@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-04T09:21:36.126Z",
+  "updatedAt": "2026-10-04T14:21:17.136Z",
   "issues": [
     {
       "id": "TF-001",
@@ -9588,13 +9588,13 @@
         },
         {
           "kind": "installed-release",
-          "at": "2026-10-04T09:21:36.042Z",
-          "note": "User-approved candidate 98d2508ebff6-8a596f5f9d5e-b23b2b7ff1e9 atomically promoted; canonical installed-release verifier passes. Running /proc/1656110/exe SHA256 equals 8a596f5f9d5e180d603b7a04ee24dfcee23668b976571732bc0891b138b88740. Archived frontend digest verified independently of retired build checkout."
+          "at": "2026-10-04T14:21:17.100Z",
+          "note": "Unified clean-source release b4ecac5f18ea-9e0b177f1906-9b58af6507ab built from b4ecac5f18ea18e57dfb62c0bde456c022e2ee96; shared target, immutable installed file and actual UI4142165 all SHA256 9e0b177f190608ff7a07023761079ae48ef191e05aa7b6a7a441f079758b7522. Canonical installed verifier passes; host doctor now DOCTOR_OK. No stale-artifact comparison remains."
         },
         {
           "kind": "live-desktop",
-          "at": "2026-10-04T09:21:36.091Z",
-          "note": "Dock launcher replaced UI only. Actual TermFleet screenshot inspected; independent heartbeat advances and UI PID1656110 remains stable beyond 180-second startup grace. Daemon18932 and all29 session IDs/PTY PIDs unchanged. Watchdog1655916 executes installed script inode/hash. Host doctor ownership/daemon safety pass; one broader doctor failure compares unrelated canonical target build SHA against scoped candidate, while direct installed/candidate/running SHA verification passes. Evidence: /home/endlessblink/Documents/Codex/2026-10-03/task/termfleet-tc199/activation"
+          "at": "2026-10-04T14:21:17.136Z",
+          "note": "Unified dock UI4142165 remains stable beyond180s startup grace with advancing independent heartbeat; watchdog4133321 executes installed inode/hash. Daemon18932 and all32 immediately-before PTY IDs/PIDs unchanged. Actual window screenshot inspected; fresh snapshot13 entries reconnect to exact live daemon IDs. No daemon restart or provider spawn. Evidence: /home/endlessblink/Documents/Codex/2026-10-03/task/termfleet-tc199/activation/unified-*.json"
         }
       ],
       "owner": "termfleet",
@@ -9676,6 +9676,18 @@
           "from": "verifying",
           "to": "resolved",
           "note": "Source, regression, private packaged FIFO-stall and actual installed-desktop liveness/preservation evidence recorded. No daemon restart; future unrelated failures require distinct evidence."
+        },
+        {
+          "at": "2026-10-04T14:21:17.100Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Unified clean-source release b4ecac5f18ea-9e0b177f1906-9b58af6507ab built from b4ecac5f18ea18e57dfb62c0bde456c022e2ee96; shared target, immutable installed file and actual UI4142165 all SHA256 9e0b177f190608ff7a07023761079ae48ef191e05aa7b6a7a441f079758b7522. Canonical installed verifier passes; host doctor now DOCTOR_OK. No stale-artifact comparison remains."
+        },
+        {
+          "at": "2026-10-04T14:21:17.136Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Unified dock UI4142165 remains stable beyond180s startup grace with advancing independent heartbeat; watchdog4133321 executes installed inode/hash. Daemon18932 and all32 immediately-before PTY IDs/PIDs unchanged. Actual window screenshot inspected; fresh snapshot13 entries reconnect to exact live daemon IDs. No daemon restart or provider spawn. Evidence: /home/endlessblink/Documents/Codex/2026-10-03/task/termfleet-tc199/activation/unified-*.json"
         }
       ]
     }
