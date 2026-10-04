@@ -26,7 +26,7 @@ function explicitMainTask(sidecar) {
   if (/^\$about-what$/i.test(cleanText(sidecar?.userTask))) {
     const storedGoal = cleanText(sidecar?.mainTask);
     if (
-      sidecar?.mainTaskSource === "plan-explanation" &&
+      ["plan-explanation", "about-what"].includes(sidecar?.mainTaskSource) &&
       storedGoal.length >= 12 &&
       storedGoal.length <= 150 &&
       isDurableGoalText(storedGoal)
@@ -291,7 +291,7 @@ export function summaryFromSidecar(sidecar, payload) {
   // evidence and must never become a Goal or Task.
   // Only an answer to the explicit `$about-what` command is already a Goal.
   // Other plan explanations remain evidence, not a synthesized purpose.
-  const hasAboutWhatAnswer = /^\$about-what$/i.test(cleanText(sidecar?.userTask));
+  const hasAboutWhatAnswer = sidecar?.mainTaskSource === "about-what" || /^\$about-what$/i.test(cleanText(sidecar?.userTask));
   const explicitGoalCandidate =
     hasAboutWhatAnswer ||
     sidecar?.mainTaskSource === "plan-explanation" ||
@@ -333,7 +333,7 @@ export function summaryFromSidecar(sidecar, payload) {
       : "");
   const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
   const currentActivityTask = declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
-  const activityTitle = (inferredGoal || aboutWhatGoal ? inferredGoal || aboutWhatGoal : liveTask || capturedPromptTask || declaredUserTask || currentTask) || currentTask || currentActivityTask || fallback.task;
+  const activityTitle = (inferredGoal || aboutWhatGoal ? inferredGoal || aboutWhatGoal : liveTask || (lastDone && cleanText(sidecar?.userTask) === cleanText(visibleTodos[0]?.content) ? currentTask : "") || capturedPromptTask || declaredUserTask || currentTask) || currentTask || currentActivityTask || fallback.task;
   return {
     ...fallback,
     provider: sidecar?.provider ?? fallback.provider,

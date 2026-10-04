@@ -203,10 +203,13 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
   const prevUserTask = storedUserTask;
   // Only an explicit opening request or the current active goal is durable. Plan
   // explanations are turn-local and must not resurrect stale orchestration text.
-  const prevMainTaskSource = prev?.mainTaskSource === "opening-request" ||
-    prev?.mainTaskSource === "agent-goal"
-    ? prev.mainTaskSource
-    : undefined;
+  const explicitAboutWhat = prev?.mainTaskSource === "about-what" ||
+    (prev?.mainTaskSource === "plan-explanation" && prev?.source === "codex-narration" &&
+      /^\$about-what$/i.test(prevUserTask || ""));
+  const prevMainTaskSource = explicitAboutWhat ? "about-what" :
+    prev?.mainTaskSource === "opening-request" || prev?.mainTaskSource === "agent-goal"
+      ? prev.mainTaskSource
+      : undefined;
   const rawPrevMainTask = cleanField(prev?.mainTask, 220) || undefined;
   const prevMainTaskIsTaskDerived = prevMainTaskSource === "opening-request" &&
     (/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(rawPrevMainTask || "") ||
@@ -335,7 +338,7 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       ? narration
       : undefined;
     const renderedGoal = aboutWhatAnswer || prevMainTask;
-    const renderedGoalSource = aboutWhatAnswer ? "plan-explanation" : effectivePrevMainTaskSource;
+    const renderedGoalSource = aboutWhatAnswer ? "about-what" : effectivePrevMainTaskSource;
     return {
       ...base,
       source: "codex-narration",

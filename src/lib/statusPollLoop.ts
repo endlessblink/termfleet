@@ -18,7 +18,7 @@ import type { Tab, TerminalState, WorkstreamStatus } from "./types";
 import { stableAgentProvider } from "./agentProviderIdentity";
 import { runBoundedTasks } from "./statusPollScheduler";
 import { heartbeatTaskRun } from "./canonicalTaskRuntime";
-import { readPaneAgentAlive, readPaneAgentLifecycle, type PaneAgentLifecycle } from "./paneAgentProcess";
+import { readPaneAgentProvider, readPaneAgentAlive, readPaneAgentLifecycle, type PaneAgentLifecycle } from "./paneAgentProcess";
 import { badgeLivenessOverride, keepNewerReportedStatus } from "./badgeLiveness";
 import {
   mirroredWorkstream,
@@ -185,6 +185,7 @@ async function pollOnce() {
         try {
           const key = panePollKey(tab, terminal);
           // Fast, independent evidence first: the badge never waits on the summary.
+          const providerPromise = readPaneAgentProvider(terminal.id || key);
           const alivePromise = readPaneAgentAlive(key);
           const lifecyclePromise = alivePromise.then((alive) => (alive ? readPaneAgentLifecycle(key) : null));
           const summaryKey = `${key}:${terminal.activeRunId ?? ""}:${terminal.providerSessionId ?? tab.workstream?.providerSessionId ?? ""}`;
@@ -216,9 +217,10 @@ async function pollOnce() {
             summaryInFlight.set(summaryKey, summaryPromise);
             void summaryPromise.finally(() => summaryInFlight.delete(summaryKey)).catch(() => undefined);
           }
-          const [agentAlive, lifecycle, summaryOrTimeout] = await Promise.all([
+          const [agentAlive, lifecycle, exactProvider, summaryOrTimeout] = await Promise.all([
             alivePromise,
             lifecyclePromise,
+            providerPromise,
             Promise.race([
               summaryPromise,
               new Promise<typeof SUMMARY_TIMED_OUT>((resolve) =>
@@ -227,9 +229,9 @@ async function pollOnce() {
             ]),
           ]);
           if (summaryOrTimeout === SUMMARY_TIMED_OUT) {
-            return { target, result: null, agentAlive, lifecycle, summaryTimedOut: true };
+            return { target, result: null, agentAlive, lifecycle, exactProvider, summaryTimedOut: true };
           }
-          return { target, result: summaryOrTimeout, agentAlive, lifecycle };
+          return { target, result: summaryOrTimeout, agentAlive, lifecycle, exactProvider };
         } catch (error) {
           return {
             target,
@@ -243,6 +245,22 @@ async function pollOnce() {
     for (const polled of pollResults) {
       const { target, error } = polled;
       let result = polled.result;
+      const exactProvider = "exactProvider" in polled ? polled.exactProvider : null;
+      const previousProvider = target.terminal.agentProvider ?? target.terminal.statusSummary?.provider;
+      if (exactProvider && previousProvider && previousProvider !== "shell" && exactProvider !== previousProvider) {
+        const current = useWorkspaceStore.getState();
+        const tab = latestTabForPollTarget(current.tabs, target);
+        if (tab) current.updateTab(tab.id, {terminals:tab.terminals.map(pane => pane.paneId === target.terminal.paneId ? {
+          ...pane, agentProvider:exactProvider, providerSessionId:undefined,
+          mainUserAsk:pane.mainUserAsk?.source === "manual" ? pane.mainUserAsk : undefined,
+          taskLine:undefined, taskLineup:undefined, nowLine:null,
+          statusSummary:{provider:exactProvider,path:result?.summary.path ?? "",task:"Task not captured",now:"Status unavailable",status:"unavailable",confidence:"low"},
+          statusSummarySource:"fallback", statusSummaryUpdatedAt:Date.now(),
+          reviewedCompletionAt:undefined, reviewedCompletionSessionId:undefined,
+        } : pane)});
+        // A sidecar from the displaced provider is not this conversation's evidence.
+        continue;
+      }
       if (!result && "summaryTimedOut" in polled && polled.summaryTimedOut) {
         // The summary is still being read; the badge still follows the agent's log.
         const lifecycle = polled.lifecycle ?? null;

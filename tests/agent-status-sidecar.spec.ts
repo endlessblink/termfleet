@@ -7,7 +7,7 @@ import {
 import { fnv } from "../scripts/lib/agent-status-paths.mjs";
 import { summaryFromSidecar } from "../scripts/agent-status-summary-sidecar.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -17,6 +17,7 @@ import path from "node:path";
 
 const ROOT = process.cwd();
 const HOOK = path.join(ROOT, "scripts", "termfleet-claude-status-hook.mjs");
+import { buildCodexSidecar } from "../scripts/termfleet-codex-status-hook.mjs";
 const CODEX_HOOK = path.join(ROOT, "scripts", "termfleet-codex-status-hook.mjs");
 const WORKER = path.join(ROOT, "scripts", "agent-status-summary-sidecar.mjs");
 const OLLAMA_WORKER = path.join(
@@ -82,6 +83,19 @@ test("does not promote a status-explanation opening prompt into Goal", async () 
 });
 
 function runNode(script: string, input: unknown, env: Record<string, string>) {
+  // These worker tests supply a synthetic pane. Running the full hook under
+  // Codex app-server correctly refuses that unowned pane. Write the fixture via
+  // its real reducer without scanning or closing any operator processes.
+  if (script === CODEX_HOOK) {
+    const dir = path.join(env.XDG_DATA_HOME, "terminal-workspace", "agent-status");
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `pane-${fnv(env.TERMFLEET_PANE_ID)}.json`);
+    let previous;
+    try { previous = JSON.parse(readFileSync(file, "utf8")); } catch { previous = null; }
+    const sidecar = buildCodexSidecar(input, previous, Date.now());
+    if (sidecar) writeFileSync(file, JSON.stringify({...sidecar, provider:"codex", paneId:env.TERMFLEET_PANE_ID}));
+    return {stdout:"", stderr:"", status:0};
+  }
   return spawnSync("node", [script], {
     input: JSON.stringify(input),
     encoding: "utf8",

@@ -204,7 +204,7 @@ test("uses the view model Now value instead of the generic title", () => {
     },
   });
 
-  expect(header.currentActivity).toBe("Awaiting next action");
+  expect(header.currentActivity).toBe("Status unavailable");
   expect(header.currentActivity).not.toBe("Activity not captured");
 });
 

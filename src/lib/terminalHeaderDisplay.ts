@@ -698,8 +698,6 @@ function purposeFromTranscriptLine(line: string) {
 
   const promptText = text.match(/^[›❯]\s*(.+)$/)?.[1];
   if (promptText) {
-    if (/^run\s+\/review\b/i.test(promptText) && /\bcurrent changes\b/i.test(promptText))
-      return "Reviewing current changes";
     // Reject prompt-box chrome / placeholder hints (slash-command suggestions like
     // "Use /skills to list available skills", or bare "/cmd …"); these are not a
     // user task and must not override the real summarized title (TC-033 T5).
@@ -798,6 +796,10 @@ function purposeFromTranscript(output?: string | null) {
     .split(/\r?\n/)
     .map((line) => cleanText(line))
     .filter((line): line is string => Boolean(line));
+  // A latest command echo ends the current prompt context. Do not search
+  // backwards into another turn and promote its raw prompt into a new Goal.
+  const latestPrompt = [...lines].reverse().find(line => /^[›❯]\s+/.test(line))?.replace(/^[›❯]\s+/, "");
+  if (latestPrompt && (looksLikeTypedPromptEcho(latestPrompt) || /^\/[a-z][\w-]*\b/i.test(latestPrompt))) return undefined;
   let lastWorkingIndex = -1;
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     if (/^(?:[•●]\s*)?(?:Working\s+\(|Worked for\b)/i.test(lines[index])) {
@@ -1284,7 +1286,7 @@ export function neutralHeaderTitle(status?: string | null): string {
   switch (status) {
     case "running":
     case "reconnected":
-      return "Idle";
+      return "Status unavailable";
     case "failed":
       return "Needs attention";
     case "exited":

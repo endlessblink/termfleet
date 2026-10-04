@@ -133,7 +133,7 @@ function explicitMainTask(sidecar: AgentStatusSidecar): string {
   if (/^\$about-what$/i.test(cleanText(sidecar.userTask))) {
     const storedGoal = cleanText(sidecar.mainTask);
     if (
-      sidecar.mainTaskSource === "plan-explanation" &&
+      ["plan-explanation", "about-what"].includes(sidecar.mainTaskSource ?? "") &&
       storedGoal.length >= 12 &&
       storedGoal.length <= 150 &&
       !isNonDescriptiveTaskText(storedGoal)
@@ -531,7 +531,7 @@ export function summaryFromSidecar(
   // overwrite another terminal's `$about-what` answer.
   // Only an answer to the explicit `$about-what` command is already a Goal.
   // Other plan explanations remain evidence for pane-local outcome heuristics.
-  const hasAboutWhatAnswer = /^\$about-what$/i.test(cleanText(sidecar.userTask));
+  const hasAboutWhatAnswer = sidecar.mainTaskSource === "about-what" || /^\$about-what$/i.test(cleanText(sidecar.userTask));
   const explicitGoalCandidate =
     hasAboutWhatAnswer ||
     sidecar.mainTaskSource === "plan-explanation" ||
@@ -633,7 +633,7 @@ export function summaryFromSidecar(
   const activityTitle =
     (inferredGoal || aboutWhatGoal
       ? inferredGoal || aboutWhatGoal
-      : liveTask || capturedPromptTask || declaredUserTask || currentTask) ||
+      : liveTask || (lastDone && cleanText(sidecar?.userTask) === cleanText(visibleTodos[0]?.content) ? currentTask : "") || capturedPromptTask || declaredUserTask || currentTask) ||
     currentTask ||
     currentActivityTask ||
     fallback.task;
