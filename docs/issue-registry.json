@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-04T21:32:26.350Z",
+  "updatedAt": "2026-10-04T22:14:39.370Z",
   "issues": [
     {
       "id": "TF-001",
@@ -1292,18 +1292,18 @@
       "guard": "The map sidebar refreshes every mounted terminal's live project identity before interaction, and the focused browser regression checks the category without a click.",
       "evidence": [
         {
-          "kind": "focused-test",
-          "at": "2026-08-26T14:22:05.594Z",
-          "note": "Fresh focused run passed both live cwd rehoming and map-sidebar pre-click project reconciliation: 2 passed."
+          "kind": "source",
+          "at": "2026-10-04T21:52:58.036Z",
+          "note": "TC-202: explicit chosen project overrides stale filters; bottom/right placement and reload guarded by 4 synthetic browser tests. Native filesystem/provider proof pending."
         },
         {
-          "kind": "source",
-          "at": "2026-08-26T14:22:05.911Z",
-          "note": "Fresh npm run build passed; release promotion, installed checksum verification, and dock restart smoke passed with binary sha256=862cceb6331586f4e5abe98dff78749a7b082e267666bf0929a49392e84ce435."
+          "kind": "focused-test",
+          "at": "2026-10-04T21:52:58.066Z",
+          "note": "TC-202: explicit chosen project overrides stale filters; bottom/right placement and reload guarded by 4 synthetic browser tests. Native filesystem/provider proof pending."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Refresh live project identity from the map sidebar and verify the installed dock surface.",
+      "nextAction": "Integrate isolated TC-202 candidate without losing concurrent mobile WIP; obtain native installed acceptance; retain open baseline failures and status epic.",
       "history": [
         {
           "at": "2026-08-25T19:50:31.084Z",
@@ -1386,6 +1386,32 @@
           "type": "evidence",
           "kind": "source",
           "note": "Fresh npm run build passed; release promotion, installed checksum verification, and dock restart smoke passed with binary sha256=862cceb6331586f4e5abe98dff78749a7b082e267666bf0929a49392e84ce435."
+        },
+        {
+          "at": "2026-10-04T21:36:31.677Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "New agent terminal dialog resolves the chosen folder after awaits and ignores stale active project filters."
+        },
+        {
+          "at": "2026-10-04T21:52:58.036Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-202: explicit chosen project overrides stale filters; bottom/right placement and reload guarded by 4 synthetic browser tests. Native filesystem/provider proof pending."
+        },
+        {
+          "at": "2026-10-04T21:52:58.066Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-202: explicit chosen project overrides stale filters; bottom/right placement and reload guarded by 4 synthetic browser tests. Native filesystem/provider proof pending."
+        },
+        {
+          "at": "2026-10-04T21:52:58.096Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "TC-202: explicit chosen project overrides stale filters; bottom/right placement and reload guarded by 4 synthetic browser tests. Native filesystem/provider proof pending."
         }
       ]
     },
@@ -2221,7 +2247,7 @@
           "at": "2026-09-27T09:29:27.330Z",
           "type": "evidence",
           "kind": "live-desktop",
-          "note": "2026-09-27 12:23:53 dock log shows release 2732 launched; incident samples at +55s report foreground process R and heartbeat age 9s, then heartbeat ages 1\u20136s at +117\u2013242s. Current dock screenshot at 12:25:22 shows workspace and terminal prompt, so startup eventually paints after about 89 seconds. The exact delay source within WebKit, durable layout loading, and daemon reconciliation remains unmeasured; launch responsiveness is not fixed."
+          "note": "2026-09-27 12:23:53 dock log shows release 2732 launched; incident samples at +55s report foreground process R and heartbeat age 9s, then heartbeat ages 1–6s at +117–242s. Current dock screenshot at 12:25:22 shows workspace and terminal prompt, so startup eventually paints after about 89 seconds. The exact delay source within WebKit, durable layout loading, and daemon reconciliation remains unmeasured; launch responsiveness is not fixed."
         },
         {
           "at": "2026-09-27T09:42:19.302Z",
@@ -2365,7 +2391,7 @@
           "at": "2026-09-28T09:40:20.021Z",
           "type": "evidence",
           "kind": "live-desktop",
-          "note": "2026-09-28 fresh read-only live capture: dock UI PID 3259370 and WebKit PID 3259398 remain on promoted release 353017b7354a-b11df5c09703-457ceb2bda9d; UI state S in poll_schedule_timeout, not D; cgroup I/O PSI near zero and system I/O PSI avg10 was 1.39%; memory pressure near zero. PTY daemon PID 1515447 remained alive. Over a separate 5-second /proc stat sample, UI accumulated 109 CPU ticks and WebKit 103; host CPU PSI avg10 ranged 7.24\u20139.24% and other host processes were using multiple cores. This supports concurrent app and host CPU activity but does not identify the hot function or prove keyboard latency. Existing geometry log is stale (Sep 24); no fresh key-to-paint measurement, no code change, no restart, and no performance improvement claimed. Snapshot: /tmp/termfleet/incident-snapshots/desktop-20260928T093714Z-3259370."
+          "note": "2026-09-28 fresh read-only live capture: dock UI PID 3259370 and WebKit PID 3259398 remain on promoted release 353017b7354a-b11df5c09703-457ceb2bda9d; UI state S in poll_schedule_timeout, not D; cgroup I/O PSI near zero and system I/O PSI avg10 was 1.39%; memory pressure near zero. PTY daemon PID 1515447 remained alive. Over a separate 5-second /proc stat sample, UI accumulated 109 CPU ticks and WebKit 103; host CPU PSI avg10 ranged 7.24–9.24% and other host processes were using multiple cores. This supports concurrent app and host CPU activity but does not identify the hot function or prove keyboard latency. Existing geometry log is stale (Sep 24); no fresh key-to-paint measurement, no code change, no restart, and no performance improvement claimed. Snapshot: /tmp/termfleet/incident-snapshots/desktop-20260928T093714Z-3259370."
         },
         {
           "at": "2026-09-28T10:09:04.291Z",
@@ -2395,7 +2421,7 @@
           "at": "2026-09-28T10:30:21.496Z",
           "type": "evidence",
           "kind": "live-desktop",
-          "note": "2026-09-28 13:26 IDT: continuous sampler confirmed UI PID 1555124 and WebKit PID 1555215 alive; over 16 minutes their cumulative CPU ticks rose 28,896\u219245,460 (~17% of one core) and 77,731\u2192136,774 (~61% of one core). At 13:26 WebKit was ~58% CPU; host I/O PSI avg10 was 8.58% some / 7.44% full, while app cgroup I/O pressure remained near zero. Geometry records for the inspected terminal stayed at x=366,y=101,size=1104x731 and displayOffset=0; the two-second geometry timer only reads/logs bounds. Source map movement is explicit pan mousemove / drag, zoom controls, or one-time startup rescue for an off-screen target. No fresh input-latency event exists after 12:44, so no live typing-to-paint correlation yet. Daemon PID 1515447 remains alive; no restart."
+          "note": "2026-09-28 13:26 IDT: continuous sampler confirmed UI PID 1555124 and WebKit PID 1555215 alive; over 16 minutes their cumulative CPU ticks rose 28,896→45,460 (~17% of one core) and 77,731→136,774 (~61% of one core). At 13:26 WebKit was ~58% CPU; host I/O PSI avg10 was 8.58% some / 7.44% full, while app cgroup I/O pressure remained near zero. Geometry records for the inspected terminal stayed at x=366,y=101,size=1104x731 and displayOffset=0; the two-second geometry timer only reads/logs bounds. Source map movement is explicit pan mousemove / drag, zoom controls, or one-time startup rescue for an off-screen target. No fresh input-latency event exists after 12:44, so no live typing-to-paint correlation yet. Daemon PID 1515447 remains alive; no restart."
         },
         {
           "at": "2026-09-28T11:00:32.687Z",
@@ -5470,17 +5496,17 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-09-15T21:29:20.409Z",
-          "note": "Validated opening-request and user-prompt status-sidecar goals now enter the pane task identity ladder before TodoWrite, while generic values remain rejected."
+          "at": "2026-10-04T22:14:38.944Z",
+          "note": "Integrated candidate: 595 status/header/navigation pass, 4 existing fixmes; original completed-title/Goal failures diagnosed and fixed; explicit about-what legacy migration guarded. 10 synthetic browser pass. Native/full selector proof pending."
         },
         {
           "kind": "focused-test",
-          "at": "2026-09-23T16:16:35.896Z",
-          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task \u2014 just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
+          "at": "2026-10-04T22:14:39.052Z",
+          "note": "Integrated candidate: 595 status/header/navigation pass, 4 existing fixmes; original completed-title/Goal failures diagnosed and fixed; explicit about-what legacy migration guarded. 10 synthetic browser pass. Native/full selector proof pending."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Add regression coverage, remove heuristic goal synthesis, and verify the task goal now rendering path.",
+      "nextAction": "Integrate the hash-verified desktop/mobile candidate and verify installed/native behavior after approved release; full v2 selector and known fixmes remain open. See docs/desktop-mobile-integration-tc202.md.",
       "history": [
         {
           "at": "2026-09-13T06:02:44.981Z",
@@ -5700,7 +5726,59 @@
           "at": "2026-09-23T16:16:35.896Z",
           "type": "evidence",
           "kind": "focused-test",
-          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task \u2014 just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
+          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task — just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
+        },
+        {
+          "at": "2026-10-04T21:36:31.646Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Bind delayed results and retained labels to the exact pane, run, and provider conversation; preserve explicit manual requests."
+        },
+        {
+          "at": "2026-10-04T21:52:57.928Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-202: exact pane/run/conversation guards, newer full summaries, and runtime metadata retention protect Task/Now. Three existing worker Goal/title failures reproduce unchanged on baseline. Full SSOT and native proof remain open."
+        },
+        {
+          "at": "2026-10-04T21:52:57.961Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-202: exact pane/run/conversation guards, newer full summaries, and runtime metadata retention protect Task/Now. Three existing worker Goal/title failures reproduce unchanged on baseline. Full SSOT and native proof remain open."
+        },
+        {
+          "at": "2026-10-04T21:52:58.002Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "TC-202: exact pane/run/conversation guards, newer full summaries, and runtime metadata retention protect Task/Now. Three existing worker Goal/title failures reproduce unchanged on baseline. Full SSOT and native proof remain open."
+        },
+        {
+          "at": "2026-10-04T22:11:31.007Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Integration follow-up diagnoses baseline completed-title, about-what provenance and question punctuation failures; synthetic hook ownership fixture isolated without relaxing production ownership."
+        },
+        {
+          "at": "2026-10-04T22:14:38.945Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Integrated candidate: 595 status/header/navigation pass, 4 existing fixmes; original completed-title/Goal failures diagnosed and fixed; explicit about-what legacy migration guarded. 10 synthetic browser pass. Native/full selector proof pending."
+        },
+        {
+          "at": "2026-10-04T22:14:39.052Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Integrated candidate: 595 status/header/navigation pass, 4 existing fixmes; original completed-title/Goal failures diagnosed and fixed; explicit about-what legacy migration guarded. 10 synthetic browser pass. Native/full selector proof pending."
+        },
+        {
+          "at": "2026-10-04T22:14:39.085Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Integrated candidate: 595 status/header/navigation pass, 4 existing fixmes; original completed-title/Goal failures diagnosed and fixed; explicit about-what legacy migration guarded. 10 synthetic browser pass. Native/full selector proof pending."
         }
       ]
     },
@@ -6762,17 +6840,17 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-09-23T09:50:40.616Z",
-          "note": "live proof: npm run verify:badge-truth 19/19 at 12:49 on dock release cff63f34fadd-99d99767e0b1; screenshot .captures/cockpit-20260923-124939-proof-final-5.png"
+          "at": "2026-10-04T22:14:39.296Z",
+          "note": "Integrated exact PTY provider replacement fixtures 6/6 pass; combined suite 595 pass/4 existing fixmes, canvas fixture verifier 104 pass/1 skip, Rust check pass. Attached transport alone never claims agent Working/Idle. Native release gate pending."
         },
         {
           "kind": "focused-test",
-          "at": "2026-09-23T16:03:04.923Z",
-          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m\u2026)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
+          "at": "2026-10-04T22:14:39.328Z",
+          "note": "Integrated exact PTY provider replacement fixtures 6/6 pass; combined suite 595 pass/4 existing fixmes, canvas fixture verifier 104 pass/1 skip, Rust check pass. Attached transport alone never claims agent Working/Idle. Native release gate pending."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Restore TermFleet Codex hooks; single status writer; process-table ground truth; PreToolUse",
+      "nextAction": "Integrate the hash-verified desktop/mobile candidate and verify installed/native behavior after approved release; full v2 selector and known fixmes remain open. See docs/desktop-mobile-integration-tc202.md.",
       "history": [
         {
           "at": "2026-09-23T08:22:01.081Z",
@@ -6830,7 +6908,65 @@
           "at": "2026-09-23T16:03:04.923Z",
           "type": "evidence",
           "kind": "focused-test",
-          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m\u2026)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
+          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m…)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
+        },
+        {
+          "at": "2026-10-04T21:36:31.614Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "New regressions reproduce false Idle from expired Goals, older reports replacing live labels, and header-only Codex logs becoming Working."
+        },
+        {
+          "at": "2026-10-04T21:52:39.931Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-202: 155 focused pass; expanded 179 pass/3 unchanged baseline failures; lifecycle Rust 9 pass/1 ignored. Metadata-only logs and missing turns are unavailable. Native installed acceptance remains; see docs/desktop-terminal-navigation-tc202.md."
+        },
+        {
+          "at": "2026-10-04T21:52:57.833Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-202: focused suite 155 pass; expanded suite 179 pass/3 unchanged baseline failures; Rust lifecycle 9 pass/1 ignored. Metadata-only logs and missing turns become unavailable. See docs/desktop-terminal-navigation-tc202.md; native proof pending."
+        },
+        {
+          "at": "2026-10-04T21:52:57.867Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-202: focused suite 155 pass; expanded suite 179 pass/3 unchanged baseline failures; Rust lifecycle 9 pass/1 ignored. Metadata-only logs and missing turns become unavailable. See docs/desktop-terminal-navigation-tc202.md; native proof pending."
+        },
+        {
+          "at": "2026-10-04T21:52:57.896Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "TC-202: focused suite 155 pass; expanded suite 179 pass/3 unchanged baseline failures; Rust lifecycle 9 pass/1 ignored. Metadata-only logs and missing turns become unavailable. See docs/desktop-terminal-navigation-tc202.md; native proof pending."
+        },
+        {
+          "at": "2026-10-04T22:11:31.048Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Integration follow-up: exact PTY provider ownership and transport-only unavailable title; confirmed displaced provider context is cleared."
+        },
+        {
+          "at": "2026-10-04T22:14:39.297Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Integrated exact PTY provider replacement fixtures 6/6 pass; combined suite 595 pass/4 existing fixmes, canvas fixture verifier 104 pass/1 skip, Rust check pass. Attached transport alone never claims agent Working/Idle. Native release gate pending."
+        },
+        {
+          "at": "2026-10-04T22:14:39.328Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Integrated exact PTY provider replacement fixtures 6/6 pass; combined suite 595 pass/4 existing fixmes, canvas fixture verifier 104 pass/1 skip, Rust check pass. Attached transport alone never claims agent Working/Idle. Native release gate pending."
+        },
+        {
+          "at": "2026-10-04T22:14:39.370Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Integrated exact PTY provider replacement fixtures 6/6 pass; combined suite 595 pass/4 existing fixmes, canvas fixture verifier 104 pass/1 skip, Rust check pass. Attached transport alone never claims agent Working/Idle. Native release gate pending."
         }
       ]
     },
@@ -7990,19 +8126,19 @@
       "severity": "medium",
       "surface": "logic",
       "matrixRefs": [],
-      "symptom": "in-control-kernel Codex card: Task 'No task declared', Goal 'Not captured' \u2014 the opening request picked was Codex's injected '# AGENTS.md instructions' block (new wording, no 'for <path>').",
+      "symptom": "in-control-kernel Codex card: Task 'No task declared', Goal 'Not captured' — the opening request picked was Codex's injected '# AGENTS.md instructions' block (new wording, no 'for <path>').",
       "rootCause": "",
       "guard": "playwright test goal-from-conversation task-line-live-records (live: no recent Codex chat opens with machine-written text)",
       "evidence": [
         {
           "kind": "source",
           "at": "2026-09-27T08:45:16.811Z",
-          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\u2026' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project\u2026') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only \u2026' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
+          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>…' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project…') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only …' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
         },
         {
           "kind": "focused-test",
           "at": "2026-09-27T08:45:17.113Z",
-          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only \u2026' leaks on first run, now 0."
+          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only …' leaks on first run, now 0."
         }
       ],
       "owner": "termfleet",
@@ -8052,13 +8188,13 @@
           "at": "2026-09-27T08:45:16.812Z",
           "type": "evidence",
           "kind": "source",
-          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\u2026' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project\u2026') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only \u2026' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
+          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>…' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project…') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only …' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
         },
         {
           "at": "2026-09-27T08:45:17.113Z",
           "type": "evidence",
           "kind": "focused-test",
-          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only \u2026' leaks on first run, now 0."
+          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only …' leaks on first run, now 0."
         }
       ]
     },
@@ -8072,7 +8208,7 @@
         "6.14"
       ],
       "symptom": "Each wheel gesture jumps past several lines in Codex sessions, making it hard to read agent output.",
-      "rootCause": "Pixel-mode wheel input was interpreted at full scale before being sent to the Codex alternate-screen mouse-report path, so one 99\u2013100 px gesture emitted about five rows. Pixel deltas are now reduced by 4x and fractional movement is accumulated; line and page units keep their existing semantics.",
+      "rootCause": "Pixel-mode wheel input was interpreted at full scale before being sent to the Codex alternate-screen mouse-report path, so one 99–100 px gesture emitted about five rows. Pixel deltas are now reduced by 4x and fractional movement is accumulated; line and page units keep their existing semantics.",
       "guard": "tests/terminal-viewport.spec.ts pixel wheel sensitivity and fractional remainder regressions; installed Codex pane wheel readback",
       "evidence": [
         {
@@ -8264,7 +8400,7 @@
           "type": "transition",
           "from": "reopened",
           "to": "reproducing",
-          "note": "Live wheel-route diagnostics reproduce app-pages with deltaY=\u00b199 and rows=0 for repeated events; hasHistory=false and no mouse-reporting route confirm the app fallback is receiving sub-page fractions that never produce a key in this code version."
+          "note": "Live wheel-route diagnostics reproduce app-pages with deltaY=±99 and rows=0 for repeated events; hasHistory=false and no mouse-reporting route confirm the app fallback is receiving sub-page fractions that never produce a key in this code version."
         },
         {
           "at": "2026-09-28T13:09:33.768Z",
