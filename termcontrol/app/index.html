@@ -611,6 +611,19 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 @keyframes busy-sheen{from{background-position:120% 0}to{background-position:-100% 0}}
 @keyframes busy-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.busyline,.busyorb i,.busytext{animation:none!important}.busytext{color:var(--accent,#4f8cff);background:none}}
+/* Calm pass: only what earns its place. Name + one plain line; state shows only when it matters. */
+.row-color{display:none}
+.pane:has([data-avatar-state="producing"]) .state,.pane:has([data-avatar-state="working"]) .state{color:var(--muted);font-weight:400;font-size:12px}
+.pane .badge,.pane-meta .last-active,.projhead .count,.side-count{display:none}
+.pane:not(:has([data-avatar-state="producing"],[data-avatar-state="working"],[data-avatar-state="needs-you"])) .state{display:none}
+.pane .project{font-weight:500;color:var(--text)}
+.pane .task{color:var(--muted);font-size:13px}
+.pane.idle .project{color:var(--text);font-weight:500}
+.projhead{font-size:11px;font-weight:400;letter-spacing:.04em;opacity:.7}
+.projhead::-webkit-details-marker{display:none}.projhead>svg,.projhead::after{display:none}
+.fleetbar{opacity:.65;transition:opacity .2s}.fleetbar:hover,.fleetbar:focus-within{opacity:1}
+.addagent{margin-inline-start:auto}
+.solo{position:relative}.solo .addagent{position:absolute;inset-block-start:14px;inset-inline-end:2px}.solo:hover .addagent{opacity:1}
 @keyframes cr-blink{0%,100%{transform:scale(1)}50%{transform:scale(.55)}}
 @keyframes cr-spin{to{transform:rotate(360deg)}}@keyframes cr-twinkle{0%,100%{transform:scale(1)}50%{transform:scale(.9)}}
 @media(prefers-reduced-motion:reduce){.cr-body{animation:none!important}}
@@ -1089,6 +1102,7 @@ async function fleet(background=false) {
   const content=mode==='manual'?(paneOrder?[...panes].sort(paneOrder):panes).map(card).join(''):shownGroups.map(g=>{
     const groupKey=g.panes[0].mapGroupId || g.project;
     const closed=sessionStorage.getItem(`termcontrol-group:${groupKey}`)==='closed';
+    if(g.panes.length===1)return `<div class="solo" data-key="group:${esc(groupKey)}">${card(g.panes[0])}${g.panes[0].cwd?`<button type="button" class="addagent" data-project="${esc(g.project)}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</div>`;
     return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span>${g.panes.length>1?`<span class="count">${g.panes.length}</span>`:''}${g.panes.some(p=>p.cwd)?`<button type="button" class="addagent" data-project="${esc(g.project)}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
   }).join('');
   const root=background?sideContent:main;
