@@ -16,7 +16,7 @@ export function createSessionState(identity, manualGoal = null) {
   return { version: 2, identity: {...identity}, lifecycle: 'unknown', confidence: 'low',
     authorityProducer:null,goalAt:null, tasks:[],task: null, goal: manualGoal?.source === 'manual' ? {...manualGoal} : null, now: null,
     question: null, completion: null, producerSeq: {}, seen: [], lastEventAt: null, lastProducer:null,
-    leaseUntil: null, transportGap: false, ended: false, reason: 'no reported event' };
+    leaseUntil: null, transportGap: false, ended: false, processToken:null,interruptionIntent:null,observationSeq:{},reason: 'no reported event' };
 }
 export function reduceSessionStatus(state, event, ctx) {
   if (!sameSessionIdentity(state.identity, event.identity) || !sources.has(event.source) ||
@@ -34,13 +34,37 @@ export function reduceSessionStatus(state, event, ctx) {
   const next = {...state, producerSeq:{...state.producerSeq}, seen:[...state.seen.slice(-63),event.id],
     lastEventAt:Math.max(state.lastEventAt ?? event.at,event.at),lastProducer:event.producer};
   if (event.seq != null) next.producerSeq[event.producer] = event.seq;
+  if(event.observer) {
+    if(!Number.isSafeInteger(event.observationSeq) || event.observationSeq<1 || event.observationSeq<=(state.observationSeq?.[event.observer] ?? 0)) return state;
+    next.observationSeq={...state.observationSeq,[event.observer]:event.observationSeq};
+  }
   const expire = reason => ({...next, lifecycle:'unknown', confidence:'low', leaseUntil:null, reason});
-  if (event.kind === 'transport.reconnected') return {...expire('reconnected; fresh event required'),
+  if(event.kind==='transport.disconnected') {
+    if(event.source!=='transport') return state;
+    return state.ended || state.completion ? {...next,transportGap:true} : {...expire('transport disconnected'),transportGap:true};
+  }
+  if (event.kind === 'transport.reconnected') {
+    if(event.source!=='transport') return state;
+    return {...(state.ended || state.completion ? next : expire('reconnected; fresh event required')),
     identity:{...state.identity,epoch:state.identity.epoch+1},producerSeq:{},transportGap:true};
+  }
+  if(event.kind==='process.observed') {
+    if(event.source!=='process' || state.ended || !event.processToken || (state.processToken && state.processToken!==event.processToken)) return state;
+    return {...next,processToken:event.processToken};
+  }
+  if(event.kind==='interruption.intent') {
+    if(event.source!=='operator' || state.ended || !event.intentId || !state.processToken || event.processToken!==state.processToken) return state;
+    return {...next,interruptionIntent:{id:event.intentId,processToken:event.processToken}};
+  }
+  if(event.kind==='turn.interrupted') {
+    if(event.source!=='process' || state.ended || state.completion || !state.interruptionIntent ||
+      event.intentId!==state.interruptionIntent.id || event.processToken!==state.processToken) return state;
+    return {...next,lifecycle:'interrupted',confidence:'high',question:null,now:null,leaseUntil:null,interruptionIntent:null,reason:'observed turn interruption'};
+  }
   if (['process.gone','process.crashed','process.interrupted'].includes(event.kind)) {
     if (event.source !== 'process') return state;
     return {...next, lifecycle:event.kind === 'process.crashed' ? 'crashed' : event.kind==='process.interrupted' ? 'interrupted':'ended', ended:true,
-      confidence:'high', question:null, leaseUntil:null, reason:event.kind, now:null};
+      confidence:'high', question:null, leaseUntil:null, interruptionIntent:null,reason:event.kind, now:null};
   }
   if (event.kind === 'goal.set') {
     if (event.source !== 'operator' || event.goal?.source !== 'manual' || !text(event.goal.text) ||
@@ -54,6 +78,7 @@ export function reduceSessionStatus(state, event, ctx) {
     // Answer delivery is not proof that the agent resumed work or finished.
     return {...expire('answer delivered; waiting for agent event'), question:null};
   }
+  if(state.lifecycle==='interrupted' && !event.startsNewTurn) return state;
   if (event.kind !== 'report' || !['hook','vendor'].includes(event.source)) return state;
   if (!['working','waiting','idle','finished','interrupted','unknown'].includes(event.lifecycle)) return state;
   if (state.question && ['working','idle'].includes(event.lifecycle) &&
@@ -70,6 +95,7 @@ export function reduceSessionStatus(state, event, ctx) {
   next.confidence = event.lifecycle === 'unknown' ? 'low' : 'high';
   next.reason = event.lifecycle === 'finished' ? event.completionSource : `reported ${event.lifecycle}`;
   next.transportGap = false;
+  if(event.startsNewTurn) next.interruptionIntent=null;
   const age = Math.max(0,(ctx.wallNow ?? event.at)-event.at);
   next.leaseUntil = active.has(event.lifecycle) ? ctx.now + Math.max(0,(ctx.leaseMs ?? 120000)-age) : null;
   next.question = event.lifecycle === 'waiting' ? {...event.question} : null;

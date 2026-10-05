@@ -3,13 +3,14 @@ export interface SessionText {text:string;source:string;pinned?:boolean;label?:s
 export interface SessionQuestion {id:string;reason:'approval'|'input';callId?:string}
 export interface SessionPlanTask {id:string;text:string;status:'pending'|'in_progress'|'completed';activeForm?:string}
 export interface SessionEvent {identity:SessionIdentity;id:string;producer:string;seq?:number;at:number;
+ observationSeq?:number;observer?:string;processToken?:string;intentId?:string;
  source:'hook'|'vendor'|'operator'|'process'|'transport';kind:string;lifecycle?:string;
  tasks?:SessionPlanTask[]|null;task?:SessionText|null;goal?:SessionText|null;now?:SessionText|null;question?:SessionQuestion|null;
  questionId?:string;resolvesQuestionId?:string;startsNewTurn?:boolean;completionSource?:string;completedAt?:number}
 export interface SessionState {version:2;identity:SessionIdentity;lifecycle:string;confidence:'high'|'low';
  authorityProducer:{producer:string;source:string}|null;goalAt:number|null;tasks:SessionPlanTask[];task:SessionText|null;goal:SessionText|null;now:SessionText|null;question:SessionQuestion|null;
  completion:{at:number;source:string;id:string}|null;producerSeq:Record<string,number>;seen:string[];
- lastEventAt:number|null;lastProducer:string|null;leaseUntil:number|null;transportGap:boolean;ended:boolean;reason:string}
+ lastEventAt:number|null;lastProducer:string|null;leaseUntil:number|null;transportGap:boolean;ended:boolean;processToken:string|null;interruptionIntent:{id:string;processToken:string}|null;observationSeq:Record<string,number>;reason:string}
 export interface SessionView {version:2;identity:SessionIdentity;lifecycle:string;confidence:'high'|'low';
  tasks:SessionPlanTask[];task:SessionText|null;goal:SessionText|null;now:SessionText|null;question:SessionQuestion|null;
  completion:SessionState['completion'];attention:'running'|'waiting'|'idle'|'needs-attention'|'unavailable';stale:boolean;reason:string}

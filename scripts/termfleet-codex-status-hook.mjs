@@ -432,7 +432,7 @@ async function main() {
   const cwd = sidecarKeyCwd(payload);
   const filePath = statusFilePath(cwd);
   const prev = readExistingSidecar(filePath);
-  const sidecar = buildCodexSidecar(payload, prev, eventAt);
+  let sidecar = buildCodexSidecar(payload, prev, eventAt);
   if (!sidecar) process.exit(0);
 
   sidecar.recent = appendRecent(prev?.recent, sidecar.narration ?? sidecar.now, sidecar.updatedAt);
@@ -451,10 +451,11 @@ async function main() {
     }
   }
   // Additive durable authority. Existing sidecar metadata remains the compatibility view.
+  let head=null;
   try {
-    const head=await publishSessionEvent({paneId,provider:"codex",payload,sidecar,at:sidecar.updatedAt});
-    if(head) Object.assign(sidecar,sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on"));
+    head=await publishSessionEvent({paneId,provider:"codex",payload,sidecar,at:sidecar.updatedAt});
   } catch(error) { console.error("termfleet session event journal:",error.message); }
+  sidecar=sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on");
   if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {
     process.exit(0);
   }

@@ -1,3 +1,5 @@
+> Latest offline lifecycle continuation: see [session-lifecycle-source-checkpoint.md](session-lifecycle-source-checkpoint.md). Earlier remaining-source lists below are historical; native source connection and acceptance remain pending.
+
 # Morning handoff — 2026-10-05
 
 The isolated candidate extends `8a2195a`. It is **VERIFYING, not installed**.

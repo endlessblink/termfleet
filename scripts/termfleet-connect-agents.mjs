@@ -41,6 +41,8 @@ const HOOK_FILES = [
   "lib/context-handoff.mjs",
   "lib/handoff-inject.mjs",
   "lib/session-event-journal.mjs",
+  "lib/session-soak.mjs",
+  "../shared/sessionObservation.mjs",
   "../shared/sessionCompatibility.mjs",
   "../shared/sessionState.mjs",
   "../shared/sessionEnvelope.mjs",

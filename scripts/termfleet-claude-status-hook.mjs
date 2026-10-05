@@ -729,10 +729,11 @@ async function main() {
     }
   }
   // Additive durable authority. Existing sidecar metadata remains the compatibility view.
+  let head=null;
   try {
-    const head=await publishSessionEvent({paneId,provider:"claude",payload,sidecar,at:sidecar.updatedAt});
-    if(head) Object.assign(sidecar,sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on"));
+    head=await publishSessionEvent({paneId,provider:"claude",payload,sidecar,at:sidecar.updatedAt});
   } catch(error) { console.error("termfleet session event journal:",error.message); }
+  sidecar=sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on");
   if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {
     process.exit(0);
   }

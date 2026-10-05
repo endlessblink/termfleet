@@ -60,6 +60,8 @@
       "../scripts/lib/codex-pane-owner.mjs": "agent-hooks/lib/codex-pane-owner.mjs",
       "../scripts/lib/context-handoff.mjs": "agent-hooks/lib/context-handoff.mjs",
       "../scripts/lib/session-event-journal.mjs": "agent-hooks/lib/session-event-journal.mjs",
+      "../scripts/lib/session-soak.mjs": "agent-hooks/lib/session-soak.mjs",
+      "../shared/sessionObservation.mjs": "shared/sessionObservation.mjs",
       "../shared/sessionCompatibility.mjs": "shared/sessionCompatibility.mjs",
       "../shared/sessionState.mjs": "shared/sessionState.mjs",
       "../shared/sessionEnvelope.mjs": "shared/sessionEnvelope.mjs",

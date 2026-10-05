@@ -4,7 +4,7 @@ import {sameSessionIdentity,selectSessionView} from './sessionState.mjs';
 export function hydrateSessionSnapshot(head,{now,wallNow}) {
   if(head?.version!==2 || !['codex','claude','opencode'].includes(head.provider) || !Number.isSafeInteger(head.seq) || head.seq<1 ||
     head.event?.version!==2 || head.event.seq!==head.seq || head.state?.version!==2 ||
-    !sameSessionIdentity(head.identity,head.state.identity) || !sameSessionIdentity(head.identity,head.event.identity) ||
+    !sameSessionIdentity(head.identity,head.state.identity) || !(sameSessionIdentity(head.identity,head.event.identity) || (head.event.kind==='transport.reconnected' && head.event.source==='transport' && sameSessionIdentity({...head.identity,epoch:head.identity.epoch-1},head.event.identity))) ||
     !['paneId','sessionId','runId'].every(key=>typeof head.identity[key]==='string' && head.identity[key].trim()) ||
     !Number.isSafeInteger(head.identity.epoch) || head.identity.epoch<0 || !Number.isFinite(now) || !Number.isFinite(wallNow)) return null;
   if(!['unknown','working','waiting','idle','finished','interrupted','ended','crashed'].includes(head.state.lifecycle) ||

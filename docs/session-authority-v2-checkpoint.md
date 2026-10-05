@@ -1,3 +1,5 @@
+> Latest offline lifecycle continuation: see [session-lifecycle-source-checkpoint.md](session-lifecycle-source-checkpoint.md). Earlier remaining-source lists below are historical; native source connection and acceptance remain pending.
+
 # Isolated session authority v2 checkpoint
 
 Baseline: `da3d5cb`, branch `codex/desktop-mobile-integration`. This is a source

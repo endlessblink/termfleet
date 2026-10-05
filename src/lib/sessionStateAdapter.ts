@@ -50,6 +50,7 @@ function projectSessionStateCore(previous:TerminalState|undefined, pane:Terminal
   for (const envelope of pane.sessionEventsV2 ?? []) state=reduceSessionEnvelope(state,envelope,{now,wallNow});
   // A bound v2 publisher supersedes compatibility observations, even when its lease expires.
   if (state.authorityProducer || snapshot) return state;
+  if(sessionAuthorityEnabled()) return state; // Opt-in authority never promotes legacy observations.
   const summary=pane.statusSummary;
   // No resubmission of old data after a rebind or reconnect. Read-side refresh time is not evidence time.
   if (!summary || (summary.sessionId && summary.sessionId!==state.identity.sessionId) || (previous && summary===previous.statusSummary) || summary.confidence!=='high' ||

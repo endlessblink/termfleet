@@ -119,7 +119,7 @@ export function readSessionEventView(pane,{dir=statusDir(),now=performance.now()
 export function readSessionStatus(pane,options={}) {
  const legacy=readLegacySessionStatus(pane),view=readSessionEventView(pane,options);
  const authority=options.authority ?? process.env.TERMFLEET_STATUS_AUTHORITY==='on';
- if(!view) return legacy;
+ if(!view) return authority ? {...legacy,workingSince:null,turn:'unknown',task:null,sessionAuthority:true}:legacy;
  return {...legacy,sessionViewV2:view,sessionAuthority:authority,
   ...(authority ? {turn:view.lifecycle==='working' ? 'working' : view.lifecycle==='waiting' ? 'waiting' : view.lifecycle==='finished' ? 'completed' : view.lifecycle,
    task:view.task?.text ?? null,workingSince:view.lifecycle==='working' ? legacy.workingSince : null} : {})};

@@ -4,13 +4,21 @@ import {randomUUID} from 'node:crypto';
 import {statusDir,fnv} from './agent-status-paths.mjs';
 import {createSessionState} from '../../shared/sessionState.mjs';
 import {reduceSessionEnvelope} from '../../shared/sessionEnvelope.mjs';
+import {sessionObservationEnvelope} from '../../shared/sessionObservation.mjs';
+import {recordSessionSoak} from './session-soak.mjs';
 
 export const sessionEventHeadName=paneId=>`events-${fnv(paneId)}.json`;
 const read=file=>{try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch{return null;}};
 const clean=value=>typeof value==='string' && value.trim() ? value.trim() : null;
+function persistHead(file,head,dir) {
+ const temporary=`${file}.${process.pid}.tmp`,fd=fs.openSync(temporary,'w',0o600);
+ try {fs.writeFileSync(fd,JSON.stringify(head));fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+ fs.renameSync(temporary,file);
+ const directory=fs.openSync(dir,'r');try{fs.fsyncSync(directory);}finally{fs.closeSync(directory);}
+}
 /** One short exclusive transaction per pane. Contention fails closed; callers never
  * steal a live lock or drop an event silently. Dead owners can be recovered. */
-export async function publishSessionEvent({paneId,provider,payload,sidecar,dir=statusDir(),at=Date.now(),runId=process.env.TERMFLEET_STATUS_RUN_ID,source='hook'}) {
+export async function publishSessionEvent({paneId,provider,payload,sidecar,dir=statusDir(),at=Date.now(),runId=process.env.TERMFLEET_STATUS_RUN_ID,source='hook',observation,soakDir=process.env.TERMFLEET_SESSION_SOAK_DIR}) {
   if(runId && !/^[a-zA-Z0-9-]{1,64}$/.test(runId)) throw new Error('invalid status publisher run ID');
   const sessionId=clean(payload?.session_id ?? payload?.sessionId ?? sidecar?.sessionId);
   if(!clean(paneId) || !sessionId || !['codex','claude','opencode'].includes(provider)) return null;
@@ -35,6 +43,7 @@ export async function publishSessionEvent({paneId,provider,payload,sidecar,dir=s
       !['UserPromptSubmit','SessionStart'].includes(eventName)) return null;
     // Replay committed appends after a crash before snapshot rename. A new source run
     // never reuses the old log; it must report an explicit conversation boundary.
+    let replayed=false;
     const recoveryRun=runId ?? old?.identity?.runId;
     if(recoveryRun && /^[a-zA-Z0-9-]{1,64}$/.test(recoveryRun)) {
       const recoveryFile=path.join(dir,`events-${fnv(paneId)}-${provider}-${fnv(sessionId)}-${recoveryRun}.jsonl`);
@@ -48,10 +57,12 @@ export async function publishSessionEvent({paneId,provider,payload,sidecar,dir=s
           if(!event?.identity || event.version!==2 || !Number.isSafeInteger(event.seq) || event.seq<1 || event.identity.runId!==recoveryRun || event.identity.paneId!==paneId || event.identity.sessionId!==sessionId || event.seq<=(old?.identity.runId===event.identity.runId && old?.identity.sessionId===event.identity.sessionId ? old?.seq ?? 0 : 0)) continue;
           const base=old?.state && JSON.stringify(old.state.identity)===JSON.stringify(event.identity) ? old.state : createSessionState(event.identity);
           const state=reduceSessionEnvelope(base,event,{now:event.at,wallNow:event.at});
-          old={version:2,provider,identity:event.identity,seq:event.seq,event,state,journal:path.basename(recoveryFile),bytes:size};
+          old={version:2,provider,identity:state.identity,seq:event.seq,event,state,journal:path.basename(recoveryFile),bytes:size};replayed=true;
         }
       }
     }
+    if(replayed) persistHead(file,old,dir); // Repair even when the incoming observation is rejected.
+    if(observation && (!old || old.provider!==provider)) return null;
     const same=old?.version===2 && old.provider===provider && old.identity?.paneId===paneId && old.identity.sessionId===sessionId && (!runId || old.identity.runId===runId);
     const identity=same ? old.identity : {paneId,sessionId,runId:clean(runId) ?? randomUUID(),epoch:0};
     let state=same ? old.state : createSessionState(identity);
@@ -79,7 +90,7 @@ export async function publishSessionEvent({paneId,provider,payload,sidecar,dir=s
     const current=tasks.find(item=>item.status==='in_progress') ?? (tasks.length && tasks.every(item=>item.status==='completed') ? tasks[tasks.length-1] : null);
     const goalSource=sidecar?.mainTaskSource==='goal-task' ? 'agent-goal' : sidecar?.mainTaskSource;
     const goal=clean(sidecar?.mainTask) && !/(?:^|\s)\/(?:tmp|home|media|var|usr|opt)\//i.test(sidecar.mainTask) && ['about-what','opening-request','agent-goal'].includes(goalSource) ? {text:sidecar.mainTask,source:goalSource} : null;
-    const event={version:2,identity:boundIdentity,id:`${identity.runId}:${seq}`,producer:`${provider}-${source==='vendor'?'vendor':'hooks'}`,seq,at,source,kind:'report',lifecycle,
+    let event={version:2,identity:boundIdentity,id:`${identity.runId}:${seq}`,producer:`${provider}-${source==='vendor'?'vendor':'hooks'}`,seq,at,source,kind:'report',lifecycle,
       startsNewTurn,resolvesQuestionId,question,
       task:current && (seq===1 || taskTool) ? {text:current.text,source:'task-tool'} : null,tasks:(seq===1 || taskTool) ? tasks : null,goal,
       now:!startsNewTurn && clean(sidecar?.now) ? {text:sidecar.now,source:source==='vendor' ? 'vendor':'hook'} : null,
@@ -87,9 +98,15 @@ export async function publishSessionEvent({paneId,provider,payload,sidecar,dir=s
     if(eventName==='QuestionResolved') {event.kind='question.resolved';event.questionId=state.question?.callId===callId ? state.question.id : `call:${callId}`;}
     if(eventName==='SessionEnd') {event.kind='process.gone';event.source='process';}
     if(eventName==='SessionStart') {event.lifecycle='unknown';}
+    if(observation) {
+      event=sessionObservationEnvelope(state,observation,seq);
+      if(!event) return null;
+    }
     // A matched result explicitly discharges its question before reporting resumption.
     // An unmatched result keeps the question; no executable/process heuristic is used.
-    state=reduceSessionEnvelope(state,event,{now:at,wallNow:at});
+    const reduced=reduceSessionEnvelope(state,event,{now:at,wallNow:at});
+    if(observation && reduced===state) return null;
+    state=reduced;
     const journal=path.join(dir,`events-${fnv(paneId)}-${provider}-${fnv(sessionId)}-${identity.runId}.jsonl`);
     // Delimit an incomplete crash tail without rewriting any committed event.
     if(fs.existsSync(journal)) {
@@ -99,12 +116,17 @@ export async function publishSessionEvent({paneId,provider,payload,sidecar,dir=s
     }
     const fd=fs.openSync(journal,'a',0o600);
     try {fs.writeFileSync(fd,`${JSON.stringify(event)}\n`);fs.fsyncSync(fd);} finally {fs.closeSync(fd);}
-    const head={version:2,provider,identity:boundIdentity,seq,event,state,journal:path.basename(journal),bytes:fs.statSync(journal).size};
-    const temporary=`${file}.${process.pid}.tmp`;
-    const snapshotFd=fs.openSync(temporary,'w',0o600);
-    try {fs.writeFileSync(snapshotFd,JSON.stringify(head));fs.fsyncSync(snapshotFd);}finally{fs.closeSync(snapshotFd);}
-    fs.renameSync(temporary,file);
-    const directoryFd=fs.openSync(dir,'r');try{fs.fsyncSync(directoryFd);}finally{fs.closeSync(directoryFd);}
+    const head={version:2,provider,identity:state.identity,seq,event,state,journal:path.basename(journal),bytes:fs.statSync(journal).size};
+    persistHead(file,head,dir);
+    if(soakDir) {try {recordSessionSoak(head,{dir:soakDir,at:Date.now(),legacyStatus:sidecar?.turn});}catch(error){console.error('termfleet soak recorder:',error.message);}}
     return head;
   } finally {fs.rmSync(lock,{recursive:true,force:true});}
+}
+
+/** Trusted source seam. A missing head is not an invitation to guess a binding.
+ * All writes use the same per-pane lock, fsync journal and crash replay as hooks. */
+export async function publishSessionObservation({observation,...options}) {
+ if(!observation?.identity) return null;
+ return publishSessionEvent({...options,paneId:observation.identity.paneId,runId:observation.identity.runId,
+  at:observation.at,payload:{session_id:observation.identity.sessionId,hook_event_name:'RuntimeObservation'},observation});
 }

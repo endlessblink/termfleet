@@ -204,10 +204,11 @@ export function createStatusWriter(options = {}) {
     sessionId: "",
   };
 
+  let compatibilityHead=null,projectCompatibility=null;
   const write = (at = Date.now(), { fresh = false } = {}) => {
     if (!pane || !filePath) return null;
     const previous = fresh ? null : readSidecar(filePath);
-    const sidecar = {
+    let sidecar = {
       source: "opencode-plugin",
       provider: "opencode",
       paneId: pane,
@@ -235,8 +236,12 @@ export function createStatusWriter(options = {}) {
       sidecar.todos = previous.todos;
       if (!sidecar.now) sidecar.now = nowFromTodos(previous.todos);
     }
+    if(process.env.TERMFLEET_STATUS_AUTHORITY==='on') {
+      const bound=compatibilityHead?.identity.sessionId===state.sessionId ? compatibilityHead:null;
+      sidecar=projectCompatibility ? projectCompatibility(sidecar,bound,true):{...sidecar,turn:'unknown',now:undefined,turnReason:undefined};
+    }
     try {
-      mkdirSync(statusDir(), { recursive: true });
+      mkdirSync(dirname(filePath), { recursive: true });
       const tmp = `${filePath}.${process.pid}.tmp`;
       writeFileSync(tmp, JSON.stringify(sidecar));
       renameSync(tmp, filePath);
@@ -248,7 +253,9 @@ export function createStatusWriter(options = {}) {
     return sidecar;
   };
 
-  return { state, write, filePath, paneId: pane };
+  return { state, write, filePath, paneId: pane,
+    setSessionHead(head,project) {compatibilityHead=head;projectCompatibility=project;if(process.env.TERMFLEET_STATUS_AUTHORITY==='on') write(head?.event.at);}
+  };
 }
 
 /**
@@ -378,10 +385,13 @@ export async function publishOpenCodeEvent(writer,event,at=Date.now()) {
   turnReason:['permission.updated','permission.asked'].includes(type) ? 'permission_request':type==='question.asked' ? 'operator_question':undefined};
  if(['permission.updated','permission.asked','question.asked'].includes(type)) sidecar.turn='waiting';
  if(type==='session.error') sidecar.turn='unknown';
- return publish({paneId:writer.paneId,provider:'opencode',source:'vendor',dir:dirname(writer.filePath),at,sidecar,
+ const head=await publish({paneId:writer.paneId,provider:'opencode',source:'vendor',dir:dirname(writer.filePath),at,sidecar,
   payload:{session_id:writer.state.sessionId,hook_event_name:hook,
    tool_name:type==='todo.updated' ? 'update_plan' : properties.tool,
    tool_use_id:properties.requestID ?? properties.callID ?? properties.id}});
+ const {sessionCompatibilitySidecar}=await import('../shared/sessionCompatibility.mjs');
+ writer.setSessionHead?.(head,sessionCompatibilitySidecar);
+ return head;
 }
 
 export const TermfleetStatus = async ({ directory, worktree }) => {
