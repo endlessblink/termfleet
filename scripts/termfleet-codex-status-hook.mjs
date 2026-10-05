@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {sessionCompatibilitySidecar} from "../shared/sessionCompatibility.mjs";
+import {publishSessionEvent} from "./lib/session-event-journal.mjs";
 // Codex status hook: gives Codex (gpt-5.x) panes the SAME per-terminal Task row +
 // activity line that Claude panes get, by writing the identical sidecar file the app
 // already reads (`agentStatusSidecar.ts` + `agent_status_read_sidecar`). No frontend
@@ -203,10 +205,13 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
   const prevUserTask = storedUserTask;
   // Only an explicit opening request or the current active goal is durable. Plan
   // explanations are turn-local and must not resurrect stale orchestration text.
-  const prevMainTaskSource = prev?.mainTaskSource === "opening-request" ||
-    prev?.mainTaskSource === "agent-goal"
-    ? prev.mainTaskSource
-    : undefined;
+  const explicitAboutWhat = prev?.mainTaskSource === "about-what" ||
+    (prev?.mainTaskSource === "plan-explanation" && prev?.source === "codex-narration" &&
+      /^\$about-what$/i.test(prevUserTask || ""));
+  const prevMainTaskSource = explicitAboutWhat ? "about-what" :
+    prev?.mainTaskSource === "opening-request" || prev?.mainTaskSource === "agent-goal"
+      ? prev.mainTaskSource
+      : undefined;
   const rawPrevMainTask = cleanField(prev?.mainTask, 220) || undefined;
   const prevMainTaskIsTaskDerived = prevMainTaskSource === "opening-request" &&
     (/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(rawPrevMainTask || "") ||
@@ -335,7 +340,7 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       ? narration
       : undefined;
     const renderedGoal = aboutWhatAnswer || prevMainTask;
-    const renderedGoalSource = aboutWhatAnswer ? "plan-explanation" : effectivePrevMainTaskSource;
+    const renderedGoalSource = aboutWhatAnswer ? "about-what" : effectivePrevMainTaskSource;
     return {
       ...base,
       source: "codex-narration",
@@ -427,7 +432,7 @@ async function main() {
   const cwd = sidecarKeyCwd(payload);
   const filePath = statusFilePath(cwd);
   const prev = readExistingSidecar(filePath);
-  const sidecar = buildCodexSidecar(payload, prev, eventAt);
+  let sidecar = buildCodexSidecar(payload, prev, eventAt);
   if (!sidecar) process.exit(0);
 
   sidecar.recent = appendRecent(prev?.recent, sidecar.narration ?? sidecar.now, sidecar.updatedAt);
@@ -445,6 +450,12 @@ async function main() {
       if (!sidecar.now) sidecar.now = nowFromTodos(onDisk.todos);
     }
   }
+  // Additive durable authority. Existing sidecar metadata remains the compatibility view.
+  let head=null;
+  try {
+    head=await publishSessionEvent({paneId,provider:"codex",payload,sidecar,at:sidecar.updatedAt});
+  } catch(error) { console.error("termfleet session event journal:",error.message); }
+  sidecar=sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on");
   if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {
     process.exit(0);
   }

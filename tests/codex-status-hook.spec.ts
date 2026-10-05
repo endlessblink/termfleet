@@ -59,7 +59,7 @@ test("the answer to about-what becomes the durable Goal at turn end", () => {
     1_010,
   );
   expect(sidecar?.mainTask).toBe("We are making the terminal header clear and stable.");
-  expect(sidecar?.mainTaskSource).toBe("plan-explanation");
+  expect(sidecar?.mainTaskSource).toBe("about-what");
   expect(sidecar?.userTask).toBe("$about-what");
 });
 
@@ -598,4 +598,30 @@ test("an untyped notification preserves the prior lifecycle", () => {
     1,
   );
   expect(sidecar?.turn).toBe("idle");
+});
+
+
+test("explicit about-what purpose survives follow-up and tools in the same conversation only", () => {
+ const goal="Keep this terminal connected so the current work can be resumed safely";
+ let sidecar=buildCodexSidecar({hook_event_name:"Stop",last_assistant_message:goal,cwd:"/tmp/fixture",session_id:"s"},{sessionId:"s",userTask:"$about-what",todos:[]},100);
+ expect(sidecar.mainTaskSource).toBe("about-what");
+ sidecar=buildCodexSidecar({hook_event_name:"UserPromptSubmit",prompt:"Continue the current work",cwd:"/tmp/fixture",session_id:"s"},sidecar,101);
+ expect(sidecar.mainTask).toBe(goal);
+ sidecar=buildCodexSidecar({hook_event_name:"PreToolUse",tool_name:"update_plan",tool_input:{plan:[{step:"Checking the output",status:"in_progress"}]},cwd:"/tmp/fixture",session_id:"s"},sidecar,102);
+ expect(sidecar.mainTask).toBe(goal);
+ const next=buildCodexSidecar({hook_event_name:"UserPromptSubmit",prompt:"Fix the checkout page",cwd:"/tmp/fixture",session_id:"other"},sidecar,103);
+ expect(next.mainTask).toBe("Fix the checkout page");
+ expect(next.mainTaskSource).toBe("opening-request");
+});
+
+
+test("legacy explicit about-what Stop records migrate without reviving ordinary plan narration", () => {
+ const goal="Keep this terminal connected so the current work can be resumed safely";
+ const previous={sessionId:"s",userTask:"$about-what",mainTask:goal,mainTaskSource:"plan-explanation",source:"codex-narration",turn:"idle",todos:[]};
+ const payload={hook_event_name:"UserPromptSubmit",prompt:"Continue the current work",session_id:"s",cwd:"/tmp/fixture"};
+ const captured=buildCodexSidecar(payload,previous,200);
+ expect(captured.mainTask).toBe(goal);
+ expect(captured.mainTaskSource).toBe("about-what");
+ const unproven=buildCodexSidecar(payload,{...previous,userTask:"Continue",source:"codex-plan"},200);
+ expect(unproven.mainTask).toBeUndefined();
 });

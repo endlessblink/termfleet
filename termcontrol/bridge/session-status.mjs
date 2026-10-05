@@ -1,3 +1,8 @@
+import {statusDir,fnv} from '../../scripts/lib/agent-status-paths.mjs';
+import path from 'node:path';
+import {hydrateSessionSnapshot} from '../../shared/sessionSnapshot.mjs';
+import {createSessionState, reduceSessionStatus, selectSessionView} from '../../shared/sessionState.mjs';
+import {reduceSessionEnvelope} from '../../shared/sessionEnvelope.mjs';
 import fs from 'node:fs';
 import { transcriptPath as codexTranscriptPath } from './adapters/codex.mjs';
 import { tailLines } from './tail.mjs';
@@ -58,7 +63,7 @@ export function foldCodexStatus(records) {
   return { workingSince, limits };
 }
 
-export function readSessionStatus(pane) {
+function readLegacySessionStatus(pane) {
   if (pane.provider !== 'codex') return { workingSince: null, limits: { fiveHour: null, weekly: null } };
   const file = codexTranscriptPath(pane);
   if (!file) return { workingSince: null, limits: { fiveHour: null, weekly: null } };
@@ -75,4 +80,51 @@ export function readSessionStatus(pane) {
   const value = foldCodexStatus(records);
   cache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, value });
   return value;
+}
+
+/** Pure v2 bridge projection. Inventory remains legacy until a verified publisher supplies
+ * pane/conversation/run/epoch envelopes; no live transport or mobile UI is switched here. */
+export function projectSessionStatusEvents(identity, envelopes, context) {
+  let state=createSessionState(identity);
+  for (const envelope of envelopes) state=reduceSessionEnvelope(state,envelope,context);
+  return {state,view:selectSessionView(state,context.now)};
+}
+
+const heads=new Map();
+const watchers=new Map();
+const subscribers=new Set();
+function ensureHeadWatcher(dir) {
+ if(watchers.has(dir) || !fs.existsSync(dir)) return;
+ try {const watcher=fs.watch(dir,{persistent:false},(_event,name)=>{
+  if(name && /^events-[a-f0-9]{8}\.json$/.test(String(name))) {heads.delete(path.join(dir,String(name)));for(const listener of subscribers) listener(String(name));}
+ });watcher.on('error',()=>{watchers.delete(dir);heads.clear();});watchers.set(dir,watcher);}catch{/* periodic API verification still reads exact metadata */}
+}
+export function readSessionEventView(pane,{dir=statusDir(),now=performance.now(),wallNow=Date.now()}={}) {
+ ensureHeadWatcher(dir);
+ const file=path.join(dir,`events-${fnv(pane.id)}.json`);
+ try {
+  const stat=fs.statSync(file);if(stat.size>1024*1024) return null;
+  let cached=heads.get(file);
+  if(!cached || cached.mtime!==stat.mtimeMs || cached.size!==stat.size) {
+   cached={mtime:stat.mtimeMs,size:stat.size,head:JSON.parse(fs.readFileSync(file,'utf8'))};heads.set(file,cached);
+  }
+  const head=cached.head;
+  if(head.identity?.paneId!==pane.id || head.provider!==pane.provider || (pane.sessionId && head.identity.sessionId!==pane.sessionId)) return null;
+  let state=hydrateSessionSnapshot(head,{now,wallNow});if(!state) return null;
+  const goal=pane.operatorGoal;
+  if(goal?.source==='manual') state=reduceSessionStatus(state,{identity:state.identity,producer:'operator',source:'operator',id:`manual:${goal.updatedAt}:${goal.text}`,at:goal.updatedAt,kind:'goal.set',goal:{text:goal.text,source:'manual'}},{now,wallNow});
+  return selectSessionView(state,now);
+ } catch{return null;}
+}
+export function readSessionStatus(pane,options={}) {
+ const legacy=readLegacySessionStatus(pane),view=readSessionEventView(pane,options);
+ const authority=options.authority ?? process.env.TERMFLEET_STATUS_AUTHORITY==='on';
+ if(!view) return authority ? {...legacy,workingSince:null,turn:'unknown',task:null,sessionAuthority:true}:legacy;
+ return {...legacy,sessionViewV2:view,sessionAuthority:authority,
+  ...(authority ? {turn:view.lifecycle==='working' ? 'working' : view.lifecycle==='waiting' ? 'waiting' : view.lifecycle==='finished' ? 'completed' : view.lifecycle,
+   task:view.task?.text ?? null,workingSince:view.lifecycle==='working' ? legacy.workingSince : null} : {})};
+}
+
+export function subscribeSessionEventHeads(listener,dir=statusDir()) {
+ ensureHeadWatcher(dir);subscribers.add(listener);return ()=>subscribers.delete(listener);
 }

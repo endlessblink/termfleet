@@ -151,9 +151,9 @@ test("narration title is preferred over the neutral but still yields to a real t
   expect(result.task).toBe("Confirming the cockpit title works");
 });
 
-test("neutralHeaderTitle maps run state to a clean word", () => {
-  expect(neutralHeaderTitle("running")).toBe("Working");
-  expect(neutralHeaderTitle("reconnected")).toBe("Working");
+test("neutralHeaderTitle does not turn transport attachment into Working or Idle", () => {
+  expect(neutralHeaderTitle("running")).toBe("Status unavailable");
+  expect(neutralHeaderTitle("reconnected")).toBe("Status unavailable");
   expect(neutralHeaderTitle("failed")).toBe("Needs attention");
   expect(neutralHeaderTitle("exited")).toBe("Idle");
   expect(neutralHeaderTitle(undefined)).toBe("Ready");

@@ -905,6 +905,8 @@ impl PtyManager {
         // sends this same id as the status-request key. Covers both the in-process
         // (`ensure`) and daemon-owned (`ensure_detached`) spawns — both route here.
         cmd.env("TERMFLEET_PANE_ID", &id);
+        // A fresh PTY process has a fresh publisher run; reattach keeps this environment.
+        cmd.env("TERMFLEET_STATUS_RUN_ID", uuid::Uuid::new_v4().to_string());
 
         // Set working directory
         if let Some(dir) = &cwd {

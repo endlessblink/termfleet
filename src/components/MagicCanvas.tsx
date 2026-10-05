@@ -3511,6 +3511,7 @@ function CanvasNodeViewImpl({
     ? linkedTerminal.taskLine
     : workstream?.taskLine;
   const terminalHeader = buildTerminalHeaderState({
+    sessionStateV2:linkedTerminal?.sessionStateV2,
     paneId: terminalPaneId,
     terminalId: linkedTerminalId ?? terminalPaneId,
     runId: linkedTerminal?.activeRunId,
@@ -3547,6 +3548,7 @@ function CanvasNodeViewImpl({
       terminalDisplaySummaryBase.task === "Reviewing approval request" ||
       terminalDisplaySummaryBase.now === "Waiting for operator selection",
   });
+  const sessionAuthority = terminalHeader.debug.statusAuthority === "v2";
   const workspaceLabel = terminalHeader.workspace;
   const terminalHeaderTaskCandidate = terminalHeaderTaskLineup
     ?.find(
@@ -3580,7 +3582,7 @@ function CanvasNodeViewImpl({
       : undefined;
   const canvasTaskFallback = "Task not captured";
   const terminalHeaderTaskDescription =
-    terminalHeader.sources.goal === "shell-role"
+    sessionAuthority ? terminalHeader.taskDescription : terminalHeader.sources.goal === "shell-role"
       ? terminalHeader.taskDescription
       : resolveMapCardTaskRow({
           goal: terminalHeader.goalLabel,
@@ -3590,7 +3592,7 @@ function CanvasNodeViewImpl({
           statusTask: terminalHeaderStatusTask,
         }) ??
         canvasTaskFallback;
-  const stabilizedTerminalHeaderTask = stableHeader(
+  const stabilizedTerminalHeaderTask = sessionAuthority ? terminalHeaderTaskDescription : stableHeader(
     `map-task-row:${terminalTabId}:${terminalPaneId}:${node.taskBinding?.taskId ?? "unbound"}`,
     { title: terminalHeaderTaskDescription, now: terminalHeaderTaskDescription },
     { nowMs: Date.now(), holdPlaceholders: true },
@@ -3675,7 +3677,7 @@ function CanvasNodeViewImpl({
     ? rememberedPaneGoal
     : undefined;
   const terminalHeaderContextDescription =
-    terminalHeaderContextCandidate &&
+    sessionAuthority ? terminalHeader.goalLabel : terminalHeaderContextCandidate &&
     isCompleteGoalText(terminalHeaderContextCandidate) &&
     !/^Make TermFleet (?:a reliable terminal cockpit so people can understand work and resume it safely|show clear tasks, goals, and current activity so work is easy to resume)[.!]?$/i.test(
       terminalHeaderContextCandidate,
@@ -3718,7 +3720,7 @@ function CanvasNodeViewImpl({
   const terminalHeaderGoalDisplay =
     terminalHeaderContextDescription || "Not captured for this pane";
   const terminalHeaderContextForSnapshot = terminalHeaderSnapshotContext || "";
-  const terminalHeaderTitleRaw = terminalDurableActivityUsable &&
+  const terminalHeaderTitleRaw = sessionAuthority ? terminalHeader.currentActivity : terminalDurableActivityUsable && linkedTerminal?.durableActivity?.title ? linkedTerminal.durableActivity.title : terminalDurableActivityUsable &&
     terminalDisplaySummaryBase.task &&
     !/^(?:Terminal|Activity not captured|Status unavailable)$/i.test(
       terminalDisplaySummaryBase.task.trim(),
@@ -3745,7 +3747,7 @@ function CanvasNodeViewImpl({
       ),
   );
   const terminalHeaderNowRaw =
-    terminalDurableActivityUsable &&
+    sessionAuthority ? terminalHeader.currentActivity : terminalDurableActivityUsable &&
     restoredNowIsDistinct &&
     qualityCheckNowLabel(restoredNow).ok
       ? restoredNow
@@ -3779,7 +3781,7 @@ function CanvasNodeViewImpl({
         linkedTerminal?.status === "exited",
     },
   );
-  const terminalHeaderTitle = stabilizedNodeHeader.title;
+  const terminalHeaderTitle = sessionAuthority || (terminalDurableActivityUsable && linkedTerminal?.durableActivity?.title) ? terminalHeaderTitleRaw : stabilizedNodeHeader.title;
   const terminalHeaderAttentionState = paneBadgeAttention(
     linkedTerminal,
     terminalStatusSummary?.status,
@@ -3833,6 +3835,12 @@ function CanvasNodeViewImpl({
   // row blank on panes that were plainly working — "relaunched nothing changed". When it
   // declines, the pane's own live status line is used instead, minus the filler words.
   const terminalHeaderNowRowText = (() => {
+    if(sessionAuthority) return terminalHeader.currentActivity;
+    // The visible Now row has its own resolver: a live durable command must
+    // reach this row even when there is no Task/Goal to compare it against.
+    if(terminalDurableActivityUsable && linkedTerminal?.durableActivity?.title &&
+       qualityCheckNowLabel(linkedTerminal.durableActivity.title).ok)
+      return linkedTerminal.durableActivity.title;
     const acceptableNow = (value?: string | null) => {
       const text = value?.trim() ?? "";
       return text && qualityCheckNowLabel(text).ok ? text : "";
@@ -3905,10 +3913,10 @@ function CanvasNodeViewImpl({
       holdPlaceholders: true,
     },
   );
-  const terminalHeaderNowRowStableText = stabilizedTerminalHeaderNowRow.now;
+  const terminalHeaderNowRowStableText = sessionAuthority ? terminalHeader.currentActivity : stabilizedTerminalHeaderNowRow.now;
   const terminalHeaderNowRowVisible = Boolean(terminalHeaderNowRowStableText);
   const terminalHeaderNowDisplay =
-    terminalHeader.sources.goal === "shell-role"
+    sessionAuthority ? terminalHeader.currentActivity : terminalHeader.sources.goal === "shell-role"
       ? terminalHeader.currentActivity
       : terminalHeaderNowRowStableText &&
     !/^(?:Status unavailable|Idle|Ready|Awaiting next action|Activity not captured)$/i.test(
@@ -3984,7 +3992,7 @@ function CanvasNodeViewImpl({
     ? terminalStatusSummary
     : agentStatusSummary;
   const agentCardTask =
-    [stabilizedTerminalHeaderTask, agentMissionTask, agentCardStatusSummary?.task?.trim()]
+    sessionAuthority ? terminalHeader.taskDescription : [stabilizedTerminalHeaderTask, agentMissionTask, agentCardStatusSummary?.task?.trim()]
       .find(
         (candidate) =>
           Boolean(candidate) &&

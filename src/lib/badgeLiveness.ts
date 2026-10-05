@@ -34,6 +34,7 @@ interface ReportedStatus {
   status?: string | null;
   updatedAt?: number | null;
   statusFromAgentLog?: boolean;
+  sessionId?: string;
 }
 
 /**
@@ -49,10 +50,12 @@ export function keepNewerReportedStatus<T extends ReportedStatus>(
   next: T,
 ): T {
   if (!stored?.status) return next;
+  if (stored.sessionId && next.sessionId && stored.sessionId !== next.sessionId) return next;
   const storedAt = stored.updatedAt ?? 0;
   if (!stored.statusFromAgentLog && storedAt <= (next.updatedAt ?? 0)) return next;
   return {
     ...next,
+    ...(storedAt > (next.updatedAt ?? 0) ? stored : {}),
     status: stored.status,
     updatedAt: storedAt,
     statusFromAgentLog: stored.statusFromAgentLog,

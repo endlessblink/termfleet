@@ -204,7 +204,7 @@ test("uses the view model Now value instead of the generic title", () => {
     },
   });
 
-  expect(header.currentActivity).toBe("Awaiting next action");
+  expect(header.currentActivity).toBe("Status unavailable");
   expect(header.currentActivity).not.toBe("Activity not captured");
 });
 
@@ -646,7 +646,7 @@ test("recovers an opening request from persisted status after a run rollover", (
 
 // Known gap (launch audit 2026-09-30): the sidecar-sourced screenshot instruction is now
 // counted as a captured goal (hasCapturedGoal true); the /tmp path still never shows.
-test.fixme("does not promote a screenshot path instruction into the Task row", () => {
+test("does not promote a screenshot path instruction into the Task row", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-screenshot-instruction",
     terminalId: "pty-screenshot-instruction",

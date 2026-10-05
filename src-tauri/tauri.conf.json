@@ -55,7 +55,19 @@
       "../scripts/lib/agent-status-lifecycle.mjs": "agent-hooks/lib/agent-status-lifecycle.mjs",
       "../scripts/lib/agent-status-goal.mjs": "agent-hooks/lib/agent-status-goal.mjs",
       "../scripts/lib/agent-status-activity.mjs": "agent-hooks/lib/agent-status-activity.mjs",
-      "../scripts/lib/single-chat-owner.mjs": "agent-hooks/lib/single-chat-owner.mjs"
+      "../scripts/lib/single-chat-owner.mjs": "agent-hooks/lib/single-chat-owner.mjs",
+      "../scripts/lib/agent-exit-log.mjs": "agent-hooks/lib/agent-exit-log.mjs",
+      "../scripts/lib/codex-pane-owner.mjs": "agent-hooks/lib/codex-pane-owner.mjs",
+      "../scripts/lib/context-handoff.mjs": "agent-hooks/lib/context-handoff.mjs",
+      "../scripts/lib/session-event-journal.mjs": "agent-hooks/lib/session-event-journal.mjs",
+      "../scripts/termfleet-session-observation.mjs": "agent-hooks/termfleet-session-observation.mjs",
+      "../scripts/lib/session-soak.mjs": "agent-hooks/lib/session-soak.mjs",
+      "../shared/sessionObservation.mjs": "shared/sessionObservation.mjs",
+      "../shared/sessionCompatibility.mjs": "shared/sessionCompatibility.mjs",
+      "../shared/sessionState.mjs": "shared/sessionState.mjs",
+      "../shared/sessionEnvelope.mjs": "shared/sessionEnvelope.mjs",
+      "../shared/sessionSnapshot.mjs": "shared/sessionSnapshot.mjs",
+      "../scripts/lib/handoff-inject.mjs": "agent-hooks/lib/handoff-inject.mjs"
     }
   }
 }

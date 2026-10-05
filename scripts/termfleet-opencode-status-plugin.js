@@ -29,7 +29,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Sidecar paths. Kept byte-identical to scripts/lib/agent-status-paths.mjs (and
@@ -204,10 +204,11 @@ export function createStatusWriter(options = {}) {
     sessionId: "",
   };
 
+  let compatibilityHead=null,projectCompatibility=null;
   const write = (at = Date.now(), { fresh = false } = {}) => {
     if (!pane || !filePath) return null;
     const previous = fresh ? null : readSidecar(filePath);
-    const sidecar = {
+    let sidecar = {
       source: "opencode-plugin",
       provider: "opencode",
       paneId: pane,
@@ -235,8 +236,12 @@ export function createStatusWriter(options = {}) {
       sidecar.todos = previous.todos;
       if (!sidecar.now) sidecar.now = nowFromTodos(previous.todos);
     }
+    if(process.env.TERMFLEET_STATUS_AUTHORITY==='on') {
+      const bound=compatibilityHead?.identity.sessionId===state.sessionId ? compatibilityHead:null;
+      sidecar=projectCompatibility ? projectCompatibility(sidecar,bound,true):{...sidecar,turn:'unknown',now:undefined,turnReason:undefined};
+    }
     try {
-      mkdirSync(statusDir(), { recursive: true });
+      mkdirSync(dirname(filePath), { recursive: true });
       const tmp = `${filePath}.${process.pid}.tmp`;
       writeFileSync(tmp, JSON.stringify(sidecar));
       renameSync(tmp, filePath);
@@ -248,7 +253,9 @@ export function createStatusWriter(options = {}) {
     return sidecar;
   };
 
-  return { state, write, filePath, paneId: pane };
+  return { state, write, filePath, paneId: pane,
+    setSessionHead(head,project) {compatibilityHead=head;projectCompatibility=project;if(process.env.TERMFLEET_STATUS_AUTHORITY==='on') write(head?.event.at);}
+  };
 }
 
 /**
@@ -260,6 +267,9 @@ export function applyEvent(writer, event) {
   const { state } = writer;
   const type = String(event?.type ?? "");
   const properties = event?.properties ?? {};
+  const eventSession = properties.sessionID ?? properties.info?.sessionID ?? (type.startsWith("session.") ? properties.info?.id : undefined);
+  if (eventSession && state.sessionId && eventSession !== state.sessionId) return false;
+  if (eventSession && !state.sessionId) state.sessionId = clean(eventSession, 128);
   switch (type) {
     case "todo.updated": {
       state.todos = todosFromEvent(properties.todos);
@@ -293,6 +303,7 @@ export function applyEvent(writer, event) {
       state.turn = "idle";
       return true;
     }
+    case "permission.asked":
     case "permission.updated": {
       // The agent is blocked on the operator — that is "waiting", the state the
       // cockpit badge exists for.
@@ -350,6 +361,39 @@ function trace(entry) {
   }
 }
 
+
+/** Optional v2 publisher beside the source plugin. Standalone copied plugins keep
+ * their existing sidecar contract when the publisher module is not packaged. */
+export async function publishOpenCodeEvent(writer,event,at=Date.now()) {
+ if(!writer.paneId || !writer.state.sessionId) return null;
+ const properties=event?.properties ?? {};
+ const type=event?.type;
+ const eventSession=properties.sessionID ?? properties.info?.sessionID ?? (type?.startsWith('session.') ? properties.info?.id : undefined);
+ if(eventSession && eventSession!==writer.state.sessionId) return null;
+ const names={'session.created':'SessionStart','chat.message':'UserPromptSubmit','todo.updated':'PostToolUse',
+  'session.status':'VendorStatus','session.idle':'VendorStatus','permission.updated':'PermissionRequest','permission.asked':'PermissionRequest','permission.replied':'QuestionResolved',
+  'question.asked':'InputRequest','question.replied':'QuestionResolved','question.rejected':'QuestionResolved',
+  'tool.execute.before':'PreToolUse','tool.execute.after':'PostToolUse','session.error':'VendorError'};
+ const finished=type==='message.updated' && properties.info?.role==='assistant' && properties.info?.finish==='stop' && !properties.info?.error && !properties.info?.summary && Number.isFinite(properties.info?.time?.completed);
+ const hook=finished ? 'VendorTurnComplete' : names[type];
+ if(!hook) return null;
+ let publish;
+ try {({publishSessionEvent:publish}=await import('./lib/session-event-journal.mjs'));}
+ catch {trace('v2-publisher-unavailable; standalone sidecar retained');return null;}
+ const sidecar={...writer.state,mainTask: type==='chat.message' ? writer.state.userTask : undefined,
+  mainTaskSource:type==='chat.message' ? 'opening-request' : undefined,
+  turnReason:['permission.updated','permission.asked'].includes(type) ? 'permission_request':type==='question.asked' ? 'operator_question':undefined};
+ if(['permission.updated','permission.asked','question.asked'].includes(type)) sidecar.turn='waiting';
+ if(type==='session.error') sidecar.turn='unknown';
+ const head=await publish({paneId:writer.paneId,provider:'opencode',source:'vendor',dir:dirname(writer.filePath),at,sidecar,
+  payload:{session_id:writer.state.sessionId,hook_event_name:hook,
+   tool_name:type==='todo.updated' ? 'update_plan' : properties.tool,
+   tool_use_id:properties.requestID ?? properties.callID ?? properties.id}});
+ const {sessionCompatibilitySidecar}=await import('../shared/sessionCompatibility.mjs');
+ writer.setSessionHead?.(head,sessionCompatibilitySidecar);
+ return head;
+}
+
 export const TermfleetStatus = async ({ directory, worktree }) => {
   // "/" means OpenCode could not resolve a project root; the pane's own cwd is
   // more useful to the reader than the filesystem root.
@@ -368,8 +412,10 @@ export const TermfleetStatus = async ({ directory, worktree }) => {
     event: async ({ event }) => {
       trace(event?.type);
       if (applyEvent(writer, event)) writer.write();
+      try {await publishOpenCodeEvent(writer,event);}catch(error){trace(`v2-publisher-failed ${String(error)}`);}
     },
-    "chat.message": async (_input, output) => {
+    "chat.message": async (input, output) => {
+      if(input?.sessionID) writer.state.sessionId=clean(input.sessionID,128);
       const text = (output?.parts ?? [])
         .filter((part) => part?.type === "text")
         .map((part) => part.text)
@@ -378,8 +424,10 @@ export const TermfleetStatus = async ({ directory, worktree }) => {
       if (prompt) writer.state.userTask = prompt;
       writer.state.turn = "working";
       writer.write();
+      try {await publishOpenCodeEvent(writer,{type:"chat.message"});}catch(error){trace(`v2-publisher-failed ${String(error)}`);}
     },
     "tool.execute.before": async (input, output) => {
+      if(input?.sessionID && writer.state.sessionId && input.sessionID!==writer.state.sessionId) return;
       const activity = opencodeActivityFromTool(input?.tool, output?.args);
       writer.state.turn = "working";
       if (input?.sessionID)
@@ -389,14 +437,17 @@ export const TermfleetStatus = async ({ directory, worktree }) => {
         writer.state.narration = activity;
       }
       writer.write();
+      try {await publishOpenCodeEvent(writer,{type:"tool.execute.before",properties:{tool:input?.tool,callID:input?.callID}});}catch(error){trace(`v2-publisher-failed ${String(error)}`);}
     },
     "tool.execute.after": async (input) => {
+      if(input?.sessionID && writer.state.sessionId && input.sessionID!==writer.state.sessionId) return;
       // Keep the task list's own line as the resting activity between tools.
       const fromTodos = nowFromTodos(writer.state.todos);
       if (fromTodos) writer.state.now = fromTodos;
       if (input?.sessionID)
         writer.state.sessionId = clean(input.sessionID, 128);
       writer.write();
+      try {await publishOpenCodeEvent(writer,{type:"tool.execute.after",properties:{tool:input?.tool,callID:input?.callID}});}catch(error){trace(`v2-publisher-failed ${String(error)}`);}
     },
   };
 };

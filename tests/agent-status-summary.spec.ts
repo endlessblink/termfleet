@@ -1115,7 +1115,7 @@ test("terminal purpose follows a worked-for agent prompt over stale command outp
 
 // KNOWN GAP (tracked): purpose inference still reads transcript lines that precede a
 // live "Working (…)" marker; needs a staleness cutoff in terminalPurposeFromContext.
-test.fixme("terminal purpose ignores pre-working stale transcript lines", () => {
+test("terminal purpose ignores pre-working stale transcript lines", () => {
   const purpose = terminalPurposeFromContext({
     terminalOutput: [
       "Visually verify headed text paste and image paste",

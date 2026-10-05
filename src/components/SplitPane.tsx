@@ -1096,6 +1096,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const agentHeader =
           isAgentWorkstream
             ? buildTerminalHeaderState({
+                sessionStateV2:paneTerminal?.sessionStateV2,
                 paneId,
                 terminalId: paneTerminal?.id ?? paneId,
                 runId: paneTerminal?.activeRunId ?? agentWorkstream.runId,
@@ -1303,6 +1304,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         );
         const shellHeader = shellStatusSummaryBase
           ? buildTerminalHeaderState({
+              sessionStateV2:paneTerminal?.sessionStateV2,
               paneId,
               terminalId: paneTerminal?.id ?? paneId,
               runId: paneTerminal?.activeRunId,

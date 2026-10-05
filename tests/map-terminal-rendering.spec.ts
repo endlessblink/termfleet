@@ -5062,16 +5062,16 @@ Acceptance:
 
 // TF-047: the running command's description reaches the summary but the header
 // still rejects it during the in-flight Task/Goal/Now redesign.
-test.fixme("map shell header uses durable activity instead of stale transcript summary", async ({
+test("map shell header uses durable activity instead of stale transcript summary", async ({
   page,
 }) => {
-  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.goto(process.env.TERMFLEET_TEST_BASE_URL ?? "http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: "Map", exact: true }).click();
-
+  await expect(page.getByText("Restoring workspace", {exact:true})).toHaveCount(0);
   await page.evaluate(() => {
     const store = (
       window as typeof window & {
@@ -5110,17 +5110,24 @@ test.fixme("map shell header uses durable activity instead of stale transcript s
       (candidate) => candidate.id === node.terminalTabId,
     );
     if (!tab) throw new Error("Terminal tab is unavailable");
-    const paneId = node.id;
+    // Keep the already attached pane identity; inventing a different PTY here
+    // correctly causes transport reconciliation to reset the synthetic activity.
+    const attachedPane = tab.terminals[0] as {id:string;paneId:string}|undefined;
+    const paneId = attachedPane?.paneId ?? (tab as any).activePaneId ?? node.id;
+    const fixturePtyId = attachedPane?.id ?? `terminal-${tab.id}-${paneId}`;
     store.getState().updateCanvasNode(node.id, {
-      terminalPtyId: "pty-durable-activity-fixture",
+      terminalPtyId: fixturePtyId,
+      linkedTerminalPaneId:paneId,
     });
     store.getState().updateTab(tab.id, {
+      activePaneId:paneId,
+      splitLayout:{id:paneId,type:"terminal"},
       title: "Terminal",
       initialCwd:
         "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
       terminals: [
         {
-          id: "pty-durable-activity-fixture",
+          id: fixturePtyId,
           paneId,
           cols: 100,
           rows: 30,

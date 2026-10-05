@@ -311,6 +311,7 @@ function sidebarHeaderForTerminal(input: {
 
   return buildTerminalHeaderState({
     paneName,
+    sessionStateV2:terminal?.sessionStateV2,
     paneId: terminal?.paneId ?? tab.activePaneId,
     terminalId: terminal?.id ?? tab.activePaneId,
     runId:

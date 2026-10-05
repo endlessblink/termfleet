@@ -1,3 +1,6 @@
+import { terminalAttentionTargets } from "../lib/terminalNavigation";
+import { NewAgentTerminalDialog } from "./NewAgentTerminalDialog";
+import { cycleRecentTerminal, focusNextAttentionTerminal, recentTerminalCycle } from "../lib/terminalNavigationActions";
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
@@ -524,6 +527,13 @@ export function WorkbenchHeader() {
   const workstreamQuestEnabled = useWorkspaceStore(
     (state) => state.workspaceUiState.workstreamQuestEnabled,
   );
+  const [newAgentOpen, setNewAgentOpen] = useState(false);
+  const closeNewAgent = useCallback(() => setNewAgentOpen(false), []);
+  useEffect(() => {
+    const open = () => setNewAgentOpen(true);
+    window.addEventListener("workspace:new-agent-terminal", open);
+    return () => window.removeEventListener("workspace:new-agent-terminal", open);
+  }, []);
   const [commandValue, setCommandValue] = useState("");
   const [commandStatus, setCommandStatus] = useState("");
   const [commandOpen, setCommandOpen] = useState(false);
@@ -619,7 +629,12 @@ export function WorkbenchHeader() {
   }, [focusActiveTerminalOnMap, setWorkspaceMode, updateUiState]);
 
   const actions = useMemo<CommandAction[]>(() => {
+    const attentionCount = terminalAttentionTargets(tabs).length;
     const baseActions: CommandAction[] = [
+      { id: "new-agent-terminal", label: "New agent terminal", detail: "Choose an agent and project folder", keywords: ["agent", "new", "folder", "project"], scope: "actions", shortcut: "Ctrl Alt N", Icon: Bot, run: () => setNewAgentOpen(true) },
+      { id: "recent-terminal-next", label: "Next recently used terminal", detail: "Follow your focus history", keywords: ["recent", "next", "terminal"], scope: "actions", shortcut: "Ctrl Alt PageDown", Icon: Terminal, run: () => {recentTerminalCycle.reset();cycleRecentTerminal(1);recentTerminalCycle.reset();} },
+      { id: "recent-terminal-previous", label: "Previous recently used terminal", detail: "Follow your focus history backwards", keywords: ["recent", "previous", "terminal"], scope: "actions", shortcut: "Ctrl Alt PageUp", Icon: Terminal, run: () => {recentTerminalCycle.reset();cycleRecentTerminal(-1);recentTerminalCycle.reset();} },
+      { id: "attention-terminal-next", label: `Next terminal needing you (${attentionCount})`, detail: "Reported approvals, questions or completed work awaiting review", keywords: ["attention", "approval", "completed", "waiting"], scope: "actions", shortcut: "Ctrl Alt Home", Icon: ListTodo, run: () => { if (!focusNextAttentionTerminal()) setCommandStatus("No reported work needs your attention"); } },
       {
         id: "new-terminal",
         label: "New terminal",
@@ -976,6 +991,7 @@ export function WorkbenchHeader() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const key = event.key.toLowerCase();
       const opensGitMonitor = event.ctrlKey && event.altKey && key === "g";
       if (opensGitMonitor) {
@@ -1046,6 +1062,7 @@ export function WorkbenchHeader() {
 
   return (
     <header className="workbench-header" style={styles.header}>
+      {newAgentOpen && <NewAgentTerminalDialog onClose={closeNewAgent} />}
       <span
         className="workbench-header-context"
         style={styles.contextCrumb}

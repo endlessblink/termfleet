@@ -62,6 +62,7 @@ function fallbackFor(cwd: string) {
 test("summaryFromSidecar prefers the current task's activeForm as the title", () => {
   const summary = summaryFromSidecar(
     {
+      turn: "working",
       updatedAt: Date.now(),
       now: "Editing agentStatusSidecar.ts",
       todos: [
@@ -672,7 +673,7 @@ test("summaryFromSidecar falls back to the last completed task when nothing is l
     fallbackFor("/repo/x"),
   );
   expect(summary.task).toBe("Ship the fix");
-  expect(summary.status).toBe("idle");
+  expect(summary.status).toBe("unavailable");
 });
 
 test("a resumed turn turns the completed assistant check into current contextual work", () => {

@@ -21,7 +21,7 @@ import { pendingAsk, screenPermissionAsk, matchesAsk, questionResults } from './
 import { deskRoot, readDesk } from './desk.mjs';
 import { ChoiceReceipts } from './choice-receipts.mjs';
 import { visibleScreenOf } from './screen.mjs';
-import { readSessionStatus } from './session-status.mjs';
+import { readSessionStatus, subscribeSessionEventHeads } from './session-status.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { filesIn, matchFiles } from './files.mjs';
@@ -133,7 +133,7 @@ async function currentPanes() {
         quietForMs: life.quietForMs,
         // What the agent last said about itself, kept honest by what the
         // terminal is actually doing.
-        live: life.producing ? 'producing' : p.turn === 'waiting' ? 'waiting' : 'quiet',
+        live: pane.sessionAuthority ? pane.sessionViewV2.lifecycle : life.producing ? 'producing' : pane.turn === 'waiting' ? 'waiting' : 'quiet',
         // The fleet only needs enough information to lead the operator to the
         // right terminal. The full prompt and choices stay in /api/feed.
         attention: ask ? { kind: ask.kind, title: ask.title } : null,
@@ -153,6 +153,13 @@ const server = http.createServer(async (req, res) => {
     return requireAuth(res);
   }
 
+  if(req.method==='GET' && url.pathname==='/api/session-events') {
+    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});
+    res.write('data: "rescan"\n\n');
+    const unsubscribe=subscribeSessionEventHeads(name=>res.write(`data: ${JSON.stringify(name)}\n\n`));
+    const heartbeat=setInterval(()=>res.write(': heartbeat\n\n'),15000);
+    req.on('close',()=>{unsubscribe();clearInterval(heartbeat);});return;
+  }
   if (url.pathname === '/api/panes') {
     const inventory = await currentPanes();const daemon=inventory.daemon;const history=visits.read(currentUser(req).id);const panes=inventory.panes.map(p=>({...p,lastUsedAt:history[p.id] || null}));
     return json(res, 200, {

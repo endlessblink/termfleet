@@ -1,3 +1,4 @@
+import {ptySessionEnvelope} from "../lib/sessionProcessEvents";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerminal } from "@xterm/xterm";
@@ -15,6 +16,7 @@ import {
   PANE_AGENT_POLL_MS,
   readPaneAgentProvider,
 } from "../lib/paneAgentProcess";
+import { pollTargetMatchesRun, reportedSessionChanged, preserveDurablePaneGoal } from "../lib/statusPollProjection";
 import { keepNewerReportedStatus } from "../lib/badgeLiveness";
 import {
   syncTerminalLatencyTraceEnv,
@@ -90,7 +92,6 @@ import {
   effectiveTerminalPaneId,
   statusSidecarPaneId,
 } from "../lib/terminalPaneIdentity";
-import { preserveDurablePaneGoal } from "../lib/statusPollProjection";
 import { statusForAttach } from "../lib/ptyAttachStatus";
 
 const LOCALHOST_URL_PATTERN =
@@ -721,6 +722,7 @@ export function TerminalComponent({
       id?: string;
       status?: TerminalRuntimeStatus;
       reused?: boolean;
+      sessionEventsV2?: TerminalState["sessionEventsV2"];
       previewUrl?: string;
       currentActivity?: string;
       activityKind?: WorkstreamActivityKind;
@@ -745,6 +747,9 @@ export function TerminalComponent({
         terminals: [
           ...tab.terminals.filter((t) => t.paneId !== paneId),
           {
+            // Runtime telemetry updates a pane; it must not erase declarative
+            // Task/Now lines, user context, or review acknowledgements.
+            ...previous,
             id,
             paneId,
             cols: terminal?.cols ?? previous?.cols ?? 80,
@@ -762,6 +767,7 @@ export function TerminalComponent({
             activityUpdatedAt: updates.currentActivity
               ? Date.now()
               : previous?.activityUpdatedAt,
+            sessionEventsV2:updates.sessionEventsV2 ?? previous?.sessionEventsV2,
             durableActivity:
               updates.durableActivity ?? previous?.durableActivity,
             activeRunId: updates.activeRunId ?? previous?.activeRunId,
@@ -904,6 +910,11 @@ export function TerminalComponent({
         // Only a NEWER agent report may change the stored status (TF-044): this
         // refresh must not write an old hook record over the poll loop's
         // liveness-corrected badge.
+        const currentPane = useWorkspaceStore.getState().tabs.find(candidate => candidate.id === tabId)?.terminals.find(candidate => candidate.paneId === paneId);
+        if (!currentPane || (terminalState && !pollTargetMatchesRun(currentPane, terminalState))) return;
+        if (currentPane.statusSummary?.updatedAt && result.summary.updatedAt &&
+            !reportedSessionChanged(currentPane.statusSummary, result.summary) &&
+            result.summary.updatedAt < currentPane.statusSummary.updatedAt) return;
         const storedSummary = useWorkspaceStore
           .getState()
           .tabs.find((candidate) => candidate.id === tabId)
@@ -1735,6 +1746,10 @@ export function TerminalComponent({
         previousTerminal?.statusSummary?.provider;
       const taskLineup =
         tab?.workstream?.taskLineup ?? previousTerminal?.taskLineup;
+      // Backend exit provenance belongs to this exact PTY and bound publisher run.
+      // It never proves the agent completed the assigned work.
+      const processEvent=ptySessionEnvelope(previousTerminal,details);
+      if(processEvent) updateTerminalRuntime({sessionEventsV2:[processEvent]});
       const recoveryDecision = autoRecoveryDecision({
         provider,
         taskStatuses: taskLineup?.map((task) => task.status),
@@ -2643,6 +2658,7 @@ export function TerminalComponent({
     <div
       ref={questShellRef}
       className={`terminal-block-shell${standalone ? " terminal-block-shell--standalone" : ""}${questTerminalQualifies ? " terminal-block-shell--quest-active" : ""}`}
+      data-pane-id={paneId}
       data-quest-active={questTerminalQualifies ? "true" : "false"}
       data-terminal-kind={paneAgentProvider && paneAgentProvider !== "shell" ? "agent" : "shell"}
       // No tabIndex: the wrapper must NOT be a Tab stop. With tabIndex={0} a

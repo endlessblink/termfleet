@@ -11,7 +11,7 @@
 // Usage: node termfleet-connect-agents.mjs [--check] [--json] [--force]
 //   --check  report only, change nothing
 //   --force  re-point existing TermFleet registrations at the stable copy
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +30,7 @@ const hookHome = path.join(dataHome, "termfleet", "agent-hooks");
 const HOOK_FILES = [
   "termfleet-claude-status-hook.mjs",
   "termfleet-codex-status-hook.mjs",
+  "termfleet-session-observation.mjs",
   "termfleet-opencode-status-plugin.js",
   "lib/agent-status-paths.mjs",
   "lib/agent-status-lifecycle.mjs",
@@ -39,10 +40,18 @@ const HOOK_FILES = [
   "lib/agent-exit-log.mjs",
   "lib/codex-pane-owner.mjs",
   "lib/context-handoff.mjs",
+  "lib/handoff-inject.mjs",
+  "lib/session-event-journal.mjs",
+  "lib/session-soak.mjs",
+  "../shared/sessionObservation.mjs",
+  "../shared/sessionCompatibility.mjs",
+  "../shared/sessionState.mjs",
+  "../shared/sessionEnvelope.mjs",
+  "../shared/sessionSnapshot.mjs",
 ];
 
 // SessionStart closes an older copy of a resumed chat in another terminal.
-const CLAUDE_EVENTS = ["SessionStart", "SessionEnd", "Stop", "Notification", "PermissionRequest", "UserPromptSubmit", "PostToolUse"];
+const CLAUDE_EVENTS = ["SessionStart", "SessionEnd", "Stop", "Notification", "PermissionRequest", "UserPromptSubmit", "PreToolUse", "PostToolUse"];
 const CODEX_EVENTS = ["Stop", "Notification", "UserPromptSubmit", "PreToolUse", "PostToolUse"];
 
 const results = [];
@@ -182,7 +191,8 @@ function connectOpenCode() {
   if (existsSync(target) && !force) return note("opencode", "connected", "status plugin installed");
   if (checkOnly) return note("opencode", "not-connected", "status plugin missing");
   mkdirSync(path.dirname(target), { recursive: true });
-  copyFileSync(path.join(hookHome, "termfleet-opencode-status-plugin.js"), target);
+  if (existsSync(target)) { backup(target); unlinkSync(target); }
+  symlinkSync(path.join(hookHome, "termfleet-opencode-status-plugin.js"), target);
   note("opencode", "connected", "plugin installed; takes effect for newly started OpenCode sessions");
 }
 

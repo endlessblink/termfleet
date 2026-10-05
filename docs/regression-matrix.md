@@ -436,3 +436,47 @@ Latest operator read-back confirms the 137-task board. Wrapping flex cross-size 
 | A short snapshot-write stall or an old snapshot immediately after relaunch recycles a healthy desktop. | The watchdog treated a shared content snapshot's age as current-desktop liveness, with 45 s stale / 60 s startup thresholds and no confirmation; synchronous snapshot IO could delay the writer. | `npm run verify:cockpit-heartbeat` (fake clocks, old/future/missing writes, 60 s stall, busy CPU, confirmation, startup, honest notification, bounded heartbeat retries); `cargo test --lib cockpit_health::tests` (independent single-flight guards, atomic private per-desktop file); installed watchdog inode/hash + per-PID heartbeat readback | Verified on isolated failure surface and installed liveness: 37 Python guards, two frontend scenarios, two integrated Rust tests, TypeScript/build/source gates pass. Actual isolated candidate continues seven heartbeat writes while snapshot IO is FIFO-blocked for 61 s. User-approved production installation now passes the canonical artifact verifier and actual running UI SHA readback. Per-PID heartbeat advances beyond startup grace; watchdog script inode/hash match; daemon18932 and all29 PTY IDs/PIDs are preserved. Actual desktop screenshot inspected. Broad doctor has one separate primary-target artifact mismatch; ownership/safety pass. No daemon signals were sent. |
 
 TC-199/TF-077 unified acceptance: clean-source release `b4ecac5f18ea-9e0b177f1906-9b58af6507ab` is installed and running as UI4142165. Target/install/running SHA agree; host doctor and canonical installed verifier pass. Current watchdog script inode/hash and fresh per-PID heartbeat verified beyond180s startup grace. All32 immediately-before PTY IDs/PIDs and daemon18932 survive unchanged. Exact proof is in TC-201 reconciliation acceptance.
+
+
+### TC-202 — isolated desktop candidate, 2026-10-04
+
+| Surface | Symptom/root cause | Guard | Coverage |
+| --- | --- | --- | --- |
+| MRU/attention | Output activity reordered focus; completion acknowledgement was erased by runtime telemetry. Freeze operator MRU and preserve terminal metadata. | terminal-navigation.spec.ts; desktop-navigation-browser.spec.ts | Partial: synthetic browser passes, native Canvas2D shortcut focus pending. |
+| Pane status | Stale reports crossed pane/run/conversation; older text replaced newer Task/Now; missing evidence and header-only Codex logs became confident states. | status-authority.spec.ts; lifecycle metadata-only Rust test; focused status suite | Partial: 155 focused pass, Rust 9 pass/1 ignored; broader event authority and installed proof pending. |
+| Agent project dialog | Implicit active filters overrode the chosen folder and default placement overlapped projects. | new-agent-terminal.spec.ts; desktop-navigation-browser.spec.ts | Partial: explicit grouping/persistence and synthetic folder ports pass; native folder/provider behavior pending. |
+
+Expanded hook suite retains three baseline failures (last completed task and two durable about-what Goal fixtures). See `docs/desktop-terminal-navigation-tc202.md`; unchanged-baseline reproduction recorded. No installed/native completion claim.
+
+TC-202 follow-up: the expanded integrated status/presentation suite passes 595 with 4 existing fixmes, and 10 synthetic browser fixtures cover provider replacement, navigation and persisted review. Explicit about-what provenance survives same-conversation follow-ups/tools; new conversations replace it. A completed task-list title cannot prefer its first task copied into a legacy prompt. Exact PTY provider replacement clears displaced-provider metadata; unknown/error retains attribution. Transport attachment alone says Status unavailable, and slash command echoes cannot resurrect prior-turn purpose. Original failures and baseline reproduction are recorded in `docs/desktop-mobile-integration-tc202.md`. Native/installed and full reducer parity remain partial.
+
+### Session authority v2 — isolated producer/consumer checkpoint
+
+| Surface | Symptom/root cause | Guard | Coverage |
+| --- | --- | --- | --- |
+| Durable status | Concurrent sidecar updates lose ordering; late tools/foreign sessions resurrect completed work. | session-event-journal.spec.ts; unified-session-state.spec.ts; unified-session-projection.spec.ts | Source: ordered append/replay, partial crash tails, exact binding, sticky typed questions and completion pass. Native continuity still required. |
+| Shared consumers | Desktop/bridge/mobile infer different Task/Goal/Now; polls extend stale Working. | session-consumers.spec.ts; actual header/badge projection fixtures | Source: same durable-head projection and actual escaped mobile-card function pass; watcher/SSE/runtime/visual parity not yet exercised. |
+| Goal/Task | Screenshot-path metadata becomes Goal; full authored checklist loses Task during compaction. | terminal-header-state.spec.ts; terminal-header-view-model.spec.ts; agent-status-summary.spec.ts | Original pure assertions now active/pass. Durable shell map title changed in source; original rendered assertion remains fixme pending browser proof. |
+
+Fresh unblocked source subset604/604, final producer/consumer50/49, frontend build, offline Cargo check and watcher-name Rust1/1 pass. The two blocked hook/HTTP specs are explicitly excluded; previous21 infrastructure failures remain open. Native Canvas2D, rendered mobile/map, installed release, agent-process/input intent and final canonical clean-tree acceptance remain partial. Full scope and exact limits: `docs/session-authority-v2-checkpoint.md`.
+
+Shadow follow-up (2026-10-05): unconditional journal-to-legacy turn and watcher metadata projection could activate display changes during collection. `session-shadow-compatibility.spec.ts` first reproduced two wrong-turn results; default-off compatibility/metadata projection and same-head activation are now explicit. Final61 focused/608 unblocked source/build pass; runtime/browser blocked commands not retried. Exact pending source versus native/approval gates: `docs/termfleet-morning-handoff.md`.
+
+Hook packaging/input follow-up: missing bundled transitive modules prevented copied hooks from importing, and Claude AskUserQuestion PreToolUse did not create a typed waiting event. `session-hook-bundle.spec.ts` imports the actual temporary resource graph and publishes through its OpenCode symlink; typed question journal guard preserves unrelated-call waiting and matches the answer. Three guards failed before correction (then import caught the missing handoff helper). Final64 focused/611 unblocked source/build/fresh Cargo check pass. No install or blocked runtime retry.
+
+
+### Session lifecycle observation continuation — TF-044
+
+| Symptom | Cause and guarded correction | Evidence | Coverage |
+| --- | --- | --- | --- |
+| Working survives agent exit while shell lives; Escape/Ctrl+C is mistaken for completion; reconnect or old tools revive stale work | Trusted observation adapter registers an exact process-lifetime token, separates interruption intent from matched cancellation, serializes process/transport events in the shared journal, repairs crash-left reconnect heads, and gates legacy lifecycle projection on explicit authority. A bounded opt-in sanitized recorder supports later soak evidence. | `tests/session-lifecycle-observations.spec.ts`14 cases; 625 unblocked source pass; build/offline Cargo/resource graph checks. | Partial: synthetic source contract only. No native observation producer is connected yet; verified process-birth/exit and cancellation source required. Native/rendered/installed/real soak gates remain open. See `docs/session-lifecycle-source-checkpoint.md`. |
+
+### Native runtime follow-up — TF-044 / TF-047 (2026-10-05)
+
+| Surface | Correction and guard | Coverage |
+| --- | --- | --- |
+| Native lifecycle | Exact daemon ownership/pane binding plus process birth/pidfd; acknowledged input intention; explicit bound Codex abort; late-open rollout discovery; kernel exit with unknown wait status. `session-lifecycle-observations.spec.ts`, focused Rust tests and private native23-check fixture. | Native Tauri/Canvas2D synthetic provider proved. Installed dock, real providers/phone, restart continuity and soak remain pending. |
+| Shell Now header | Visible Now resolver accepts fresh quality-checked durable command. Original complete map rendered guard is active and passes; no assertion weakened. | Browser rendered proof; installed dock acceptance pending. |
+| Latest mobile choices | Current deployed multi-question choice/submit and stale-VT patch integrated; worker TF-078 states preserved. | Fresh32 focused and24 canonical pass; owner Claude/physical phone acceptance pending, custom text disabled. |
+
+These rows supersede earlier statements that the native producer is absent or the original shell map guard is a fixme. See `session-native-runtime-checkpoint.md` for exact limits; default authority is still off.

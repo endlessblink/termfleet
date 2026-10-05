@@ -21,6 +21,7 @@ pub enum Lifecycle {
     Working,
     Waiting,
     Idle,
+    Unknown,
 }
 
 impl Lifecycle {
@@ -29,6 +30,7 @@ impl Lifecycle {
             Lifecycle::Working => "working",
             Lifecycle::Waiting => "waiting",
             Lifecycle::Idle => "idle",
+            Lifecycle::Unknown => "unavailable",
         }
     }
 }
@@ -36,6 +38,7 @@ impl Lifecycle {
 /// What the rollout tail says, before the process table is consulted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogState {
+    Unknown,
     Idle,
     Thinking,
     /// A tool call with no result yet: its name, start time (epoch ms), and whether
@@ -104,6 +107,7 @@ pub fn parse_utc_timestamp_ms(value: &str) -> Option<i64> {
 /// Classify the tail of a rollout. Lines are processed oldest → newest.
 pub fn classify_rollout_tail(tail: &str) -> LogState {
     let mut state_idle = false;
+    let mut observed_activity = false;
     // call_id → (name, started_ms), kept in arrival order.
     let mut pending: Vec<(String, String, i64, bool)> = Vec::new();
     for line in tail.lines() {
@@ -121,10 +125,12 @@ pub fn classify_rollout_tail(tail: &str) -> LogState {
                 pending.clear();
             }
             (Some("event_msg"), "task_started") => {
+                observed_activity = true;
                 state_idle = false;
                 pending.clear();
             }
             (Some("response_item"), "function_call" | "custom_tool_call" | "local_shell_call") => {
+                observed_activity = true;
                 state_idle = false;
                 let payload = payload.expect("payload has a type");
                 let call_id = payload
@@ -154,6 +160,7 @@ pub fn classify_rollout_tail(tail: &str) -> LogState {
                 Some("response_item"),
                 "function_call_output" | "custom_tool_call_output" | "local_shell_call_output",
             ) => {
+                observed_activity = true;
                 let call_id = payload
                     .and_then(|payload| payload.get("call_id"))
                     .and_then(|value| value.as_str())
@@ -161,6 +168,7 @@ pub fn classify_rollout_tail(tail: &str) -> LogState {
                 pending.retain(|(id, ..)| id != call_id);
             }
             (Some("response_item"), "reasoning" | "message" | "agent_message") => {
+                observed_activity = true;
                 state_idle = false;
             }
             _ => {}
@@ -173,7 +181,8 @@ pub fn classify_rollout_tail(tail: &str) -> LogState {
         Some((_, name, started_ms, can_need_approval)) => {
             LogState::PendingCall { name, started_ms, can_need_approval }
         }
-        None => LogState::Thinking,
+        None if observed_activity => LogState::Thinking,
+        None => LogState::Unknown,
     }
 }
 
@@ -181,6 +190,7 @@ pub fn classify_rollout_tail(tail: &str) -> LogState {
 /// the agent has a descendant process that started at or after `ms`.
 pub fn lifecycle_from(log: &LogState, child_started_after: impl Fn(i64) -> bool) -> Lifecycle {
     match log {
+        LogState::Unknown => Lifecycle::Unknown,
         LogState::Idle => Lifecycle::Idle,
         LogState::Thinking => Lifecycle::Working,
         LogState::PendingCall { name, .. } if name == "request_user_input" => Lifecycle::Waiting,
@@ -214,6 +224,24 @@ fn newest_open_rollout(pid: u32) -> Option<PathBuf> {
         }
     }
     newest.map(|(path, _)| path)
+}
+
+/// Only a rollout actually held by this process family and carrying this exact
+/// conversation is eligible as cancellation evidence.
+pub(crate) fn bound_rollout(pid:u32,session_id:&str)->Option<PathBuf> {
+ use std::io::Read;
+ std::iter::once(pid).chain(descendants(pid)).filter_map(newest_open_rollout).find(|path| {
+  let Ok(file)=std::fs::File::open(path) else {return false;};
+  let mut prefix=String::new();if file.take(8192).read_to_string(&mut prefix).is_err(){return false;}
+  prefix.lines().filter_map(|line|serde_json::from_str::<serde_json::Value>(line).ok()).any(|record|record["type"]=="session_meta" && record["payload"]["id"].as_str()==Some(session_id))
+ })
+}
+pub(crate) fn rollout_abort_after(path:&Path,since:u64)->Option<u64> {
+ abort_after_tail(&read_tail(path)?,since)
+}
+fn abort_after_tail(tail:&str,since:u64)->Option<u64> {
+ tail.lines().filter_map(|line|serde_json::from_str::<serde_json::Value>(line).ok()).filter(|record|record["type"]=="event_msg" && record["payload"]["type"]=="turn_aborted")
+ .filter_map(|record|parse_utc_timestamp_ms(record["timestamp"].as_str()?).and_then(|ms|u64::try_from(ms).ok())).filter(|ms|*ms>=since).max()
 }
 
 fn read_tail(path: &Path) -> Option<String> {
@@ -405,6 +433,18 @@ mod tests {
     }
 
     #[test]
+    fn metadata_or_unrecognized_tail_is_not_proof_of_work() {
+        for tail in [
+            "",
+            r#"{"type":"session_meta","payload":{"id":"fixture"}}"#,
+            r#"{"type":"new_vendor_event","payload":{"type":"unknown"}}"#,
+            "a cut or damaged line",
+        ] {
+            assert_eq!(lifecycle_from(&classify_rollout_tail(tail), |_| true).as_str(), "unavailable");
+        }
+    }
+
+    #[test]
     fn finished_turn_is_idle() {
         let tail = [
             line("2026-09-23T08:00:00.000Z", "event_msg", r#"{"type":"task_started"}"#),
@@ -515,4 +555,15 @@ mod tests {
         );
         assert_eq!(classify_rollout_tail(&tail), LogState::Idle);
     }
+}
+
+#[cfg(test)] mod interruption_evidence_tests {
+ use super::*;
+ #[test] fn abort_must_be_explicit_and_after_the_input() {
+  let at=parse_utc_timestamp_ms("2026-10-05T07:00:00.000Z").unwrap() as u64;
+  let record=r#"{"timestamp":"2026-10-05T07:00:00.000Z","type":"event_msg","payload":{"type":"turn_aborted"}}"#;
+  assert_eq!(abort_after_tail(record,at),Some(at));
+  assert_eq!(abort_after_tail(record,at+1),None);
+  assert_eq!(abort_after_tail(&record.replace("turn_aborted","task_complete"),at),None);
+ }
 }

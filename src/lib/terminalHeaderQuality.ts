@@ -592,7 +592,7 @@ export function qualityCheckUserAskLabel(
     return { ok: false, reason: "prompt-fragment" };
   // A question is a request for clarification, not the durable work concept.
   // Keep it in the conversation/status stream so Task remains an outcome.
-  if (text.endsWith("?")) return { ok: false, reason: "prompt-fragment" };
+  if (text.endsWith("?") && !/^(?:add|allow|build|change|check|create|debug|enable|find|fix|implement|improve|make|remove|repair|replace|restore|update|verify|write)\b/i.test(text)) return { ok: false, reason: "prompt-fragment" };
   if (
     /(?:hard fail|low quality|not enough context|not understanding|fully failing|didn['’]?t fix|didn['’]?t work|what you said .* false)/i.test(
       text,

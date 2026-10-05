@@ -389,8 +389,8 @@ test("an expired sidecar preserves a durable about-what Goal before clearing act
 
   expect(projection?.statusSummary?.mainTaskSource).toBe("about-what");
   expect(projection?.statusSummary?.mainTask).toContain("updated TermFleet build");
-  expect(projection?.statusSummary?.status).toBe("idle");
-  expect(projection?.statusSummary?.now).toBe("Idle — no work is running");
+  expect(projection?.statusSummary?.status).toBe("unavailable");
+  expect(projection?.statusSummary?.now).toBe("Status unavailable");
   expect(projection?.statusSummarySource).toBe("sidecar");
 });
 
@@ -566,7 +566,7 @@ test("an expired sidecar keeps a separately captured user task visible", () => {
   );
 });
 
-test("an inferred about-what goal keeps stale activity honest instead of showing unavailable", () => {
+test("a remembered Goal never turns stale activity into a confident Idle claim", () => {
   const projection = projectStatusPollResult(
     terminal("stale-inferred-goal", {
       statusSummarySource: "sidecar",
@@ -593,8 +593,8 @@ test("an inferred about-what goal keeps stale activity honest instead of showing
     1_700_000_000_000,
   );
 
-  expect(projection?.statusSummary?.now).toBe("Idle — no work is running");
-  expect(projection?.statusSummary?.status).toBe("idle");
+  expect(projection?.statusSummary?.now).toBe("Status unavailable");
+  expect(projection?.statusSummary?.status).toBe("unavailable");
 });
 
 test("a later activity projection cannot drop the pane's accepted Goal", () => {

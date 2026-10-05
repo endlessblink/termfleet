@@ -1276,7 +1276,7 @@ test("uses real task list for the Task row and distinct activity for the title",
   expect(header.taskDescription.text).toBe("Answering authentication question");
   // Title = the agent's declared current activity, NOT the momentary tool name.
   expect(header.title.text).toBe("Asking clarifying questions");
-  expect(header.now.text).toBe("Idle");
+  expect(header.now.text).toBe("Status unavailable");
 });
 
 test("does not show a near-duplicate long task as the big title", () => {
@@ -1471,7 +1471,7 @@ test("shows the main user ask in Task while current activity stays in title and 
 
 // Known gap (launch audit 2026-09-30): a shell-provider pane whose only evidence is a
 // todo-write checklist now reads "Task not captured" instead of the compacted item.
-test.fixme("compacts raw checklist task text for the visible Task row", () => {
+test("compacts raw checklist task text for the visible Task row", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: {
       id: "g-bina",
@@ -1620,7 +1620,7 @@ test("uses spam-rule answer context instead of vague follow-up prompt", () => {
   ).toBe("Reviewing group spam moderation rules");
 });
 
-test("uses slash review prompt and Yahav scraper prompt as concrete purposes", () => {
+test("ignores slash review echoes while keeping the separate service-output inference", () => {
   expect(
     terminalPurposeFromContext({
       terminalOutput: [
@@ -1629,7 +1629,7 @@ test("uses slash review prompt and Yahav scraper prompt as concrete purposes", (
         "› Run /review on my current changes",
       ].join("\n"),
     })?.title,
-  ).toBe("Reviewing current changes");
+  ).toBeUndefined();
   expect(
     terminalPurposeFromContext({
       terminalOutput: [
@@ -1812,6 +1812,7 @@ test("rejects trusted visible activity when it is still generic", () => {
     "Working",
     "Awaiting next action",
     "Activity not captured",
+    "Status unavailable",
   ]).toContain(header.now.text);
 });
 
@@ -2870,7 +2871,7 @@ test("big title uses the task activeForm, never the momentary tool activity", ()
   );
   expect(header.title.text).toBe("Testing if tasks reach the app screen");
   expect(header.title.text).not.toBe("Using Skill");
-  expect(header.now.text).toBe("Idle");
+  expect(header.now.text).toBe("Status unavailable");
 });
 
 test("real task active form beats a generic working title", () => {
@@ -3634,7 +3635,7 @@ test("fully-completed task list shows the outcome, not 'Awaiting next action'", 
 // KNOWN GAP (tracked): a todo-write task scoped to an OLD run still outranks a newer
 // run's ask because sidecar summaries are not run-scoped. Needs a run-scoping rule in
 // resolveTaskIdentity, not an expectation tweak.
-test.fixme("stale scoped todo-write summary does not own a newer run", () => {
+test("stale scoped todo-write summary does not own a newer run", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: {
       id: "g-termfleet",

@@ -57,7 +57,7 @@ export async function readPaneAgentAlive(paneId: string): Promise<boolean | null
 }
 
 export interface PaneAgentLifecycle {
-  state: "working" | "waiting" | "idle";
+  state: "working" | "waiting" | "idle" | "unavailable";
   updatedAtMs: number;
 }
 
@@ -70,7 +70,7 @@ export async function readPaneAgentLifecycle(paneId: string): Promise<PaneAgentL
   if (!paneId || !isTauriRuntime()) return null;
   try {
     const report = await invoke<PaneAgentLifecycle | null>("pane_agent_lifecycle", { paneId });
-    return report && ["working", "waiting", "idle"].includes(report.state) ? report : null;
+    return report && ["working", "waiting", "idle", "unavailable"].includes(report.state) ? report : null;
   } catch {
     return null;
   }

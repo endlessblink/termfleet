@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { projectSessionState } from "../lib/sessionStateAdapter";
 import type {
   CanvasNode,
   CanvasState,
@@ -585,6 +586,8 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
   return {
     id: terminal.id,
     paneId: terminal.paneId,
+    reviewedCompletionAt: terminal.reviewedCompletionAt,
+    reviewedCompletionSessionId: terminal.reviewedCompletionSessionId,
     cols: terminal.cols,
     rows: terminal.rows,
     status: "starting",
@@ -2719,10 +2722,11 @@ export function createAgentWorkstream(
   availability?: AgentProviderAvailability,
   opsContext?: WorkstreamOpsContext,
   launchProfile: WorkstreamLaunchProfile = "terminal",
+  target?: { groupId: string | null; projectCwd: string; placement: {x: number; y: number} },
 ): string | undefined {
   const store = useWorkspaceStore.getState();
   const activeTab = store.tabs.find((tab) => tab.id === store.activeTabId);
-  const groupId = store.activeGroupFilter ?? activeTab?.groupId ?? store.activeGroupId;
+  const groupId = target ? target.groupId : store.activeGroupFilter ?? activeTab?.groupId ?? store.activeGroupId;
   const targetGroup = groupId ? store.groups.find((group) => group.id === groupId) : null;
   const resolvedCwd = opsContext?.cwd ?? targetGroup?.projectRoot ?? activeTab?.initialCwd ?? store.projectRoot ?? undefined;
   const providerInfo = availability ?? {
@@ -2753,6 +2757,7 @@ export function createAgentWorkstream(
     color: "#7dbac3",
     initialCwd: resolvedCwd,
     groupId,
+    ...(target ? { projectCwd: target.projectCwd } : {}),
     workstream: {
       kind: "agent",
       canonicalTaskId: opsContext?.canonicalTaskId,
@@ -2849,7 +2854,7 @@ export function createAgentWorkstream(
       status: initialStatus,
       createdAt,
     },
-  });
+  }, target?.placement);
   const newTabId = useWorkspaceStore.getState().activeTabId;
   if (opsContext?.canonicalTaskId) {
     void registerTaskRun({
@@ -3744,6 +3749,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         t.id === id
           ? (() => {
               const updated = { ...t, ...updates };
+              if (updates.terminals) updated.terminals=updates.terminals.map(pane => ({...pane,
+                sessionStateV2:projectSessionState(t.terminals.find(previous=>previous.paneId===pane.paneId),pane),
+              }));
               if (updates.workstream) {
                 const completesRun = updates.workstream.status === "done" || updates.workstream.phase === "complete";
                 updated.workstream = {

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {sessionCompatibilitySidecar} from "../shared/sessionCompatibility.mjs";
+import {publishSessionEvent} from "./lib/session-event-journal.mjs";
 // Claude Code PostToolUse hook: writes the agent's REAL task list + current activity
 // to a sidecar file keyed by cwd, which termfleet's status worker reads. Free +
 // accurate (no model), no terminal pollution (file, not /dev/tty). Safe to install
@@ -494,13 +496,17 @@ async function main() {
       cwd,
       agentPid: agentPid("claude"),
     });
-    if (payload.hook_event_name === "SessionEnd") process.exit(0);
+    if (payload.hook_event_name === "SessionEnd") {
+      try {await publishSessionEvent({paneId,provider:"claude",payload,sidecar:{sessionId:payload.session_id},at:Date.now()});}catch(error){console.error("termfleet session end journal:",error.message);}
+      process.exit(0);
+    }
   }
   if (payload.hook_event_name === "SessionStart" || payload.hook_event_name === "UserPromptSubmit") {
     // One chat, one terminal: an older copy of this chat in another terminal is closed.
     closeOtherCopies({ provider: "claude", conversationId: String(payload?.session_id ?? ""), paneId });
     if (payload.hook_event_name === "SessionStart") {
       stampProviderAtSessionStart({ payload, cwd, paneId });
+      try {await publishSessionEvent({paneId,provider:"claude",payload,sidecar:{sessionId:payload.session_id},at:Date.now()});}catch(error){console.error("termfleet session start journal:",error.message);}
       process.exit(0);
     }
   }
@@ -722,6 +728,12 @@ async function main() {
       if (!sidecar.now) sidecar.now = nowFromTodos(onDisk.todos);
     }
   }
+  // Additive durable authority. Existing sidecar metadata remains the compatibility view.
+  let head=null;
+  try {
+    head=await publishSessionEvent({paneId,provider:"claude",payload,sidecar,at:sidecar.updatedAt});
+  } catch(error) { console.error("termfleet session event journal:",error.message); }
+  sidecar=sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on");
   if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {
     process.exit(0);
   }

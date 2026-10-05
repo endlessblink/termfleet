@@ -1,3 +1,4 @@
+import { isTerminalNavigationShortcut } from "../lib/terminalNavigation";
 // TC-017b/c/d — Canvas2D terminal renderer with input.
 //
 // Attaches the headless-VT grid, subscribes to the Rust binary dirty-diff
@@ -277,6 +278,7 @@ export function TerminalCanvas({
   // re-run when the parent passes new closure identities each render.
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const nativeTransportGapRef=useRef(false);
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
   const onOutputRef = useRef(onOutput);
@@ -1023,6 +1025,10 @@ export function TerminalCanvas({
       await invoke("grid_scroll_to_bottom", { id: sessionId });
       if (disposed) return;
       attached = true;
+      if(nativeTransportGapRef.current) {
+        nativeTransportGapRef.current=false;
+        void invoke('agent_status_runtime_event',{ptyId:sessionId,kind:'transport.reconnected'}).catch(()=>{});
+      }
       lastCols = attachCols;
       lastRows = attachRows;
       if (mapTerminalTransportMode(mapProjection, runtimeActiveRef.current) === "snapshot") {
@@ -1079,6 +1085,10 @@ export function TerminalCanvas({
       const message = String(error);
       console.error(error);
       setAttachError(message);
+      if(!nativeTransportGapRef.current) {
+        nativeTransportGapRef.current=true;
+        void invoke('agent_status_runtime_event',{ptyId:sessionId,kind:'transport.disconnected'}).catch(()=>{});
+      }
       onStatusRef.current?.("failed", { error: message });
     });
 
@@ -1400,6 +1410,8 @@ export function TerminalCanvas({
   // focused. stopPropagation also prevents the bubble handler from double-sending.
   useEffect(() => {
     const onCaptureKeyDown = (event: KeyboardEvent) => {
+      // Dedicated operator-requested cockpit navigation belongs to the window.
+      if (isTerminalNavigationShortcut(event)) return;
       if (!terminalOwnsKeyboard()) return;
       // The terminal already owns keyboard focus for ordinary typing. Calling
       // focus() here also reclaims the PTY and updates the workspace store on

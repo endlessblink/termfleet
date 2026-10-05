@@ -1,3 +1,5 @@
+import {authoritativeSessionView} from "./sessionStateAdapter";
+import type {SessionState} from "../../shared/sessionState.mjs";
 import type {
   Group,
   TaskLineupItem,
@@ -33,7 +35,10 @@ export type TerminalHeaderStatus =
   | "working"
   | "waiting"
   | "blocked"
-  | "done";
+  | "done"
+  | "unavailable"
+  | "ended"
+  | "interrupted";
 
 export type TerminalHeaderWorkspaceSource = "workspace";
 export type TerminalHeaderGoalSource =
@@ -308,6 +313,8 @@ function stabilizeHeaderRows(
 }
 
 export function buildTerminalHeaderState(input: {
+  sessionStateV2?:SessionState;
+  sessionStateNow?:number;
   paneId: string;
   /** The pane's own name; names the pane when no folder is known. */
   paneName?: string | null;
@@ -361,7 +368,11 @@ export function buildTerminalHeaderState(input: {
           updatedAt: input.statusSummary?.updatedAt ?? Date.now(),
         }
       : undefined;
-  const effectiveMainUserAsk = input.mainUserAsk ?? persistedOpeningAsk;
+  // A legacy sidecar ask is agent metadata, not a manually pinned operator Goal.
+  // Validate its complete text before compacting away paths or protocol instructions.
+  const sidecarAskIsUsable = input.mainUserAsk?.source !== "status-sidecar" ||
+    !/(?:^|\s)\/(?:tmp|home|media|var|usr|opt)\//i.test(input.mainUserAsk.text);
+  const effectiveMainUserAsk = sidecarAskIsUsable ? input.mainUserAsk ?? persistedOpeningAsk : persistedOpeningAsk;
   // TC-060 R1: a pane that has not polled yet — or one only ever drawn in the
   // sidebar, never mounted — still gets a true line. The last rung needs no I/O,
   // so nothing can fall through to "Task not captured".
@@ -614,6 +625,9 @@ export function buildTerminalHeaderState(input: {
         activity: currentActivity,
       };
 
+  const authority=authoritativeSessionView(input.sessionStateV2,input.sessionStateNow);
+  const authorityStatus:TerminalHeaderStatus=authority?.lifecycle==='working' ? 'working' : authority?.lifecycle==='waiting' ? 'waiting'
+    : authority?.lifecycle==='finished' ? 'done' : authority?.lifecycle==='crashed' ? 'blocked' : authority?.lifecycle==='unknown' ? 'unavailable' : authority?.lifecycle==='ended' ? 'ended' : authority?.lifecycle==='interrupted' ? 'interrupted' : 'idle';
   return {
     paneId: input.paneId,
     terminalId: input.terminalId,
@@ -641,5 +655,16 @@ export function buildTerminalHeaderState(input: {
     version: input.version ?? 1,
     updatedAt: input.updatedAt ?? Date.now(),
     debug: view.debug,
+    ...(authority ? {
+      userGoal:authority.goal?.text ?? null,goalLabel:authority.goal?.label ?? "Goal not captured",
+      contextLabel:authority.goal?.label ?? "Goal not captured",hasCapturedContext:Boolean(authority.goal),hasCapturedGoal:Boolean(authority.goal),
+      taskDescription:authority.task?.label ?? "Task not captured",currentActivity:authority.now?.text ?
+        `${authority.now.stale ? "Last: " : ""}${authority.now.label}` :
+        (authority.lifecycle==='finished' ? "Finished — awaiting review" : authority.lifecycle==='unknown' ? "Status unavailable" : authority.lifecycle==='working' ? "Working" : authority.lifecycle==='waiting' ? "Waiting for you" : authority.lifecycle==='interrupted' ? "Interrupted" : authority.lifecycle==='ended' ? "Ended" : "Idle"),
+      status:authorityStatus,attention:authority.attention==='needs-attention' ? "waiting" as const : authority.attention,
+      sources:{workspace:"workspace" as const,goal:authority.goal?.source==='manual' ? "manual" as const : authority.goal ? "plan-explanation" as const : "missing" as const,
+        context:authority.goal ? "status-summary" as const : "missing" as const,activity:authority.now ? "status-summary" as const : "missing" as const,path:pathSource(input)},
+      debug:{...view.debug,statusAuthority:"v2",statusRule:authority.reason,goalProvenance:authority.goal?.source,confidence:authority.confidence},
+    } : {}),
   };
 }
