@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { readDesk, deskRoot } from '../bridge/desk.mjs';
 import { ChoiceReceipts } from '../bridge/choice-receipts.mjs';
-import { sendCustomAnswer } from '../bridge/send.mjs';
+import { sendCustomAnswer, promptKey } from '../bridge/send.mjs';
 import { questionFromRecords, questionResultsFromRecords } from '../bridge/asks.mjs';
 import { isNoise, clean } from '../bridge/noise.mjs';
 import { visibleScreenOf } from '../bridge/screen.mjs';
@@ -72,4 +72,35 @@ test('custom field identity comes from the fresh rendered VT screen, never ANSI 
  fs.writeFileSync(file,JSON.stringify({sourceApp:'termfleet',terminals:[{terminalId:'pane',terminalVisibleText:'Question?\nType something.',terminalVisibleTextUpdatedAt:now}]}));
  assert.equal(visibleScreenOf('pane',{file,now}),'Question?\nType something.');
  assert.equal(visibleScreenOf('other',{file,now}),null);assert.equal(visibleScreenOf('pane',{file,now:now+10000}),null);assert.equal(visibleScreenOf('pane',{file,now,after:now+1}),null);
+});
+
+test('an unchanged question uses its current exact-pane observation, while post-input checks require new content',t=>{
+ const file=path.join(temp(t),'stable-screen.json'),now=Date.now(),old=now-8*3600e3;
+ const snapshot={sourceApp:'termfleet',updatedAt:now,terminals:[{terminalId:'waiting-pane',updatedAt:now,terminalVisibleText:'Current question?\n1. First\n2. Second',terminalVisibleTextUpdatedAt:old}]};
+ const save=()=>fs.writeFileSync(file,JSON.stringify(snapshot));save();
+ assert.equal(visibleScreenOf('waiting-pane',{file,now}),snapshot.terminals[0].terminalVisibleText,'unchanged VT content does not expire while this pane is freshly observed');
+ assert.equal(visibleScreenOf('waiting-pane',{file,now,after:now-1}),null,'a new keystroke still requires a new VT content observation');
+ snapshot.terminals[0].updatedAt=now-30000;save();assert.equal(visibleScreenOf('waiting-pane',{file,now}),null,'fresh global heartbeat cannot revive a stale exact pane');
+ snapshot.terminals[0].updatedAt=now+5000;save();assert.equal(visibleScreenOf('waiting-pane',{file,now}),null,'future timestamps fail closed');
+ assert.equal(visibleScreenOf('another-pane',{file,now}),null);
+});
+
+test('Claude question digits select directly without submitting the next question; permission keys are unchanged',()=>{
+ assert.equal(promptKey({provider:'claude'},'1',{},'question'),'1');
+ assert.equal(promptKey({provider:'codex'},'2',{},'question'),'2');
+ assert.equal(promptKey({provider:'claude'},'1',{},'permission'),'1\r');
+ assert.equal(promptKey({provider:'opencode'},'yes',{yes:'y'},'permission'),'y');
+});
+
+test('Claude multi-question review is a distinct explicit submission, not a resurrected first question',()=>{
+ const pane={provider:'claude',sessionId:'review-fixture',id:'review-pane'};
+ const questions=[{question:'First question?',options:[{label:'Draft'},{label:'Review'}]},{question:'Second question?',options:[{label:'Tomorrow'},{label:'Later'}]}];
+ const record={message:{role:'assistant',content:[{type:'tool_use',name:'AskUserQuestion',id:'review-call',input:{questions}}]}};
+ const lines=[JSON.stringify(record)],screen='Review your answers\nFirst question?\n→ Draft\nSecond question?\n→ Later\nReady to submit your answers?\nSubmit answers\nCancel';
+ const ask=questionFromRecords(pane,lines,screen);
+ assert.equal(ask.stage,'review');assert.equal(ask.questionIndex,2);assert.equal(ask.options[0].key,'submit');
+ assert.deepEqual(ask.reviewAnswers,[{question:'First question?',answer:'Draft'},{question:'Second question?',answer:'Later'}]);
+ assert.notEqual(ask.id,questionFromRecords(pane,lines,questions[0].question).id);
+ assert.equal(promptKey(pane,'submit',{},'question-submit'),'\r');
+ assert.equal(questionFromRecords(pane,lines,screen+'\nYou have not answered all questions').options.length,0);
 });

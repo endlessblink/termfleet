@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-05T00:25:39.412Z",
+  "updatedAt": "2026-10-05T04:54:10.805043+00:00",
   "issues": [
     {
       "id": "TF-001",
@@ -2247,7 +2247,7 @@
           "at": "2026-09-27T09:29:27.330Z",
           "type": "evidence",
           "kind": "live-desktop",
-          "note": "2026-09-27 12:23:53 dock log shows release 2732 launched; incident samples at +55s report foreground process R and heartbeat age 9s, then heartbeat ages 1\u20136s at +117\u2013242s. Current dock screenshot at 12:25:22 shows workspace and terminal prompt, so startup eventually paints after about 89 seconds. The exact delay source within WebKit, durable layout loading, and daemon reconciliation remains unmeasured; launch responsiveness is not fixed."
+          "note": "2026-09-27 12:23:53 dock log shows release 2732 launched; incident samples at +55s report foreground process R and heartbeat age 9s, then heartbeat ages 1–6s at +117–242s. Current dock screenshot at 12:25:22 shows workspace and terminal prompt, so startup eventually paints after about 89 seconds. The exact delay source within WebKit, durable layout loading, and daemon reconciliation remains unmeasured; launch responsiveness is not fixed."
         },
         {
           "at": "2026-09-27T09:42:19.302Z",
@@ -2391,7 +2391,7 @@
           "at": "2026-09-28T09:40:20.021Z",
           "type": "evidence",
           "kind": "live-desktop",
-          "note": "2026-09-28 fresh read-only live capture: dock UI PID 3259370 and WebKit PID 3259398 remain on promoted release 353017b7354a-b11df5c09703-457ceb2bda9d; UI state S in poll_schedule_timeout, not D; cgroup I/O PSI near zero and system I/O PSI avg10 was 1.39%; memory pressure near zero. PTY daemon PID 1515447 remained alive. Over a separate 5-second /proc stat sample, UI accumulated 109 CPU ticks and WebKit 103; host CPU PSI avg10 ranged 7.24\u20139.24% and other host processes were using multiple cores. This supports concurrent app and host CPU activity but does not identify the hot function or prove keyboard latency. Existing geometry log is stale (Sep 24); no fresh key-to-paint measurement, no code change, no restart, and no performance improvement claimed. Snapshot: /tmp/termfleet/incident-snapshots/desktop-20260928T093714Z-3259370."
+          "note": "2026-09-28 fresh read-only live capture: dock UI PID 3259370 and WebKit PID 3259398 remain on promoted release 353017b7354a-b11df5c09703-457ceb2bda9d; UI state S in poll_schedule_timeout, not D; cgroup I/O PSI near zero and system I/O PSI avg10 was 1.39%; memory pressure near zero. PTY daemon PID 1515447 remained alive. Over a separate 5-second /proc stat sample, UI accumulated 109 CPU ticks and WebKit 103; host CPU PSI avg10 ranged 7.24–9.24% and other host processes were using multiple cores. This supports concurrent app and host CPU activity but does not identify the hot function or prove keyboard latency. Existing geometry log is stale (Sep 24); no fresh key-to-paint measurement, no code change, no restart, and no performance improvement claimed. Snapshot: /tmp/termfleet/incident-snapshots/desktop-20260928T093714Z-3259370."
         },
         {
           "at": "2026-09-28T10:09:04.291Z",
@@ -2421,7 +2421,7 @@
           "at": "2026-09-28T10:30:21.496Z",
           "type": "evidence",
           "kind": "live-desktop",
-          "note": "2026-09-28 13:26 IDT: continuous sampler confirmed UI PID 1555124 and WebKit PID 1555215 alive; over 16 minutes their cumulative CPU ticks rose 28,896\u219245,460 (~17% of one core) and 77,731\u2192136,774 (~61% of one core). At 13:26 WebKit was ~58% CPU; host I/O PSI avg10 was 8.58% some / 7.44% full, while app cgroup I/O pressure remained near zero. Geometry records for the inspected terminal stayed at x=366,y=101,size=1104x731 and displayOffset=0; the two-second geometry timer only reads/logs bounds. Source map movement is explicit pan mousemove / drag, zoom controls, or one-time startup rescue for an off-screen target. No fresh input-latency event exists after 12:44, so no live typing-to-paint correlation yet. Daemon PID 1515447 remains alive; no restart."
+          "note": "2026-09-28 13:26 IDT: continuous sampler confirmed UI PID 1555124 and WebKit PID 1555215 alive; over 16 minutes their cumulative CPU ticks rose 28,896→45,460 (~17% of one core) and 77,731→136,774 (~61% of one core). At 13:26 WebKit was ~58% CPU; host I/O PSI avg10 was 8.58% some / 7.44% full, while app cgroup I/O pressure remained near zero. Geometry records for the inspected terminal stayed at x=366,y=101,size=1104x731 and displayOffset=0; the two-second geometry timer only reads/logs bounds. Source map movement is explicit pan mousemove / drag, zoom controls, or one-time startup rescue for an off-screen target. No fresh input-latency event exists after 12:44, so no live typing-to-paint correlation yet. Daemon PID 1515447 remains alive; no restart."
         },
         {
           "at": "2026-09-28T11:00:32.687Z",
@@ -5726,7 +5726,7 @@
           "at": "2026-09-23T16:16:35.896Z",
           "type": "evidence",
           "kind": "focused-test",
-          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task \u2014 just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
+          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task — just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
         },
         {
           "at": "2026-10-04T21:36:31.646Z",
@@ -6871,17 +6871,17 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-10-05T00:24:02.718Z",
-          "note": "Offline lifecycle continuation adds capture-bound process/transport observations, interruption intent versus observed cancellation, shared durable journal replay, opt-in sanitized bounded soak recorder, and authority-gated compatibility projections. Native observer wiring remains dependent on trusted process-lifetime and cancellation observations; no native proof or flag activation."
+          "at": "2026-10-05T04:54:10.477Z",
+          "note": "Native Linux observer now binds exact pane/provider/conversation and process birth, captures acknowledged input intent, journals transport changes, observes pidfd exit without fabricated wait status, and confirms Codex interruption only from bound explicit turn_aborted. Late rollout discovery is process-token fenced. Default authority remains off."
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-05T00:25:39.412Z",
-          "note": "625 unblocked source tests passed, including14 deterministic lifecycle/retirement/soak guards. Frontend build passed; offline Cargo check passed2m16s; map/typography/syntax/diff checks pass. Native producer connection and actual runtime/soak/installed/canonical integration remain pending; blocked host commands were not retried."
+          "at": "2026-10-05T04:54:10.776Z",
+          "note": "Final isolated native Tauri Canvas2D fixture23 acceptance checks pass including late rollout open after native binding, MRU/attention/New Agent dialog/Goal/Now and lifecycle through exit with parent shell alive. Cargo check and2 focused process tests pass. Earlier626 source,30 host hook/HTTP,10 navigation/provider,1 original map guard and1 phone HTML render pass. Installed dock, physical phone, real-provider soak and non-Codex cancellation remain open."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Run scoped host fixtures, connect verified native process/input/transport observations, collect shadow soak and dock/phone acceptance, then reconcile canonical Git preserving26 WIP files. See docs/session-lifecycle-source-checkpoint.md.",
+      "nextAction": "Complete installed dock and real-provider shadow soak/phone acceptance after clean canonical reconciliation. See docs/session-native-runtime-checkpoint.md.",
       "history": [
         {
           "at": "2026-09-23T08:22:01.081Z",
@@ -6939,7 +6939,7 @@
           "at": "2026-09-23T16:03:04.923Z",
           "type": "evidence",
           "kind": "focused-test",
-          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m\u2026)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
+          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m…)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
         },
         {
           "at": "2026-10-04T21:36:31.614Z",
@@ -7084,6 +7084,18 @@
           "at": "2026-10-05T00:26:32.591858+00:00",
           "type": "next-action",
           "note": "Run scoped host fixtures, connect verified native process/input/transport observations, collect shadow soak and dock/phone acceptance, then reconcile canonical Git preserving26 WIP files. See docs/session-lifecycle-source-checkpoint.md."
+        },
+        {
+          "at": "2026-10-05T04:54:10.477Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Native Linux observer now binds exact pane/provider/conversation and process birth, captures acknowledged input intent, journals transport changes, observes pidfd exit without fabricated wait status, and confirms Codex interruption only from bound explicit turn_aborted. Late rollout discovery is process-token fenced. Default authority remains off."
+        },
+        {
+          "at": "2026-10-05T04:54:10.776Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final isolated native Tauri Canvas2D fixture23 acceptance checks pass including late rollout open after native binding, MRU/attention/New Agent dialog/Goal/Now and lifecycle through exit with parent shell alive. Cargo check and2 focused process tests pass. Earlier626 source,30 host hook/HTTP,10 navigation/provider,1 original map guard and1 phone HTML render pass. Installed dock, physical phone, real-provider soak and non-Codex cancellation remain open."
         }
       ]
     },
@@ -7266,21 +7278,90 @@
     {
       "id": "TF-047",
       "title": "Shell card shows Awaiting command while a known command runs",
-      "state": "reported",
+      "state": "verifying",
       "severity": "medium",
       "surface": "canvas",
       "matrixRefs": [],
       "symptom": "A plain shell running a recognised command (e.g. a Playwright run) shows Task not captured / Now Awaiting command instead of the command's plain description; the durable activity reaches the summary but the header rejects it.",
-      "rootCause": "",
-      "guard": "tests/map-terminal-rendering.spec.ts: map shell header uses durable activity instead of stale transcript summary (currently test.fixme)",
-      "evidence": [],
+      "rootCause": "Visible Now row used a separate resolver that rejected fresh durable activity when Task/Goal were absent.",
+      "guard": "tests/map-terminal-rendering.spec.ts: active full durable shell activity rendered guard",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-05T04:48:10.342Z",
+          "note": "MagicCanvas visible Now row accepts only live, quality-checked durable activity; stale scraped Now and fabricated Task remain rejected."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T04:48:10.631Z",
+          "note": "Original full map shell durable-activity guard passed1/1; no assertion removed or weakened."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-05T04:48:10.925Z",
+          "note": "Chromium isolated candidate passed Testing checkout flow title, no unfinished prompt/Search, No list rail and zero fabricated task rows."
+        }
+      ],
       "owner": "termfleet",
-      "nextAction": "Trace summary.task through buildShellTerminalHeaderViewModel and the map Now row once the in-flight header redesign lands.",
+      "nextAction": "Verify installed dock after canonical reconciliation; full original rendered guard passes.",
       "history": [
         {
           "at": "2026-09-23T16:37:29.221Z",
           "type": "created",
           "note": null
+        },
+        {
+          "at": "2026-10-05T04:48:09.174Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Original rendered guard exposed Awaiting command in the visible Now row despite fresh durable activity."
+        },
+        {
+          "at": "2026-10-05T04:48:09.471Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Original assertion failed in Chromium; fixture identity setup was corrected separately, preserving the full title/Now/no-fabricated-Task assertions."
+        },
+        {
+          "at": "2026-10-05T04:48:09.775Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Original map shell durable-activity test is active and reproduced failure."
+        },
+        {
+          "at": "2026-10-05T04:48:10.054Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Actual visible Now-row resolver now accepts a fresh quality-checked durable command before absent Goal/Task comparison."
+        },
+        {
+          "at": "2026-10-05T04:48:10.342Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "MagicCanvas visible Now row accepts only live, quality-checked durable activity; stale scraped Now and fabricated Task remain rejected."
+        },
+        {
+          "at": "2026-10-05T04:48:10.631Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Original full map shell durable-activity guard passed1/1; no assertion removed or weakened."
+        },
+        {
+          "at": "2026-10-05T04:48:10.925Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Chromium isolated candidate passed Testing checkout flow title, no unfinished prompt/Search, No list rail and zero fabricated task rows."
+        },
+        {
+          "at": "2026-10-05T04:48:11.219Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Rendered regression passes; installed dock acceptance remains pending reconciliation with active TermControl worker."
         }
       ]
     },
@@ -8243,19 +8324,19 @@
       "severity": "medium",
       "surface": "logic",
       "matrixRefs": [],
-      "symptom": "in-control-kernel Codex card: Task 'No task declared', Goal 'Not captured' \u2014 the opening request picked was Codex's injected '# AGENTS.md instructions' block (new wording, no 'for <path>').",
+      "symptom": "in-control-kernel Codex card: Task 'No task declared', Goal 'Not captured' — the opening request picked was Codex's injected '# AGENTS.md instructions' block (new wording, no 'for <path>').",
       "rootCause": "",
       "guard": "playwright test goal-from-conversation task-line-live-records (live: no recent Codex chat opens with machine-written text)",
       "evidence": [
         {
           "kind": "source",
           "at": "2026-09-27T08:45:16.811Z",
-          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\u2026' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project\u2026') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only \u2026' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
+          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>…' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project…') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only …' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
         },
         {
           "kind": "focused-test",
           "at": "2026-09-27T08:45:17.113Z",
-          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only \u2026' leaks on first run, now 0."
+          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only …' leaks on first run, now 0."
         }
       ],
       "owner": "termfleet",
@@ -8305,13 +8386,13 @@
           "at": "2026-09-27T08:45:16.812Z",
           "type": "evidence",
           "kind": "source",
-          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\u2026' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project\u2026') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only \u2026' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
+          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>…' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project…') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only …' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
         },
         {
           "at": "2026-09-27T08:45:17.113Z",
           "type": "evidence",
           "kind": "focused-test",
-          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only \u2026' leaks on first run, now 0."
+          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only …' leaks on first run, now 0."
         }
       ]
     },
@@ -8325,7 +8406,7 @@
         "6.14"
       ],
       "symptom": "Each wheel gesture jumps past several lines in Codex sessions, making it hard to read agent output.",
-      "rootCause": "Pixel-mode wheel input was interpreted at full scale before being sent to the Codex alternate-screen mouse-report path, so one 99\u2013100 px gesture emitted about five rows. Pixel deltas are now reduced by 4x and fractional movement is accumulated; line and page units keep their existing semantics.",
+      "rootCause": "Pixel-mode wheel input was interpreted at full scale before being sent to the Codex alternate-screen mouse-report path, so one 99–100 px gesture emitted about five rows. Pixel deltas are now reduced by 4x and fractional movement is accumulated; line and page units keep their existing semantics.",
       "guard": "tests/terminal-viewport.spec.ts pixel wheel sensitivity and fractional remainder regressions; installed Codex pane wheel readback",
       "evidence": [
         {
@@ -8517,7 +8598,7 @@
           "type": "transition",
           "from": "reopened",
           "to": "reproducing",
-          "note": "Live wheel-route diagnostics reproduce app-pages with deltaY=\u00b199 and rows=0 for repeated events; hasHistory=false and no mouse-reporting route confirm the app fallback is receiving sub-page fractions that never produce a key in this code version."
+          "note": "Live wheel-route diagnostics reproduce app-pages with deltaY=±99 and rows=0 for repeated events; hasHistory=false and no mouse-reporting route confirm the app fallback is receiving sub-page fractions that never produce a key in this code version."
         },
         {
           "at": "2026-09-28T13:09:33.768Z",
@@ -9951,28 +10032,28 @@
       "severity": "medium",
       "surface": "canvas",
       "matrixRefs": [],
-      "symptom": "Mobile technical startup metadata became a giant list title, Last used followed background activity, pending choices/refusals seemed inactive, and the global light redesign exceeded the requested conversation scope",
-      "rootCause": "Type-instead focused the general composer without binding the request or verifying the native Other field; ANSI scrollback cannot establish current focus. User messages skipped rich rendering and lacked Copy. Exact live decline keystrokes remain unproven.",
-      "guard": "node --test termcontrol/test/desk-contract.test.mjs termcontrol/test/desk-http.test.mjs termcontrol/test/desk-mobile.test.mjs termcontrol/test/chat-rendering.test.mjs termcontrol/test/experience-mobile.test.mjs",
+      "symptom": "The highlighted ordinary choice in a three-question Claude form does not advance the mobile conversation; the original dark shell must remain intact",
+      "rootCause": "The gate confused VT content-change time with exact-pane observation time, rejecting an unchanged question after six seconds. Claude digits already select, so an extra Enter may answer the next question. Multi-question final review was mistaken for Q1, and a daemon error response could be mistaken for a write acknowledgment. The separate custom-answer acceptance remains gated.",
+      "guard": "node --test termcontrol/test/desk-contract.test.mjs termcontrol/test/native-choice-http.test.mjs termcontrol/test/desk-http.test.mjs termcontrol/test/experience-mobile.test.mjs; npm run verify:termcontrol-mobile",
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-10-04T21:32:26.273Z",
-          "note": "Owner-corrected original dark shell restored from verified baseline, retaining conversation fixes and answer guards. Routine technical provenance remains inspectable; Last used reads explicit persisted owner visits, never output/heartbeat. Desktop core untouched."
+          "at": "2026-10-05T04:43:13.362Z",
+          "note": "2026-10-05 exact supplied screenshot inspected privately; ordinary first choice in a three-question Claude form. Existing freshness gate rejects unchanged VT text despite a fresh exact-pane observation. Claude 2.1.288 digit handler advances directly, multi-question form has explicit final review, and daemon error replies must not be treated as write acknowledgments. Five scoped runtime files now installed; no desktop/core changes."
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-04T21:32:26.318Z",
-          "note": "Dark correction: 28 focused tests, 24 canonical and build pass; final actionable-error and dark visual supplement4/4. Synthetic real HTTP validates visit metadata with no PTY writes, current question guards, and duplicate/stale/refusal flows."
+          "at": "2026-10-05T04:43:13.620Z",
+          "note": "Three regressions failed before fixes: stable exact-pane observation, Claude digit without Enter, and distinct final review. Final suite32/32 plus canonical24/24 and TypeScript/Vite build pass. Actual browser+HTTP disposable fixture proves all three choices, explicit submit, no duplicate/stale/failed writes, and matched provider result only; widths320/390/430/1280."
         },
         {
           "kind": "browser-render",
-          "at": "2026-10-04T21:32:26.350Z",
-          "note": "Inspected original-dark320/390/430/1280 plus reduced keyboard, readable technical context and visible refusal; current synthetic screenshot Library libfile_862443ec08c881918908863828fa22de. Actual installed dark version/hash matches; daemon and35 sessions unchanged; owner/provider acceptance remains open."
+          "at": "2026-10-05T04:43:13.886Z",
+          "note": "Original dark next-question and review previews inspected; current synthetic Library libfile_51a8e62019208191bdebb009e92d7785. Live version1791175109753-106037 source hashes match, bridge3017411 active, daemon18932 and35 exact IDs/PTY PIDs preserved, login200/API401. Exact owner pane observation now passes read-only; no real answer was sent. Actual owner/provider acceptance remains open."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Owner accepts restored original dark shell and real phone choice feedback/agenda/Copy/MRU; align a proven desktop owner-focus field separately; consent to installed-Claude custom form/result acceptance before enabling it",
+      "nextAction": "Owner retries the live ordinary choice, completes three questions and explicitly submits the review. Keep actual provider/phone acceptance open and custom answers disabled. Desktop focus work remains separate; preserve existing exact-pane observation fields.",
       "history": [
         {
           "at": "2026-10-04T19:13:57.490Z",
@@ -10073,6 +10154,38 @@
           "type": "evidence",
           "kind": "browser-render",
           "note": "Inspected original-dark320/390/430/1280 plus reduced keyboard, readable technical context and visible refusal; current synthetic screenshot Library libfile_862443ec08c881918908863828fa22de. Actual installed dark version/hash matches; daemon and35 sessions unchanged; owner/provider acceptance remains open."
+        },
+        {
+          "at": "2026-10-05T04:19:54.606Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "2026-10-05 owner screenshot inspected: ordinary choice in a three-question Claude form is blocked by old VT content timestamp despite a fresh pane observation; native digit-plus-Enter can also answer the next question. Two regressions fail before the repair. No owner input sent."
+        },
+        {
+          "at": "2026-10-05T04:43:13.362Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-10-05 exact supplied screenshot inspected privately; ordinary first choice in a three-question Claude form. Existing freshness gate rejects unchanged VT text despite a fresh exact-pane observation. Claude 2.1.288 digit handler advances directly, multi-question form has explicit final review, and daemon error replies must not be treated as write acknowledgments. Five scoped runtime files now installed; no desktop/core changes."
+        },
+        {
+          "at": "2026-10-05T04:43:13.620Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Three regressions failed before fixes: stable exact-pane observation, Claude digit without Enter, and distinct final review. Final suite32/32 plus canonical24/24 and TypeScript/Vite build pass. Actual browser+HTTP disposable fixture proves all three choices, explicit submit, no duplicate/stale/failed writes, and matched provider result only; widths320/390/430/1280."
+        },
+        {
+          "at": "2026-10-05T04:43:13.886Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Original dark next-question and review previews inspected; current synthetic Library libfile_51a8e62019208191bdebb009e92d7785. Live version1791175109753-106037 source hashes match, bridge3017411 active, daemon18932 and35 exact IDs/PTY PIDs preserved, login200/API401. Exact owner pane observation now passes read-only; no real answer was sent. Actual owner/provider acceptance remains open."
+        },
+        {
+          "at": "2026-10-05T04:43:14.144Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Ordinary-choice correction deployed under existing authorization; synthetic browser/HTTP and installed-source checks pass. Owner retries the actual marked choice and final review; no live provider action was performed for testing. Custom answers remain disabled."
         }
       ]
     }

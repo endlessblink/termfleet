@@ -22,9 +22,9 @@ export function sessionObservationEnvelope(state,observation,seq) {
  }
  if(state.processToken!==observation.processToken || state.ended) return null;
  if(observation.type==='agent.exited') {
-  if(!Number.isInteger(observation.exitCode) && !['SIGINT','SIGTERM','SIGKILL','SIGABRT','SIGSEGV'].includes(observation.signal)) return null;
+  if(observation.exitObserved!==true && !Number.isInteger(observation.exitCode) && !['SIGINT','SIGTERM','SIGKILL','SIGABRT','SIGSEGV'].includes(observation.signal)) return null;
   return {...event,kind:observation.signal==='SIGINT' || observation.exitCode===130 ? 'process.interrupted'
-   : observation.exitCode===0 && !observation.signal ? 'process.gone':'process.crashed'};
+   : (observation.exitCode===0 && !observation.signal) || (observation.exitObserved===true && observation.exitCode==null && !observation.signal) ? 'process.gone':'process.crashed'};
  }
  if(observation.type==='interruption.intent') {
   if(!token(observation.intentId) || !['Escape','Ctrl+C'].includes(observation.key)) return null;

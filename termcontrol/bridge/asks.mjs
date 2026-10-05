@@ -141,6 +141,21 @@ export function questionFromRecords(pane, lines, screen = '') {
       if (answered.has(b.id)) return null;          // already answered
 
       const questions = b.input?.questions || [];
+      // Claude advances each ordinary choice immediately, then renders a
+      // separate final review for a multi-question request. Do not revive Q1
+      // merely because its title is also printed in that review.
+      if(questions.length>1 && /(?:^|\n)\s*Review your answers\s*(?:\n|$)/.test(screen) && /Ready to submit your answers\?/.test(screen) && /Submit answers/.test(screen)){
+        const reviewAnswers=[];
+        for(let index=0;index<questions.length;index++){
+          const q=questions[index],start=screen.indexOf(q.question);
+          const end=index+1<questions.length?screen.indexOf(questions[index+1].question,start+q.question.length):screen.indexOf('Ready to submit your answers?',start);
+          const segment=start<0?'':screen.slice(start,end<0?undefined:end);
+          const answer=segment.match(/(?:^|\n)\s*→\s*([^\n]+)/)?.[1]?.trim();
+          if(answer)reviewAnswers.push({question:q.question,answer});
+        }
+        const ask={kind:'question',stage:'review',sourceId:b.id,questionIndex:questions.length,questionCount:questions.length,title:'Review your answers',header:'Review answers',reviewAnswers,options:/You have not answered all questions/.test(screen)?[]:[{key:'submit',label:'Submit answers',detail:'Confirm these answers and let the agent continue'}]};
+        return {...ask,id:askId(pane,ask)};
+      }
       const q = questions.find((item) => item.question && String(screen).includes(item.question)) || questions[0];
       if (!q) continue;
       const options = (q.options || []).slice(0, 4).map((opt, index) => ({

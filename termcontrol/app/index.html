@@ -518,6 +518,7 @@ main .desk-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:22px}
   main .custom-actions{bottom:8px}main .custom-actions button[type=submit]{color:#191512}
   main .askbox:has(.custom-answer:not([hidden])) .asktoggle{display:none}
   main .custom-answer textarea{font-family:var(--ui)}
+  main .review-answers{margin:0 0 16px}main .review-answers>div{padding:10px 0;border-bottom:1px solid var(--line)}main .review-answers dt{font-size:14px;color:var(--muted);overflow-wrap:anywhere}main .review-answers dd{margin:4px 0 0;font-size:16px;color:var(--text);overflow-wrap:anywhere}
   main .custom-answer label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
   body:has(.custom-answer:not([hidden])) .composer{display:none}
   main .copy-message,main summary,main .asktoggle,main .typeinstead{min-height:44px;min-width:44px}
@@ -1095,11 +1096,11 @@ async function chat(id) {
     composer.querySelector('.send').disabled=blocked || !composer.querySelector('textarea').value.trim();
     composer.querySelector('textarea').placeholder=blocked?ui('Answer above','למענה, בחרו בשאלה'):mode==='screen'?ui('Type into the terminal…','הקלדה בטרמינל…'):ui('Reply to this agent…','הודעה לסוכן…');
     composer.querySelector('textarea').onclick=()=>{if(blocked)goQuestion();};
-    const pendingAnswer=composer.querySelector('.pending-answer');pendingAnswer.hidden=!blocked;pendingAnswer.onclick=goQuestion;
+    const pendingAnswer=composer.querySelector('.pending-answer');pendingAnswer.hidden=!blocked;pendingAnswer.textContent=ui('Show answer choices','הצגת אפשרויות המענה');pendingAnswer.onclick=goQuestion;
     approvalHistory=approvalHistory.map(entry=>{
       const receipt=(d.questionResults || []).find(result=>result.sourceId===entry.sourceId);
       if(!receipt) return entry;
-      const delivered=Boolean(entry.answer) && !receipt.declined && (receipt.answers?.includes(entry.answer) || String(receipt.text).replace(/\\n/g,'\n').includes(entry.answer));
+      const delivered=!receipt.declined && (entry.completeRequest || (Boolean(entry.answer) && (receipt.answers?.includes(entry.answer) || String(receipt.text).replace(/\\n/g,'\n').includes(entry.answer))));
       return {...entry,delivery:receipt.declined?'declined':delivered?'agent':entry.delivery};
     });
     if(mode!=='chat')document.querySelector('.askbox')?.remove();
@@ -1278,13 +1279,14 @@ function mountAsk(id, ask, onDone, receipt=null) {
   box.dataset.supported=supported;
   box.setAttribute('aria-label',ask.kind==='permission'?ui('Permission request','בקשת הרשאה'):ui('Question from the agent','שאלה מהסוכן'));
   const waiting=receipt && receipt.state!=='not-sent';
-  const customSupported=ask.customAnswerSupported!==false && !ask.multiSelect;
+  const customSupported=ask.customAnswerSupported!==false && !ask.multiSelect && ask.stage!=='review';
   const customKey=`tc-answer-draft:${id}:${ask.id}`;
-  box.innerHTML=`<div class="askheading"><h3><bdi dir="auto">${waiting?ui('Answer awaiting confirmation','התשובה ממתינה לאישור'):esc(ask.header || (ask.kind==='permission'?ui('Permission requested','נדרשת הרשאה'):ui('Your answer is needed','נדרשת תשובה שלך')))}</bdi>${ask.questionCount>1?` · <bdi dir="ltr">${ask.questionIndex+1} / ${ask.questionCount}</bdi>`:''}</h3><button type="button" class="asktoggle" aria-expanded="${!waiting}">${waiting?ui('Show','הצגה'):ui('Hide','צמצום')}</button></div>
+  box.innerHTML=`<div class="askheading"><h3><bdi dir="auto">${waiting?ui('Answer awaiting confirmation','התשובה ממתינה לאישור'):esc(ask.header || (ask.kind==='permission'?ui('Permission requested','נדרשת הרשאה'):ui('Your answer is needed','נדרשת תשובה שלך')))}</bdi>${ask.questionCount>1 && ask.stage!=='review'?` · <bdi dir="ltr">${ask.questionIndex+1} / ${ask.questionCount}</bdi>`:''}</h3><button type="button" class="asktoggle" aria-expanded="${!waiting}">${waiting?ui('Show','הצגה'):ui('Hide','צמצום')}</button></div>
     <div class="askbody"${waiting?' hidden':''}><p dir="auto">${esc(ask.title)}</p>${ask.detail?`<p dir="auto">${esc(ask.detail)}</p>`:''}${ask.kind==='permission' && ask.screen?`<details class="message-details"><summary>${ui('Terminal request details','פרטי הבקשה במסוף')}</summary><pre class="askscreen">${esc(ask.screen)}</pre></details>`:''}
+    ${ask.stage==='review'?`${ask.reviewAnswers?.length?`<dl class="review-answers">${ask.reviewAnswers.map(item=>`<div><dt dir="auto">${esc(item.question)}</dt><dd dir="auto">${esc(item.answer)}</dd></div>`).join('')}</dl>`:''}<details class="message-details"><summary>${ui('Review in the terminal','הסיכום במסוף')}</summary><pre class="askscreen">${esc(ask.screen||'')}</pre></details>`:''}
     ${waiting?`<div class="receipt"><p role="status">${ui('An answer was sent or is unconfirmed. Check the terminal before answering again.','תשובה נשלחה או שמסירתה לא אושרה. בדקו במסוף לפני תשובה נוספת.')}</p><button type="button" data-check-screen>${ui('Check terminal','בדיקה במסוף')}</button></div>`:`
     <div class="opts">${ask.options.map(option=>`<button type="button" dir="${dirOf(option.label)}" data-choice="${esc(option.key)}"${ask.multiSelect?' disabled':''}><span dir="auto">${esc(option.label)}</span>${option.detail?`<span class="detail" dir="auto">${esc(option.detail)}</span>`:''}</button>`).join('')}</div>
-    ${ask.kind==='question'?`<button type="button" class="typeinstead" aria-label="${ui('Write my answer','כתיבת התשובה שלי')}"${customSupported?'':' disabled aria-describedby="unsupported-answer"'}>${ui('Write my own answer','כתיבת תשובה אחרת')}</button>${customSupported?'':`<p class="unsupported-answer" id="unsupported-answer">${ui('Custom answers are disabled until this terminal form is verified. The choices use the existing request.','תשובות אישיות מושבתות עד לאימות הטופס הזה. האפשרויות משתמשות בבקשה הקיימת.')}</p>`}
+    ${ask.kind==='question' && ask.stage!=='review'?`<button type="button" class="typeinstead" aria-label="${ui('Write my answer','כתיבת התשובה שלי')}"${customSupported?'':' disabled aria-describedby="unsupported-answer"'}>${ui('Write my own answer','כתיבת תשובה אחרת')}</button>${customSupported?'':`<p class="unsupported-answer" id="unsupported-answer">${ui('Custom answers are disabled until this terminal form is verified. The choices use the existing request.','תשובות אישיות מושבתות עד לאימות הטופס הזה. האפשרויות משתמשות בבקשה הקיימת.')}</p>`}
     <form class="custom-answer" hidden><label for="custom-answer-text">${ui('Your answer to this question','התשובה שלך לשאלה הזו')}</label><textarea id="custom-answer-text" rows="2" maxlength="8000" dir="auto" aria-describedby="answer-help"></textarea><p id="answer-help">${ui('Back keeps this draft and returns to the choices. It does not decline the question.','חזרה שומרת את הטיוטה ומחזירה לאפשרויות. היא לא דוחה את הבקשה.')}</p><div class="custom-actions"><button type="submit" disabled>${ui('Send answer','שליחת תשובה')}</button><button type="button" data-cancel-answer>${ui('Back to choices','חזרה לאפשרויות')}</button></div></form>`:''}`}
     <p class="askresult" role="status" aria-live="polite"></p></div>`;
   main.append(box);
@@ -1311,7 +1313,7 @@ function mountAsk(id, ask, onDone, receipt=null) {
     result.textContent=ui('Sent to the terminal. Awaiting the agent’s answer record.','נשלח למסוף. ממתין לרישום התשובה אצל הסוכן.');
     const option=ask.options.find(item=>item.key===choice);const value=choice?option?.label || choice:answer;
     if(history.state?.answerEditor===ask.id){const next={...history.state};delete next.answerEditor;history.replaceState(next,'',location.hash);}
-    onDone?.({askId:ask.id,sourceId:ask.sourceId,answer:value,delivery:'terminal',text:`${ask.kind==='permission'?'Permission answer':'Question answer'}: ${value}`,at:response.sentAt || Date.now()});
+    onDone?.({askId:ask.id,sourceId:ask.sourceId,answer:value,completeRequest:ask.stage==='review',delivery:'terminal',text:`${ask.kind==='permission'?'Permission answer':'Question answer'}: ${value}`,at:response.sentAt || Date.now()});
   };
   box.querySelectorAll('[data-choice]').forEach(button=>{button.onclick=()=>submit(button.dataset.choice);});
   if(form)form.onsubmit=event=>{event.preventDefault();if(field.value.trim())submit(null,field.value);};

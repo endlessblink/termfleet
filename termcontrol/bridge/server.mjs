@@ -219,7 +219,7 @@ const server = http.createServer(async (req, res) => {
       version: appVersion(),
       live: pane.live,
       producing: pane.producing,
-      ask: ask ? { ...ask, screen, customAnswerSupported: customAnswersVerified && pane.provider==='claude' && !ask.multiSelect } : null,
+      ask: ask ? { ...ask, screen, customAnswerSupported: customAnswersVerified && pane.provider==='claude' && !ask.multiSelect && ask.stage!=='review' } : null,
       desk: Boolean(deskRoot(pane)),
       answerReceipt: ask ? choiceReceipts.get(pane.id, ask.id) : null,
       questionResults: questionResults(pane),
@@ -256,14 +256,14 @@ const server = http.createServer(async (req, res) => {
         const visible = fresh ? visibleScreenOf(fresh.id) : null;
         const freshScreen = fresh ? visible ?? await screenOf(fresh.id) : '';
         const freshAsk = fresh && (pendingAsk(fresh, { screen: freshScreen }) || screenPermissionAsk(fresh, freshScreen));
-        if (!fresh || !freshAsk || freshAsk.id !== payload.askId || (payload.choice && !matchesAsk(freshAsk, payload.askId, payload.choice)) || (typeof payload.answer==='string' && freshAsk.kind!=='question')) {
+        if (!fresh || !freshAsk || freshAsk.id !== payload.askId || (payload.choice && !matchesAsk(freshAsk, payload.askId, payload.choice)) || (typeof payload.answer==='string' && (freshAsk.kind!=='question' || freshAsk.stage==='review'))) {
           return json(res, 409, { error: 'That question or permission request is no longer active. Refresh and check the terminal again.' });
         }
         const adapter = adapterFor(fresh);
         if (freshAsk.kind === 'question' && (visible===null || freshAsk.multiSelect || !String(freshScreen).replace(/\s+/g,' ').includes(freshAsk.title.replace(/\s+/g,' ')))) return json(res,409,{error:'This question needs a fresh visible single-answer field in TermFleet. Check the terminal before answering.',notSent:true});
         const result = await choiceReceipts.send(fresh.id, freshAsk.id, answer, () => typeof payload.answer==='string'
           ? sendCustomAnswer(fresh, freshAsk, payload.answer, {screen:(options) => visibleScreenOf(fresh.id,options) || ''})
-          : answerPrompt(fresh, payload.choice, adapter?.approval, freshAsk.kind));
+          : answerPrompt(fresh, payload.choice, adapter?.approval, freshAsk.stage==='review'?'question-submit':freshAsk.kind));
         return json(res, result.error ? 400 : 200, result);
       }
 

@@ -25,6 +25,7 @@ function audit(entry) {
 async function ask(request) {
   const res = await requestDaemon(request, defaultDaemonSocket());
   if (!res || res.ok !== true) throw new Error(res?.error || 'the terminal service refused');
+  if(res.value?.error || (request.type==='writeSession' && res.value?.ok!==true))throw new Error(res.value?.error || 'The terminal did not acknowledge the write.');
   return res.value;
 }
 
@@ -150,10 +151,13 @@ async function scrollbackBytes(id) {
  * provider's own keystroke.
  */
 export function promptKey(pane, choice, approval, kind) {
+  if(pane.provider==='claude' && kind==='question-submit' && choice==='submit')return '\r';
   if (/^[1-9]$/.test(String(choice))) {
-    // Codex selects a question option on the digit key itself; Enter after it
+    // Claude's standard single-select form and Codex select on the digit itself;
+    // the installed Claude Select handler calls onChange directly for a digit.
+    // Enter after it
     // can submit the next question before the operator sees that question.
-    return pane.provider === 'codex' && kind === 'question' ? String(choice) : `${choice}\r`;
+    return ['claude','codex'].includes(pane.provider) && kind === 'question' ? String(choice) : `${choice}\r`;
   }
   return approval?.[choice];
 }

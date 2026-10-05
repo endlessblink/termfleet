@@ -150,3 +150,13 @@ test('bridge authority without durable evidence exposes Unknown rather than a le
   expect(readSessionStatus(pane,{dir,authority:false}).turn).toBeUndefined();
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('kernel exit evidence without a wait status is Ended, never fabricated Crashed or Finished',async()=>{
+ const options=setup();try{
+  let head=await start(options);head=await publishSessionObservation({...options,observation:observed(head,'agent.started',1)});
+  expect(await publishSessionObservation({...options,observation:observed(head,'agent.exited',2)})).toBeNull();
+  head=await publishSessionObservation({...options,observation:observed(head,'agent.exited',2,{exitObserved:true})});
+  expect(head.state.lifecycle).toBe('ended');expect(head.state.completion).toBeNull();
+ }finally{fs.rmSync(options.dir,{recursive:true,force:true});}
+});

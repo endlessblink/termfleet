@@ -3836,6 +3836,11 @@ function CanvasNodeViewImpl({
   // declines, the pane's own live status line is used instead, minus the filler words.
   const terminalHeaderNowRowText = (() => {
     if(sessionAuthority) return terminalHeader.currentActivity;
+    // The visible Now row has its own resolver: a live durable command must
+    // reach this row even when there is no Task/Goal to compare it against.
+    if(terminalDurableActivityUsable && linkedTerminal?.durableActivity?.title &&
+       qualityCheckNowLabel(linkedTerminal.durableActivity.title).ok)
+      return linkedTerminal.durableActivity.title;
     const acceptableNow = (value?: string | null) => {
       const text = value?.trim() ?? "";
       return text && qualityCheckNowLabel(text).ok ? text : "";

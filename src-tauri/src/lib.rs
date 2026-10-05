@@ -16,6 +16,7 @@ mod platform_tty;
 mod pty;
 mod search;
 mod session_events;
+mod session_native;
 mod user_config;
 pub mod vt_grid;
 #[cfg(target_os = "linux")]
@@ -67,6 +68,8 @@ pub fn run() {
             commands::daemon_status,
             commands::agent_status_read_sidecar,
             session_events::agent_status_events_watch,
+            session_native::agent_status_observe_process,
+            session_native::agent_status_runtime_event,
             commands::agent_conversation_owner,
             commands::agent_conversation_has_other_owner,
             commands::agent_context_task_title,

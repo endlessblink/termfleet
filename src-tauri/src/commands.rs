@@ -596,6 +596,21 @@ fn daemon_pane_root(pane_id: &str) -> DaemonPaneRoot {
     })
 }
 
+/// Exact daemon pane ownership is mandatory for the lifecycle observer.
+pub(crate) fn session_observer_pid(pane_id:&str,provider:&str,session_id:&str,binding_pane:&str)->Option<u32> {
+ let DaemonPaneRoot::Verified(root)=daemon_pane_root(pane_id) else {return None;};
+ if let Some(owner)=crate::pane_process::agent_runtime_owner_for_process_tree(root) {
+  return (owner.provider==provider && owner.provider_session_id==session_id && process_has_status_binding(owner.provider_pid,binding_pane)).then_some(owner.provider_pid);
+ }
+ let owner=crate::pane_process::agent_provider_owner_for_process_tree(root)?;
+ (owner.provider==provider && process_has_status_binding(owner.provider_pid,binding_pane)).then_some(owner.provider_pid)
+}
+
+fn process_has_status_binding(pid:u32,pane:&str)->bool {
+ let expected=format!("TERMFLEET_PANE_ID={pane}");
+ std::fs::read(format!("/proc/{pid}/environ")).ok().is_some_and(|bytes|bytes.split(|b|*b==0).any(|field|field==expected.as_bytes()))
+}
+
 #[tauri::command]
 pub fn pane_agent_runtime_info(
     pane_id: String,
@@ -748,6 +763,7 @@ fn write_daemon_input_stream(
     seq_ids: Option<Vec<u64>>,
 ) -> Result<(), String> {
     let bytes = data.into_bytes();
+    let input_observation=crate::session_native::capture_input(&id,&bytes);
     for attempt in 0..2 {
         if !streams.contains_key(&id) {
             streams.insert(id.clone(), open_daemon_input_stream(&id)?);
@@ -758,7 +774,7 @@ fn write_daemon_input_stream(
             .ok_or_else(|| format!("input stream for {id} was not opened"))?;
 
         match stream.write_all(&bytes) {
-            Ok(()) => return Ok(()),
+            Ok(()) => {crate::session_native::commit_input(&id,input_observation);return Ok(());}
             Err(error) if attempt == 0 => {
                 streams.remove(&id);
                 trace_terminal_latency(
@@ -1128,8 +1144,9 @@ pub fn daemon_update_agent_recovery_manifest(
 
 #[tauri::command]
 pub fn daemon_write_session(id: String, data: String) -> Result<(), String> {
-    match send_daemon_request(DaemonRequest::WriteSession { id, data })? {
-        DaemonResponse::WriteSession { ok: true } => Ok(()),
+    let input_observation=crate::session_native::capture_input(&id,data.as_bytes());
+    match send_daemon_request(DaemonRequest::WriteSession { id:id.clone(), data:data.clone() })? {
+        DaemonResponse::WriteSession { ok: true } => {crate::session_native::commit_input(&id,input_observation);Ok(())},
         DaemonResponse::Error { message } => Err(message),
         response => Err(format!("Unexpected daemon response: {response:?}")),
     }

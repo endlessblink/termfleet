@@ -25,6 +25,7 @@ export async function refreshSessionEventHeads(changed='rescan') {
    if(head.identity?.paneId!==target.id || !hydrateSessionSnapshot(head,{now:sessionClock(),wallNow:Date.now()})) return;
    const store=useWorkspaceStore.getState(),tab=store.tabs.find(item=>item.id===target.tabId),pane=tab?.terminals.find(item=>item.paneId===target.paneId);
    if(!tab||!pane||pane.id!==target.ptyId || (pane.agentProvider && pane.agentProvider!=='shell' && pane.agentProvider!==head.provider)) return;
+   void invoke('agent_status_observe_process',{fileName:target.file,ptyId:target.ptyId}).catch(error=>console.warn('[termfleet-native-observer]',error));
    const updated=applySessionHead(pane,head,target.id,sessionAuthorityEnabled());
    if(updated===pane) return;
    store.updateTab(tab.id,{terminals:tab.terminals.map(item=>item.paneId===target.paneId ? updated : item)});

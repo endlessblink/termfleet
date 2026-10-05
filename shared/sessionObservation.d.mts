@@ -5,6 +5,6 @@ import type {SessionEnvelope} from './sessionEnvelope.mjs';
 export interface SessionObservation {
  identity:SessionIdentity;observer:string;seq:number;at:number;
  type:'agent.started'|'agent.exited'|'interruption.intent'|'interruption.observed'|'transport.disconnected'|'transport.reconnected';
- processToken?:string;exitCode?:number;signal?:string;intentId?:string;key?:'Escape'|'Ctrl+C';
+ exitObserved?:boolean;processToken?:string;exitCode?:number;signal?:string;intentId?:string;key?:'Escape'|'Ctrl+C';
 }
 export function sessionObservationEnvelope(state:SessionState,observation:SessionObservation,seq:number):SessionEnvelope|null;

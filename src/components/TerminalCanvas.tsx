@@ -278,6 +278,7 @@ export function TerminalCanvas({
   // re-run when the parent passes new closure identities each render.
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const nativeTransportGapRef=useRef(false);
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
   const onOutputRef = useRef(onOutput);
@@ -1024,6 +1025,10 @@ export function TerminalCanvas({
       await invoke("grid_scroll_to_bottom", { id: sessionId });
       if (disposed) return;
       attached = true;
+      if(nativeTransportGapRef.current) {
+        nativeTransportGapRef.current=false;
+        void invoke('agent_status_runtime_event',{ptyId:sessionId,kind:'transport.reconnected'}).catch(()=>{});
+      }
       lastCols = attachCols;
       lastRows = attachRows;
       if (mapTerminalTransportMode(mapProjection, runtimeActiveRef.current) === "snapshot") {
@@ -1080,6 +1085,10 @@ export function TerminalCanvas({
       const message = String(error);
       console.error(error);
       setAttachError(message);
+      if(!nativeTransportGapRef.current) {
+        nativeTransportGapRef.current=true;
+        void invoke('agent_status_runtime_event',{ptyId:sessionId,kind:'transport.disconnected'}).catch(()=>{});
+      }
       onStatusRef.current?.("failed", { error: message });
     });
 

@@ -2,10 +2,10 @@
 
 ## Current status and identity
 
-Updated **2026-10-04, 21:32 UTC**: the original-dark conversation correction and its bridge
+Updated **2026-10-05, 04:39 UTC**: the original-dark ordinary-choice correction and its bridge
 are deployed at `https://control.in-theflow.com/` through the existing protected
 route. TF-078 remains **verifying** for owner/physical-phone acceptance and the
-installed Claude answer form. The external browser reaches the existing login;
+installed Claude acceptance. The external browser reaches the existing login;
 authenticated production conversation inspection requires that existing sign-in.
 
 The actual app is `termcontrol/app/index.html`, served by this repository's
@@ -19,6 +19,58 @@ Implementation used the isolated clone
 `codex/termcontrol-mobile-freelance`, base
 `73377910e817d8323396a545f7b8bb7b953a1b0d`. The owner rejected the first visual
 candidate and explicitly approved deployment when ready to try it live.
+
+## 2026-10-05 ordinary-choice correction: diagnosis and deployed proof
+
+The exact new owner JPEG, Library `libfile_e6b3f365189c81919142527ab341a7b8`,
+was materialized with its Library identity and inspected locally. Its highlighted
+first ordinary option belongs to a three-question Claude form. It is a different
+path from the custom-answer issue. The footer was also only navigation; its label
+now says **Show answer choices** so it does not imply that navigation submits.
+
+Read-only matching found one owner pane: its original question remains pending,
+and no matching choice receipt/write audit was found. The existing six-second
+gate rejects its hours-old `terminalVisibleTextUpdatedAt`. Desktop source confirms
+that timestamp advances only when VT text changes. A fresh exact-pane `updatedAt`
+now establishes observation of stable text, with the existing ten-second probe
+cadence; global heartbeat alone cannot revive a stale pane. A post-input read
+still requires content captured after that input. No desktop schema, core source,
+branch or session was changed. Preserve these two existing timestamp semantics
+when integrating the separate desktop branch.
+
+The installed Claude 2.1.288 Select handler calls its answer callback on a digit
+and advances a normal single-select question. The extra Enter was removed.
+The same installed source shows a separate final review for multiple questions:
+the adapter now renders its real answers and an explicit **Submit answers**
+action with a distinct request identity. It does not automatically submit that
+review or revive the first question. Daemon error replies are checked as errors;
+terminal-write acknowledgment still is not provider acceptance.
+
+Three focused guards fail before these fixes. The final **32 focused + 24
+canonical** tests and TypeScript/Vite build pass. The disposable browser/HTTP
+fixture clicks all three choices and the explicit final submit at 320/390/430/1280
+px; it validates original header/footer bounds, duplicate/stale/error refusal
+and confirmation only after the matching provider result. The provider is
+synthetic: actual acceptance in the owner's installed Claude conversation was
+not tested or claimed. No owner answer/calendar/task mutation was performed.
+
+Five runtime files were deployed with per-file hash guards and backups:
+`termcontrol/app/index.html`, bridge `screen.mjs`, `send.mjs`, `asks.mjs`, and
+`server.mjs`. Bridge PID **3017411** is active. Installed version
+**1791175109753-106037**, app SHA256
+`416acb16f2191e26dceec6ff3ff5bf8b58306a60c2bb72354d5144d9798a6883`, matches
+the tested source. Daemon PID **18932** and all **35** exact session IDs/PTY PIDs
+were preserved. Login200/API401 and the disabled custom-answer flag were checked.
+The owner's exact pane observation now passes read-only; the same original
+question remains visible. Installed proof, baseline failures and backups are in
+`/home/endlessblink/Documents/Codex/2026-10-04/task-17/deployment-choice-oct05/`.
+Rollback must preserve receipt/audit history and concurrent work, restore only
+these five guarded files, and restart only the TermControl bridge if needed.
+
+Owner acceptance remains: refresh the existing protected phone page, retry the
+ordinary option, finish the three questions and explicitly submit the review.
+Keep TF-078 verifying until that actual provider/phone result is known. Free
+answers remain disabled pending their separate installed-form acceptance.
 
 ## Owner-corrected scope: original dark shell
 
@@ -58,7 +110,7 @@ fields are not used as focus. Shared desktop core files were untouched.
 | Scheduled fixed blocks and cached calendar events | Chronological agenda | `.state/live-timeline.json` and `.state/timeline-calendar.json`; read only |
 | Open Today/overdue/week/later/undated items | Complete separate buckets | Existing export values; no inferred booked times |
 | User/agent messages and pasted tables | Prose, lists, native rows, Copy | Escaped source transcript, narrowly filtered notices |
-| Single-select questions and permissions | Real request-bound buttons | Existing exact request identity, current rendered VT and durable receipts |
+| Single-select questions, final review and permissions | Real request-bound buttons | Existing exact request identity, current rendered VT and durable receipts |
 | Own answer | Dedicated saved editor in verified synthetic tests; disabled live | Installed Claude form/result acceptance remains pending |
 | Unsupported forms and diagnostics | Terminal or disclosure | No fabricated native actions or submissions |
 
@@ -111,7 +163,7 @@ Deployed runtime (12): `termcontrol/app/index.html`; bridge
 
 Regression files: `termcontrol/test/chat-rendering.test.mjs`,
 `desk-contract.test.mjs`, `desk-http.test.mjs`, `desk-mobile.test.mjs`,
-`experience-mobile.test.mjs`, `visit-history.test.mjs`, `recent-mobile.test.mjs`,
+`experience-mobile.test.mjs`, `native-choice-http.test.mjs`, `visit-history.test.mjs`, `recent-mobile.test.mjs`,
 `conversation-noise.test.mjs`. Existing conversation-noise/transcript-path and
 canonical mobile guards also ran.
 
@@ -122,18 +174,18 @@ configuration were not changed.
 
 ## Fresh verification and delivery
 
-Final focused suite (28 tests) and canonical verifier:
+Final focused suite (32 tests) and canonical verifier:
 
 ```sh
-node --test termcontrol/test/desk-contract.test.mjs termcontrol/test/desk-http.test.mjs termcontrol/test/desk-mobile.test.mjs termcontrol/test/chat-rendering.test.mjs termcontrol/test/experience-mobile.test.mjs termcontrol/test/conversation-noise.test.mjs termcontrol/test/claude-transcript-path.test.mjs termcontrol/test/visit-history.test.mjs termcontrol/test/recent-mobile.test.mjs
+node --test termcontrol/test/desk-contract.test.mjs termcontrol/test/desk-http.test.mjs termcontrol/test/native-choice-http.test.mjs termcontrol/test/desk-mobile.test.mjs termcontrol/test/chat-rendering.test.mjs termcontrol/test/experience-mobile.test.mjs termcontrol/test/conversation-noise.test.mjs termcontrol/test/claude-transcript-path.test.mjs termcontrol/test/visit-history.test.mjs termcontrol/test/recent-mobile.test.mjs
 npm run build -- --configLoader runner
 npm run verify:termcontrol-mobile
 git diff --check
 node scripts/termfleet-issues.mjs check
 ```
 
-**28 focused + 24 canonical pass**, including the focused suite in the installed
-repository; TypeScript/Vite build passes with existing
+**32 focused + 24 canonical pass**; installed source hashes match the exact tested
+runtime files. TypeScript/Vite build passes with existing
 chunk/import warnings. The runner loader avoids writing through the installed
 dependency symlink. Host browser execution was required by the sandbox.
 Synthetic 320/390/430/1280 px previews were inspected, including the original fleet,
@@ -147,15 +199,15 @@ fresh VT snapshot. They prove exact two-question delivery and refusal of
 unverified custom dispatch. This is strong contract proof, not installed-Claude
 or physical Android/iOS/Safari acceptance.
 
-The current original-dark synthetic screenshot is Library
-`libfile_862443ec08c881918908863828fa22de`, local
-`.captures/termcontrol-mobile/dark/conversation-390.png`.
+The current original-dark synthetic next-question screenshot is Library
+`libfile_51a8e62019208191bdebb009e92d7785`, local
+`.captures/termcontrol-mobile/choice-oct05/next-question-390.png`.
 Original-dark fleet/conversation/day/keyboard/failed-choice views at all requested
 widths were inspected. The earlier light review PDF is historical and rejected;
 it is not evidence of the accepted design direction. Private screenshots stay
 local and are excluded from shared previews.
 
-## Deployment proof and bridge-only rollback
+## 2026-10-04 restoration proof and bridge-only rollback
 
 The owner explicitly ordered live restoration. Six scoped runtime files were
 checked against the previously deployed hashes, backed up and integrated.

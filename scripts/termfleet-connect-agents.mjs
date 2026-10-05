@@ -30,6 +30,7 @@ const hookHome = path.join(dataHome, "termfleet", "agent-hooks");
 const HOOK_FILES = [
   "termfleet-claude-status-hook.mjs",
   "termfleet-codex-status-hook.mjs",
+  "termfleet-session-observation.mjs",
   "termfleet-opencode-status-plugin.js",
   "lib/agent-status-paths.mjs",
   "lib/agent-status-lifecycle.mjs",
