@@ -575,6 +575,21 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 [data-avatar-state="working"] .cr-body{animation:cr-spin 7s linear infinite}[data-avatar-state="producing"] .cr-body{animation:cr-twinkle 1.8s ease-in-out infinite}[data-avatar-state="exited"] .cr-mouth{display:none}
 [data-avatar-state="idle"] .cr-body,[data-avatar-state="needs-you"] .cr-body{animation:cr-wink 13s ease-in-out infinite;animation-delay:calc(var(--cr-phase,0) * -1s)}
 @keyframes cr-wink{0%,90%,100%{transform:none}93%{transform:scale(1.14) rotate(-8deg)}96%{transform:scale(.96) rotate(6deg)}98%{transform:scale(1.04) rotate(0)}}
+[data-avatar-state="working"] .cr-body,[data-avatar-state="producing"] .cr-body{animation:cr-busy 2.4s ease-in-out infinite}
+@keyframes cr-busy{0%{transform:rotate(0) scale(1)}50%{transform:rotate(180deg) scale(1.16)}100%{transform:rotate(360deg) scale(1)}}
+.pane:has([data-avatar-state="producing"]) .state,.pane:has([data-avatar-state="working"]) .state{color:var(--accent,#4f8cff);font-weight:500}
+.pane:has([data-avatar-state="producing"]) .state::after,.pane:has([data-avatar-state="working"]) .state::after{content:"...";display:inline-block;width:1.1em;text-align:start;overflow:hidden;vertical-align:bottom;animation:cr-dots 1.2s steps(4,end) infinite}
+@keyframes cr-dots{from{width:0}to{width:1.1em}}
+@media(prefers-reduced-motion:reduce){.pane .state::after{animation:none!important}}
+.busyline{display:flex;align-items:center;gap:12px;max-width:720px;margin:14px auto 6px;padding:0 4px;animation:busy-in .4s ease-out both}
+.busyorb{display:inline-flex;align-items:center;gap:5px;padding:9px 12px;border-radius:999px;background:color-mix(in srgb,var(--accent,#4f8cff) 14%,transparent)}
+.busyorb i{width:7px;height:7px;border-radius:50%;background:var(--accent,#4f8cff);animation:busy-bounce 1.2s ease-in-out infinite}
+.busyorb i:nth-child(2){animation-delay:.15s}.busyorb i:nth-child(3){animation-delay:.3s}
+.busytext{font-weight:500;background:linear-gradient(90deg,var(--muted,#8a8f98) 0%,var(--accent,#4f8cff) 45%,var(--muted,#8a8f98) 90%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:busy-sheen 2.2s linear infinite}
+@keyframes busy-bounce{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-6px);opacity:1}}
+@keyframes busy-sheen{from{background-position:120% 0}to{background-position:-100% 0}}
+@keyframes busy-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.busyline,.busyorb i,.busytext{animation:none!important}.busytext{color:var(--accent,#4f8cff);background:none}}
 @keyframes cr-blink{0%,100%{transform:scale(1)}50%{transform:scale(.55)}}
 @keyframes cr-spin{to{transform:rotate(360deg)}}@keyframes cr-twinkle{0%,100%{transform:scale(1)}50%{transform:scale(.9)}}
 @media(prefers-reduced-motion:reduce){.cr-body{animation:none!important}}
@@ -1234,6 +1249,9 @@ async function chat(id) {
     }).join('')
       + (justSent && !visibleEvents.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))
         ? messageHtml('user',justSent.text,'you',justSent.delivered?'sent — waiting for the agent to read it':'sending…',' mine pendingmsg')
+        : '')
+      + (d.producing || ['working','producing'].includes(avatarState(d.pane))
+        ? `<div class="busyline" role="status"><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${ui('Working on it','עובד על זה')}</span></div>`
         : '');
 
     // Once the agent's own record shows it, stop holding our copy.
