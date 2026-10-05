@@ -26,6 +26,7 @@ import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { spawnArgs } from './spawn.mjs';
+import { transcribe, MAX_AUDIO_BYTES } from './transcribe/index.mjs';
 import { safeUrl, crossSiteWrite } from './guard.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
 
@@ -303,6 +304,20 @@ const handle = async (req, res) => {
       return json(res, result.error && !result.busy ? 400 : 200, result);
     });
     return;
+  }
+
+  // Dictation: a recorded clip in, text out. Hebrew and English are told apart
+  // automatically; everything runs on this machine.
+  if (url.pathname === '/api/transcribe' && req.method === 'POST') {
+    let audio;
+    try { audio = await readBody(req, MAX_AUDIO_BYTES); } catch { return json(res, 413, { error: 'That recording is too long.' }); }
+    const lang = ['he', 'en'].includes(url.searchParams.get('lang')) ? url.searchParams.get('lang') : null;
+    try {
+      const { text, language, seconds } = await transcribe(audio, { language: lang });
+      return json(res, 200, { text, language, seconds });
+    } catch (error) {
+      return json(res, 502, { error: error.message || 'Could not turn that into text.' });
+    }
   }
 
   if (url.pathname === '/api/upload' && req.method === 'POST') {
