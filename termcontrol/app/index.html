@@ -589,7 +589,10 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 .pane:has([data-avatar-state="producing"]) .state::after,.pane:has([data-avatar-state="working"]) .state::after{content:"...";display:inline-block;width:1.1em;text-align:start;overflow:hidden;vertical-align:bottom;animation:cr-dots 1.2s steps(4,end) infinite}
 @keyframes cr-dots{from{width:0}to{width:1.1em}}
 @media(prefers-reduced-motion:reduce){.pane .state::after{animation:none!important}}
-.addagent{margin-inline-start:auto;width:44px;height:44px;border-radius:50%;border:0;background:transparent;color:var(--muted);font:300 20px/1 var(--ui);cursor:pointer;display:grid;place-items:center;transition:background .15s,color .15s,transform .15s}
+.projhead .count{margin-inline-start:auto}
+@media (hover:hover){.addagent{opacity:0}.projhead:hover .addagent,.addagent:focus-visible{opacity:1}}
+@media (hover:none){.addagent{opacity:.55}}
+.addagent{width:44px;margin-inline-end:-8px;height:44px;border-radius:50%;border:0;background:transparent;color:var(--muted);font:300 20px/1 var(--ui);cursor:pointer;display:grid;place-items:center;transition:background .15s,color .15s,transform .15s}
 .addagent:hover,.addagent:focus-visible{background:color-mix(in srgb,var(--accent,#4f8cff) 18%,transparent);color:var(--accent,#4f8cff);transform:rotate(90deg)}
 .newagent-back{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:16px}
 .newagent{width:min(440px,100%);background:var(--surface,#1b1b1b);color:inherit;border-radius:16px;padding:20px;display:grid;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
