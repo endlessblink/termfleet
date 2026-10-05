@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en">
-<!-- Original dark shell retained; visual improvements are scoped to conversation content. -->
+<!-- TermControl: map-owned fleet, native conversation actions, local theme. -->
 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<meta name="theme-color" content="#141413">
+<meta name="theme-color" content="#141312">
 <title>TermControl</title>
 <style>
   :root{
@@ -536,9 +536,51 @@ main .desk-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:22px}
   main .rich pre,main .rich code{color:var(--text)}
   @media(max-width:640px){main .tablewrap{overflow:visible}main .rich table{table-layout:fixed;width:100%;min-width:0}main .rich td,main .rich th{overflow-wrap:anywhere}main .stacked table,main .stacked tbody{display:block}main .stacked thead{display:none}main .stacked tr{display:block;padding:10px 0;border-bottom:1px solid var(--line)}main .stacked td{display:grid;grid-template-columns:minmax(65px,.65fr) minmax(0,1.5fr);gap:12px;border:0;padding:5px 0;min-width:0}main .stacked td::before{content:attr(data-label);font-size:13px;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:normal}main .stacked td>div{min-width:0;overflow-wrap:anywhere;text-align:start}main .msg.user{margin-inline-start:5%}main .askbox{padding:14px}main .agenda-row{grid-template-columns:74px minmax(0,1fr);gap:10px}main .agenda-content{padding-inline-start:12px}main .desk-date{flex-wrap:wrap}main .desk-date label{width:100%}}
 
+
+/* Owner-approved warm graphite direction. All assets and actions stay local. */
+:root{--bg:#141312;--deep:#0f0e0d;--surface:#1f1d1b;--surface-2:#292623;--line:#393530;--text:#f2eee9;--muted:#b0a89f;--dim:#a69e94;--accent:#d97757;--waiting:#d97757;--working:#b4b7b0;--control:#645d55;--user:#292623;--ui:Rubik,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+:root[data-theme="light"]{color-scheme:light;--bg:#f5f2ed;--deep:#ede8e1;--surface:#ffffff;--surface-2:#e9e4dd;--line:#d5cfc6;--text:#26221e;--muted:#665e54;--dim:#73695e;--working:#535c54;--control:#aaa093;--user:#e9e4dd}
+body{font-size:14px}header{min-height:56px;padding:6px 12px;gap:8px}header h1{font-weight:500}header>.theme-toggle{margin-inline-start:auto;flex:none}header .sub{max-width:680px}.theme-toggle,.back{width:44px;height:44px;min-width:44px;min-height:44px;display:grid;place-items:center;padding:0;margin:0;color:var(--muted);background:transparent;border:0;border-radius:10px;cursor:pointer}.back:dir(rtl) svg{transform:rotate(180deg)}.theme-toggle:hover,.back:hover{background:var(--surface-2)}
+main{max-width:none;padding:0 0 12px}body.chat main{padding:20px 20px 16px;max-width:760px}main .fleet-content{padding:0 12px}.fleetbar{display:flex;flex-direction:row;gap:10px;padding:4px 0 8px;margin:0;border:0}.fleetbar label{display:flex;align-items:center;gap:6px;min-width:0;flex:1;font-size:11px;color:var(--muted)}.fleetbar select{min-width:0;flex:1;width:100%;min-height:44px;border:0;border-radius:8px;background:var(--bg);color:var(--text);font:13px var(--ui);padding:0 4px;cursor:pointer}
+.projgroup{margin:0}.projhead{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;margin:0;color:var(--muted);font-size:12px;font-weight:500;list-style:none;cursor:pointer}.projhead::-webkit-details-marker{display:none}.projhead::after{content:'⌄';width:18px;text-align:center;font-size:16px}.projgroup:not([open])>.projhead::after{content:'›'}.projhead .count{background:transparent;padding:0;border:0;margin-inline-start:auto;font-size:11px;color:var(--muted)}.group-color{width:7px;height:7px;border-radius:2px;flex:none}.group-rows{min-width:0}.pane{min-height:44px;height:44px;display:flex;gap:9px;align-items:center;padding:4px 4px;margin:0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font-size:13px}.pane.waiting,.pane.idle{padding:4px;background:transparent;border:0;border-bottom:1px solid var(--line)}.pane.waiting::before{display:none}.pane:hover,.pane:active,.pane.selected{background:var(--surface-2)}.pane .project,.pane.idle .project,.pane.waiting .project{color:var(--text);font-size:13px;font-weight:500}.pane-copy{flex:1;min-width:0;display:flex;flex-direction:column}.pane .row1{margin:0;gap:6px;min-height:17px}.pane .badge{font-family:var(--ui);text-transform:none;letter-spacing:0;font-size:10px;font-weight:400;color:var(--muted);background:transparent;border:0;padding:0;margin:0;white-space:nowrap}.pane .task{display:block;font-size:11px;line-height:15px;min-height:15px;max-width:100%;color:var(--muted)}.row-color{width:2px;height:22px;border-radius:1px;flex:none}.pane-meta{flex:none;display:flex;flex-direction:column;text-align:end;gap:1px;max-width:90px}.pane .state{display:block;background:transparent;padding:0;border:0;border-radius:0;font-size:10px;margin:0;color:var(--muted);line-height:15px}.pane.waiting .state{color:var(--waiting)}.last-active{font-size:10px;color:var(--muted);line-height:13px;white-space:nowrap}
+.attention-panel{margin:0 0 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}.attention-panel summary{min-height:44px;padding:0 2px;font-size:12px;font-weight:500;color:var(--waiting)}.attention-count{height:18px;min-width:18px;font-size:10px;padding:0 5px;background:var(--waiting);color:#141312}.attention-list{border:0;max-height:176px}.attention-item{height:44px;padding:0 2px;gap:8px;border-color:var(--line)}.attention-project{font-size:12px;font-weight:500}.attention-reason{font-size:11px;line-height:14px;margin:0}.attention-review{min-height:44px;height:44px;min-width:62px;padding:0 8px;font-size:12px;font-weight:500;border:0;border-radius:8px;background:transparent;color:var(--waiting)}.attention-review:hover{background:var(--surface-2)}
+main .msg.user .bubble{background:var(--user);border-radius:18px;padding:12px 16px}main .msg{margin-bottom:24px}main .who{font-weight:500}main .rich a,main .agenda-row time{color:var(--text)}main .agenda-content::before{background:var(--muted)}main .snapshot-warning{color:var(--text);background:var(--surface-2)}main .askbox{border:1px solid var(--waiting);background:var(--surface);border-radius:14px}main .askheading h3,main .asktoggle,main .typeinstead{color:var(--waiting)}main .opts button:first-child{border-color:var(--control)}main .custom-actions{background:var(--surface)}main .custom-actions button[type=submit]{background:var(--waiting)}.screen{background:var(--deep)}.cmdlist .cmd{color:var(--text)}
+.composer{position:relative;max-width:720px;width:calc(100% - 24px);margin:6px auto calc(12px + env(safe-area-inset-bottom));padding:8px 8px 8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:26px;gap:6px;align-items:flex-end}.composer textarea{background:transparent;border:0;border-radius:0;padding:9px 4px;min-height:44px;color:var(--text);font-size:16px}.composer textarea:focus{box-shadow:none}.composer .attach{border:0;background:transparent;border-radius:50%;width:44px;color:var(--muted)}.composer button.send{height:44px;width:44px;min-width:44px;display:grid;place-items:center;padding:0;border-radius:50%;color:var(--bg);background:var(--text)}.composer .toolrow{margin:0;min-height:44px}.modeswitch{border:0;background:transparent;padding:0;gap:0;border-radius:12px;flex-wrap:nowrap}.modeswitch button{color:var(--muted);min-width:44px;min-height:44px;padding:0 10px;font-weight:500}.modeswitch button[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}.composer.question-open{border-color:var(--line);padding:4px 10px;border-radius:20px}.composer.question-open .pending-answer{padding:0;font-size:13px}.composer .terminal-tools{margin:0}.sendstate{max-width:696px;margin-inline:auto;bottom:142px;background:var(--surface-2);color:var(--text)}.sendstate.err{background:var(--surface-2);color:var(--text);border-color:var(--waiting)}.sendstate .acts button.go,.prompt button.yes{background:var(--text);color:var(--bg)}.dot.producing{background:var(--working);box-shadow:none}.headlive{font-weight:400}.chatstatus:empty{display:none}
+#fleet-side,.blank-pane{display:none}.empty{color:var(--muted)}.side-heading{height:56px;padding:0 16px;display:flex;align-items:center;font-size:15px;border-bottom:1px solid var(--line)}.side-count{margin-inline-start:auto;color:var(--muted);font-size:11px}.side-content{min-height:0;overflow:auto;padding:0 12px 16px}.side-content .fleet-content{padding:0}.blank-pane>div{margin:auto;text-align:center}.blank-pane h2{font-size:21px;font-weight:500}.blank-pane p{color:var(--muted);font-size:14px}
+@media(min-width:1000px){body{display:grid;grid-template-columns:360px minmax(0,1fr);grid-template-rows:56px minmax(0,1fr) auto}body>header{grid-column:1;grid-row:1;min-width:0}main{grid-column:1;grid-row:2;min-width:0;margin:0;width:100%;height:100%}.blank-pane{display:flex;grid-column:2;grid-row:1/-1;background:var(--deep);border-inline-start:1px solid var(--line)}body.chat>header{grid-column:2}body.chat main{grid-column:2;grid-row:2;width:100%;margin:0 auto;height:100%;max-width:760px}body.chat #fleet-side{display:flex;flex-direction:column;grid-column:1;grid-row:1/-1;border-inline-end:1px solid var(--line);min-height:0}body.chat .blank-pane{display:none}body.chat .composer{grid-column:2;grid-row:3}.sendstate{left:384px;right:24px}}
+@media(max-width:360px){main .fleet-content{padding-inline:8px}.fleetbar{gap:6px}.fleetbar label{gap:2px}.fleetbar select{font-size:12px}.pane{gap:6px}.pane-meta{max-width:74px}.pane .project{font-size:12px}body.chat main{padding-inline:14px}.composer{width:calc(100% - 16px);padding-inline:6px}.modeswitch button{padding-inline:7px}}
+@media(prefers-reduced-motion:reduce){.dot{animation:none!important;transition:none!important}}
+
+
+/* Roomier STACK rows: 72px, 52px character slot. */
+.pane,.pane.waiting,.pane.idle{min-height:72px;height:72px;gap:14px;padding:8px 10px;border-bottom:0;border-radius:12px}
+.row-color{height:40px}
+.avatar-slot{width:52px;height:52px;display:grid;place-items:center;flex:none}
+.pane .project{font-size:14px}.pane .task{font-size:12px;line-height:16px;min-height:16px}
+.pane-meta{max-width:96px}
+.head-avatar{display:inline-block;vertical-align:middle;margin-inline-end:10px;line-height:0}
+/* Calmer top: no hairlines, no live/quiet pill or live tail; the character already shows the state. */
+header{min-height:76px;padding-block:16px}@media(min-width:1000px){body{grid-template-rows:84px minmax(0,1fr) auto}.side-heading{height:84px}}
+header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,.headtail{display:none}header h1{display:flex;align-items:center}header .sub{margin-top:2px}
+@media(max-width:360px){.pane,.pane.waiting,.pane.idle{gap:8px;padding:8px 6px}.avatar-slot,.avatar-slot svg.creature{width:44px;height:44px}}
+
+.avatar-slot{position:relative}
+.avatar-slot svg.creature{display:block;overflow:visible;width:48px;height:48px}.head-avatar svg.creature{width:36px;height:36px}
+.cr-body{fill:var(--cr-hue);stroke:none}.cr-body *{fill:var(--cr-hue);stroke:var(--cr-hue);stroke-width:3;stroke-linejoin:round}.cr-body .cr-inner *{fill:rgba(255,255,255,.2);stroke:none}.cr-letter{fill:#fff;font:500 15px var(--ui);text-anchor:middle;dominant-baseline:central}.cr-badge{fill:var(--waiting)}.cr-body{transform-box:fill-box;transform-origin:center}.cr-ring{fill:none;stroke:#fff;stroke-width:2.2}
+.cr-shine{fill:rgba(255,255,255,.3)}.cr-mouth{fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round}.cr-body .cr-stalk{fill:none;stroke:var(--cr-hue);stroke-width:2.6;stroke-linecap:round}.cr-line{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.cr-face{display:none;fill:#fff;stroke:none}
+[data-avatar-state="producing"] .cr-producing,[data-avatar-state="working"] .cr-working,[data-avatar-state="needs-you"] .cr-needs-you,[data-avatar-state="idle"] .cr-idle,[data-avatar-state="exited"] .cr-exited{display:inline}
+[data-avatar-state="idle"] .creature{opacity:.78}
+[data-avatar-state="exited"] .creature{opacity:.5;filter:grayscale(1)}
+[data-avatar-state="producing"] .cr-eye{transform-box:fill-box;transform-origin:center;animation:cr-blink 1.8s ease-in-out infinite}
+[data-avatar-state="working"] .cr-body{animation:cr-spin 7s linear infinite}[data-avatar-state="producing"] .cr-body{animation:cr-twinkle 1.8s ease-in-out infinite}[data-avatar-state="exited"] .cr-mouth{display:none}
+@keyframes cr-blink{0%,100%{transform:scale(1)}50%{transform:scale(.55)}}
+@keyframes cr-spin{to{transform:rotate(360deg)}}@keyframes cr-twinkle{0%,100%{transform:scale(1)}50%{transform:scale(.9)}}
+@media(prefers-reduced-motion:reduce){.cr-body{animation:none!important}}
 </style>
 </head>
 <body>
+<aside id="fleet-side" aria-label="Agents"><div class="side-heading">TermControl <span class="side-count"></span></div><div class="side-content"></div></aside>
+<div class="blank-pane"><div><h2>TermControl</h2><p>Select an agent to open the conversation.</p></div></div>
 <header role="banner">
   <nav id="nav" aria-label="Back"></nav>
   <div style="min-width:0">
@@ -546,6 +588,7 @@ main .desk-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:22px}
     <div class="sub" id="sub">loading…</div>
     <div class="chatstatus" id="chat-status"></div>
   </div>
+<button class="theme-toggle" type="button" aria-label="Switch to light mode"></button>
 </header>
 <main id="main" role="main" aria-live="polite" aria-relevant="additions text"><div class="spin">loading…</div></main>
 <noscript><p style="padding:24px;text-align:center;color:#9a9993">TermControl needs JavaScript to show your terminals.</p></noscript>
@@ -564,9 +607,52 @@ const sessionEvents=typeof EventSource==='function' ? new EventSource('/api/sess
 if(sessionEvents) sessionEvents.onmessage=()=>{if(!focusedPane) fleet();};
 const recordVisit=id=>fetch('/api/visit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id}),signal:AbortSignal.timeout(6000)}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error);visitNotice=null;return result;}).catch(()=>{visitNotice=id;const status=document.getElementById('chat-status');if(status && location.hash==='#'+id)status.textContent=ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.');});
 const projectLabel=name=>name==='freelance-desk'?'Freelance Desk':String(name || 'Agent');
-const icons={back:'M15 5l-7 7 7 7',copy:'M9 7h10v14H9z M5 17V3h10',attach:'M8 12l6-6a4 4 0 015 5l-9 9a6 6 0 01-8-8l10-10',terminal:'M5 7l5 5-5 5 M13 17h6',search:'M10 18a8 8 0 110-16 8 8 0 010 16z M16 16l6 6'};
+const icons={back:'M15 5l-7 7 7 7',copy:'M9 7h10v14H9z M5 17V3h10',attach:'M8 12l6-6a4 4 0 015 5l-9 9a6 6 0 01-8-8l10-10',terminal:'M5 7l5 5-5 5 M13 17h6',send:'M12 19V5 M5 12l7-7 7 7',sun:'M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6L7 7 M17 17l1.4 1.4 M5.6 18.4L7 17 M17 7l1.4-1.4 M16 12a4 4 0 11-8 0 4 4 0 018 0',search:'M10 18a8 8 0 110-16 8 8 0 010 16z M16 16l6 6'};
 const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${icons[name] || icons.terminal}"/></svg>`;
 let viewTabs=document.createElement('div');
+const side=document.getElementById('fleet-side'),sideContent=side.querySelector('.side-content');
+let fleetTimer=null;
+const themeButton=document.querySelector('.theme-toggle');
+function setTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('termcontrol-theme',theme);themeButton.innerHTML=icon('sun');themeButton.setAttribute('aria-label',theme==='light'?ui('Switch to dark mode','מעבר לתצוגה כהה'):ui('Switch to light mode','מעבר לתצוגה בהירה'));document.querySelector('meta[name="theme-color"]').content=theme==='light'?'#f5f2ed':'#141312';}
+setTheme(localStorage.getItem('termcontrol-theme')==='light'?'light':'dark');
+themeButton.onclick=()=>setTheme(document.documentElement.dataset.theme==='light'?'dark':'light');
+const groupColor=color=>/^#[0-9a-f]{3,8}$/i.test(String(color || ''))?color:'var(--muted)';
+const avatarState=p=>p.turn==='waiting' || p.attention?'needs-you':p.alive===false || ['exited','ended','crashed','completed','finished'].includes(p.turn)?'exited':p.producing?'producing':p.turn==='working'?'working':'idle';
+// Blob family: soft silhouettes in one project colour, white pill eyes. The shape is chosen from a stable hash of
+// the agent id (never list position); the eyes carry the state. Inline SVG, no network.
+const blobHues=['#e8457f','#7c5ce6','#3b7ae8','#0b9fc4','#0f9f74','#c93fd0','#5b5fd6','#0e9a98'];
+const star=(n,R,r,rot=-90)=>'<polygon points="'+Array.from({length:2*n},(_,i)=>{const t=(rot+i*180/n)*Math.PI/180,d=i%2?r:R;return (20+d*Math.cos(t)).toFixed(2)+','+(20+d*Math.sin(t)).toFixed(2);}).join(' ')+'"/>';
+const blobs=[
+ star(5,16,7.500),
+ star(4,17,5.500),
+ star(6,16.500,9.500),
+ star(8,16.500,11),
+ Array.from({length:6},(_,i)=>{const t=i*Math.PI/3;return '<circle cx="'+(20+9.500*Math.cos(t)).toFixed(2)+'" cy="'+(20+9.500*Math.sin(t)).toFixed(2)+'" r="6.500"/>';}).join('')+'<circle cx="20" cy="20" r="9"/>',
+ star(4,17,12),
+ star(6,16,13.800,0),
+ star(12,17,14)
+];
+const stackHash=t=>{let h=2166136261;for(const c of String(t)){h^=c.charCodeAt(0);h=Math.imul(h,16777619)>>>0;}return h;};
+const blobHue=p=>blobHues[stackHash('c'+(p.id || p.project))%blobHues.length];
+const blobFace=()=>'<g class="cr-face cr-needs-you"><circle class="cr-badge" cx="33" cy="7" r="6.400"/><rect x="31.900" y="3.200" width="2.200" height="4.600" rx="1.100"/><circle cx="33" cy="10" r="1.200"/></g>';
+const blobLetter=p=>esc((Array.from(String(p.title || p.name || projectLabel(p.project) || '?').trim())[0] || '?').toUpperCase());
+const blobSvg=(p,size)=>{const shape=blobs[stackHash(p.id || p.project)%blobs.length];return `<svg class="creature" viewBox="0 0 40 40" width="${size}" height="${size}" style="--cr-hue:${blobHue(p)}" aria-hidden="true" focusable="false"><g class="cr-body">${shape}<g class="cr-inner" transform="translate(20 20) scale(.66) translate(-20 -20)">${shape}</g></g><text class="cr-letter" x="20" y="20.500">${blobLetter(p)}</text>${blobFace()}</svg>`;};
+const avatar=p=>`<span class="avatar-slot" data-avatar-state="${avatarState(p)}" aria-hidden="true">${blobSvg(p,48)}</span>`;
+function patchFleet(root,html){
+  const template=document.createElement('template');template.innerHTML=html;
+  const key=node=>node.nodeType===1?(node.dataset.key || (node.dataset.id?'pane:'+node.dataset.id:null) || node.id):null;
+  function children(target,source){
+    const old=[...target.childNodes],used=new Set();let cursor=target.firstChild;
+    for(const fresh of [...source.childNodes]){
+      const k=key(fresh);let current=k?old.find(n=>!used.has(n) && key(n)===k):old.find(n=>!used.has(n) && !key(n) && n.nodeType===fresh.nodeType && n.nodeName===fresh.nodeName);
+      if(!current){current=fresh.cloneNode(true);target.insertBefore(current,cursor);}else{if(current!==cursor)target.insertBefore(current,cursor);if(current.nodeType===3){if(current.data!==fresh.data)current.data=fresh.data;}else{for(const a of [...current.attributes])if(!fresh.hasAttribute(a.name))current.removeAttribute(a.name);for(const a of [...fresh.attributes])if(current.getAttribute(a.name)!==a.value)current.setAttribute(a.name,a.value);children(current,fresh);}}
+      used.add(current);cursor=current.nextSibling;
+    }
+    for(const n of old)if(!used.has(n))n.remove();
+  }
+  children(root,template.content);
+}
+
 const fitViewport=()=>{if(window.visualViewport)document.body.style.height=visualViewport.height+'px';const editor=main.querySelector('.custom-answer:not([hidden])');if(editor && editor.contains(document.activeElement))requestAnimationFrame(()=>editor.closest('.askbox')?.scrollIntoView({block:'start'}));};
 window.visualViewport?.addEventListener('resize',fitViewport);fitViewport();
 // Every navigation takes a ticket; a response that arrives after you have
@@ -645,7 +731,7 @@ const updateClocks = () => {
   });
 };
 clockTimer = setInterval(updateClocks, 1000);
-const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
 // Agents answer in Markdown and terminals draw tables with box lines. Read as
 // raw text on a phone both look like a terminal, not a conversation, so the
@@ -861,9 +947,14 @@ function restoreFleetReturn() {
   }));
 }
 
-async function fleet() {
+async function fleet(background=false) {
+  if(background && !focusedPane)return;
+  const selected=focusedPane;
+  const mine=background?view:++view;
+  if(!background){
   focusedPane=null;
-  const mine = ++view;
+  const cached=sideContent.querySelector('.fleet-content');if(cached)main.replaceChildren(cached);
+
   clearInterval(timer);
   releaseChatScroll?.();
   releaseChatWake?.();
@@ -874,12 +965,14 @@ async function fleet() {
   nav.innerHTML = '';
   title.textContent = 'TermControl';
   chatStatus.innerHTML = '';
+  }
   let r;
   try {
     const resp = await fetch('/api/panes', { signal: AbortSignal.timeout(12000) });
     if (!resp.ok) throw new Error(resp.status === 401 ? 'Signed out — reload to sign in.' : 'Your machine did not answer.');
     r = await resp.json();
   } catch (e) {
+    if(background){side.querySelector('.side-count').textContent=ui('Offline','מנותק');return;}
     main.innerHTML = `<div class="empty">${esc(e.name === 'TimeoutError' ? 'Your machine is taking too long to answer.' : e.message)}<br><br>Pull down to try again.</div>`;
     sub.textContent = 'not connected';
     return;
@@ -895,36 +988,30 @@ async function fleet() {
   const everything = r.panes;
   const panes = everything.filter((p) => !cutoff || p.turn === 'waiting' || lastUsed(p) >= cutoff);
   const waiting = panes.filter((p) => p.turn === 'waiting');
-  sub.textContent = r.daemon === false
+  if(!background)sub.textContent = r.daemon === false
     ? 'TermFleet is not running — showing the last known list'
     : waiting.length
       ? `${waiting.length} waiting for you`
       : `${panes.length} terminal${panes.length === 1 ? '' : 's'}`;
 
 
-  const attention = panes.filter((p) => p.attention);
+  const attention = panes.filter((p) => p.attention || p.turn==='waiting');
   const attentionOpen = sessionStorage.getItem('termcontrol-attention-open') !== 'closed';
-  const attentionPanel = attention.length ? `<details class="attention-panel"${attentionOpen ? ' open' : ''}>
-      <summary><span>Needs you</span><span class="attention-count">${attention.length}</span></summary>
+  const attentionPanel = attention.length ? `<details data-key="attention" class="attention-panel"${attentionOpen ? ' open' : ''}>
+      <summary><span>${ui('Needs you','דורשים מענה')}</span><span class="attention-count">${attention.length}</span></summary>
       <div class="attention-list">
         ${attention.map((p) => `<div class="attention-item">
           <div class="attention-copy">
             <div class="attention-project">${esc(p.project)} · ${esc(p.provider)}</div>
-            <div class="attention-reason">${esc(p.attention.title || 'Waiting for your answer')}</div>
+            <div class="attention-reason">${esc(p.attention?.title || ui('Waiting for your answer','ממתין לתשובה'))}</div>
           </div>
-          <button class="attention-review" data-id="${esc(p.id)}" aria-label="Review ${esc(p.project)} approval">Review</button>
+          <button class="attention-review" data-id="${esc(p.id)}" aria-label="Review ${esc(p.project)} approval">${ui('Review','בדיקה')}</button>
         </div>`).join('')}
       </div>
     </details>` : '';
 
-  const chip = (key, value, label, current) =>
-    `<button data-pref="${key}" data-value="${value}" aria-pressed="${current === value}">${label}</button>`;
-  const bar = `<div class="fleetbar">
-      <div class="chips"><span class="lbl">Sort</span>
-        ${chip('sort', 'map', 'Map order', sortBy)}${chip('sort', 'recent', 'Last used', sortBy)}${chip('sort', 'needs', 'Needs you', sortBy)}</div>
-      <div class="chips"><span class="lbl">Live</span>
-        ${chip('window', 'today', 'Today', windowKey)}${chip('window', '3d', '3 days', windowKey)}${chip('window', 'week', 'Week', windowKey)}${chip('window', 'all', 'All', windowKey)}</div>
-    </div>`;
+  const options=(current,list)=>list.map(([value,en,he])=>`<option value="${value}"${current===value?' selected':''}>${ui(en,he)}</option>`).join('');
+  const bar=`<div class="fleetbar" data-key="controls"><label><span>${ui('Sort','מיון')}</span><select data-pref="sort" aria-label="${ui('Sort agents','מיון סוכנים')}">${options(sortBy,[['map','Map order','סדר המפה'],['recent','Last used','בשימוש לאחרונה'],['needs','Needs you','דורשים מענה']])}</select></label><label><span>${ui('Live','פעילות')}</span><select data-pref="window" aria-label="${ui('Activity window','טווח פעילות')}">${options(windowKey,[['today','Today','היום'],['3d','3 days','3 ימים'],['week','Week','שבוע'],['all','All','הכול']])}</select></label></div>`;
   const hidden = everything.length - panes.length;
   const none = panes.length ? '' : '<div class="empty">Nothing was live in this period.</div>';
   const footer = hidden > 0 ? `<div class="empty" style="padding:8px 0 24px">${hidden} older terminal${hidden === 1 ? '' : 's'} hidden</div>` : '';
@@ -941,76 +1028,43 @@ async function fleet() {
   if (paneOrder) shownGroups.sort((a, b) => paneOrder(a.panes[0], b.panes[0]));
 
   const mode = r.view === 'manual' ? 'manual' : 'projects';
-  if (mode === 'manual') {
-    main.innerHTML = bar + attentionPanel + (paneOrder ? [...panes].sort(paneOrder) : panes).map(card).join('') + none + footer;
-  } else {
-    main.innerHTML = bar + attentionPanel + none + shownGroups.map((g) => `<section class="projgroup">
-        <h2 class="projhead${g.attention === 0 ? ' needs' : ''}">
-          ${g.emoji ? `<span class="pemoji" aria-hidden="true">${esc(g.emoji)}</span>` : ''}
-          <span>${esc(g.project)}</span>
-          <span class="count">${g.attention === 0 ? 'needs you' : g.panes.length}</span>
-        </h2>
-        ${g.panes.map(card).join('')}
-      </section>`).join('') + footer;
-  }
-
-  main.querySelectorAll('.fleetbar button').forEach((el) => {
-    el.onclick = () => {
-      localStorage.setItem(`termcontrol-${el.dataset.pref}`, el.dataset.value);
-      fleet();
-    };
-  });
-
-  main.querySelectorAll('.attention-review').forEach((el) => {
-    el.onclick = () => openFleetPane(el);
-  });
-
-  const attentionDetails = main.querySelector('.attention-panel');
-  attentionDetails?.querySelector('summary')?.addEventListener('click', () => {
-    sessionStorage.setItem('termcontrol-attention-open', attentionDetails.open ? 'closed' : 'open');
-  });
-
-  main.querySelectorAll('.pane').forEach((el) => {
-    el.onclick = () => openFleetPane(el);
-  });
+  const content=mode==='manual'?(paneOrder?[...panes].sort(paneOrder):panes).map(card).join(''):shownGroups.map(g=>{
+    const groupKey=g.panes[0].mapGroupId || g.project;
+    const closed=sessionStorage.getItem(`termcontrol-group:${groupKey}`)==='closed';
+    return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span><span class="count">${g.panes.length}</span></summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
+  }).join('');
+  const root=background?sideContent:main;
+  let container=root.querySelector('.fleet-content');if(!container){root.replaceChildren();container=document.createElement('div');container.className='fleet-content';root.append(container);}
+  patchFleet(container,bar+attentionPanel+none+content+footer);
+  side.querySelector('.side-count').textContent=ui(`${panes.length} agents`,`${panes.length} סוכנים`);
+  container.querySelectorAll('.fleetbar select').forEach(el=>{el.onchange=()=>{localStorage.setItem(`termcontrol-${el.dataset.pref}`,el.value);fleet(Boolean(focusedPane));};});
+  container.querySelectorAll('.attention-review,.pane').forEach(el=>{el.classList.toggle('selected',el.classList.contains('pane') && el.dataset.id===selected);el.onclick=()=>openFleetPane(el);});
+  container.querySelectorAll('details[data-group]').forEach(el=>{el.querySelector('summary').onclick=()=>sessionStorage.setItem(`termcontrol-group:${el.dataset.group}`,el.open?'closed':'open');});
+  const attentionDetails=container.querySelector('.attention-panel');attentionDetails?.querySelector('summary')?.addEventListener('click',()=>sessionStorage.setItem('termcontrol-attention-open',attentionDetails.open?'closed':'open'),{once:true});
+  if(background)return;
   restoreFleetReturn();
-  timer = setInterval(fleet, 15000);
+  clearInterval(fleetTimer);fleetTimer=setInterval(()=>fleet(Boolean(focusedPane)),15000);
 }
 
 function card(p) {
-  const session=p.sessionAuthority ? p.sessionViewV2 : null;
-  const state = session ? ({working:'working',waiting:'needs your answer',finished:'completed',unknown:'status unavailable',interrupted:'interrupted',ended:'ended',crashed:'crashed',idle:'idle'}[session.lifecycle] || 'status unavailable') : p.turn === 'waiting'
-    ? 'needs your answer'
-    : p.producing ? 'live now' : p.turn === 'working' ? 'running but quiet' : 'idle';
-  return `<button class="pane ${p.turn}" data-id="${esc(p.id)}"
-    aria-label="${esc(p.project)}, ${esc(p.provider)}, ${state}${p.task ? '. ' + esc(p.task) : ''}">
-    <div class="row1">
-      <span class="dot ${p.turn}" aria-hidden="true"></span>
-      ${p.emoji ? `<span class="emoji" aria-hidden="true">${esc(p.emoji)}</span>` : ''}
-      <span class="project" dir="auto">${esc(p.project)}</span>
-      <span class="badge">${esc(session ? state : p.provider)} · ${localStorage.getItem('termcontrol-sort')==='recent'?(p.lastUsedAt?ago(p.lastUsedAt):ui('use unknown','פתיחה לא ידועה')):ago(p.updatedAt)}</span>
-    </div>
-    ${session ? `<div dir="auto" class="task" data-session-field="task">Task: ${esc(session.task?.label || 'Task not captured')}</div>
-      <div dir="auto" class="task" data-session-field="goal">Goal: ${esc(session.goal?.label || 'Goal not captured')}</div>
-      <div dir="auto" class="task${session.now?.stale ? ' none' : ''}" data-session-field="now">Now: ${esc(session.now ? (session.now.stale ? 'Last: ' : '') + session.now.label : state)}</div>` :
-      `<div dir="auto" class="task${p.task ? '' : ' none'}">${esc(technicalTask(p.task)?ui('Technical startup context — open the conversation for details','הנחיית פתיחה טכנית — פרטים בתוך השיחה'):p.task || ui('no task declared','לא הוגדרה משימה'))}</div>`}
-    ${p.turn === 'waiting' ? '<div class="state">Needs your answer</div>' : ''}
-    ${statusHtml(p)}
-    ${!session && p.producing
-        ? `<div class="livemark"><span class="dot producing" aria-hidden="true"></span>Live now</div>
-           ${p.lastLine ? `<div class="tail">${trace(p.pulse)}<span class="text">${esc(p.lastLine)}</span></div>` : ''}`
-        : !session && p.turn === 'working'
-          ? '<div class="livemark quiet"><span class="dot working" aria-hidden="true"></span>Running, quiet for ' + quietFor(p.quietForMs) + '</div>'
-          : ''}
-  </button>`;
+  const session=p.sessionAuthority?p.sessionViewV2:null;
+  const state=avatarState(p),label=({producing:ui('Producing','מפיק פלט'),working:ui('Working','עובד'),'needs-you':ui('Needs you','נדרש מענה'),idle:ui('Idle','ממתין'),exited:ui('Exited','הסתיים')})[state];
+  const task=session?(session.task?.label || session.now?.label || label):technicalTask(p.task)?ui('Startup context · open to read','הנחיית פתיחה · לפתיחה'):p.task || ui('No task declared','לא הוגדרה משימה');
+  const time=localStorage.getItem('termcontrol-sort')==='recent'?(p.lastUsedAt?ago(p.lastUsedAt):ui('use unknown','פתיחה לא ידועה')):p.lastActiveAt || p.updatedAt?ago(p.lastActiveAt || p.updatedAt):'';
+  return `<button type="button" class="pane ${p.turn || 'idle'}" data-id="${esc(p.id)}" data-key="pane:${esc(p.id)}" aria-label="${esc(p.project)}, ${esc(p.provider)}, ${label}. ${esc(task)}"><span class="row-color" style="background:${groupColor(p.color)}" aria-hidden="true"></span>${avatar(p)}<span class="pane-copy"><span class="row1"><span class="project" dir="auto">${esc(p.title || p.name || projectLabel(p.project))}</span><span class="badge">${esc(p.provider)}</span></span><span class="task" dir="auto">${esc(task)}</span></span><span class="pane-meta"><span class="state">${label}</span><span class="last-active">${time}</span></span></button>`;
 }
 
 async function chat(id) {
+  const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
+  sideContent.querySelectorAll('.pane').forEach(el=>el.classList.toggle('selected',el.dataset.id===id));
   focusedPane=id;
+  document.body.classList.add('chat');
   const mine = ++view;
+  if(!sideContent.querySelector('.fleet-content'))fleet(true);
+  clearInterval(fleetTimer);fleetTimer=setInterval(()=>fleet(Boolean(focusedPane)),15000);
   clearInterval(timer);
   releaseChatWake?.();
-  nav.innerHTML = `<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${ui('‹ Fleet','חזרה ›')}</button>`;
+  nav.innerHTML = `<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
   nav.querySelector('.back').onclick = () => {if(history.state?.openedFromAgents){history.back();}else{history.pushState({},'',location.pathname);fleet();}};
   main.innerHTML = '<div class="spin">loading…</div>';
   chatStatus.innerHTML = '';
@@ -1055,7 +1109,7 @@ async function chat(id) {
     if (mine !== view) return;
     checkVersion(d.version);
     if (d.error) { main.innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
-    title.innerHTML = (d.pane.emoji ? `<span class="titleEmoji">${esc(d.pane.emoji)}</span>` : '') + esc(d.pane.project)
+    title.innerHTML = `<span class="head-avatar" aria-hidden="true">${blobSvg(d.pane,36)}</span>` + esc(projectLabel(d.pane.project))
       + (d.producing
           ? '<span class="headlive"><span class="dot producing" aria-hidden="true"></span>live</span>'
           : '<span class="headlive quiet"><span class="dot idle" aria-hidden="true"></span>quiet</span>');
@@ -1089,12 +1143,13 @@ async function chat(id) {
         },
         () => mode,
         Boolean(d.desk),
+        projectLabel(d.pane.project),
       );
     }
     const composer=document.querySelector('.composer'),blocked=Boolean(d.ask) && mode!=='screen';
     composer.classList.toggle('question-open',blocked);composer.querySelector('textarea').readOnly=blocked;composer.querySelector('.attach').disabled=blocked;
     composer.querySelector('.send').disabled=blocked || !composer.querySelector('textarea').value.trim();
-    composer.querySelector('textarea').placeholder=blocked?ui('Answer above','למענה, בחרו בשאלה'):mode==='screen'?ui('Type into the terminal…','הקלדה בטרמינל…'):ui('Reply to this agent…','הודעה לסוכן…');
+    composer.querySelector('textarea').placeholder=blocked?ui('Answer above','למענה, בחרו בשאלה'):mode==='screen'?ui('Type into the terminal…','הקלדה בטרמינל…'):ui(`Message ${projectLabel(d.pane.project)}…`,`הודעה ל־${projectLabel(d.pane.project)}…`);
     composer.querySelector('textarea').onclick=()=>{if(blocked)goQuestion();};
     const pendingAnswer=composer.querySelector('.pending-answer');pendingAnswer.hidden=!blocked;pendingAnswer.textContent=ui('Show answer choices','הצגת אפשרויות המענה');pendingAnswer.onclick=goQuestion;
     approvalHistory=approvalHistory.map(entry=>{
@@ -1319,7 +1374,7 @@ function mountAsk(id, ask, onDone, receipt=null) {
   if(form)form.onsubmit=event=>{event.preventDefault();if(field.value.trim())submit(null,field.value);};
 }
 
-function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false) {
+function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false, agentName = 'Agent') {
   document.body.classList.add('chat');
   document.querySelector('.askbox')?.remove();
   const old = document.querySelector('.composer');
@@ -1358,7 +1413,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false)
       </div>
       <textarea rows="1" dir="auto" placeholder="${ui('Reply to this agent…','הודעה לסוכן…')}" enterkeyhint="send" aria-label="${ui('Your reply','ההודעה שלך')}"></textarea>
     </div>
-    <button type="button" class="send" disabled>${ui('Send','שליחה')}</button>`;
+    <button type="button" class="send" aria-label="${ui('Send message','שליחת הודעה')}" disabled>${icon('send')}</button>`;
   document.body.appendChild(bar);
   viewTabs=bar.querySelector('.modeswitch');
 
@@ -1648,8 +1703,9 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false)
     });
     const screening = view() === 'screen';
     bar.classList.toggle('always', screening);
-    btn.textContent = screening ? ui('Type','הקלדה') : ui('Send','שליחה');
-    box.placeholder = screening ? ui('Type into the terminal…','הקלדה בטרמינל…') : ui('Reply to this agent…','הודעה לסוכן…');
+    btn.innerHTML = icon('send');
+    btn.setAttribute('aria-label',screening ? ui('Type into terminal','הקלדה במסוף') : ui('Send message','שליחת הודעה'));
+    box.placeholder = screening ? ui('Type into the terminal…','הקלדה בטרמינל…') : ui(`Message ${agentName}…`,`הודעה ל־${agentName}…`);
     bar.querySelector('.terminal-tools').open=screening;
   };
 

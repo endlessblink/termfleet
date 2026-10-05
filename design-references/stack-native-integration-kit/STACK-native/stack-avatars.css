@@ -1,0 +1,30 @@
+/* No external assets. Override these tokens at a project/container boundary. */
+.stack-avatar{--stack-shell:#d8ccba;--stack-ink:#24221f;--stack-outline:#3b3731;--stack-status-bg:#f5f2ed;--stack-status-ink:#34302b;display:inline-block;vertical-align:middle;flex:none;overflow:hidden;isolation:isolate}
+[data-theme="dark"] .stack-avatar,.dark .stack-avatar,.stack-avatar[data-theme="dark"]{--stack-shell:#e9e1d4;--stack-outline:#24211e;--stack-status-bg:#1f1d1b;--stack-status-ink:#f2eee9}
+.stack-avatar[data-theme="light"]{--stack-shell:#d8ccba;--stack-outline:#3b3731;--stack-status-bg:#f5f2ed;--stack-status-ink:#34302b}
+.stack-shell{fill:var(--stack-shell)}
+.stack-accent{fill:var(--stack-project-color,var(--project-color,#8ca9c4))}
+.stack-shell,.stack-accent{stroke:var(--stack-outline);stroke-width:1.1;stroke-linejoin:round}
+.stack-joint,.stack-feature{fill:var(--stack-ink)}
+.stack-feature-line{fill:none;stroke:var(--stack-ink);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.stack-body{transform-origin:0 0;transform:none}
+.stack-avatar[data-detail="compact"] .stack-body{transform:var(--stack-crop-transform)}
+.stack-face,.stack-mark{display:none}
+.stack-avatar[data-state="producing"] .stack-face--producing,.stack-avatar[data-state="working"] .stack-face--working,.stack-avatar[data-state="needs-you"] .stack-face--needs-you,.stack-avatar[data-state="idle"] .stack-face--idle,.stack-avatar[data-state="exited"] .stack-face--exited{display:inline}
+.stack-avatar[data-state="producing"] .stack-mark--producing,.stack-avatar[data-state="working"] .stack-mark--working,.stack-avatar[data-state="needs-you"] .stack-mark--needs-you,.stack-avatar[data-state="idle"] .stack-mark--idle,.stack-avatar[data-state="exited"] .stack-mark--exited{display:inline}
+.stack-avatar[data-state="working"] .stack-face--working{transform:translateY(.65px)}
+.stack-avatar[data-state="exited"] .stack-character{opacity:.48}
+.stack-status-bg{fill:var(--stack-status-bg)}
+.stack-mark{fill:none;stroke:var(--stack-status-ink);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.stack-avatar[data-state="needs-you"] .stack-status-bg{fill:#d97757}
+.stack-avatar[data-state="needs-you"] .stack-mark{stroke:#24221f}
+/* Motion is secondary: each frozen state retains a distinct shape. */
+.stack-avatar[data-state="producing"] .stack-tick{animation:stack-output 1.2s ease-in-out infinite;animation-delay:var(--stack-phase,0ms)}
+.stack-avatar[data-state="producing"] .stack-tick--two{animation-delay:calc(var(--stack-phase,0ms) - 180ms)}
+.stack-avatar[data-state="producing"] .stack-tick--three{animation-delay:calc(var(--stack-phase,0ms) - 360ms)}
+.stack-avatar[data-state="working"] .stack-orbit{transform-origin:56px 56px;animation:stack-work 2.4s linear infinite;animation-delay:var(--stack-phase,0ms)}
+@keyframes stack-output{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes stack-work{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.stack-avatar .stack-tick,.stack-avatar .stack-orbit{animation:none!important}}
+[data-stack-motion="off"] .stack-avatar .stack-tick,[data-stack-motion="off"] .stack-avatar .stack-orbit{animation:none!important}
+@media(forced-colors:active){.stack-shell{fill:Canvas}.stack-accent{fill:Highlight}.stack-shell,.stack-accent{stroke:CanvasText}.stack-joint,.stack-feature{fill:CanvasText}.stack-feature-line{stroke:CanvasText}.stack-status-bg{fill:Canvas}.stack-mark{stroke:CanvasText}}

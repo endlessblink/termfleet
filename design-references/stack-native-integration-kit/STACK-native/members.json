@@ -1,0 +1,146 @@
+[
+  {
+    "id": "builder",
+    "name": "Builder",
+    "crop": "translate(-10px, -1px) scale(1.32)",
+    "face": [
+      20,
+      5,
+      24,
+      17
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M12 23H52L55 44 46 48 45 61H34L32 48 30 61H18L17 48 8 43Z\"/><path class=\"stack-shell\" d=\"M18 21H46Q51 22 51 28L47 40H17L13 28Q13 22 18 21Z\"/><path class=\"stack-accent\" d=\"M18 32H47L44 41H21Z\"/><path class=\"stack-accent\" d=\"M12 20Q4 18 3 26Q2 33 9 34L17 31Q20 24 12 20Z\"/><path class=\"stack-accent\" d=\"M50 21Q60 20 61 28Q62 33 55 35L48 31Q45 24 50 21Z\"/><path class=\"stack-shell\" d=\"M7 32Q4 32 3 38V44Q3 49 8 50L13 48Q19 46 17 41L14 35Q12 31 7 32Z\"/><path class=\"stack-shell\" d=\"M53 33Q59 33 60 39L61 45Q61 49 55 51L50 49Q44 45 47 40L49 35Z\"/><path class=\"stack-accent\" d=\"M21 43H43L41 51H23Z\"/><path class=\"stack-shell\" d=\"M19 49 29 50 28 61H15L17 54Z\"/><path class=\"stack-shell\" d=\"M35 50 45 49 48 61H34Z\"/><path class=\"stack-shell\" d=\"M25 5H39Q44 5 44 10V17Q44 22 39 22H25Q20 22 20 17V10Q20 5 25 5Z\"/><path class=\"stack-accent\" d=\"M25 6H39Q44 7 43 14L41 20H23L21 14Q20 8 25 6Z\"/>"
+  },
+  {
+    "id": "editor",
+    "name": "Editor",
+    "crop": "translate(-17px, 0px) scale(1.52)",
+    "face": [
+      24,
+      6,
+      17,
+      16
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M22 22H43L43 34 39 40 39 61H34L32 44 29 61H24L25 40 21 32Z\"/><path class=\"stack-shell\" d=\"M21 22 42 23 39 34 25 35Z\"/><path class=\"stack-accent\" d=\"M27 22H36L37 28H28Z\"/><path class=\"stack-accent\" d=\"M19 24Q23 24 22 30L20 43Q17 49 12 51L12 42Q13 32 16 27Z\"/><path class=\"stack-accent\" d=\"M43 25Q46 23 48 28L52 43Q53 48 46 51L42 42Z\"/><path class=\"stack-shell\" d=\"M23 45 29 45 28 60H19Z\"/><path class=\"stack-accent\" d=\"M24 45H29L27 58H21Z\"/><path class=\"stack-shell\" d=\"M34 45H40L45 60H33Z\"/><path class=\"stack-shell\" d=\"M29 6H36Q41 6 41 11V17Q41 22 36 22H29Q24 22 24 17V11Q24 6 29 6Z\"/><path class=\"stack-accent\" d=\"M29 7 31 1H35L37 13 32 14Z\"/>"
+  },
+  {
+    "id": "designer",
+    "name": "Designer",
+    "crop": "translate(-9px, -10px) scale(1.30)",
+    "face": [
+      20,
+      15,
+      25,
+      16
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M11 34 22 29H43L54 34 49 45 42 48 46 60H33L30 49 28 60H14L19 48 10 44Z\"/><path class=\"stack-shell\" d=\"M16 29H47L50 37 43 45H21L13 37Z\"/><path class=\"stack-accent\" d=\"M20 38H43L39 45H24Z\"/><path class=\"stack-accent\" d=\"M11 29Q17 28 20 34Q22 38 15 42L9 43Q3 40 4 35Q5 30 11 29Z\"/><path class=\"stack-accent\" d=\"M50 30Q58 29 60 37Q62 43 54 44L49 43Q43 39 44 35Q45 31 50 30Z\"/><path class=\"stack-shell\" d=\"M9 40Q15 38 17 44L20 49Q20 53 12 55L7 53Q2 51 4 46Z\"/><path class=\"stack-shell\" d=\"M52 41Q58 40 60 46L60 50Q59 54 51 56L45 52Q42 49 46 45Z\"/><path class=\"stack-accent\" d=\"M18 51 28 51 28 60H11Z\"/><path class=\"stack-accent\" d=\"M35 51H44L52 60H35Z\"/><path class=\"stack-shell\" d=\"M25 15H40Q45 15 45 20V26Q45 31 40 31H25Q20 31 20 26V20Q20 15 25 15Z\"/><path class=\"stack-accent\" d=\"M19 18 7 14 10 23 20 26ZM45 18 57 14 54 23 45 26Z\"/><path class=\"stack-accent\" d=\"M25 15H40Q45 16 44 23L42 28H22L20 23Q20 17 25 15Z\"/>"
+  },
+  {
+    "id": "planner",
+    "name": "Planner",
+    "crop": "translate(-11px, -1px) scale(1.34)",
+    "face": [
+      23,
+      7,
+      22,
+      16
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M19 25 40 21 49 29 44 42 45 61H35L32 44 29 59H18L20 43 11 35Z\"/><path class=\"stack-shell\" d=\"M18 25 38 22 47 29 41 41 23 40 14 33Z\"/><path class=\"stack-accent\" d=\"M16 23 24 24 21 32 11 31Z\"/><path class=\"stack-accent\" d=\"M41 22 52 28 50 36 43 36Z\"/><path class=\"stack-shell\" d=\"M10 33 22 34 20 47 9 49 5 43Z\"/><path class=\"stack-accent\" d=\"M7 35 15 35 18 43 9 45Z\"/><path class=\"stack-accent\" d=\"M48 37 55 40 54 49 46 50 43 43Z\"/><path class=\"stack-shell\" d=\"M20 47 29 46 28 60H14Z\"/><path class=\"stack-accent\" d=\"M35 47 44 43 49 60H35Z\"/><path class=\"stack-shell\" d=\"M28 7H40Q45 7 45 12V18Q45 23 40 23H28Q23 23 23 18V12Q23 7 28 7Z\"/><path class=\"stack-accent\" d=\"M23 8 21 2 26 1 35 6 30 11Z\"/><path class=\"stack-accent\" d=\"M38 8 45 11V20L37 23Z\"/>"
+  },
+  {
+    "id": "researcher",
+    "name": "Researcher",
+    "crop": "translate(-12px, -1px) scale(1.40)",
+    "face": [
+      25,
+      5,
+      16,
+      13
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M11 25H54L53 47 43 48 42 61H34L33 46 29 61H21L21 47 10 42Z\"/><path class=\"stack-shell\" d=\"M18 18Q32 14 46 20Q53 25 50 36Q47 44 33 45Q18 44 15 35Q12 24 18 18Z\"/><path class=\"stack-accent\" d=\"M18 32Q32 40 48 32L48 38Q34 48 19 39Z\"/><path class=\"stack-joint\" d=\"M13 23 18 26 10 43 7 41ZM48 24 53 25 59 42 54 44Z\"/><path class=\"stack-accent\" d=\"M5 39 12 42 14 54 5 55 2 49Z\"/><path class=\"stack-accent\" d=\"M53 41 60 38 63 49 59 55 51 52Z\"/><path class=\"stack-accent\" d=\"M20 48 28 47 28 60H15Z\"/><path class=\"stack-accent\" d=\"M35 48 43 48 48 60H35Z\"/><path class=\"stack-shell\" d=\"M30 5H36Q41 5 41 10V13Q41 18 36 18H30Q25 18 25 13V10Q25 5 30 5Z\"/><path class=\"stack-accent\" d=\"M24 7 22 10 24 15H27V7ZM40 7 44 9V14L40 16Z\"/>"
+  },
+  {
+    "id": "communicator",
+    "name": "Communicator",
+    "crop": "translate(-11px, -1px) scale(1.36)",
+    "face": [
+      25,
+      4,
+      17,
+      14
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M7 24 17 20 48 20 57 24 49 41 40 45 39 61H33L31 47 28 61H20L23 43 16 37Z\"/><path class=\"stack-shell\" d=\"M10 19 31 22 54 19 48 34 37 42 26 40 16 32Z\"/><path class=\"stack-accent\" d=\"M6 19 18 21 18 31 11 30Z\"/><path class=\"stack-accent\" d=\"M44 21 58 19 54 31 46 33Z\"/><path class=\"stack-shell\" d=\"M10 34 18 34 19 44 14 48 6 43Z\"/><path class=\"stack-shell\" d=\"M48 33 57 32 60 43 52 47 46 40Z\"/><path class=\"stack-accent\" d=\"M23 49 28 45 29 60H17Z\"/><path class=\"stack-accent\" d=\"M34 46 40 49 47 60H35Z\"/><path class=\"stack-accent\" d=\"M25 33H43L37 40H29Z\"/><path class=\"stack-shell\" d=\"M30 4H37Q42 4 42 9V13Q42 18 37 18H30Q25 18 25 13V9Q25 4 30 4Z\"/>"
+  },
+  {
+    "id": "writer",
+    "name": "Writer",
+    "crop": "translate(-2px, 0px) scale(1.07)",
+    "face": [
+      11,
+      7,
+      43,
+      25
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M21 34H43L43 46 38 50 42 60H32L30 50 28 60H17L23 49 19 44Z\"/><path class=\"stack-shell\" d=\"M25 32H38L41 41 37 47H27L23 41Z\"/><path class=\"stack-accent\" d=\"M17 36 24 36 25 43 18 49 13 44Z\"/><path class=\"stack-accent\" d=\"M41 35 48 38 50 45 43 49 38 43Z\"/><path class=\"stack-shell\" d=\"M21 49 28 50 28 60H15Z\"/><path class=\"stack-shell\" d=\"M34 50 40 49 46 60H33Z\"/><path class=\"stack-accent\" d=\"M9 12Q3 14 5 25L12 29V12ZM53 12Q61 13 60 24L54 29Z\"/><path class=\"stack-shell\" d=\"M16 7H49Q54 7 54 12V27Q54 32 49 32H16Q11 32 11 27V12Q11 7 16 7Z\"/><path class=\"stack-accent\" d=\"M15 7H21L19 29Q11 26 11 18V12Z\"/>"
+  },
+  {
+    "id": "operator",
+    "name": "Operator",
+    "crop": "translate(-18px, -2px) scale(1.56)",
+    "face": [
+      25,
+      4,
+      17,
+      15
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M23 20H43L40 33 38 39 40 61H34L32 42 29 61H24L26 37 24 31Z\"/><path class=\"stack-shell\" d=\"M22 20 42 21 38 31H27Z\"/><path class=\"stack-accent\" d=\"M28 21H38L37 27H30Z\"/><path class=\"stack-joint\" d=\"M21 23H25L20 43H16ZM40 23H44L50 43H46Z\"/><path class=\"stack-accent\" d=\"M16 39 21 41 20 49 15 52 12 46Z\"/><path class=\"stack-accent\" d=\"M45 41 50 40 53 47 49 52 44 48Z\"/><path class=\"stack-accent\" d=\"M24 44 29 44 28 60H18Z\"/><path class=\"stack-shell\" d=\"M35 44H40L46 60H34Z\"/><path class=\"stack-shell\" d=\"M30 4H37Q42 4 42 9V14Q42 19 37 19H30Q25 19 25 14V9Q25 4 30 4Z\"/><path class=\"stack-accent\" d=\"M24 8 21 10V16H25ZM41 8 45 10V16H41Z\"/>"
+  },
+  {
+    "id": "coordinator",
+    "name": "Coordinator",
+    "crop": "translate(-9px, -6px) scale(1.28)",
+    "face": [
+      21,
+      11,
+      23,
+      16
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M12 27H53V46L44 48 45 61H33L32 49 29 61H17L18 48 10 42Z\"/><path class=\"stack-shell\" d=\"M16 26H47L49 39 44 45H21L15 37Z\"/><path class=\"stack-accent\" d=\"M20 37H45V44H21Z\"/><path class=\"stack-accent\" d=\"M6 25H15L18 32 13 39H5Z\"/><path class=\"stack-accent\" d=\"M49 26H59V40L52 41 47 34Z\"/><path class=\"stack-accent\" d=\"M5 39H14L17 50 11 54 4 50Z\"/><path class=\"stack-accent\" d=\"M51 40H60L60 51 52 55 47 49Z\"/><path class=\"stack-shell\" d=\"M18 48H29L28 60H12Z\"/><path class=\"stack-shell\" d=\"M34 49H45L50 60H34Z\"/><path class=\"stack-shell\" d=\"M26 11H39Q44 11 44 16V22Q44 27 39 27H26Q21 27 21 22V16Q21 11 26 11Z\"/>"
+  },
+  {
+    "id": "maker",
+    "name": "Maker",
+    "crop": "translate(-15px, -1px) scale(1.45)",
+    "face": [
+      26,
+      5,
+      16,
+      14
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M22 20 42 20 44 34 40 49 45 61H35L32 53 28 61H17L23 49 20 36Z\"/><path class=\"stack-shell\" d=\"M20 20H44L40 46 37 56H27L23 46Z\"/><path class=\"stack-accent\" d=\"M29 24H37L36 56H29Z\"/><path class=\"stack-accent\" d=\"M16 20 23 22 22 34 15 33Z\"/><path class=\"stack-accent\" d=\"M42 21 49 23 48 34H41Z\"/><path class=\"stack-shell\" d=\"M15 34H22L23 43 18 47 12 42Z\"/><path class=\"stack-shell\" d=\"M43 35H49L52 43 47 47 42 41Z\"/><path class=\"stack-accent\" d=\"M21 50 29 53 27 61H12Z\"/><path class=\"stack-accent\" d=\"M36 54 43 50 52 61H37Z\"/><path class=\"stack-shell\" d=\"M31 5H37Q42 5 42 10V14Q42 19 37 19H31Q26 19 26 14V10Q26 5 31 5Z\"/><path class=\"stack-accent\" d=\"M31 6 32 1H35L37 9H31Z\"/>"
+  },
+  {
+    "id": "strategist",
+    "name": "Strategist",
+    "crop": "translate(-8px, -2px) scale(1.24)",
+    "face": [
+      22,
+      7,
+      29,
+      18
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M14 27 31 25 46 32 42 45 42 61H32L30 48 26 61H16L20 45 9 36Z\"/><path class=\"stack-shell\" d=\"M20 25 42 27 46 37 36 44 23 41 16 32Z\"/><path class=\"stack-accent\" d=\"M22 34 41 35 37 42H26Z\"/><path class=\"stack-accent\" d=\"M10 25 20 25 22 34 12 42 4 36Z\"/><path class=\"stack-shell\" d=\"M5 39 15 38 21 51 10 55 3 49Z\"/><path class=\"stack-accent\" d=\"M46 31 53 33 57 43 50 47 45 42Z\"/><path class=\"stack-shell\" d=\"M19 49 27 48 26 60H12Z\"/><path class=\"stack-accent\" d=\"M34 49 42 47 49 60H33Z\"/><path class=\"stack-shell\" d=\"M27 7H46Q51 7 51 12V20Q51 25 46 25H27Q22 25 22 20V12Q22 7 27 7Z\"/><path class=\"stack-accent\" d=\"M23 7 31 9 29 23 22 21Z\"/>"
+  },
+  {
+    "id": "explorer",
+    "name": "Explorer",
+    "crop": "translate(-9px, -9px) scale(1.28)",
+    "face": [
+      22,
+      13,
+      23,
+      14
+    ],
+    "anatomy": "<path class=\"stack-joint\" d=\"M13 27H50L55 37 44 45 45 55H39L35 44 33 62H27L27 44 21 56H14L17 43 8 36Z\"/><path class=\"stack-shell\" d=\"M18 25H48L49 34 40 42H26L15 34Z\"/><path class=\"stack-accent\" d=\"M26 35H39L38 43H28Z\"/><path class=\"stack-shell\" d=\"M10 29 18 28 21 35 12 43 5 38Z\"/><path class=\"stack-shell\" d=\"M48 28 56 31 62 40 56 46 47 38Z\"/><path class=\"stack-accent\" d=\"M13 45 22 45 20 59H8Z\"/><path class=\"stack-accent\" d=\"M26 44H35L35 63H26Z\"/><path class=\"stack-accent\" d=\"M41 44 49 47 56 60H43Z\"/><path class=\"stack-shell\" d=\"M27 13H40Q45 13 45 18V22Q45 27 40 27H27Q22 27 22 22V18Q22 13 27 13Z\"/><path class=\"stack-accent\" d=\"M23 14Q32 7 44 15L46 21 42 22Q31 16 20 22Z\"/>"
+  }
+]

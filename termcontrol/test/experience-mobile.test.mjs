@@ -36,7 +36,7 @@ test('coherent agent navigation, inline requests and recorded day in Hebrew and 
    await page.goto('http://termcontrol.design/');await page.waitForSelector('.pane');
    assert.equal(await page.locator('.pane').count(),3);assert.ok(await noOverflow(page));await targets(page);
    await page.screenshot({path:path.join(out,`agents-${width}.png`),fullPage:true});
-   assert.equal(await page.locator('.agent-search,.brand-mark,.view-tabs,.session-meta').count(),0,'original shell restored');assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(20, 20, 19)');
+   assert.equal(await page.locator('.agent-search,.brand-mark,.view-tabs,.session-meta').count(),0,'no extra navigation chrome');assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(20, 19, 18)');
    await page.locator('.pane[data-id=demo-day]').click();await page.waitForSelector('main > .askbox');
    assert.equal(await page.locator('body > .askbox').count(),0);assert.equal(await page.locator('.terminal-tools').isVisible(),false);assert.ok(await noOverflow(page));await targets(page);
    await page.locator('main').evaluate(el=>el.scrollTop=el.scrollHeight);

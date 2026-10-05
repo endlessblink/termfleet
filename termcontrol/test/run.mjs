@@ -824,7 +824,8 @@ async function main() {
 
   await check('the app page carries no external requests', () => {
     const html = fs.readFileSync(path.join(here, '..', 'app', 'index.html'), 'utf8');
-    const external = html.match(/https?:\/\/(?!127\.0\.0\.1)[^"' )]+/g) || [];
+    // The SVG namespace URI is an identifier, never fetched; every other absolute URL still fails.
+    const external = (html.match(/https?:\/\/(?!127\.0\.0\.1)[^"' )]+/g) || []).filter((u) => u !== 'http://www.w3.org/2000/svg');
     eq(external.length, 0, `external references: ${external.join(', ')}`);
   });
 
