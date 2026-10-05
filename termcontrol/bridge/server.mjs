@@ -26,6 +26,7 @@ import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { spawnArgs } from './spawn.mjs';
+import { safeUrl, crossSiteWrite } from './guard.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -144,8 +145,10 @@ async function currentPanes() {
   return { panes: withLife, daemon: true };
 }
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+const handle = async (req, res) => {
+  const url = safeUrl(req);
+  if (!url) return json(res, 400, { error: 'Bad request.' });
+  if (crossSiteWrite(req)) return json(res, 403, { error: 'Cross-site request refused.' });
 
   if (await handleAuthRoutes(req, res, url)) return;
   if (res.writableEnded) return;
@@ -362,6 +365,15 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname.startsWith('/app/')) return serveStatic(res, url.pathname.slice(5));
 
   return json(res, 404, { error: 'not found' });
+};
+
+// One bad request must never take the bridge down for everyone.
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((error) => {
+    console.error('bridge request failed:', error?.message || error);
+    if (!res.headersSent) json(res, 500, { error: 'Something went wrong on your machine.' });
+    else res.end();
+  });
 });
 
 // Liveness needs two looks to know whether output moved, so the bridge takes

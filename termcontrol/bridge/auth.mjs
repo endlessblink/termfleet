@@ -1,3 +1,4 @@
+import { clientKey } from './guard.mjs';
 import {
   hasAccount, createAccount, verify, verifyOwner, resetOwnerPassword, mintRecoveryToken,
   verifyRecoveryToken, ownerUser, mintSession, readSession, tooManyAttempts,
@@ -18,9 +19,7 @@ export function currentUser(req) {
   return readSession(cookies(req)[COOKIE]);
 }
 
-const clientIp = (req) =>
-  String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
-    .split(',')[0].trim();
+const clientIp = (req) => clientKey(req);
 
 function isLocalRecoveryRequest(req, url) {
   const remote = String(req.socket.remoteAddress || '');

@@ -164,6 +164,7 @@ export function readSession(cookie) {
 const attempts = new Map();
 export function tooManyAttempts(ip) {
   const now = Date.now();
+  if (attempts.size > 2000) for (const [key, value] of attempts) if (value.until < now && now - (value.last || 0) > 300_000) attempts.delete(key);
   const rec = attempts.get(ip) || { count: 0, until: 0 };
   if (rec.until > now) return true;
   rec.count = now - (rec.last || 0) > 300_000 ? 1 : rec.count + 1;
