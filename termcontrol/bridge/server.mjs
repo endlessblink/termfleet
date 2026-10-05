@@ -25,6 +25,7 @@ import { readSessionStatus, subscribeSessionEventHeads } from './session-status.
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { filesIn, matchFiles } from './files.mjs';
+import { spawnArgs } from './spawn.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -241,7 +242,7 @@ const server = http.createServer(async (req, res) => {
     if(!known)return json(res,404,{error:'That project folder is not known to the fleet.'});
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),'tc-spawn-'));const file=path.join(dir,'task.md');
     fs.writeFileSync(file,task,{mode:0o600});
-    const args=['spawn','--provider',provider,'--cwd',known.cwd,'--task-file',file,'--title',`${known.project} · new ${provider}`,'--near',known.cwd];
+    const args=spawnArgs(known,provider,file);
     const {execFile}=await import('node:child_process');
     return execFile('termfleet-child',args,{timeout:60000},(err,stdout,stderr)=>{
       fs.rmSync(dir,{recursive:true,force:true});
