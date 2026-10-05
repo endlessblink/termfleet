@@ -66,6 +66,9 @@ test('OpenCode requires real non-summary completion and matches approval/input I
   const input=await publishOpenCodeEvent(writer,{type:'question.asked',properties:{sessionID:'synthetic-chat',id:'input'}},1004);
   expect(input.state.question.reason).toBe('input');
   await publishOpenCodeEvent(writer,{type:'question.replied',properties:{sessionID:'synthetic-chat',requestID:'input'}},1005);
+  await publishOpenCodeEvent(writer,{type:'question.asked',properties:{sessionID:'synthetic-chat',id:'dismissed-input'}},1005.1);
+  const rejected=await publishOpenCodeEvent(writer,{type:'question.rejected',properties:{sessionID:'synthetic-chat',requestID:'dismissed-input'}},1005.2);
+  expect(rejected.state.lifecycle).toBe('unknown');expect(rejected.state.question).toBeNull();
   writer.state.turn='idle';const idle=await publishOpenCodeEvent(writer,{type:'session.idle'},1006);expect(idle.state.completion).toBeNull();
   const info={role:'assistant',sessionID:'synthetic-chat',finish:'stop',time:{completed:1007}};
   expect(await publishOpenCodeEvent(writer,{type:'message.updated',properties:{info:{...info,summary:true}}},1007)).toBeNull();

@@ -88,3 +88,16 @@ test('explicit Goal provenance outranks an agent guess; vendor errors become Unk
   expect(unknown.state.lifecycle).toBe('unknown');
  } finally {fs.rmSync(options.dir,{recursive:true,force:true});}
 });
+
+test('Claude explicit input tool binds a typed question even when the legacy sidecar says Working',async()=>{
+ const options={...setup(),provider:'claude'};
+ try {
+  await publishSessionEvent({...options,payload:payload('UserPromptSubmit'),at:1000,sidecar:{turn:'working'}});
+  const ask=await publishSessionEvent({...options,payload:payload('PreToolUse',{tool_name:'AskUserQuestion',tool_use_id:'question-one'}),at:1001,sidecar:{turn:'working',now:'Using AskUserQuestion'}});
+  expect(ask.state.lifecycle).toBe('waiting');expect(ask.state.question.reason).toBe('input');
+  const wrong=await publishSessionEvent({...options,payload:payload('PostToolUse',{tool_name:'Read',tool_use_id:'other'}),at:1002,sidecar:{turn:'working'}});
+  expect(wrong.state.lifecycle).toBe('waiting');
+  const answer=await publishSessionEvent({...options,payload:payload('PostToolUse',{tool_name:'AskUserQuestion',tool_use_id:'question-one'}),at:1003,sidecar:{turn:'working'}});
+  expect(answer.state.lifecycle).toBe('working');expect(answer.state.question).toBeNull();
+ } finally {fs.rmSync(options.dir,{recursive:true,force:true});}
+});

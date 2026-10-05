@@ -1,3 +1,4 @@
+import {applySessionHead} from './sessionHeadApplication';
 import {invoke} from '@tauri-apps/api/core';
 import {listen} from '@tauri-apps/api/event';
 import {fnv} from './agentStatusSidecar';
@@ -24,12 +25,9 @@ export async function refreshSessionEventHeads(changed='rescan') {
    if(head.identity?.paneId!==target.id || !hydrateSessionSnapshot(head,{now:sessionClock(),wallNow:Date.now()})) return;
    const store=useWorkspaceStore.getState(),tab=store.tabs.find(item=>item.id===target.tabId),pane=tab?.terminals.find(item=>item.paneId===target.paneId);
    if(!tab||!pane||pane.id!==target.ptyId || (pane.agentProvider && pane.agentProvider!=='shell' && pane.agentProvider!==head.provider)) return;
-   if(pane.sessionSnapshotV2?.identity.runId===head.identity.runId && pane.sessionSnapshotV2.identity.sessionId===head.identity.sessionId && pane.sessionSnapshotV2.identity.epoch===head.identity.epoch && pane.sessionSnapshotV2.seq>=head.seq) return;
-   // A new publisher binding is explicit in the atomic head, not guessed from cwd.
-   store.updateTab(tab.id,{terminals:tab.terminals.map(item=>item.paneId===target.paneId ? {...item,
-    providerSessionId:head.identity.sessionId,agentProvider:head.provider,statusEventPaneId:target.id,sessionSnapshotV2:head,
-    ...(sessionAuthorityEnabled() ? {taskLineup:(head.state.tasks ?? []).map(task=>({id:task.id,content:task.text,activeForm:task.activeForm,status:task.status,
-      source:'todo-write' as const,runId:item.activeRunId,updatedAt:head.state.lastEventAt ?? head.event.at}))} : {})} : item)});
+   const updated=applySessionHead(pane,head,target.id,sessionAuthorityEnabled());
+   if(updated===pane) return;
+   store.updateTab(tab.id,{terminals:tab.terminals.map(item=>item.paneId===target.paneId ? updated : item)});
   })().catch(error=>console.warn('[termfleet-session-events]',target.file,error)).finally(()=>{inFlight.delete(target.file);if(pending.delete(target.file)) void refreshSessionEventHeads(target.file);});
   inFlight.set(target.file,promise);return promise;
  }));

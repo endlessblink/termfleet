@@ -62,8 +62,9 @@ export async function publishSessionEvent({paneId,provider,payload,sidecar,dir=s
 
     const callId=clean(payload?.tool_use_id ?? payload?.tool_call_id ?? payload?.call_id);
     const startsNewTurn=eventName==='UserPromptSubmit';
-    let lifecycle=['Stop','VendorTurnComplete'].includes(eventName) ? 'finished' : sidecar?.turn==='waiting' ? 'waiting' : sidecar?.turn==='idle' ? 'idle' : sidecar?.turn==='unknown' ? 'unknown' : 'working';
-    const reason=eventName==='PermissionRequest' || ['permission_request','permission_prompt'].includes(sidecar?.turnReason) ? 'approval' : sidecar?.turnReason==='operator_question' ? 'input' : null;
+    const explicitInput=eventName==='PreToolUse' && ['AskUserQuestion','request_user_input'].includes(payload?.tool_name);
+    let lifecycle=explicitInput ? 'waiting' : ['Stop','VendorTurnComplete'].includes(eventName) ? 'finished' : sidecar?.turn==='waiting' ? 'waiting' : sidecar?.turn==='idle' ? 'idle' : sidecar?.turn==='unknown' ? 'unknown' : 'working';
+    const reason=eventName==='PermissionRequest' || ['permission_request','permission_prompt'].includes(sidecar?.turnReason) ? 'approval' : explicitInput || sidecar?.turnReason==='operator_question' ? 'input' : null;
     const question=lifecycle==='waiting' && reason ? {id:callId ? `call:${callId}` : `question:${seq}`,reason,callId:callId ?? undefined} : null;
     if(lifecycle==='waiting' && !question) lifecycle='unknown';
     const resolvesQuestionId=eventName==='PostToolUse' && callId && state.question?.callId===callId ? state.question.id : undefined;

@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-04T23:47:44.936Z",
+  "updatedAt": "2026-10-05T00:08:47.217Z",
   "issues": [
     {
       "id": "TF-001",
@@ -6871,13 +6871,13 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-10-04T23:47:44.770Z",
-          "note": "Durable v2 publishers and shared desktop/bridge/mobile selector paths implemented in isolated shadow candidate. Canonical26 WIP hashes and TF-078 unchanged. Exact limits: docs/session-authority-v2-checkpoint.md."
+          "at": "2026-10-05T00:08:47.185Z",
+          "note": "Morning source completion gates shadow display projection, packages complete hook/journal/shared dependency graph, registers Claude PreToolUse and captures typed input/answer IDs, and resolves exact OpenCode rejected-question IDs. No installer or blocked runtime retry."
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-04T23:47:44.806Z",
-          "note": "604 unblocked source tests pass; final publisher/consumer/Codex50 pass; build and offline Cargo check pass; watcher Rust1/1. Hook/HTTP infrastructure and native/rendered acceptance remain blocked/open."
+          "at": "2026-10-05T00:08:47.216Z",
+          "note": "Final64 focused/611 unblocked source pass; build11.28s and fresh offline Cargo check pass. Two shadow guards and three packaging/input guards reproduced failure before correction. Actual temp resource graph imports and symlinked plugin publishes synthetic journal. Native/rendered proof remains pending."
         }
       ],
       "owner": "termfleet",
@@ -7029,6 +7029,44 @@
           "at": "2026-10-04T23:47:44.962430+00:00",
           "type": "next-action",
           "note": "Verify isolated v2 hook/worker, map/mobile rendered and native Canvas2D/PTY acceptance; collect shadow soak evidence before activation and canonical Git promotion. Preserve all26 original WIP files. See docs/session-authority-v2-checkpoint.md."
+        },
+        {
+          "at": "2026-10-04T23:57:39.398Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Offline handoff review found unconditional v2 turn projection and provider/task metadata leaking from shadow into compatibility display. Two focused regressions reproduced it."
+        },
+        {
+          "at": "2026-10-05T00:00:06.729Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Shadow follow-up separates durable collection from compatibility turn and provider/conversation/Task-rail projection. No default flag activation. Retained same snapshot reference protects local exit/reconnect observations."
+        },
+        {
+          "at": "2026-10-05T00:00:06.763Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Two shadow leakage regressions failed before gating. Final scoped61 and expanded unblocked608 pass; build11.14s, map/typography/syntax/diff pass. Runtime/browser commands were not retried. Original Rust1/1 applies to unchanged backend."
+        },
+        {
+          "at": "2026-10-05T00:00:06.794Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Offline shadow leakage fixed and guarded; native/runtime and map browser acceptance remain pending."
+        },
+        {
+          "at": "2026-10-05T00:08:47.185Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Morning source completion gates shadow display projection, packages complete hook/journal/shared dependency graph, registers Claude PreToolUse and captures typed input/answer IDs, and resolves exact OpenCode rejected-question IDs. No installer or blocked runtime retry."
+        },
+        {
+          "at": "2026-10-05T00:08:47.217Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final64 focused/611 unblocked source pass; build11.28s and fresh offline Cargo check pass. Two shadow guards and three packaging/input guards reproduced failure before correction. Actual temp resource graph imports and symlinked plugin publishes synthetic journal. Native/rendered proof remains pending."
         }
       ]
     },

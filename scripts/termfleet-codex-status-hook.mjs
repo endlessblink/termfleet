@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {sessionCompatibilitySidecar} from "../shared/sessionCompatibility.mjs";
 import {publishSessionEvent} from "./lib/session-event-journal.mjs";
 // Codex status hook: gives Codex (gpt-5.x) panes the SAME per-terminal Task row +
 // activity line that Claude panes get, by writing the identical sidecar file the app
@@ -452,12 +453,7 @@ async function main() {
   // Additive durable authority. Existing sidecar metadata remains the compatibility view.
   try {
     const head=await publishSessionEvent({paneId,provider:"codex",payload,sidecar,at:sidecar.updatedAt});
-    if(head) {
-      sidecar.sessionEventBinding=head.identity;
-      sidecar.sessionEventSeq=head.seq;
-      sidecar.turn=head.state.lifecycle==="waiting" ? "waiting" : ["finished","idle","ended"].includes(head.state.lifecycle) ? "idle" : head.state.lifecycle==="working" ? "working" : "unknown";
-      if(head.state.question) sidecar.turnReason=head.state.question.reason==="approval" ? "permission_request" : "operator_question";
-    }
+    if(head) Object.assign(sidecar,sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on"));
   } catch(error) { console.error("termfleet session event journal:",error.message); }
   if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {
     process.exit(0);

@@ -27,7 +27,7 @@ function projectSessionStateCore(previous:TerminalState|undefined, pane:Terminal
   const snapshot=pane.sessionSnapshotV2;
   if(snapshot && [pane.id,pane.statusEventPaneId].includes(snapshot.identity.paneId) &&
       (!pane.providerSessionId || pane.providerSessionId===snapshot.identity.sessionId) &&
-      (!pane.agentProvider || pane.agentProvider===snapshot.provider)) {
+      (!pane.agentProvider || pane.agentProvider==='shell' || pane.agentProvider===snapshot.provider)) {
     if(snapshot===previous?.sessionSnapshotV2 && old) state=old;
     else {
       const loaded=hydrateSessionSnapshot(snapshot,{now,wallNow});

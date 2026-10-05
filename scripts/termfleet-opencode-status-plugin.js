@@ -365,7 +365,7 @@ export async function publishOpenCodeEvent(writer,event,at=Date.now()) {
  if(eventSession && eventSession!==writer.state.sessionId) return null;
  const names={'session.created':'SessionStart','chat.message':'UserPromptSubmit','todo.updated':'PostToolUse',
   'session.status':'VendorStatus','session.idle':'VendorStatus','permission.updated':'PermissionRequest','permission.asked':'PermissionRequest','permission.replied':'QuestionResolved',
-  'question.asked':'InputRequest','question.replied':'QuestionResolved',
+  'question.asked':'InputRequest','question.replied':'QuestionResolved','question.rejected':'QuestionResolved',
   'tool.execute.before':'PreToolUse','tool.execute.after':'PostToolUse','session.error':'VendorError'};
  const finished=type==='message.updated' && properties.info?.role==='assistant' && properties.info?.finish==='stop' && !properties.info?.error && !properties.info?.summary && Number.isFinite(properties.info?.time?.completed);
  const hook=finished ? 'VendorTurnComplete' : names[type];

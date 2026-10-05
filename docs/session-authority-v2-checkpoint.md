@@ -127,3 +127,20 @@ Canonical Git promotion and retirement of temporary checkouts follow verified
 acceptance and the separately authorized integration step. Preserve the full
 independent Git bundle/patch and recheck canonical HEAD/WIP immediately before
 promotion. Native/install proof cannot be supplied by this source artifact.
+
+## Morning shadow correction — 2026-10-05
+
+Handoff review found that8a2195a derived compatibility turn unconditionally.
+The follow-up separates collection from activation: default-off hooks retain
+legacy turn/reason; watcher retains legacy provider/session/task rail. Same-head
+reads preserve local process/reconnect observations; explicit activation can
+project a previously collected head. Two shadow regressions failed before the fix;
+61 focused and608 unblocked source tests plus build11.14s/source guards pass.
+Blocked commands were not retried. Exact implementation versus backlog, errors,
+minimum owner actions and recovery are in `termfleet-morning-handoff.md`.
+
+Morning source completion also includes all hook/journal/shared bundle dependencies,
+Claude pre-tool typed input capture and OpenCode rejected-question resolution. The
+actual temporary packaged graph imports and its plugin publishes a synthetic head;
+no installation occurs. Final64 focused/611 unblocked source, build11.28s and fresh
+offline Cargo check pass. Earlier61/608 are intermediate receipts, not latest totals.

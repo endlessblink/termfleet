@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {sessionCompatibilitySidecar} from "../shared/sessionCompatibility.mjs";
 import {publishSessionEvent} from "./lib/session-event-journal.mjs";
 // Claude Code PostToolUse hook: writes the agent's REAL task list + current activity
 // to a sidecar file keyed by cwd, which termfleet's status worker reads. Free +
@@ -730,12 +731,7 @@ async function main() {
   // Additive durable authority. Existing sidecar metadata remains the compatibility view.
   try {
     const head=await publishSessionEvent({paneId,provider:"claude",payload,sidecar,at:sidecar.updatedAt});
-    if(head) {
-      sidecar.sessionEventBinding=head.identity;
-      sidecar.sessionEventSeq=head.seq;
-      sidecar.turn=head.state.lifecycle==="waiting" ? "waiting" : ["finished","idle","ended"].includes(head.state.lifecycle) ? "idle" : head.state.lifecycle==="working" ? "working" : "unknown";
-      if(head.state.question) sidecar.turnReason=head.state.question.reason==="approval" ? "permission_request" : "operator_question";
-    }
+    if(head) Object.assign(sidecar,sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on"));
   } catch(error) { console.error("termfleet session event journal:",error.message); }
   if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {
     process.exit(0);
