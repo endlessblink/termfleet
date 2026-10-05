@@ -12,7 +12,7 @@
 // terminal and writes a result that this command prints as JSON (pane id etc).
 import { spawn as launch, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -20,6 +20,7 @@ import { paneSidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
 import { ancestors, argv as procArgv, isProviderProcess } from "./lib/single-chat-owner.mjs";
 import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
 import { appendUserWords, findTranscript, userMessagesForAny } from "./lib/handoff-user-words.mjs";
+import { checkBotTask, botTaskContext } from "./lib/bot-workflow-preflight.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -29,7 +30,7 @@ const USAGE = `termfleet-child ${VERSION} - start an agent instance as a visible
 
 usage:
   termfleet-child spawn --provider <${PROVIDERS.join("|")}> (--task "<text>" | --task-file FILE | --dropoff FILE)
-                        [--title "<card title>"] [--near PROJECT_DIR] [--separate | --replace] [--allow-thin] [--allow-no-words] [--cwd DIR] [--timeout SECONDS] [--no-start-app]
+                        [--title "<card title>"] [--near PROJECT_DIR] [--separate | --replace] [--allow-thin] [--allow-no-words] [--cwd DIR] [--bot REGISTRY_ID] [--timeout SECONDS] [--no-start-app]
   termfleet-child status
   termfleet-child --help | --version
 
@@ -37,10 +38,13 @@ Inside a TermFleet pane the new terminal is linked as that pane's child. Elsewhe
 is a top-level instance. Long prompts: use --task-file (not argv).
 HELPER (you keep running, a new card is added): --task / --task-file.
 HANDOVER (your own card is replaced by a fresh instance): --dropoff <your HANDOFF.md>.
-A handover always continues in the same agent you are (Codex stays Codex, Claude stays Claude).`;
+A handover always continues in the same agent you are (Codex stays Codex, Claude stays Claude).
+Registered bot checkouts are checked automatically before launch; --bot selects an explicit reference.
+BOT_WORKFLOW_CHECKER and BOT_REGISTRY_PATH configure a fleet installed elsewhere.`;
 
 function fail(message, code = 1) {
-  process.stderr.write(`termfleet-child: ${message}\n`);
+  // A preflight rejection must remain actionable when this CLI is used through pipes.
+  writeSync(2, `termfleet-child: ${message}\n`);
   process.exit(code);
 }
 
@@ -128,7 +132,7 @@ async function ensureListener(dir, allowStart) {
   if (!appProcessRunning()) {
     if (!allowStart) fail("TermFleet is not running (and --no-start-app was given)", 3);
     if (!startApp()) fail("TermFleet is not running and its launcher (~/.local/bin/termfleet-desktop) was not found", 3);
-    process.stderr.write("termfleet-child: TermFleet was not running; started it with the approved launcher...\n");
+    writeSync(2, "termfleet-child: TermFleet was not running; started it with the approved launcher...\n");
     if (await waitForListener(dir, 45)) return;
     fail("started TermFleet but its agent-request listener did not come up within 45s (open its window; board may still be loading)", 3);
   }
@@ -170,13 +174,13 @@ function resolveTask(options) {
       );
     }
     if (gaps.length > 0) {
-      process.stderr.write(`termfleet-child: warning: handoff has no section for: ${gaps.join(", ")}\n`);
+      writeSync(2, `termfleet-child: warning: handoff has no section for: ${gaps.join(", ")}\n`);
     }
     // Only a real handoff of THIS instance replaces its card. A briefing for a helper
     // that merely arrived through --dropoff must never end the instance that asked.
     const handover = gaps.length <= HANDOVER_MAX_GAPS;
     if (!handover) {
-      process.stderr.write(
+      writeSync(2,
         "termfleet-child: this file does not read like a handoff of your own work, so it starts a HELPER and your own card stays. " +
           "For a helper use --task-file; use --dropoff only to hand your own work to a fresh instance.\n",
       );
@@ -288,15 +292,23 @@ export function resolveCaller(env = process.env, procRoot = "/proc", selfPid = p
 }
 
 async function spawnCommand(options) {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  let botWorkflow;
+  try {
+    botWorkflow = checkBotTask({ cwd, bot: options.bot });
+  } catch (error) {
+    fail(error.message, 2);
+  }
   const caller = resolveCaller();
   const parentPaneId = caller.paneId;
-  const { task, title, handover, file: handoffFile } = resolveTask(options);
+  const { task: baseTask, title, handover, file: handoffFile } = resolveTask(options);
+  const task = baseTask + botTaskContext(botWorkflow);
   let provider = options.provider;
   // A handover continues in the SAME kind of agent: a Codex session that hits its limit
   // continues in Codex, a Claude session in Claude, whatever --provider was typed.
   if (handover && caller.provider && provider !== caller.provider) {
     if (provider) {
-      process.stderr.write(`termfleet-child: a handover continues in the same agent as you (${caller.provider}), not ${provider}.\n`);
+      writeSync(2, `termfleet-child: a handover continues in the same agent as you (${caller.provider}), not ${provider}.\n`);
     }
     provider = caller.provider;
   }
@@ -327,9 +339,9 @@ async function spawnCommand(options) {
       count = 0;
     }
     if (count > 0) {
-      process.stderr.write(`termfleet-child: added Noam's last ${count} messages, verbatim, to the handoff.\n`);
+      writeSync(2, `termfleet-child: added Noam's last ${count} messages, verbatim, to the handoff.\n`);
     } else if (options["allow-no-words"] === true) {
-      process.stderr.write("termfleet-child: warning: Noam's recent messages were NOT added to the handoff (--allow-no-words).\n");
+      writeSync(2, "termfleet-child: warning: Noam's recent messages were NOT added to the handoff (--allow-no-words).\n");
     } else {
       fail(
         "could not find your session record, so Noam's recent messages cannot be added to the handoff and the handover was not started. " +
@@ -338,7 +350,6 @@ async function spawnCommand(options) {
       );
     }
   }
-  const cwd = resolve(options.cwd ?? process.cwd());
   const timeoutSeconds = Number(options.timeout ?? 20);
   if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) fail("--timeout must be a positive number of seconds");
 
@@ -364,7 +375,7 @@ async function spawnCommand(options) {
     if (existsSync(resultPath)) {
       const text = readFileSync(resultPath, "utf8");
       rmSync(resultPath, { force: true });
-      process.stdout.write(`${text}\n`);
+      writeSync(1, `${text}\n`);
       let ok = false;
       try {
         ok = JSON.parse(text).ok === true;
@@ -391,7 +402,7 @@ function statusCommand() {
   const age = listenerAgeMs(dir);
   const running = appProcessRunning();
   const listening = age < LISTENER_FRESH_MS;
-  process.stdout.write(
+  writeSync(1,
     `${JSON.stringify({ appRunning: running, listening, listenerAgeMs: Number.isFinite(age) ? age : null, insidePane: Boolean(process.env.TERMFLEET_PANE_ID) })}\n`,
   );
   process.exit(listening ? 0 : 3);
@@ -410,11 +421,11 @@ const startedAsCommand = (() => {
 if (startedAsCommand) {
   const argv = process.argv.slice(2);
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h" || argv[0] === "help") {
-    process.stdout.write(`${USAGE}\n`);
+    writeSync(1, `${USAGE}\n`);
     process.exit(0);
   }
   if (argv[0] === "--version" || argv[0] === "-v") {
-    process.stdout.write(`${VERSION}\n`);
+    writeSync(1, `${VERSION}\n`);
     process.exit(0);
   }
   const { command, options } = parseArgs(argv);

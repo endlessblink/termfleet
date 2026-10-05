@@ -31,6 +31,20 @@ function setup() {
   const dir = join(dataHome, "terminal-workspace", "child-requests");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, ".listener"), String(Date.now()));
+  // A synthetic Claude/unknown caller must not inherit this test runner's real Codex ancestry.
+  const proc = join(dataHome, "proc");
+  writeFileSync(join(dataHome, "isolated-proc.cjs"), `
+    const fs = require("node:fs");
+    const { syncBuiltinESMExports } = require("node:module");
+    const root = ${JSON.stringify(proc)};
+    fs.mkdirSync(root + "/" + process.pid, { recursive: true });
+    fs.writeFileSync(root + "/" + process.pid + "/stat", process.pid + " (node) S 0 1 1");
+    for (const name of ["readFileSync", "readlinkSync", "readdirSync"]) {
+      const original = fs[name];
+      fs[name] = (path, ...args) => original(typeof path === "string" && path.startsWith("/proc/") ? root + path.slice(5) : path, ...args);
+    }
+    syncBuiltinESMExports();
+  `);
   const file = (name: string, text: string) => {
     const path = join(dataHome, name);
     writeFileSync(path, text);
@@ -46,9 +60,10 @@ async function spawnAndReadRequest(
   provider = "claude",
   extraEnv: Record<string, string | undefined> = { TERMFLEET_PANE_ID: parentPaneId },
 ) {
-  const env: Record<string, string | undefined> = { ...process.env, XDG_DATA_HOME: dataHome, ...extraEnv };
+  const env: Record<string, string | undefined> = { ...process.env, XDG_DATA_HOME: dataHome,
+    CODEX_THREAD_ID: "", CODEX_SESSION_ID: "", CLAUDE_CODE_SESSION_ID: "", ...extraEnv };
   for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key];
-  const child = spawn(process.execPath, [CLI, "spawn", "--provider", provider, "--timeout", "10", ...args, ...(args.includes("--dropoff") ? ["--allow-no-words"] : [])], {
+  const child = spawn(process.execPath, ["--require", join(dataHome, "isolated-proc.cjs"), CLI, "spawn", "--provider", provider, "--timeout", "10", ...args, ...(args.includes("--dropoff") ? ["--allow-no-words"] : [])], {
     env: env as NodeJS.ProcessEnv,
   });
   let stderr = "";
