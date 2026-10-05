@@ -10589,3 +10589,24 @@ Report and concrete proposed acceptance suite: `/home/endlessblink/Documents/Cod
 
 - **TC-203 (TODO) — Agents tab built into TermFleet.** Show the TermControl agent list and chat as a real tab in the TermFleet window, reading fleet data directly (no localhost address, no separate sign-in). Today only a Preview-card shortcut to http://127.0.0.1:7810 exists; Noam: "that is not existing right now". Needs: in-app route to the same page, data via the app (not the bridge login), keyboard focus rules (Escape / terminal keys), and a look-identical check against the browser/phone version.
 - **TC-204 (IN PROGRESS) — calm, minimal TermControl list.** Reference: the Grok bot list (flat, avatar + name + one-line preview, nothing else). Goal: as calm and minimal as possible while staying clear and usable; every element must earn its place (state shown by avatar motion/badge, not text labels; no per-row provider/time noise; no group counts).
+
+## 2026-10-05 — Reading each terminal at a glance (TC-205)
+
+**Status: PREPARED / VERIFYING — source work prepared; dock/native acceptance pending.**
+
+- [x] Inspect all five actual owner screenshots and bind the incorrect Idle card to its exact pane/conversation without interrupting work.
+- [x] Recognize rotating auto-mode activity chrome with fresh, live-bottom pane/run/session provenance; retain newer completion, unknown and v2 authority.
+- [x] Share readable Goal / Task / Now across both map terminal header branches and split panes; display grounded inference with source time and no authorization.
+- [x] Add stable 1–5 word terminal topics; collapse Services/Scope by default with persisted reveal; fix narrow overlap/overflow.
+- [x] Verify isolated renders, HE/EN, light tokens, independent windows, pane identity, resizing and keyboard expansion.
+- [ ] After explicit approval, promote an immutable release and verify the real dock UI while preserving daemon/PTYs and conversation IDs.
+
+Evidence: focused79/79; new screenshot logic29/29; full relevant30-file suite567/567; rendered8/8; frontend build, map-source and typography checks pass. Older integration43 pass/6 unchanged baseline failures/18 pre-existing skips (unchanged baseline40/9/18); no failures hidden. Doctor/build-age and installed frontend checksum checks remain red because the candidate is not activated. Safe screenshots and hashes: [TC-205 report](docs/pane-context-tc205.md), `docs/verification/tc205-screenshot-hashes.json`; dark map SHA `7495c70219f922436548c086ba39e4319ada6cdb0d551e65b147aa7c1be3cf23`. TF-032/044/058/080/081 stay verifying. No install, restart, input injection, session close, authority switch, paid inference, staging, commit or push by this task.
+
+### 2026-10-05 (night) — TC-203 built, TC-086/122/123 partly done
+
+Goal (Noam): "do whatever you can safely from the master plan, including the agent tab." Scope kept to local, reversible, testable work; no retention/deletion, daemon, CSP or push changes.
+
+- **TC-203 (VERIFYING):** Agents tab (robot button in the left rail) shows the same page as the phone and signs itself in on this machine only (`/embed`: loopback, not proxied, iframe-only). Release b9d2f78 installed and `verify:installed-release` OK. Proven in headless Chromium: an iframe from another origin shows the real fleet (8 rows, no login form). NOT yet seen inside the real WebKit window — needs one relaunch of the TermFleet window.
+- **TC-122 (DONE) / TC-123 (partly):** login limiter ignores spoofable forwarding headers unless the peer is this machine, attempts map is capped; cross-site writes refused (Origin must match Host); a bad Host header or thrown error can no longer crash the bridge. Tests: `termcontrol/test/bridge-guard.test.mjs`, `embed-signin.test.mjs` (6 new). Still open under TC-123: an explicit Host allowlist (needs the phone's real hostnames); TC-086 idle-session timeout and destructive-key confirmation; TC-121.
+- Known flake, unrelated: `run.mjs` "terminal keys reach the terminal" talks to the live daemon and fails when the machine is under heavy load; "message text is escaped" is the older literal-source check.
