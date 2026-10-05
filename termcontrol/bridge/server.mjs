@@ -227,6 +227,30 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  // Start a new agent in a project folder the fleet already knows. It appears
+  // as a normal visible card in TermFleet; nothing existing is touched.
+  if (url.pathname === '/api/spawn' && req.method === 'POST') {
+    let raw='';for await (const chunk of req){raw+=chunk;if(raw.length>16384)return json(res,413,{error:'Request too large.'});}
+    let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'Invalid request.'});}
+    const provider=['claude','codex'].includes(body.provider)?body.provider:null;
+    const task=typeof body.task==='string'?body.task.trim():'';
+    if(!provider)return json(res,400,{error:'Choose Claude or Codex.'});
+    if(!task)return json(res,400,{error:'Say what the new agent should do.'});
+    const {panes}=await currentPanes();
+    const known=panes.find(p=>p.cwd && p.project===body.project);
+    if(!known)return json(res,404,{error:'That project folder is not known to the fleet.'});
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'tc-spawn-'));const file=path.join(dir,'task.md');
+    fs.writeFileSync(file,task,{mode:0o600});
+    const args=['spawn','--provider',provider,'--cwd',known.cwd,'--task-file',file,'--title',`${known.project} · new ${provider}`,'--separate'];
+    const {execFile}=await import('node:child_process');
+    return execFile('termfleet-child',args,{timeout:60000},(err,stdout,stderr)=>{
+      fs.rmSync(dir,{recursive:true,force:true});
+      if(err)return json(res,502,{error:(stderr||err.message||'Could not start the agent.').toString().slice(0,300)});
+      let out={};try{out=JSON.parse(stdout);}catch{}
+      return json(res,200,{ok:true,childPaneId:out.childPaneId||null});
+    });
+  }
+
   if (url.pathname === '/api/send' && req.method === 'POST') {
     let raw = '';
     req.on('data', (c) => { raw += c; if (raw.length > 32768) req.destroy(); });

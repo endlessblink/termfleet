@@ -445,6 +445,14 @@
   .cmdlist .dir{color:var(--muted)}
   .cmdlist .hint{padding:12px;color:var(--muted);font-size:13px;line-height:1.45}
   .cmdlist .none{padding:14px 12px;color:var(--dim);font-size:13.5px}
+  /* Desktop: a compact one-line-per-command popover, not the phone's tall list. */
+  @media (hover:hover) and (pointer:fine) and (min-width:900px){
+    .cmdlist{max-height:264px;padding:6px;border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.28);scrollbar-width:thin}
+    .cmdlist button{display:flex;align-items:baseline;gap:12px;min-height:34px;padding:6px 10px;border-radius:8px}
+    .cmdlist button:hover,.cmdlist button:focus-visible{background:var(--surface-2);outline:0}
+    .cmdlist .cmd{flex:none;font:500 13.5px var(--ui);color:var(--accent)}
+    .cmdlist .what{display:block;margin:0;flex:1;min-width:0;white-space:nowrap;text-overflow:ellipsis;font-size:12.5px}
+  }
 
   .askbox{
     flex:none;z-index:6;max-width:720px;width:100%;margin:0 auto;
@@ -581,6 +589,16 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 .pane:has([data-avatar-state="producing"]) .state::after,.pane:has([data-avatar-state="working"]) .state::after{content:"...";display:inline-block;width:1.1em;text-align:start;overflow:hidden;vertical-align:bottom;animation:cr-dots 1.2s steps(4,end) infinite}
 @keyframes cr-dots{from{width:0}to{width:1.1em}}
 @media(prefers-reduced-motion:reduce){.pane .state::after{animation:none!important}}
+.addagent{margin-inline-start:auto;width:44px;height:44px;border-radius:50%;border:0;background:transparent;color:var(--muted);font:300 20px/1 var(--ui);cursor:pointer;display:grid;place-items:center;transition:background .15s,color .15s,transform .15s}
+.addagent:hover,.addagent:focus-visible{background:color-mix(in srgb,var(--accent,#4f8cff) 18%,transparent);color:var(--accent,#4f8cff);transform:rotate(90deg)}
+.newagent-back{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:16px}
+.newagent{width:min(440px,100%);background:var(--surface,#1b1b1b);color:inherit;border-radius:16px;padding:20px;display:grid;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.newagent h3{margin:0;font:500 17px var(--ui)}
+.newagent .providers{display:flex;gap:8px}.newagent .providers label{flex:1;text-align:center;padding:10px;border-radius:10px;background:rgba(127,127,127,.14);cursor:pointer}
+.newagent .providers input{position:absolute;opacity:0}.newagent .providers label:has(input:checked){background:var(--accent,#4f8cff);color:#fff}
+.newagent textarea{min-height:96px;resize:vertical;border-radius:10px;border:1px solid rgba(127,127,127,.3);background:transparent;color:inherit;padding:10px;font:400 15px var(--ui)}
+.newagent .actions{display:flex;gap:8px;justify-content:flex-end}.newagent button{border:0;border-radius:10px;padding:10px 16px;font:500 14px var(--ui);cursor:pointer;background:rgba(127,127,127,.18);color:inherit}.newagent button.go{background:var(--accent,#4f8cff);color:#fff}
+.newagent .err{color:var(--waiting);font-size:13px;min-height:1em}
 .busyline{display:flex;align-items:center;gap:12px;max-width:720px;margin:14px auto 6px;padding:0 4px;animation:busy-in .4s ease-out both}
 .busyorb{display:inline-flex;align-items:center;gap:5px;padding:9px 12px;border-radius:999px;background:color-mix(in srgb,var(--accent,#4f8cff) 14%,transparent)}
 .busyorb i{width:7px;height:7px;border-radius:50%;background:var(--accent,#4f8cff);animation:busy-bounce 1.2s ease-in-out infinite}
@@ -670,6 +688,25 @@ function patchFleet(root,html){
   children(root,template.content);
 }
 
+document.addEventListener('click',e=>{
+  const plus=e.target.closest?.('.addagent');if(!plus)return;
+  e.preventDefault();e.stopPropagation();
+  const project=plus.dataset.project;
+  const back=document.createElement('div');back.className='newagent-back';
+  back.innerHTML=`<form class="newagent" role="dialog" aria-modal="true"><h3></h3><div class="providers"><label><input type="radio" name="p" value="claude" checked>Claude</label><label><input type="radio" name="p" value="codex">Codex</label></div><textarea required dir="auto" placeholder="${esc(ui('What should it work on?','על מה הסוכן יעבוד?'))}"></textarea><div class="err" role="status"></div><div class="actions"><button type="button" class="cancel">${esc(ui('Cancel','ביטול'))}</button><button type="submit" class="go">${esc(ui('Start','התחלה'))}</button></div></form>`;
+  const form=back.querySelector('form');form.querySelector('h3').textContent=ui('New agent in ','סוכן חדש ב־')+projectLabel(project);
+  const close=()=>back.remove();
+  back.addEventListener('click',ev=>{if(ev.target===back)close();});form.querySelector('.cancel').onclick=close;
+  form.onsubmit=async ev=>{
+    ev.preventDefault();const go=form.querySelector('.go'),err=form.querySelector('.err');go.disabled=true;go.textContent=ui('Starting…','מתחיל…');err.textContent='';
+    try{
+      const r=await fetch('/api/spawn',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({project,provider:form.p.value,task:form.querySelector('textarea').value}),signal:AbortSignal.timeout(70000)});
+      const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not start.');
+      close();
+    }catch(x){err.textContent=x.message;go.disabled=false;go.textContent=ui('Start','התחלה');}
+  };
+  document.body.append(back);form.querySelector('textarea').focus();
+},true);
 const fitViewport=()=>{if(window.visualViewport)document.body.style.height=visualViewport.height+'px';const editor=main.querySelector('.custom-answer:not([hidden])');if(editor && editor.contains(document.activeElement))requestAnimationFrame(()=>editor.closest('.askbox')?.scrollIntoView({block:'start'}));};
 window.visualViewport?.addEventListener('resize',fitViewport);fitViewport();
 // Every navigation takes a ticket; a response that arrives after you have
@@ -1048,7 +1085,7 @@ async function fleet(background=false) {
   const content=mode==='manual'?(paneOrder?[...panes].sort(paneOrder):panes).map(card).join(''):shownGroups.map(g=>{
     const groupKey=g.panes[0].mapGroupId || g.project;
     const closed=sessionStorage.getItem(`termcontrol-group:${groupKey}`)==='closed';
-    return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span><span class="count">${g.panes.length}</span></summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
+    return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span><span class="count">${g.panes.length}</span>${g.panes.some(p=>p.cwd)?`<button type="button" class="addagent" data-project="${esc(g.project)}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
   }).join('');
   const root=background?sideContent:main;
   let container=root.querySelector('.fleet-content');if(!container){root.replaceChildren();container=document.createElement('div');container.className='fleet-content';root.append(container);}
@@ -1522,6 +1559,15 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
     cmdlist.hidden = true;
     cmdlist.innerHTML = '';
   }
+  // Escape or a click anywhere outside the list/typing box closes it.
+  const dismissList = (ev) => {
+    if (!cmdlist.isConnected) return document.removeEventListener('keydown', dismissList, true), document.removeEventListener('pointerdown', dismissList, true);
+    if (cmdlist.hidden) return;
+    if (ev.type === 'keydown') { if (ev.key === 'Escape') { ev.preventDefault(); hideCommands(); } return; }
+    if (!cmdlist.contains(ev.target) && ev.target !== box) hideCommands();
+  };
+  document.addEventListener('keydown', dismissList, true);
+  document.addEventListener('pointerdown', dismissList, true);
 
   const box = bar.querySelector('textarea');
   const btn = bar.querySelector('button.send');
