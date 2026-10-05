@@ -573,6 +573,8 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 [data-avatar-state="exited"] .creature{opacity:.5;filter:grayscale(1)}
 [data-avatar-state="producing"] .cr-eye{transform-box:fill-box;transform-origin:center;animation:cr-blink 1.8s ease-in-out infinite}
 [data-avatar-state="working"] .cr-body{animation:cr-spin 7s linear infinite}[data-avatar-state="producing"] .cr-body{animation:cr-twinkle 1.8s ease-in-out infinite}[data-avatar-state="exited"] .cr-mouth{display:none}
+[data-avatar-state="idle"] .cr-body,[data-avatar-state="needs-you"] .cr-body{animation:cr-wink 13s ease-in-out infinite;animation-delay:calc(var(--cr-phase,0) * -1s)}
+@keyframes cr-wink{0%,90%,100%{transform:none}93%{transform:scale(1.14) rotate(-8deg)}96%{transform:scale(.96) rotate(6deg)}98%{transform:scale(1.04) rotate(0)}}
 @keyframes cr-blink{0%,100%{transform:scale(1)}50%{transform:scale(.55)}}
 @keyframes cr-spin{to{transform:rotate(360deg)}}@keyframes cr-twinkle{0%,100%{transform:scale(1)}50%{transform:scale(.9)}}
 @media(prefers-reduced-motion:reduce){.cr-body{animation:none!important}}
@@ -636,7 +638,7 @@ const stackHash=t=>{let h=2166136261;for(const c of String(t)){h^=c.charCodeAt(0
 const blobHue=p=>blobHues[stackHash('c'+(p.id || p.project))%blobHues.length];
 const blobFace=()=>'<g class="cr-face cr-needs-you"><circle class="cr-badge" cx="33" cy="7" r="6.400"/><rect x="31.900" y="3.200" width="2.200" height="4.600" rx="1.100"/><circle cx="33" cy="10" r="1.200"/></g>';
 const blobLetter=p=>esc((Array.from(String(p.title || p.name || projectLabel(p.project) || '?').trim())[0] || '?').toUpperCase());
-const blobSvg=(p,size)=>{const shape=blobs[stackHash(p.id || p.project)%blobs.length];return `<svg class="creature" viewBox="0 0 40 40" width="${size}" height="${size}" style="--cr-hue:${blobHue(p)}" aria-hidden="true" focusable="false"><g class="cr-body">${shape}<g class="cr-inner" transform="translate(20 20) scale(.66) translate(-20 -20)">${shape}</g></g><text class="cr-letter" x="20" y="20.500">${blobLetter(p)}</text>${blobFace()}</svg>`;};
+const blobSvg=(p,size)=>{const shape=blobs[stackHash(p.id || p.project)%blobs.length];return `<svg class="creature" viewBox="0 0 40 40" width="${size}" height="${size}" style="--cr-hue:${blobHue(p)};--cr-phase:${stackHash(p.id || p.project)%13}" aria-hidden="true" focusable="false"><g class="cr-body">${shape}<g class="cr-inner" transform="translate(20 20) scale(.66) translate(-20 -20)">${shape}</g></g><text class="cr-letter" x="20" y="20.500">${blobLetter(p)}</text>${blobFace()}</svg>`;};
 const avatar=p=>`<span class="avatar-slot" data-avatar-state="${avatarState(p)}" aria-hidden="true">${blobSvg(p,48)}</span>`;
 function patchFleet(root,html){
   const template=document.createElement('template');template.innerHTML=html;
