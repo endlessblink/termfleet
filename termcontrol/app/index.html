@@ -589,7 +589,7 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 .pane:has([data-avatar-state="producing"]) .state::after,.pane:has([data-avatar-state="working"]) .state::after{content:"...";display:inline-block;width:1.1em;text-align:start;overflow:hidden;vertical-align:bottom;animation:cr-dots 1.2s steps(4,end) infinite}
 @keyframes cr-dots{from{width:0}to{width:1.1em}}
 @media(prefers-reduced-motion:reduce){.pane .state::after{animation:none!important}}
-.projhead .count{margin-inline-start:auto}
+.projhead .count,.projhead .addagent{margin-inline-start:auto}.projhead .count+.addagent{margin-inline-start:0}
 @media (hover:hover){.addagent{opacity:0}.projhead:hover .addagent,.addagent:focus-visible{opacity:1}}
 @media (hover:none){.addagent{opacity:.55}}
 .addagent{width:44px;margin-inline-end:-8px;height:44px;border-radius:50%;border:0;background:transparent;color:var(--muted);font:300 20px/1 var(--ui);cursor:pointer;display:grid;place-items:center;transition:background .15s,color .15s,transform .15s}
@@ -638,6 +638,7 @@ document.documentElement.lang=chromeLocale;document.documentElement.dir=chromeLo
 const ui=(en,he)=>chromeLocale==='he'?he:en;
 const noticeSummary=content=>{if(content==='Technical context')return ui('Technical details','פרטים טכניים');const first=content.split('\n')[0];const count=first.match(/Planning check blocked: (\d+) open items/);return count?ui(`${count[1]} planning items need review`,`${count[1]} פריטי תכנון דורשים בדיקה`):/Planning check blocked/i.test(first)?ui('Planning needs review','התכנון דורש בדיקה'):first.slice(0,160);};
 const deliveryError=message=>{const errors=[[/request changed|question changed|no longer current/i,'The question changed. Refresh and review it again.','השאלה השתנתה. רעננו ובדקו אותה שוב.'],[/already.*(sent|dispatch)|already answered/i,'An answer has already been sent. Check the terminal.','תשובה כבר נשלחה. בדקו במסוף.'],[/Custom answers are disabled/i,'Custom answers are disabled until this terminal form is verified.','תשובות אישיות מושבתות עד לאימות הטופס הזה.']];const known=errors.find(([pattern])=>pattern.test(message));return known?ui(known[1],known[2]):message;};
+const shortTask=text=>{let t=String(text||'').replace(/\s+/g,' ').trim();if(!t)return '';if(/^(?:Read|Open)\s+\//i.test(t))return ui('Continuing from a handoff','ממשיך מהעברה');t=t.replace(/^[-–•*>\s]+/,'').replace(/\/[\w.\-\/]{6,}/g,'').replace(/\s+/g,' ').trim();const first=t.split(/(?<=[.!?:])\s/)[0]||t;return first.length>46?first.slice(0,44).replace(/\s+\S*$/,'')+'…':first;};
 const technicalTask=text=>/^\s*(?:Read|Open)\s+\/[^\n]+\/HANDOFF[^\n/]*\.md\.?\s*$/i.test(String(text || ''));
 let visitNotice=null,focusedPane=null;
 // Same-origin authenticated event stream; polling remains a missed-event check.
@@ -1088,7 +1089,7 @@ async function fleet(background=false) {
   const content=mode==='manual'?(paneOrder?[...panes].sort(paneOrder):panes).map(card).join(''):shownGroups.map(g=>{
     const groupKey=g.panes[0].mapGroupId || g.project;
     const closed=sessionStorage.getItem(`termcontrol-group:${groupKey}`)==='closed';
-    return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span><span class="count">${g.panes.length}</span>${g.panes.some(p=>p.cwd)?`<button type="button" class="addagent" data-project="${esc(g.project)}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
+    return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span>${g.panes.length>1?`<span class="count">${g.panes.length}</span>`:''}${g.panes.some(p=>p.cwd)?`<button type="button" class="addagent" data-project="${esc(g.project)}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
   }).join('');
   const root=background?sideContent:main;
   let container=root.querySelector('.fleet-content');if(!container){root.replaceChildren();container=document.createElement('div');container.className='fleet-content';root.append(container);}
@@ -1106,7 +1107,7 @@ async function fleet(background=false) {
 function card(p) {
   const session=p.sessionAuthority?p.sessionViewV2:null;
   const state=avatarState(p),label=({producing:ui('Producing','מפיק פלט'),working:ui('Working','עובד'),'needs-you':ui('Needs you','נדרש מענה'),idle:ui('Idle','ממתין'),exited:ui('Exited','הסתיים')})[state];
-  const task=session?(session.task?.label || session.now?.label || label):technicalTask(p.task)?ui('Startup context · open to read','הנחיית פתיחה · לפתיחה'):p.task || ui('No task declared','לא הוגדרה משימה');
+  const task=session?(session.task?.label || session.now?.label || label):technicalTask(p.task)?ui('Startup context · open to read','הנחיית פתיחה · לפתיחה'):shortTask(p.task) || ui('No task declared','לא הוגדרה משימה');
   const time=localStorage.getItem('termcontrol-sort')==='recent'?(p.lastUsedAt?ago(p.lastUsedAt):ui('use unknown','פתיחה לא ידועה')):p.lastActiveAt || p.updatedAt?ago(p.lastActiveAt || p.updatedAt):'';
   return `<button type="button" class="pane ${p.turn || 'idle'}" data-id="${esc(p.id)}" data-key="pane:${esc(p.id)}" aria-label="${esc(p.project)}, ${esc(p.provider)}, ${label}. ${esc(task)}"><span class="row-color" style="background:${groupColor(p.color)}" aria-hidden="true"></span>${avatar(p)}<span class="pane-copy"><span class="row1"><span class="project" dir="auto">${esc(p.title || p.name || projectLabel(p.project))}</span><span class="badge">${esc(p.provider)}</span></span><span class="task" dir="auto">${esc(task)}</span></span><span class="pane-meta"><span class="state">${label}</span><span class="last-active">${time}</span></span></button>`;
 }
