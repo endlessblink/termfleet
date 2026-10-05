@@ -703,7 +703,8 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
       (uiState?.workspaceMode === "split" ||
       uiState?.workspaceMode === "canvas" ||
       uiState?.workspaceMode === "graph" ||
-      uiState?.workspaceMode === "tasks"
+      uiState?.workspaceMode === "tasks" ||
+      uiState?.workspaceMode === "agents"
         ? uiState.workspaceMode
         : DEFAULT_UI_STATE.workspaceMode),
     terminalRendererMode,

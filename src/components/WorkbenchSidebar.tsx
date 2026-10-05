@@ -1683,6 +1683,7 @@ function SidebarRail({ collapsed }: { collapsed: boolean }) {
       <PanelButton panel="sessions" />
       <PanelButton panel="map" />
       <GitMonitorButton />
+      <AgentsButton />
       <PanelButton panel="tasks" />
       <DrawingBoardButton />
       <PreviewButton />
@@ -1701,6 +1702,34 @@ function SidebarRail({ collapsed }: { collapsed: boolean }) {
         )}
       </button>
     </nav>
+  );
+}
+
+function AgentsButton() {
+  const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
+  const updateUi = useWorkspaceStore((state) => state.updateWorkspaceUiState);
+  const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
+  const active = workspaceMode === "agents";
+  return (
+    <button
+      className="workspace-rail-button"
+      data-active={active ? "true" : "false"}
+      style={{
+        ...styles.railButton,
+        background: active ? "var(--surface-selected)" : "transparent",
+        borderColor: "transparent",
+        color: active ? "var(--accent)" : "var(--text-secondary)",
+      }}
+      title="Agents"
+      aria-label="Agents"
+      aria-pressed={active}
+      onClick={() => {
+        setWorkspaceMode("agents");
+        updateUi({ primarySidebarCollapsed: true });
+      }}
+    >
+      <Robot size={15} weight="duotone" />
+    </button>
   );
 }
 

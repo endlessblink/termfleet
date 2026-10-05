@@ -129,7 +129,7 @@ function App() {
   return (
     <div className="app-layout" data-immersive-terminal={immersiveTerminal.enabled ? "true" : "false"}>
       {/* One page title per mode. Tasks and Git render their own visible h1. */}
-      {workspaceMode !== "tasks" && workspaceMode !== "graph" && (
+      {workspaceMode !== "tasks" && workspaceMode !== "graph" && workspaceMode !== "agents" && (
         <h1 className="sr-only">{workspaceMode === "canvas" ? "Operations map" : "Sessions"}</h1>
       )}
       <AttentionLiveRegion />

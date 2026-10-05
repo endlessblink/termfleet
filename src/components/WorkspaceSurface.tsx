@@ -4,6 +4,7 @@ import { useWorkspaceStore } from "../stores/workspace";
 import { CanvasSidebar } from "./CanvasSidebar";
 import { AgentOperationsBoard } from "./AgentOperationsBoard";
 import { GitMonitoringView } from "./GitMonitoringView";
+import { AgentsView } from "./AgentsView";
 
 const MagicCanvas = lazy(() => import("./MagicCanvas").then((module) => ({ default: module.MagicCanvas })));
 const SplitPaneLayout = lazy(() => import("./SplitPane").then((module) => ({ default: module.SplitPaneLayout })));
@@ -206,6 +207,8 @@ export function WorkspaceSurface() {
   // terminal mode was persisted from the previous session.
   const effectiveWorkspaceMode = restoredPanelMode === "tasks"
     ? "tasks"
+    : restoredPanelMode === "agents"
+      ? "agents"
     : immersiveTerminal.enabled
       ? "split"
       : restoredPanelMode;
@@ -257,6 +260,11 @@ export function WorkspaceSurface() {
                 <GitMonitoringView />
               </Suspense>
             </div>
+          </div>
+        )}
+        {effectiveWorkspaceMode === "agents" && (
+          <div style={{ ...styles.surfacePane, zIndex: 1 }}>
+            <AgentsView />
           </div>
         )}
         {effectiveWorkspaceMode === "tasks" && (

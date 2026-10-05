@@ -1,6 +1,6 @@
 import {
   hasAccount, createAccount, verify, verifyOwner, resetOwnerPassword, mintRecoveryToken,
-  verifyRecoveryToken, mintSession, readSession, tooManyAttempts,
+  verifyRecoveryToken, ownerUser, mintSession, readSession, tooManyAttempts,
 } from './accounts.mjs';
 
 const COOKIE = 'tc_session';
@@ -49,8 +49,32 @@ function setSession(res, user, to = '/') {
   return true;
 }
 
+/**
+ * The Agents tab inside TermFleet on this same machine signs itself in: loopback
+ * only, never through a proxy/tunnel, and only when loaded as an iframe (a page
+ * on the web cannot open it as a document or script). Phones still use the password.
+ */
+function embedSignIn(req, res, url) {
+  const dest = req.headers['sec-fetch-dest'];
+  const owner = ownerUser();
+  if (!owner || !isLocalRecoveryRequest(req, url) || (dest && dest !== 'iframe')) {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+    res.end('Not found');
+    return true;
+  }
+  const s = mintSession(owner);
+  res.writeHead(302, {
+    'set-cookie': `${COOKIE}=${s.value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${s.maxAge}`,
+    'cache-control': 'no-store',
+    location: '/',
+  });
+  res.end();
+  return true;
+}
+
 /** Returns true when this request was an auth route and has been handled. */
 export async function handleAuthRoutes(req, res, url) {
+  if (url.pathname === '/embed') return embedSignIn(req, res, url);
   const setup = url.pathname === '/setup';
   const login = url.pathname === '/login';
   const logout = url.pathname === '/logout';

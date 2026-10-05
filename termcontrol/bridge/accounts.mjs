@@ -69,6 +69,12 @@ export function verify(email, password) {
   return { id: user.id, email: user.email };
 }
 
+/** The owner, for the in-app Agents tab that runs on this same machine. */
+export function ownerUser() {
+  const user = load().users[0];
+  return user ? { id: user.id, email: user.email } : null;
+}
+
 export function verifyOwner(password) {
   const user = load().users[0];
   const candidate = hash(password, user ? user.salt : 'absent-user-salt');

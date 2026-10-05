@@ -474,7 +474,7 @@ export interface OpenFile {
   dirty: boolean;
 }
 
-export type WorkspaceMode = "canvas" | "split" | "graph" | "tasks";
+export type WorkspaceMode = "canvas" | "split" | "graph" | "tasks" | "agents";
 export type TerminalRendererMode =
   | "auto"
   | "web-xterm"
