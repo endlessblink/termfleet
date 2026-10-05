@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { requestDaemon, defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
+import { visibleScreenOf } from './screen.mjs';
 
 /**
  * Every keystroke this bridge puts into a live terminal is recorded. Without
@@ -24,6 +25,7 @@ function audit(entry) {
 async function ask(request) {
   const res = await requestDaemon(request, defaultDaemonSocket());
   if (!res || res.ok !== true) throw new Error(res?.error || 'the terminal service refused');
+  if(res.value?.error || (request.type==='writeSession' && res.value?.ok!==true))throw new Error(res.value?.error || 'The terminal did not acknowledge the write.');
   return res.value;
 }
 
@@ -149,27 +151,60 @@ async function scrollbackBytes(id) {
  * provider's own keystroke.
  */
 export function promptKey(pane, choice, approval, kind) {
+  if(pane.provider==='claude' && kind==='question-submit' && choice==='submit')return '\r';
   if (/^[1-9]$/.test(String(choice))) {
-    // Codex selects a question option on the digit key itself; Enter after it
+    // Claude's standard single-select form and Codex select on the digit itself;
+    // the installed Claude Select handler calls onChange directly for a digit.
+    // Enter after it
     // can submit the next question before the operator sees that question.
-    return pane.provider === 'codex' && kind === 'question' ? String(choice) : `${choice}\r`;
+    return ['claude','codex'].includes(pane.provider) && kind === 'question' ? String(choice) : `${choice}\r`;
   }
   return approval?.[choice];
 }
 
 export async function answerPrompt(pane, choice, approval, kind) {
   const key = promptKey(pane, choice, approval, kind);
-  if (!key) return { error: 'Unknown choice.' };
+  if (!key) return { error: 'Unknown choice.', notSent: true };
   const live = await liveSessionIds();
-  if (!live.has(pane.id)) return { error: 'That terminal is not running any more.' };
+  if (!live.has(pane.id)) return { error: 'That terminal is not running any more.', notSent: true };
   try {
     await ask({ type: 'writeSession', id: pane.id, data: key });
     audit({ pane: pane.id, project: pane.project, choice, ok: true });
     return { ok: true, sentAt: Date.now() };
   } catch (error) {
     audit({ pane: pane.id, project: pane.project, choice, ok: false, error: String(error.message || error) });
-    return { error: String(error.message || error) };
+    return { error: String(error.message || error), uncertain: true };
   }
+}
+
+export async function sendCustomAnswer(pane, question, text, {
+  screen = async options => visibleScreenOf(pane.id, options) || '',
+  write = data => ask({type:'writeSession',id:pane.id,data}),
+  pause = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  record = audit,
+} = {}) {
+  const answer = String(text ?? '').replace(/\r/g, '');
+  if (!answer.trim() || answer.length > 8000 || /[\x00-\x08\x0b-\x1f\x7f]/.test(answer)) return {error:'Use 1–8000 characters of plain text.',notSent:true};
+  if (pane.provider !== 'claude' || question.multiSelect) return {error:'This question needs the terminal’s own text field. Open Screen to answer.',notSent:true};
+  const sameQuestion = value => String(value).replace(/\s+/g,' ').includes(question.title.replace(/\s+/g,' '));
+  const inEditor = value => sameQuestion(value) && /Type something\.|Type your answer|Enter your answer/i.test(value) && !/\d+\.\s*(?:Type something|Other)|Chat about this/i.test(value);
+  let snapshot = await screen();
+  if (!sameQuestion(snapshot)) return {error:'That question is no longer on screen. Refresh before answering.',notSent:true};
+  if (!inEditor(snapshot)) {
+    const other = snapshot.match(/(?:^|\n)\s*(?:[›❯>]\s*)?([1-9])\.\s*(?:Type something|Other)\b/i);
+    if (!other) return {error:'The terminal has no verified custom-answer field. Open Screen to check it.',notSent:true};
+    // The digit focuses Other. Never send Enter into a menu before verifying
+    // the text field: Enter there can accept or decline the entire request.
+    const focusedAt=Date.now(); await write(other[1]);
+    for (let i=0;i<24;i++) { await pause(150); snapshot=await screen({after:focusedAt}); if(inEditor(snapshot)) break; }
+    if (!inEditor(snapshot)) return {error:'Could not confirm the custom-answer field. Your text was not sent. Check Screen.',notSent:true};
+  }
+  const typedAt=Date.now(); await write(`\u001b[200~${answer}\u001b[201~`);
+  for(let i=0;i<24;i++){await pause(150);snapshot=await screen({after:typedAt});if(sameQuestion(snapshot) && String(snapshot).replace(/\s+/g,' ').includes(answer.replace(/\s+/g,' ')))break;}
+  if (!sameQuestion(snapshot) || !String(snapshot).replace(/\s+/g,' ').includes(answer.replace(/\s+/g,' '))) return {error:'Your text is not confirmed in the answer field. Check Screen before retrying.',uncertain:true};
+  await write('\r');
+  record({pane:pane.id,project:pane.project,askId:question.id,customAnswer:true,bytes:answer.length,ok:true});
+  return {ok:true,sentAt:Date.now()};
 }
 
 /**

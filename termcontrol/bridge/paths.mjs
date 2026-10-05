@@ -8,7 +8,7 @@ const dataHome = process.env.XDG_DATA_HOME || path.join(home, '.local', 'share')
 export const PATHS = {
   workspace: path.join(dataHome, 'terminal-workspace', 'workspace.json'),
   agentStatus: path.join(dataHome, 'terminal-workspace', 'agent-status'),
-  claudeProjects: path.join(home, '.claude', 'projects'),
+  claudeProjects: process.env.TC_CLAUDE_PROJECTS_DIR || path.join(home, '.claude', 'projects'),
   codexSessions: path.join(home, '.codex', 'sessions'),
   // OpenCode keeps every conversation in one SQLite database rather than one
   // file per session, so the adapter queries it instead of tailing a log.

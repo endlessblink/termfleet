@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isNoise, clean } from '../noise.mjs';
+import { isNoise, clean, technicalContext } from '../noise.mjs';
 import { tailLines } from '../tail.mjs';
 import { PATHS } from '../paths.mjs';
 
@@ -89,6 +89,7 @@ export function pendingQuestionFromRecords(records, { screen = '' } = {}) {
     return {
       kind: 'question', title: String(q.question || 'The agent is asking you something.').slice(0, 200),
       header: String(q.header || '').slice(0, 40), options,
+      questionIndex: questions.indexOf(q), questionCount: questions.length,
       sourceId: payload.call_id || records[i]?.timestamp || '',
     };
   }
@@ -183,10 +184,11 @@ export function messageFromRecord(record) {
   const payload = record?.payload;
   if (payload?.type !== 'message' || !['user', 'assistant'].includes(payload.role)) return null;
   const raw = textOf(payload.content);
+  const context=technicalContext(raw,{meta:record.isMeta===true || payload.isMeta===true});if(context)return {...context,at:record.timestamp || null};
   if (!raw || isNoise(raw)) return null;
   const text = clean(raw);
   if (!text) return null;
-  return { kind: payload.role, at: record.timestamp || null, text };
+  return { kind: text.startsWith('Planning check blocked:') ? 'notice' : payload.role, at: record.timestamp || null, text, ...(text.startsWith('Planning check blocked:') ? {details:raw} : {}) };
 }
 
 /**

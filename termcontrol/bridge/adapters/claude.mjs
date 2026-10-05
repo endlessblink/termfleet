@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isNoise, clean } from '../noise.mjs';
+import { isNoise, clean, technicalContext } from '../noise.mjs';
 import { tailLines } from '../tail.mjs';
 import { claudeTranscript } from '../paths.mjs';
 
@@ -49,8 +49,9 @@ export function readFeed(pane, { limit = 60, bytes = 512 * 1024 } = {}) {
     if (msg.role === 'user') {
       for (const b of blocks) if (b.type === 'tool_result' && b.tool_use_id) resultsSeen.add(b.tool_use_id);
       const raw = typeof msg.content === 'string' ? msg.content.trim() : textOf(blocks);
+      const context=technicalContext(raw,{meta:o.isMeta===true || msg.isMeta===true});if(context){collected.push({...context,at});continue;}
       const text = clean(raw);
-      if (text && !isNoise(raw)) collected.push({ kind: 'user', at, text });
+      if (text && !isNoise(raw)) collected.push({ kind: text.startsWith('Planning check blocked:') ? 'notice' : 'user', at, text, ...(text.startsWith('Planning check blocked:') ? {details:raw} : {}) });
       continue;
     }
 
@@ -63,6 +64,7 @@ export function readFeed(pane, { limit = 60, bytes = 512 * 1024 } = {}) {
         }
       }
       const raw = textOf(blocks);
+      const context=technicalContext(raw,{meta:o.isMeta===true || msg.isMeta===true});if(context){collected.push({...context,at});continue;}
       const text = isNoise(raw) ? '' : clean(raw);
       if (text) collected.push({ kind: 'assistant', at, text });
     }

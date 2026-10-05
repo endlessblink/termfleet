@@ -61,7 +61,7 @@ export function pendingAsk(pane, {
 }
 
 function askId(pane, ask) {
-  const source = ask.sourceId ? [ask.sourceId] : [pane.updatedAt, pane.turnReason];
+  const source = ask.sourceId ? [ask.sourceId, ask.questionIndex ?? ''] : [pane.updatedAt, pane.turnReason];
   return [pane.provider, pane.sessionId, ...source, ask.kind, ask.title]
     .map((value) => String(value || ''))
     .join(':');
@@ -141,6 +141,21 @@ export function questionFromRecords(pane, lines, screen = '') {
       if (answered.has(b.id)) return null;          // already answered
 
       const questions = b.input?.questions || [];
+      // Claude advances each ordinary choice immediately, then renders a
+      // separate final review for a multi-question request. Do not revive Q1
+      // merely because its title is also printed in that review.
+      if(questions.length>1 && /(?:^|\n)\s*Review your answers\s*(?:\n|$)/.test(screen) && /Ready to submit your answers\?/.test(screen) && /Submit answers/.test(screen)){
+        const reviewAnswers=[];
+        for(let index=0;index<questions.length;index++){
+          const q=questions[index],start=screen.indexOf(q.question);
+          const end=index+1<questions.length?screen.indexOf(questions[index+1].question,start+q.question.length):screen.indexOf('Ready to submit your answers?',start);
+          const segment=start<0?'':screen.slice(start,end<0?undefined:end);
+          const answer=segment.match(/(?:^|\n)\s*→\s*([^\n]+)/)?.[1]?.trim();
+          if(answer)reviewAnswers.push({question:q.question,answer});
+        }
+        const ask={kind:'question',stage:'review',sourceId:b.id,questionIndex:questions.length,questionCount:questions.length,title:'Review your answers',header:'Review answers',reviewAnswers,options:/You have not answered all questions/.test(screen)?[]:[{key:'submit',label:'Submit answers',detail:'Confirm these answers and let the agent continue'}]};
+        return {...ask,id:askId(pane,ask)};
+      }
       const q = questions.find((item) => item.question && String(screen).includes(item.question)) || questions[0];
       if (!q) continue;
       const options = (q.options || []).slice(0, 4).map((opt, index) => ({
@@ -152,6 +167,7 @@ export function questionFromRecords(pane, lines, screen = '') {
       const ask = {
         kind: 'question',
         sourceId: b.id,
+        questionIndex: questions.indexOf(q), questionCount: questions.length, multiSelect: Boolean(q.multiSelect),
         title: String(q.question || 'The agent is asking you something.').slice(0, 200),
         header: String(q.header || '').slice(0, 40),
         options,
@@ -160,4 +176,28 @@ export function questionFromRecords(pane, lines, screen = '') {
     }
   }
   return null;
+}
+
+// Tool-result records are the destination's acknowledgment. A key-write ack
+// alone is never proof that the agent received an answer.
+export function questionResultsFromRecords(lines) {
+  const results=[];
+  for (const line of lines) {
+    let record; try {record=typeof line==='string'?JSON.parse(line):line;} catch {continue;}
+    if (record.message?.role !== 'user') continue;
+    for (const block of Array.isArray(record.message.content)?record.message.content:[]) {
+      if(block.type!=='tool_result' || !block.tool_use_id) continue;
+      const text=typeof block.content==='string'?block.content:JSON.stringify(block.content);
+      if(!/answered your questions|User declined to answer|"answers"\s*:/.test(text || '')) continue;
+      let answers=[];
+      try {const data=JSON.parse(text);if(data.answers && typeof data.answers==='object')answers=Object.values(data.answers).filter(value=>typeof value==='string');} catch {}
+      results.push({sourceId:block.tool_use_id,declined:/User declined to answer/.test(text),text,answers});
+    }
+  }
+  return results.slice(-12);
+}
+export function questionResults(pane) {
+  if(pane.provider!=='claude') return [];
+  const file=claudeTranscript(pane.cwd,pane.sessionId);
+  return file?questionResultsFromRecords(tailLines(file,256*1024)):[];
 }

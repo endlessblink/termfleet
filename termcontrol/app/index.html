@@ -1,8 +1,10 @@
 <!doctype html>
 <html lang="en">
+<!-- Original dark shell retained; visual improvements are scoped to conversation content. -->
+
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#141413">
 <title>TermControl</title>
 <style>
@@ -503,6 +505,37 @@
   .prompt button.yes{background:var(--accent);color:#191512;border-color:transparent}
 
   .spin{color:var(--dim);text-align:center;padding:40px;font-size:14px}
+
+/* Owner scope: original dark shell above, conversation-only improvements below. */
+main .msg{margin:0 0 28px;min-width:0}main .who{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;line-height:1.4;margin-bottom:8px}main .who .when{font-size:12px;color:var(--muted);font-weight:400}main .copy-message{margin-inline-start:auto;border:0;background:none;color:var(--muted);display:inline-flex;gap:6px;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:8px;font-size:13px;border-radius:10px}main .copy-message svg{width:17px;height:17px}main .copy-status{font-size:12px;color:var(--muted);font-weight:400}main .copy-status:empty{display:none}main .bubble{min-width:0;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}main .msg.user{margin-inline-start:12%;}main .msg.user .who{justify-content:flex-end}main .msg.user .bubble{background:var(--bg);padding:13px 16px;border-radius:16px}main .msg.assistant .bubble{font-size:16px;line-height:1.65}main .msg.approvalmsg .delivery-note{margin-top:10px;color:var(--muted);font-size:13px}main .delivery-note{display:block;margin-top:8px;font-size:13px;color:var(--muted)}main .text-line{display:block;text-align:start;unicode-bidi:isolate}main .rich p{margin:0 0 14px;white-space:pre-wrap;text-align:start}main .rich p:last-child{margin-bottom:0}main .rich h4{font-size:19px;font-weight:650;margin:22px 0 10px}main .rich ul,main .rich ol{margin:10px 0 16px;padding-inline-start:24px}main .rich li{margin:8px 0;text-align:start}main .rich strong{font-weight:650}main .rich a{color:var(--accent);unicode-bidi:isolate}main .rich code{font:14px/1.5 var(--mono);direction:ltr;unicode-bidi:isolate;background:var(--bg);padding:2px 5px;border-radius:5px;overflow-wrap:anywhere}main .rich pre{direction:ltr;unicode-bidi:isolate;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);padding:14px;border-radius:12px;font:14px/1.5 var(--mono);text-align:left}main .rich pre code{padding:0;background:none}main .tablewrap{width:100%;margin:18px 0;overflow:auto}main .rich table{border-collapse:collapse;width:100%;font-size:15px}main .rich th,main .rich td{text-align:start;vertical-align:top;padding:10px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}main .rich th{font-weight:600;color:var(--muted)}main .rich td code{white-space:normal}main .copy-fallback{margin-top:12px}main .copy-fallback label{display:block;font-size:14px}main .copy-fallback textarea{display:block;width:100%;min-height:120px;max-height:220px;padding:12px;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text);font-size:16px;text-align:start}main .copy-fallback button{min-height:44px;padding:8px 12px;border:0;border-radius:12px;background:var(--bg);color:var(--text);margin-top:8px}main .message-details{margin:12px 0;font-size:14px;color:var(--muted)}main .message-details>summary{min-height:44px;padding:10px 0;cursor:pointer}main .message-details pre{direction:ltr;unicode-bidi:isolate;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.5 var(--mono);background:var(--bg);padding:12px;border-radius:12px}main .system-notice{margin:20px 0;color:var(--muted);font-size:14px}main .system-notice>summary{min-height:44px;display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}main .system-notice>summary::before{content:'›';font-size:20px}main .system-notice[open]>summary::before{content:'⌄'}main .system-notice>summary::-webkit-details-marker{display:none}main .system-notice .msg{margin-top:10px}main .system-notice.warning>summary{color:var(--waiting)}
+main .askbox{margin:24px 0 8px;padding:18px;border-radius:16px;background:var(--surface-2);border:1px solid #bac6ed;position:relative}main .askheading{display:flex;align-items:center;gap:8px}main .askheading h3{font-size:14px;font-weight:600;color:var(--accent);margin:0;flex:1;min-width:0}main .asktoggle{border:0;background:transparent;color:var(--accent);min-width:44px;min-height:44px;font-size:13px;padding:8px}main .askbody{margin-top:4px}main .askbody>p:first-child{font-size:18px;font-weight:600;line-height:1.5;color:var(--text);margin:4px 0 16px}main .askbody>p{margin:8px 0 14px;font-size:14px;color:var(--muted)}main .opts{display:flex;flex-direction:column;gap:10px}main .opts button{display:block;width:100%;min-height:52px;padding:13px 14px;text-align:start;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text);font-size:16px;font-weight:550}main .opts .detail{display:block;font-size:13px;color:var(--muted);font-weight:400;margin-top:4px}main .typeinstead{width:100%;min-height:44px;margin-top:12px;padding:8px;border:0;border-radius:12px;background:transparent;color:var(--accent);font-size:14px;text-align:center}main .custom-answer label{display:block;font-size:14px;margin-bottom:8px}main .custom-answer textarea{display:block;width:100%;min-height:110px;max-height:180px;padding:12px;resize:vertical;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text);font-size:16px;line-height:1.5;text-align:start}main .custom-answer #answer-help{font-size:13px;color:var(--muted);margin:10px 0}main .custom-actions{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:-1px;background:var(--surface-2);padding-top:8px}main .custom-actions button,main .receipt button{min-height:44px;border:0;border-radius:12px;background:var(--surface);color:var(--text);padding:10px 12px;font-size:14px}main .custom-actions button[type=submit]{background:var(--accent);color:white}main .askresult{font-size:14px;color:var(--waiting);margin:12px 0 0}main .askresult:empty{display:none}main .unsupported-answer{font-size:13px;color:var(--muted)}
+main .desk-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:22px}main .desk-head h2{font-size:26px;line-height:1.3;font-weight:650;margin:0}main .desk-head p{font-size:13px;color:var(--muted);margin:6px 0 0}main .desk-head button{min-width:44px;min-height:44px;border:0;border-radius:12px;background:var(--bg);color:var(--text);padding:8px 12px;margin-inline-start:auto;font-size:14px}main .desk-date{display:flex;align-items:center;gap:10px;margin:0 0 26px}main .desk-date label{font-size:14px;color:var(--muted)}main .desk-date select{min-height:44px;flex:1;min-width:0;padding:8px 10px;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text)}main .desk-view h3{font-size:17px;margin:28px 0 16px;font-weight:600}main .desk-agenda{list-style:none;padding:0;margin:0}main .agenda-row{position:relative;display:grid;grid-template-columns:85px minmax(0,1fr);gap:16px;padding:0 0 22px;min-width:0}main .agenda-row time{font-variant-numeric:tabular-nums;font-size:14px;color:var(--accent);line-height:1.5;padding-top:2px}main .agenda-content{padding-inline-start:16px;border-inline-start:1px solid var(--line);position:relative;min-width:0}main .agenda-content::before{content:'';position:absolute;width:9px;height:9px;border-radius:50%;background:var(--accent);inset-inline-start:-5px;top:7px}main .agenda-row strong{display:block;font-size:16px;font-weight:600;text-align:start;overflow-wrap:anywhere}main .agenda-row p{margin:5px 0 0;font-size:14px;color:var(--muted);text-align:start;overflow-wrap:anywhere}main .agenda-source{display:block;font-size:12px;color:var(--muted);margin-top:6px}main .desk-empty{font-size:14px;color:var(--muted);margin:10px 0 20px}main .desk-bucket{border-top:1px solid var(--line)}main .desk-bucket>summary{min-height:52px;padding:14px 0;font-size:16px;font-weight:550;cursor:pointer}main .bucket-count{font-size:13px;color:var(--muted);font-weight:400;margin-inline-start:8px}main .desk-bucket ul{list-style:none;padding:0;margin:0}main .desk-item{padding:0 0 18px;list-style:none}main .desk-item strong{display:block;font-size:15px;font-weight:550;overflow-wrap:anywhere;text-align:start}main .desk-item p{font-size:14px;color:var(--muted);margin:4px 0;overflow-wrap:anywhere;text-align:start}main .desk-id{font-size:12px;color:var(--muted);direction:ltr;unicode-bidi:isolate;overflow-wrap:anywhere}main .desk-gaps{margin-top:24px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}main .desk-gaps>summary{min-height:44px;cursor:pointer}main .desk-gaps p{margin:8px 0}main .snapshot-warning{color:var(--waiting);font-size:14px;padding:12px;background:#fff3d4;border-radius:12px}
+  :root{--control:#55554f}
+  [hidden]{display:none!important}
+  main .msg.user .bubble{background:var(--surface)}
+  main .askbox{border:1px solid var(--line);background:var(--surface-2);max-height:none;overflow:visible;width:100%;margin:20px 0 8px;border-radius:14px;backdrop-filter:none}
+  main .askbody{overflow:visible;max-height:none}
+  main .custom-actions{bottom:8px}main .custom-actions button[type=submit]{color:#191512}
+  main .askbox:has(.custom-answer:not([hidden])) .asktoggle{display:none}
+  main .custom-answer textarea{font-family:var(--ui)}
+  main .review-answers{margin:0 0 16px}main .review-answers>div{padding:10px 0;border-bottom:1px solid var(--line)}main .review-answers dt{font-size:14px;color:var(--muted);overflow-wrap:anywhere}main .review-answers dd{margin:4px 0 0;font-size:16px;color:var(--text);overflow-wrap:anywhere}
+  main .custom-answer label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  body:has(.custom-answer:not([hidden])) .composer{display:none}
+  main .copy-message,main summary,main .asktoggle,main .typeinstead{min-height:44px;min-width:44px}
+  main .who{flex-wrap:wrap;text-transform:none;letter-spacing:normal}main .copy-status{flex-basis:100%}
+  .modeswitch{max-width:100%;flex-wrap:wrap}.modeswitch button{min-height:44px;min-width:44px;padding-inline:9px}
+  .terminal-tools{color:var(--muted);font-size:12px;margin-top:8px}.terminal-tools>summary{min-height:44px;cursor:pointer}
+  .terminal-tools .keys{display:flex;flex-wrap:wrap;overflow:visible}.composer:not(.always) .terminal-tools{display:none}
+  .pending-answer{border:0;background:transparent;color:var(--waiting);min-height:44px;font:inherit;padding:8px;width:100%}
+  .composer.question-open>.attach,.composer.question-open>.send,.composer.question-open>.stack>textarea{display:none}
+  .composer.question-open .pending-answer{display:block}.composer.question-open{align-items:center}
+  svg{width:20px;height:20px;flex:none}
+  .chips button{min-height:44px;min-width:44px}.pane{text-align:start}.badge{margin-left:0;margin-inline-start:auto}.task{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .back{text-align:start}.who,.bubble,.rich p,.rich li{text-align:start}.screen{direction:ltr;unicode-bidi:isolate}
+  main .technical-context{margin-bottom:14px;font-size:13px;color:var(--muted)}
+  main .rich pre,main .rich code{color:var(--text)}
+  @media(max-width:640px){main .tablewrap{overflow:visible}main .rich table{table-layout:fixed;width:100%;min-width:0}main .rich td,main .rich th{overflow-wrap:anywhere}main .stacked table,main .stacked tbody{display:block}main .stacked thead{display:none}main .stacked tr{display:block;padding:10px 0;border-bottom:1px solid var(--line)}main .stacked td{display:grid;grid-template-columns:minmax(65px,.65fr) minmax(0,1.5fr);gap:12px;border:0;padding:5px 0;min-width:0}main .stacked td::before{content:attr(data-label);font-size:13px;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:normal}main .stacked td>div{min-width:0;overflow-wrap:anywhere;text-align:start}main .msg.user{margin-inline-start:5%}main .askbox{padding:14px}main .agenda-row{grid-template-columns:74px minmax(0,1fr);gap:10px}main .agenda-content{padding-inline-start:12px}main .desk-date{flex-wrap:wrap}main .desk-date label{width:100%}}
+
 </style>
 </head>
 <body>
@@ -519,6 +552,20 @@
 
 <script type="module">
 const main = document.getElementById('main');
+const chromeLocale=localStorage.getItem('termcontrol-language') || (navigator.language.startsWith('he')?'he':'en');
+document.documentElement.lang=chromeLocale;document.documentElement.dir=chromeLocale==='he'?'rtl':'ltr';
+const ui=(en,he)=>chromeLocale==='he'?he:en;
+const noticeSummary=content=>{if(content==='Technical context')return ui('Technical details','פרטים טכניים');const first=content.split('\n')[0];const count=first.match(/Planning check blocked: (\d+) open items/);return count?ui(`${count[1]} planning items need review`,`${count[1]} פריטי תכנון דורשים בדיקה`):/Planning check blocked/i.test(first)?ui('Planning needs review','התכנון דורש בדיקה'):first.slice(0,160);};
+const deliveryError=message=>{const errors=[[/request changed|question changed|no longer current/i,'The question changed. Refresh and review it again.','השאלה השתנתה. רעננו ובדקו אותה שוב.'],[/already.*(sent|dispatch)|already answered/i,'An answer has already been sent. Check the terminal.','תשובה כבר נשלחה. בדקו במסוף.'],[/Custom answers are disabled/i,'Custom answers are disabled until this terminal form is verified.','תשובות אישיות מושבתות עד לאימות הטופס הזה.']];const known=errors.find(([pattern])=>pattern.test(message));return known?ui(known[1],known[2]):message;};
+const technicalTask=text=>/^\s*(?:Read|Open)\s+\/[^\n]+\/HANDOFF[^\n/]*\.md\.?\s*$/i.test(String(text || ''));
+let visitNotice=null,focusedPane=null;
+const recordVisit=id=>fetch('/api/visit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id}),signal:AbortSignal.timeout(6000)}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error);visitNotice=null;return result;}).catch(()=>{visitNotice=id;const status=document.getElementById('chat-status');if(status && location.hash==='#'+id)status.textContent=ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.');});
+const projectLabel=name=>name==='freelance-desk'?'Freelance Desk':String(name || 'Agent');
+const icons={back:'M15 5l-7 7 7 7',copy:'M9 7h10v14H9z M5 17V3h10',attach:'M8 12l6-6a4 4 0 015 5l-9 9a6 6 0 01-8-8l10-10',terminal:'M5 7l5 5-5 5 M13 17h6',search:'M10 18a8 8 0 110-16 8 8 0 010 16z M16 16l6 6'};
+const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${icons[name] || icons.terminal}"/></svg>`;
+let viewTabs=document.createElement('div');
+const fitViewport=()=>{if(window.visualViewport)document.body.style.height=visualViewport.height+'px';const editor=main.querySelector('.custom-answer:not([hidden])');if(editor && editor.contains(document.activeElement))requestAnimationFrame(()=>editor.closest('.askbox')?.scrollIntoView({block:'start'}));};
+window.visualViewport?.addEventListener('resize',fitViewport);fitViewport();
 // Every navigation takes a ticket; a response that arrives after you have
 // moved on is discarded instead of painting over the screen you are on.
 let view = 0;
@@ -543,10 +590,10 @@ let clockTimer = null;
 
 const ago = (ms) => {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
-  return `${Math.round(s / 86400)}d ago`;
+  if (s < 60) return ui(`${s}s ago`,`לפני ${s} שנ׳`);
+  if (s < 3600) return ui(`${Math.round(s / 60)}m ago`,`לפני ${Math.round(s / 60)} דק׳`);
+  if (s < 86400) return ui(`${Math.round(s / 3600)}h ago`,`לפני ${Math.round(s / 3600)} שעות`);
+  return ui(`${Math.round(s / 86400)}d ago`,`לפני ${Math.round(s / 86400)} ימים`);
 };
 const trace = (pulse = []) => {
   const recent = pulse.slice(-10);
@@ -600,7 +647,7 @@ const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt
 // Agents answer in Markdown and terminals draw tables with box lines. Read as
 // raw text on a phone both look like a terminal, not a conversation, so the
 // chat turns them into real paragraphs, lists, code blocks and tables.
-const BOX_RULE = /^[\s─━═┌┐└┘├┤┬┴┼╭╮╰╯╞╡╪+\-|:]+$/;
+const BOX_RULE = /^[\s─━═┌┐└┘├┤┬┴┼╭╮╰╯╞╡╪+\-|:│]+$/;
 // A line reads right-to-left only when it is mostly Hebrew/Arabic. Going by the
 // first letter flips an English line that merely starts with a Hebrew name.
 const dirOf = (s) => {
@@ -614,6 +661,8 @@ const inlineRich = (s) => esc(s)
   .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s"]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 const tableHtml = (rows, header) => {
+  rows = rows.filter(row => row.some(cell => String(cell).trim()));
+  if (!rows.length) return '';
   const width = Math.max(...rows.map((r) => r.length));
   const cells = (row, tag) => Array.from({ length: width }, (_, i) =>
     `<${tag} dir="${dirOf(row[i])}">${inlineRich((row[i] || '').trim())}</${tag}>`).join('');
@@ -627,12 +676,15 @@ const tableHtml = (rows, header) => {
     + `<tbody>${body.map((r) => `<tr>${stack ? labelled(r) : cells(r, 'td')}</tr>`).join('')}</tbody></table></div>`;
 };
 const pipeCells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+function readableText(src) {
+  return String(src || '').replace(/<\/?pasted_content\b[^>]*>/gi, '');
+}
 function richText(src) {
-  const lines = String(src || '').replace(/\r/g, '').split('\n');
+  const lines = readableText(src).replace(/\r/g, '').split('\n');
   const out = [];
   let para = [];
   const flush = () => {
-    if (para.length) out.push(`<p dir="${dirOf(para.join(' '))}">${para.map(inlineRich).join('<br>')}</p>`);
+    if (para.length) out.push(`<p dir="${dirOf(para.join(' '))}">${para.length===1?inlineRich(para[0]):para.map(line=>`<span class="text-line" dir="${dirOf(line)}">${inlineRich(line)}</span>`).join('')}</p>`);
     para = [];
   };
   for (let i = 0; i < lines.length;) {
@@ -653,6 +705,17 @@ function richText(src) {
       i += 2;
       while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(pipeCells(lines[i++]));
       out.push(tableHtml(rows, true));
+      continue;
+    }
+    // A pasted terminal table may use ASCII pipes with Unicode rules.
+    if (/^\s*\|.*\|\s*$/.test(line) && (BOX_RULE.test(lines[i-1] || '') || BOX_RULE.test(lines[i+1] || ''))) {
+      flush(); const rows=[]; let header=false;
+      while(i<lines.length && (/^\s*\|.*\|\s*$/.test(lines[i]) || (BOX_RULE.test(lines[i]) && lines[i].trim()))) {
+        if (/^\s*\|.*\|\s*$/.test(lines[i]) && !BOX_RULE.test(lines[i])) rows.push(pipeCells(lines[i]));
+        else if(rows.length===1) header=true;
+        i++;
+      }
+      if(rows.length) out.push(tableHtml(rows,header && rows.length>1));
       continue;
     }
     // Box-drawn table: rows split by │, rule lines between them.
@@ -681,7 +744,7 @@ function richText(src) {
       const items = [];
       while (i < lines.length && bullet.test(lines[i])) items.push(lines[i++].replace(bullet, ''));
       const tag = ordered ? 'ol' : 'ul';
-      out.push(`<${tag}>${items.map((item) => `<li dir="${dirOf(item)}">${inlineRich(item)}</li>`).join('')}</${tag}>`);
+      out.push(`<${tag} dir="${dirOf(items[0])}">${items.map((item) => `<li dir="${dirOf(item)}">${inlineRich(item)}</li>`).join('')}</${tag}>`);
       continue;
     }
     if (!line.trim()) { flush(); i += 1; continue; }
@@ -691,6 +754,52 @@ function richText(src) {
   flush();
   return `<div class="rich">${out.join('')}</div>`;
 }
+
+function messageHtml(kind, text, who, when='', extra='', delivery='', details='') {
+  const content=readableText(text);
+  const message=`<article class="msg ${kind}${extra}"><div class="who">${esc(who)}${when?`<span class="when">${esc(when)}</span>`:''}
+    <button type="button" class="copy-message" aria-label="${ui('Copy message','העתקת הודעה')}">${icon('copy')}${ui('Copy','העתקה')}</button><span class="copy-status" role="status" aria-live="polite"></span></div>
+    <div class="bubble richbubble" data-copy-text="${esc(content).replace(/"/g,'&quot;')}">${richText(content)}</div>
+    ${delivery?`<span class="delivery-note">${esc(delivery)}</span>`:''}${details?`<details class="message-details"><summary>${ui('Technical details','פרטים טכניים')}</summary><pre>${esc(details)}</pre><button type="button" class="copy-message" data-copy-source="${esc(details).replace(/"/g,'&quot;')}">${ui('Copy original details','העתקת הפרטים המקוריים')}</button></details>`:''}</article>`;
+  return kind==='notice'?`<details class="system-notice${/blocked|failed|error/i.test(content)?' warning':''}"><summary dir="auto">${esc(noticeSummary(content))}</summary>${message}</details>`:message;
+}
+main.addEventListener('click',async event=>{
+  const button=event.target.closest('.copy-message'); if(!button) return;
+  event.stopPropagation(); const msg=button.closest('.msg'), text=button.dataset.copySource ?? msg.querySelector('[data-copy-text]').dataset.copyText;
+  const status=msg.querySelector('.copy-status');
+  try {
+    if(!navigator.clipboard?.writeText) throw new Error('unavailable');
+    await navigator.clipboard.writeText(text); status.textContent=ui('Copied.','הועתק.'); msg.querySelector('.copy-fallback')?.remove();
+  } catch {
+    status.textContent=ui('Clipboard unavailable. Select the text below and copy it.','הלוח אינו זמין. אפשר לבחור את הטקסט ולהעתיק.');
+    msg.querySelector('.copy-fallback')?.remove();
+    const area=document.createElement('div'); area.className='copy-fallback';
+    area.innerHTML=`<label>${ui('Select message text','בחירת טקסט ההודעה')}<textarea readonly dir="auto" aria-label="${ui('Message text to copy','טקסט ההודעה להעתקה')}"></textarea></label><button type="button">${ui('Close copy text','סגירה')}</button>`;
+    const field=area.querySelector('textarea');field.value=text;msg.append(area);field.focus();field.select();
+    area.querySelector('button').onclick=()=>{area.remove();button.focus();};
+  }
+});
+function deskHtml(data, selectedDay) {
+  if(!data.available) return `<section class="desk-view"><div class="desk-head"><h2>${ui('Your day','היום שלך')}</h2><button type="button" data-desk-refresh>${ui('Try again','ניסיון נוסף')}</button></div><p class="desk-empty" role="status">${esc(data.error || ui('No timeline is available.','אין כרגע ציר זמן זמין.'))}</p></section>`;
+  const dates=[...new Set([data.day,...data.fixed_blocks.map(b=>b.date),...data.calendar_events.map(b=>b.date)])].filter(Boolean).sort();
+  const day=dates.includes(selectedDay)?selectedDay:data.day;
+  const blocks=data.fixed_blocks.filter(b=>b.date===day).map(b=>({...b,title:b.what,origin:ui('Fixed block','מקטע קבוע')}));
+  const calendar=data.calendar_events.filter(b=>b.date===day).map(b=>({...b,origin:ui('Calendar','יומן')+(data.calendar.stale?ui(' · old snapshot',' · עותק ישן'):'' )}));
+  const rows=[...blocks,...calendar].sort((a,b)=>a.time.localeCompare(b.time));
+  const agenda=items=>`<ol class="desk-agenda">${items.map(b=>`<li class="agenda-row"><time dir="ltr">${esc(b.time || ui('No time','ללא שעה'))}</time><div class="agenda-content"><strong dir="auto">${esc(b.title || b.what)}</strong>${b.note?`<p dir="auto">${esc(b.note)}</p>`:''}<span class="agenda-source">${esc(b.origin || b.date)}</span></div></li>`).join('')}</ol>`;
+  const buckets=[['today',ui('Due today','להיום')],['overdue',ui('Overdue','מועד שעבר')],['week',ui('This week','בהמשך השבוע')],['later',ui('Later','בהמשך')],['undated',ui('No date','ללא תאריך')]];
+  const carried=data.fixed_blocks.filter(b=>b.date<day);
+  const dateLabel=value=>{try{return new Intl.DateTimeFormat(chromeLocale==='he'?'he-IL':'en-GB',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(value+'T12:00:00Z'));}catch{return value;}};
+  return `<section class="desk-view"><div class="desk-head"><div><h2>${ui('Your day','היום שלך')}</h2><p>${esc(dateLabel(day))}</p></div><button type="button" data-desk-refresh>${ui('Refresh','רענון')}</button></div>
+    <div class="desk-date"><label for="desk-day">${ui('Date in the timeline','תאריך בציר הזמן')}</label><select id="desk-day">${dates.map(d=>`<option value="${esc(d)}"${d===day?' selected':''}>${esc(d)}</option>`).join('')}</select></div>
+    ${data.stale?`<p class="snapshot-warning" role="status">${ui('This is an old snapshot. The recorded day may have changed.','זהו עותק ישן. ייתכן שהיום המתוכנן השתנה.')}</p>`:''}
+    <h3>${ui('Scheduled blocks','בלו״ז')}</h3>${rows.length?agenda(rows):`<p class="desk-empty">${ui('No scheduled blocks are recorded for this date.','אין מקטעים מתוזמנים לתאריך הזה.')}</p>`}
+    ${carried.length?`<details class="desk-bucket"><summary>${ui('Unfinished earlier blocks','מקטעים קודמים שטרם הסתיימו')}<span class="bucket-count">${carried.length}</span></summary>${agenda(carried)}</details>`:''}
+    <h3>${ui('Still open','עדיין פתוח')}</h3><p class="desk-empty">${ui('Due dates are shown below. These items have not been scheduled by this view.','הפריטים הבאים מוצגים לפי מועד. הם לא שובצו בלו״ז על ידי התצוגה הזו.')}</p>
+    ${buckets.map(([key,label])=>`<details class="desk-bucket"${key==='today'?' open':''}><summary>${label}<span class="bucket-count">${data[key].length}</span></summary>${data[key].length?`<ul>${data[key].map(r=>`<li class="desk-item"><strong dir="auto">${esc(r.title || r.id)}</strong>${r.note?`<p dir="auto">${esc(r.note)}</p>`:''}<span class="desk-id">${esc(r.id)} · ${esc(r.status)}${r.due?` · ${esc(r.due)}`:''}</span></li>`).join('')}</ul>`:`<p class="desk-empty">${ui('No items in this snapshot.','אין פריטים בעותק הזה.')}</p>`}</details>`).join('')}
+    <details class="desk-gaps"><summary>${ui('Sources and freshness','מקורות ועדכניות')}</summary><p>${esc(data.source)} · ${esc(data.generated.replace('T',' '))}</p><p>${ui('Calendar','יומן')}: ${data.calendar.available?`${data.calendar.stale?ui('old','ישן'):ui('read','נקרא')} · ${esc(data.calendar.checkedAt)}`:ui('unavailable','לא זמין')}</p>${blocks.filter(b=>b.source).map(b=>`<p dir="auto">${esc(b.title)} · <bdi>${esc(b.source)}</bdi></p>`).join('')}${data.gaps.map(g=>`<p>${esc(g)}</p>`).join('')}<p>${ui('Refresh reads the existing export. It does not update Calendar or tasks.','רענון קורא את הייצוא הקיים. הוא לא מעדכן את היומן או את המשימות.')}</p></details></section>`;
+}
+
 const approvalHistoryKey = (id) => `termcontrol-approval-history:${id}`;
 const readApprovalHistory = (id) => {
   try {
@@ -713,6 +822,7 @@ const rememberApproval = (id, entry) => {
 
 function openFleetPane(el) {
   const id = el.dataset.id;
+  recordVisit(id);
   const mainRect = main.getBoundingClientRect();
   const paneRect = el.getBoundingClientRect();
   const fleetState = { ...(history.state || {}) };
@@ -724,7 +834,7 @@ function openFleetPane(el) {
     scrollTop: main.scrollTop,
   };
   history.replaceState(fleetState, '', location.href);
-  history.pushState({ pane: id }, '', '#' + id);
+  history.pushState({ pane: id, openedFromAgents: true }, '', '#' + id);
   chat(id);
 }
 
@@ -749,6 +859,7 @@ function restoreFleetReturn() {
 }
 
 async function fleet() {
+  focusedPane=null;
   const mine = ++view;
   clearInterval(timer);
   releaseChatScroll?.();
@@ -817,7 +928,7 @@ async function fleet() {
 
   // Groups keep the map's grouping; sorting reorders the groups and the cards
   // inside them, so "last used" puts the terminal you touched most recently first.
-  const byRecent = (a, b) => lastUsed(b) - lastUsed(a);
+  const byRecent = (a, b) => Number(b.lastUsedAt || 0) - Number(a.lastUsedAt || 0);
   const byNeed = (a, b) => (a.turn === 'waiting' ? 0 : 1) - (b.turn === 'waiting' ? 0 : 1) || byRecent(a, b);
   const paneOrder = sortBy === 'recent' ? byRecent : sortBy === 'needs' ? byNeed : null;
   const shownGroups = (r.groups || [])
@@ -872,10 +983,10 @@ function card(p) {
     <div class="row1">
       <span class="dot ${p.turn}" aria-hidden="true"></span>
       ${p.emoji ? `<span class="emoji" aria-hidden="true">${esc(p.emoji)}</span>` : ''}
-      <span class="project">${esc(p.project)}</span>
-      <span class="badge">${esc(p.provider)} · ${ago(p.updatedAt)}</span>
+      <span class="project" dir="auto">${esc(p.project)}</span>
+      <span class="badge">${esc(p.provider)} · ${localStorage.getItem('termcontrol-sort')==='recent'?(p.lastUsedAt?ago(p.lastUsedAt):ui('use unknown','פתיחה לא ידועה')):ago(p.updatedAt)}</span>
     </div>
-    <div class="task${p.task ? '' : ' none'}">${esc(p.task || 'no task declared')}</div>
+    <div dir="auto" class="task${p.task ? '' : ' none'}">${esc(technicalTask(p.task)?ui('Technical startup context — open the conversation for details','הנחיית פתיחה טכנית — פרטים בתוך השיחה'):p.task || ui('no task declared','לא הוגדרה משימה'))}</div>
     ${p.turn === 'waiting' ? '<div class="state">Needs your answer</div>' : ''}
     ${statusHtml(p)}
     ${p.producing
@@ -888,11 +999,12 @@ function card(p) {
 }
 
 async function chat(id) {
+  focusedPane=id;
   const mine = ++view;
   clearInterval(timer);
   releaseChatWake?.();
-  nav.innerHTML = '<button class="back">‹ Fleet</button>';
-  nav.querySelector('.back').onclick = () => history.back();
+  nav.innerHTML = `<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${ui('‹ Fleet','חזרה ›')}</button>`;
+  nav.querySelector('.back').onclick = () => {if(history.state?.openedFromAgents){history.back();}else{history.pushState({},'',location.pathname);fleet();}};
   main.innerHTML = '<div class="spin">loading…</div>';
   chatStatus.innerHTML = '';
 
@@ -903,7 +1015,8 @@ async function chat(id) {
   let justSent = null;
   let approvalHistory = readApprovalHistory(id);
   let shown = 60;                     // how far back this chat is showing
-  let mode = sessionStorage.getItem('tc-mode') === 'screen' ? 'screen' : 'chat';
+  let mode = ['screen','today'].includes(sessionStorage.getItem('tc-mode')) ? sessionStorage.getItem('tc-mode') : 'chat';
+  let deskDay = null;
 
   // Follow the newest message until the reader scrolls away from the end.
   // Deciding "are we at the bottom?" afresh on every refresh gets it wrong
@@ -915,7 +1028,7 @@ async function chat(id) {
   main.addEventListener('scroll', onScroll, { passive: true });
   releaseChatScroll?.();
   releaseChatScroll = () => {
-    window.removeEventListener('scroll', onScroll);
+    main.removeEventListener('scroll', onScroll);
     releaseChatScroll = null;
   };
 
@@ -928,7 +1041,7 @@ async function chat(id) {
       if (!r.ok) throw new Error(r.status === 401 ? 'Signed out — reload to sign in.' : 'Your machine did not answer.');
       d = await r.json();
     } catch (e) {
-      if (lastSignature) return;                       // keep what is on screen
+      if (lastSignature) { chatStatus.innerHTML='<span class="connection-note" role="status">Connection lost. Showing the last snapshot.</span>'; return; }
       main.innerHTML = `<div class="empty">${esc(e.name === 'TimeoutError' ? 'Your machine is taking too long to answer.' : e.message)}<br><br>Pull down to try again.</div>`;
       return;
     }
@@ -939,9 +1052,17 @@ async function chat(id) {
       + (d.producing
           ? '<span class="headlive"><span class="dot producing" aria-hidden="true"></span>live</span>'
           : '<span class="headlive quiet"><span class="dot idle" aria-hidden="true"></span>quiet</span>');
-    sub.innerHTML = esc(`${d.pane.provider}${d.pane.task ? ' · ' + d.pane.task : ''}`)
+    sub.innerHTML = esc(`${d.pane.provider}${d.pane.task && !technicalTask(d.pane.task) ? ' · ' + d.pane.task : ''}`)
       + (d.producing && d.lastLine ? `<span class="headtail">${esc(d.lastLine)}</span>` : '');
-    chatStatus.innerHTML = statusHtml(d.pane);
+    chatStatus.innerHTML = statusHtml(d.pane)+(visitNotice===id?`<span role="status">${ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.')}</span>`:'');
+    const preservedAsk=document.querySelector('.askbox');
+    const presentAsk=()=>{
+      if(mode!=='chat' || !d.ask){document.querySelector('.askbox')?.remove();return;}
+      if(preservedAsk?.dataset.askId===d.ask.id && !preservedAsk.isConnected)main.append(preservedAsk);
+      mountAsk(id,d.ask,answer=>{approvalHistory=rememberApproval(id,answer);lastSignature='';following=true;return render();},d.answerReceipt || (approvalHistory.find(entry=>entry.askId===d.ask.id)?{state:'sent'}:null));
+    };
+    const goQuestion=async()=>{await document.querySelector('[data-mode="chat"]')?.onclick();const question=main.querySelector('.askbox');if(!question){const pending=document.querySelector('.pending-answer');if(pending)pending.textContent=ui('The question changed. Refresh to check.','השאלה השתנתה. רעננו לבדיקה.');return;}if(question.querySelector('.askbody')?.hidden)question.querySelector('.asktoggle')?.click();const target=question.querySelector('[data-choice]:not(:disabled)') || question.querySelector('[data-check-screen]') || question.querySelector('.asktoggle');question.querySelector('.askresult').textContent=question.querySelector('.receipt')?ui('Check the terminal before answering again.','בדקו במסוף לפני תשובה נוספת.'):ui('Choose an answer below.','בחרו תשובה מהאפשרויות.');target?.focus({preventScroll:true});target?.scrollIntoView({block:'center'});};
+
 
     if (!document.querySelector('.composer')) {
       mountComposer(
@@ -957,22 +1078,38 @@ async function chat(id) {
           following = true;
           clearInterval(timer);
           timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
-          render();
+          return render();
         },
         () => mode,
+        Boolean(d.desk),
       );
     }
-    if (d.ask) {
-      mountAsk(id, d.ask, (answer) => {
-        approvalHistory = rememberApproval(id, answer);
-        lastSignature = '';
-        following = true;
-        return render();
-      });
-    } else {
-      document.querySelector('.askbox')?.remove();
-    }
+    const composer=document.querySelector('.composer'),blocked=Boolean(d.ask) && mode!=='screen';
+    composer.classList.toggle('question-open',blocked);composer.querySelector('textarea').readOnly=blocked;composer.querySelector('.attach').disabled=blocked;
+    composer.querySelector('.send').disabled=blocked || !composer.querySelector('textarea').value.trim();
+    composer.querySelector('textarea').placeholder=blocked?ui('Answer above','למענה, בחרו בשאלה'):mode==='screen'?ui('Type into the terminal…','הקלדה בטרמינל…'):ui('Reply to this agent…','הודעה לסוכן…');
+    composer.querySelector('textarea').onclick=()=>{if(blocked)goQuestion();};
+    const pendingAnswer=composer.querySelector('.pending-answer');pendingAnswer.hidden=!blocked;pendingAnswer.textContent=ui('Show answer choices','הצגת אפשרויות המענה');pendingAnswer.onclick=goQuestion;
+    approvalHistory=approvalHistory.map(entry=>{
+      const receipt=(d.questionResults || []).find(result=>result.sourceId===entry.sourceId);
+      if(!receipt) return entry;
+      const delivered=!receipt.declined && (entry.completeRequest || (Boolean(entry.answer) && (receipt.answers?.includes(entry.answer) || String(receipt.text).replace(/\\n/g,'\n').includes(entry.answer))));
+      return {...entry,delivery:receipt.declined?'declined':delivered?'agent':entry.delivery};
+    });
+    if(mode!=='chat')document.querySelector('.askbox')?.remove();
 
+    if(mode==='today' && d.desk) {
+      let data;
+      try {const response=await fetch(`/api/desk?pane=${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(12000)});if(!response.ok)throw new Error();data=await response.json();}
+      catch {data={available:false,error:'Could not read the timeline. Try again when connected.'};}
+      if(mine!==view || mode!=='today')return;
+      const html=deskHtml(data,deskDay);
+      if(html!==lastSignature){lastSignature=html;main.innerHTML=html;main.scrollTop=0;}
+      main.querySelector('[data-desk-refresh]')?.addEventListener('click',()=>{lastSignature='';render();},{once:true});
+      const select=main.querySelector('#desk-day');if(select)select.onchange=()=>{deskDay=select.value;lastSignature='';render();};
+      return;
+    }
+    if(mode==='today')mode='chat';
     if (!d.events.length) {
       // Some terminals keep no conversation of their own — a side session, a
       // plain shell. Showing what is on their screen is far more use than
@@ -980,28 +1117,17 @@ async function chat(id) {
       const shown = await fetch(`/api/screen?pane=${encodeURIComponent(id)}`)
         .then((x) => x.json()).catch(() => ({}));
       const screen = shown.screen || '';
-      const pending = justSent
-        ? `<div class="msg user mine pendingmsg">
-             <div class="who">you<span class="when">${justSent.delivered ? 'sent — waiting for the agent to read it' : 'sending…'}</span></div>
-             <div class="bubble">${esc(justSent.text)}</div>
-           </div>`
-        : '';
-      const approvals = approvalHistory.map((entry) => `<div class="msg user mine approvalmsg">
-          <div class="who">you<span class="when">${entry.at ? ago(entry.at) : ''}</span></div>
-          <div class="bubble">${esc(entry.text)}</div>
-        </div>`).join('');
+      const pending = justSent ? messageHtml('user',justSent.text,'you',justSent.delivered?'sent — waiting for the agent to read it':'sending…',' mine pendingmsg') : '';
+      const approvals = approvalHistory.map((entry) => messageHtml('user',entry.answer || entry.text,'You · answer',entry.at?ago(entry.at):'',' mine approvalmsg',entry.delivery==='agent'?ui('Confirmed in the agent’s answer record.','אושר ברישום התשובה של הסוכן.'):entry.delivery==='declined'?ui('The request was declined. This answer was not confirmed.','הבקשה נדחתה. התשובה הזו לא אושרה.'):ui('Sent to the terminal · awaiting agent confirmation.','נשלח למסוף · ממתין לאישור הסוכן.'))).join('');
       // Chat mode stays a chat even here: the screen is shown as the
       // terminal's latest message, with its tables and lists made readable.
       // The raw character grid is one tap away under Screen.
       main.innerHTML = (screen
         ? mode === 'screen'
           ? `<div class="screen">${esc(screen)}</div>`
-          : `<div class="msg assistant">
-               <div class="who">${esc(d.pane.provider)}<span class="when">on screen now</span></div>
-               <div class="bubble richbubble">${richText(screen.replace(/[ \t]+$/gm, ''))}</div>
-             </div>`
+          : messageHtml('assistant',screen.replace(/[ \t]+$/gm,''),d.pane.provider,'on screen now')
         : approvalHistory.length ? '' : '<div class="empty">Nothing recorded for this terminal yet.</div>') + approvals + pending;
-      main.scrollTop = main.scrollHeight;
+      presentAsk();main.scrollTop = main.scrollHeight;
       return;
     }
 
@@ -1018,8 +1144,8 @@ async function chat(id) {
     }
 
     const older = d.reachedStart
-      ? '<div class="start">That is the start of this conversation.</div>'
-      : '<button type="button" class="earlier">Show earlier messages</button>';
+      ? `<div class="start">${ui('Start of this conversation','תחילת השיחה')}</div>`
+      : `<button type="button" class="earlier">${ui('Show earlier messages','הצגת הודעות קודמות')}</button>`;
 
     const visibleEvents = d.events.filter((event) => event.kind !== 'tool');
     // Approval answers are local chat events, but they still belong at their
@@ -1028,7 +1154,7 @@ async function chat(id) {
     const displayEvents = [
       ...visibleEvents.map((event, index) => ({ ...event, localApproval: false, order: index })),
       ...approvalHistory.map((entry, index) => ({
-        kind: 'user', text: entry.text, at: entry.at,
+        kind: 'user', text: entry.answer || entry.text, at: entry.at, delivery:entry.delivery,
         localApproval: true, order: visibleEvents.length + index,
       })),
     ].sort((a, b) => {
@@ -1036,20 +1162,14 @@ async function chat(id) {
       const bTime = new Date(b.at || 0).getTime();
       return aTime - bTime || a.order - b.order;
     });
-    const html = older + displayEvents.map((e) => {
+    const context=technicalTask(d.pane.task)?`<details class="message-details technical-context"><summary>${ui('Technical startup context','הנחיית פתיחה טכנית')}</summary><pre>${esc(d.pane.task)}</pre></details>`:'';
+    const html = context + older + displayEvents.map((e) => {
       const when = e.at ? ago(new Date(e.at).getTime()) : '';
-      return `<div class="msg ${e.kind}${e.localApproval ? ' mine approvalmsg' : ''}">
-        <div class="who">${e.kind === 'user' ? 'you' : esc(d.pane.provider)}${when ? `<span class="when">${when}</span>` : ''}</div>
-        ${e.kind === 'user'
-          ? `<div class="bubble" dir="auto">${esc(e.text)}</div>`
-          : `<div class="bubble richbubble">${richText(e.text)}</div>`}
-      </div>`;
+      const delivery=e.localApproval?(e.delivery==='agent'?ui('Confirmed in the agent’s answer record.','אושר ברישום התשובה של הסוכן.'):e.delivery==='declined'?ui('The request was declined on the terminal. This answer was not confirmed.','הבקשה נדחתה במסוף. התשובה הזו לא אושרה.'):ui('Sent to the terminal · awaiting agent confirmation.','נשלח למסוף · ממתין לאישור הסוכן.')):'';
+      return messageHtml(e.kind,e.text,e.localApproval?ui('Your answer','התשובה שלך'):e.kind==='user'?ui('You','אתה'):e.kind==='notice'?ui('Status','עדכון'):projectLabel(d.pane.project),when,e.localApproval?' mine approvalmsg':'',delivery,e.details);
     }).join('')
       + (justSent && !visibleEvents.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))
-        ? `<div class="msg user mine pendingmsg">
-             <div class="who">you<span class="when">${justSent.delivered ? 'sent — waiting for the agent to read it' : 'sending…'}</span></div>
-             <div class="bubble">${esc(justSent.text)}</div>
-           </div>`
+        ? messageHtml('user',justSent.text,'you',justSent.delivered?'sent — waiting for the agent to read it':'sending…',' mine pendingmsg')
         : '');
 
     // Once the agent's own record shows it, stop holding our copy.
@@ -1058,12 +1178,18 @@ async function chat(id) {
     }
 
     // Re-rendering identical content would throw away the reader's position.
-    if (html === lastSignature) return;
+    if (html === lastSignature) {presentAsk();return;}
     const first = lastSignature === '';
     const nearBottom = following;
+    const wasAt=main.scrollTop;
+
+    // Refresh status and questions while leaving native text selection intact.
+    const selection=window.getSelection();
+    if(!first && (main.querySelector('.copy-fallback textarea:focus') || (selection?.toString() && main.contains(selection.anchorNode)) || (main.querySelector('.custom-answer textarea:focus') && preservedAsk?.dataset.askId===d.ask?.id && preservedAsk.dataset.receiptState===(d.answerReceipt?.state || '')))){presentAsk();return;}
 
     lastSignature = html;
     main.innerHTML = html;
+    presentAsk();
 
     const earlier = main.querySelector('.earlier');
     if (earlier) {
@@ -1135,71 +1261,58 @@ async function chat(id) {
   timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
 }
 
-function mountAsk(id, ask, onDone) {
+function mountAsk(id, ask, onDone, receipt=null) {
   document.body.classList.add('chat');
-  const current = document.querySelector('.askbox');
-  if (current?.dataset.askId === ask.id) return;
+  const current=document.querySelector('.askbox');
+  const state=receipt?.state || '';
+  const supported=String(ask.customAnswerSupported!==false && !ask.multiSelect);
+  if(current?.dataset.askId===ask.id && current.dataset.supported===supported && (current.dataset.receiptState===state || current.dataset.sending==='true'))return;
   current?.remove();
-
-  const box = document.createElement('section');
-  box.className = ask.screen && ask.kind === 'permission' ? 'askbox hasscreen' : 'askbox';
-  box.dataset.askId = ask.id;
-  box.setAttribute('aria-label', ask.kind === 'permission' ? 'Permission request' : 'Question from the agent');
-  box.innerHTML = `
-    <h3>${esc(ask.header || (ask.kind === 'permission' ? 'Permission requested' : 'Your answer is needed'))}</h3>
-    ${ask.screen && ask.kind === 'permission' ? '' : `<p>${esc(ask.title)}</p>`}
-    ${ask.detail ? `<p class="detail">${esc(ask.detail)}</p>` : ''}
-    ${ask.screen && ask.kind === 'permission' ? `<div class="askscreen">${esc(ask.screen)}</div>` : ''}
-    <div class="opts">${ask.options.map((option) => `
-      <button type="button" data-choice="${esc(option.key)}">
-        ${esc(option.label)}
-        ${option.detail ? `<span class="detail">${esc(option.detail)}</span>` : ''}
-      </button>`).join('')}</div>
-    ${ask.kind === 'question' ? '<button type="button" class="typeinstead">Type a different answer</button>' : ''}
-    <p class="askresult" role="status"></p>`;
-  const composer = document.querySelector('.composer');
-  if (composer) composer.before(box);
-  else document.body.appendChild(box);
-
-  box.querySelector('.typeinstead')?.addEventListener('click', () => {
-    document.querySelector('.composer textarea')?.focus();
-  });
-
-  box.querySelectorAll('[data-choice]').forEach((button) => {
-    button.onclick = async () => {
-      box.querySelectorAll('button').forEach((item) => { item.disabled = true; });
-      const result = box.querySelector('.askresult');
-      result.textContent = 'Sending your answer…';
-      let response;
-      try {
-        const sent = await fetch('/api/send', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ pane: id, choice: button.dataset.choice, askId: ask.id }),
-          signal: AbortSignal.timeout(8000),
-        });
-        response = await sent.json();
-      } catch {
-        response = { error: 'Could not reach your machine. Your answer was not sent.' };
-      }
-      if (response.error) {
-        result.textContent = response.error;
-        box.querySelectorAll('button').forEach((item) => { item.disabled = false; });
-        return;
-      }
-      result.textContent = 'Answer delivered.';
-      box.remove();
-      const option = ask.options.find((item) => item.key === button.dataset.choice);
-      onDone?.({
-        askId: ask.id,
-        text: `${ask.kind === 'permission' ? 'Permission answer' : 'Question answer'}: ${option?.label || button.dataset.choice}`,
-        at: Date.now(),
-      });
-    };
-  });
+  const box=document.createElement('section');box.className='askbox';box.dataset.askId=ask.id;box.dataset.receiptState=state;
+  box.dataset.supported=supported;
+  box.setAttribute('aria-label',ask.kind==='permission'?ui('Permission request','בקשת הרשאה'):ui('Question from the agent','שאלה מהסוכן'));
+  const waiting=receipt && receipt.state!=='not-sent';
+  const customSupported=ask.customAnswerSupported!==false && !ask.multiSelect && ask.stage!=='review';
+  const customKey=`tc-answer-draft:${id}:${ask.id}`;
+  box.innerHTML=`<div class="askheading"><h3><bdi dir="auto">${waiting?ui('Answer awaiting confirmation','התשובה ממתינה לאישור'):esc(ask.header || (ask.kind==='permission'?ui('Permission requested','נדרשת הרשאה'):ui('Your answer is needed','נדרשת תשובה שלך')))}</bdi>${ask.questionCount>1 && ask.stage!=='review'?` · <bdi dir="ltr">${ask.questionIndex+1} / ${ask.questionCount}</bdi>`:''}</h3><button type="button" class="asktoggle" aria-expanded="${!waiting}">${waiting?ui('Show','הצגה'):ui('Hide','צמצום')}</button></div>
+    <div class="askbody"${waiting?' hidden':''}><p dir="auto">${esc(ask.title)}</p>${ask.detail?`<p dir="auto">${esc(ask.detail)}</p>`:''}${ask.kind==='permission' && ask.screen?`<details class="message-details"><summary>${ui('Terminal request details','פרטי הבקשה במסוף')}</summary><pre class="askscreen">${esc(ask.screen)}</pre></details>`:''}
+    ${ask.stage==='review'?`${ask.reviewAnswers?.length?`<dl class="review-answers">${ask.reviewAnswers.map(item=>`<div><dt dir="auto">${esc(item.question)}</dt><dd dir="auto">${esc(item.answer)}</dd></div>`).join('')}</dl>`:''}<details class="message-details"><summary>${ui('Review in the terminal','הסיכום במסוף')}</summary><pre class="askscreen">${esc(ask.screen||'')}</pre></details>`:''}
+    ${waiting?`<div class="receipt"><p role="status">${ui('An answer was sent or is unconfirmed. Check the terminal before answering again.','תשובה נשלחה או שמסירתה לא אושרה. בדקו במסוף לפני תשובה נוספת.')}</p><button type="button" data-check-screen>${ui('Check terminal','בדיקה במסוף')}</button></div>`:`
+    <div class="opts">${ask.options.map(option=>`<button type="button" dir="${dirOf(option.label)}" data-choice="${esc(option.key)}"${ask.multiSelect?' disabled':''}><span dir="auto">${esc(option.label)}</span>${option.detail?`<span class="detail" dir="auto">${esc(option.detail)}</span>`:''}</button>`).join('')}</div>
+    ${ask.kind==='question' && ask.stage!=='review'?`<button type="button" class="typeinstead" aria-label="${ui('Write my answer','כתיבת התשובה שלי')}"${customSupported?'':' disabled aria-describedby="unsupported-answer"'}>${ui('Write my own answer','כתיבת תשובה אחרת')}</button>${customSupported?'':`<p class="unsupported-answer" id="unsupported-answer">${ui('Custom answers are disabled until this terminal form is verified. The choices use the existing request.','תשובות אישיות מושבתות עד לאימות הטופס הזה. האפשרויות משתמשות בבקשה הקיימת.')}</p>`}
+    <form class="custom-answer" hidden><label for="custom-answer-text">${ui('Your answer to this question','התשובה שלך לשאלה הזו')}</label><textarea id="custom-answer-text" rows="2" maxlength="8000" dir="auto" aria-describedby="answer-help"></textarea><p id="answer-help">${ui('Back keeps this draft and returns to the choices. It does not decline the question.','חזרה שומרת את הטיוטה ומחזירה לאפשרויות. היא לא דוחה את הבקשה.')}</p><div class="custom-actions"><button type="submit" disabled>${ui('Send answer','שליחת תשובה')}</button><button type="button" data-cancel-answer>${ui('Back to choices','חזרה לאפשרויות')}</button></div></form>`:''}`}
+    <p class="askresult" role="status" aria-live="polite"></p></div>`;
+  main.append(box);
+  const body=box.querySelector('.askbody'),toggle=box.querySelector('.asktoggle');
+  toggle.onclick=()=>{body.hidden=!body.hidden;toggle.setAttribute('aria-expanded',String(!body.hidden));toggle.textContent=body.hidden?ui('Show','הצגה'):ui('Hide','צמצום');};
+  box.querySelector('[data-check-screen]')?.addEventListener('click',()=>document.querySelector('[data-mode="screen"]')?.click());
+  const form=box.querySelector('.custom-answer'),field=form?.querySelector('textarea'),opts=box.querySelector('.opts'),other=box.querySelector('.typeinstead');
+  const draft=()=>{try{sessionStorage.setItem(customKey,field.value);}catch{}};
+  const close=(back=true)=>{if(!form)return;draft();form.hidden=true;opts.hidden=false;other.hidden=false;other.focus();if(back && history.state?.answerEditor===ask.id){box.localEditorNavigation=true;history.back();}};
+  const open=(push=true)=>{if(!form || !customSupported)return;form.hidden=false;opts.hidden=true;other.hidden=true;body.hidden=false;toggle.setAttribute('aria-expanded','true');toggle.textContent=ui('Hide','צמצום');if(push)history.pushState({...history.state,answerEditor:ask.id},'',location.hash);field.focus();fitViewport();};
+  box.closeAnswerEditor=close;box.openAnswerEditor=open;
+  if(field){try{field.value=sessionStorage.getItem(customKey)||'';}catch{}field.oninput=()=>{draft();form.querySelector('[type=submit]').disabled=!customSupported || !field.value.trim();};field.oninput();field.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();close();}};}
+  if(other)other.onclick=()=>open();
+  form?.querySelector('[data-cancel-answer]').addEventListener('click',()=>close());
+  let sending=false;
+  const submit=async(choice,answer)=>{
+    if(sending || (!choice && !customSupported))return;sending=true;box.dataset.sending='true';
+    box.querySelectorAll('[data-choice],.typeinstead,[type=submit]').forEach(button=>button.disabled=true);
+    const result=box.querySelector('.askresult');result.textContent=ui('Sending to this question…','שולח תשובה לשאלה הזו…');result.scrollIntoView({block:'center'});let response;
+    try{const sent=await fetch('/api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id,askId:ask.id,...(choice?{choice}:{answer})}),signal:AbortSignal.timeout(10000)});response=await sent.json();if(!response.ok && !response.error)response={error:ui('The terminal did not acknowledge this answer.','המסוף לא אישר את קבלת התשובה הזו.')};}
+    catch{response={error:ui('Delivery is unconfirmed. Your draft is saved. Check the terminal before retrying.','מסירת התשובה לא אושרה. הטיוטה נשמרה. בדקו במסוף לפני ניסיון נוסף.'),uncertain:true};}
+    sending=false;box.dataset.sending='false';
+    if(response.error){result.textContent=deliveryError(response.error);result.scrollIntoView({block:'center'});box.querySelectorAll('[data-choice],.typeinstead,[type=submit]').forEach(button=>button.disabled=Boolean(response.uncertain) || (button.matches('.typeinstead,[type=submit]') && !customSupported) || (button.matches('[data-choice]') && ask.multiSelect));if(field && !response.uncertain)field.oninput();return;}
+    result.textContent=ui('Sent to the terminal. Awaiting the agent’s answer record.','נשלח למסוף. ממתין לרישום התשובה אצל הסוכן.');
+    const option=ask.options.find(item=>item.key===choice);const value=choice?option?.label || choice:answer;
+    if(history.state?.answerEditor===ask.id){const next={...history.state};delete next.answerEditor;history.replaceState(next,'',location.hash);}
+    onDone?.({askId:ask.id,sourceId:ask.sourceId,answer:value,completeRequest:ask.stage==='review',delivery:'terminal',text:`${ask.kind==='permission'?'Permission answer':'Question answer'}: ${value}`,at:response.sentAt || Date.now()});
+  };
+  box.querySelectorAll('[data-choice]').forEach(button=>{button.onclick=()=>submit(button.dataset.choice);});
+  if(form)form.onsubmit=event=>{event.preventDefault();if(field.value.trim())submit(null,field.value);};
 }
 
-function mountComposer(id, onSent, onMode, view = () => 'chat') {
+function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false) {
   document.body.classList.add('chat');
   document.querySelector('.askbox')?.remove();
   const old = document.querySelector('.composer');
@@ -1208,14 +1321,12 @@ function mountComposer(id, onSent, onMode, view = () => 'chat') {
   const bar = document.createElement('div');
   bar.className = 'composer';
   bar.innerHTML = `
-    <button type="button" class="attach" aria-label="Attach an image">＋</button>
+    <button type="button" class="attach" aria-label="${ui('Attach an image','צירוף תמונה')}">${icon('attach')}</button>
     <input type="file" accept="image/*" aria-hidden="true">
     <div class="stack">
-      <div class="toolrow">
-        <div class="modeswitch" role="group" aria-label="What to show">
-          <button type="button" data-mode="chat">Chat</button>
-          <button type="button" data-mode="screen">Screen</button>
-        </div>
+      <div class="toolrow"><div class="modeswitch" role="group" aria-label="${ui('What to show','תצוגה')}"><button type="button" data-mode="chat">${ui('Chat','שיחה')}</button>${hasDesk?`<button type="button" data-mode="today">${ui('Today','היום')}</button>`:''}<button type="button" data-mode="screen">${ui('Screen','מסך')}</button></div></div>
+      <button type="button" class="pending-answer" hidden>${ui('Answer the current question','למענה על השאלה')}</button>
+      <details class="terminal-tools"><summary>${ui('Terminal tools','כלי טרמינל')}</summary>
         <div class="keys" role="group" aria-label="Terminal keys">
         <button type="button" data-ins="/" aria-label="Slash">/</button>
         <button type="button" data-ins="$" aria-label="Dollar">$</button>
@@ -1231,17 +1342,18 @@ function mountComposer(id, onSent, onMode, view = () => 'chat') {
         <button type="button" class="wide" data-key="esc" aria-label="Escape key">Esc</button>
           <button type="button" class="wide" data-key="interrupt" aria-label="Interrupt the agent">Stop</button>
         </div>
-      </div>
+      </details>
       <div class="cmdlist" hidden></div>
       <div class="attached" hidden>
         <img alt="">
         <span class="name"></span>
         <button type="button" class="drop" aria-label="Remove the image">✕</button>
       </div>
-      <textarea rows="1" placeholder="Reply to this agent…" enterkeyhint="send" aria-label="Your reply"></textarea>
+      <textarea rows="1" dir="auto" placeholder="${ui('Reply to this agent…','הודעה לסוכן…')}" enterkeyhint="send" aria-label="${ui('Your reply','ההודעה שלך')}"></textarea>
     </div>
-    <button type="button" class="send" disabled>Send</button>`;
+    <button type="button" class="send" disabled>${ui('Send','שליחה')}</button>`;
   document.body.appendChild(bar);
+  viewTabs=bar.querySelector('.modeswitch');
 
   const cmdlist = bar.querySelector('.cmdlist');
   let commands = null;
@@ -1522,19 +1634,20 @@ function mountComposer(id, onSent, onMode, view = () => 'chat') {
     setTimeout(() => { const n = document.querySelector('.sendstate'); if (n) n.remove(); }, 1400);
   };
 
-  // The view switch lives in this bar, so it is wired when the bar is built.
+  // Context views are above the thread; the composer only handles the reply.
   const paintSwitch = () => {
-    bar.querySelectorAll('.modeswitch button').forEach((el) => {
+    viewTabs.querySelectorAll('[data-mode]').forEach((el) => {
       el.setAttribute('aria-pressed', String(el.dataset.mode === view()));
     });
     const screening = view() === 'screen';
     bar.classList.toggle('always', screening);
-    btn.textContent = screening ? 'Type' : 'Send';
-    box.placeholder = screening ? 'Type into the terminal…' : 'Reply to this agent…';
+    btn.textContent = screening ? ui('Type','הקלדה') : ui('Send','שליחה');
+    box.placeholder = screening ? ui('Type into the terminal…','הקלדה בטרמינל…') : ui('Reply to this agent…','הודעה לסוכן…');
+    bar.querySelector('.terminal-tools').open=screening;
   };
 
-  bar.querySelectorAll('.modeswitch button').forEach((el) => {
-    el.onclick = () => { onMode?.(el.dataset.mode); paintSwitch(); };
+  viewTabs.querySelectorAll('[data-mode]').forEach((el) => {
+    el.onclick = async () => {await onMode?.(el.dataset.mode);paintSwitch();};
   });
   paintSwitch();
 
@@ -1595,18 +1708,23 @@ function confirmBusy(message, go) {
 }
 
 window.addEventListener('popstate', (e) => {
+  const ask=document.querySelector('.askbox'),editor=ask?.querySelector('.custom-answer');
+  if(ask?.localEditorNavigation){ask.localEditorNavigation=false;return;}
+  if(editor && !editor.hidden && !e.state?.answerEditor){ask.closeAnswerEditor(false);return;}
+  if(ask && e.state?.answerEditor===ask.dataset.askId){ask.openAnswerEditor(false);return;}
   const id = e.state?.pane ?? location.hash.slice(1);
-  if (id) chat(id); else fleet();
+  if(id){if(id!==focusedPane)recordVisit(id);chat(id);}else fleet();
 });
 
 // Following a link to #<terminal> while the app is already open changes only
 // the hash — no navigation, no popstate — so listen for that too.
 window.addEventListener('hashchange', () => {
   const id = location.hash.slice(1);
-  if (id) chat(id); else fleet();
+  if(id){if(id!==focusedPane)recordVisit(id);chat(id);}else fleet();
 });
 
 const opening = location.hash.slice(1);
+if(opening && performance.getEntriesByType('navigation')[0]?.type==='navigate')recordVisit(opening);
 if (opening) { history.replaceState({ pane: opening }, '', location.hash); chat(opening); }
 else fleet();
 </script>

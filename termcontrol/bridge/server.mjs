@@ -5,25 +5,33 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { canvasSidebarView, listPanes, reconcileLivePanes } from './inventory.mjs';
 import { transcriptPath as codexTranscript } from './adapters/codex.mjs';
 import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
-import { sendToPane, answerPrompt, sendKey, liveSessionIds } from './send.mjs';
+import { sendToPane, answerPrompt, sendCustomAnswer, sendKey, liveSessionIds } from './send.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, moveInOrder } from './prefs.mjs';
 import { liveness, lastLine, screenOf } from './liveness.mjs';
 import { requestDaemon, defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
-import { pendingAsk, screenPermissionAsk, matchesAsk } from './asks.mjs';
+import { pendingAsk, screenPermissionAsk, matchesAsk, questionResults } from './asks.mjs';
+import { deskRoot, readDesk } from './desk.mjs';
+import { ChoiceReceipts } from './choice-receipts.mjs';
+import { visibleScreenOf } from './screen.mjs';
 import { readSessionStatus } from './session-status.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
+import { visits } from './visits.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..', 'app');
+const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
+// The deployed provider form needs consented acceptance before this path opens.
+const customAnswersVerified = process.env.TC_VERIFIED_CUSTOM_ANSWERS === '1';
 
 /** Changes whenever the app file does, so a phone can tell it is out of date. */
 function appVersion() {
@@ -146,7 +154,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/panes') {
-    const { panes, daemon } = await currentPanes();
+    const inventory = await currentPanes();const daemon=inventory.daemon;const history=visits.read(currentUser(req).id);const panes=inventory.panes.map(p=>({...p,lastUsedAt:history[p.id] || null}));
     return json(res, 200, {
       generatedAt: new Date().toISOString(),
       version: appVersion(),
@@ -155,6 +163,13 @@ const server = http.createServer(async (req, res) => {
       panes,
       groups: byProject(panes),
     });
+  }
+
+  if (url.pathname === '/api/visit' && req.method === 'POST') {
+    let raw='';for await (const chunk of req){raw+=chunk;if(raw.length>1024)return json(res,413,{error:'Request too large.'});}
+    let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'Invalid visit.'});}
+    const {panes}=await currentPanes();if(!panes.some(p=>p.id===body.pane))return json(res,409,{error:'That conversation is no longer available.'});
+    try{return json(res,200,{ok:true,lastUsedAt:visits.record(currentUser(req).id,body.pane)});}catch{return json(res,503,{error:'Recent conversation history could not be saved.'});}
   }
 
   if (url.pathname === '/api/prefs') {
@@ -177,13 +192,19 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, readPrefs());
   }
 
+  if (url.pathname === '/api/desk' && req.method === 'GET') {
+    const { panes } = await currentPanes();
+    const pane = panes.find(p => p.id === url.searchParams.get('pane'));
+    return json(res, pane ? 200 : 404, pane ? readDesk(pane) : {error:'That terminal has been closed.'});
+  }
+
   if (url.pathname === '/api/feed') {
     const id = url.searchParams.get('pane');
     const limit = Math.min(Number(url.searchParams.get('limit') || 60), 200);
     const { panes } = await currentPanes();
     const pane = panes.find((p) => p.id === id);
     if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
-    const screen = await screenOf(pane.id);
+    const screen = visibleScreenOf(pane.id) ?? await screenOf(pane.id);
     const transcriptAsk = pendingAsk(pane, { screen });
     const ask = transcriptAsk || screenPermissionAsk(pane, screen);
     return json(res, 200, {
@@ -191,7 +212,10 @@ const server = http.createServer(async (req, res) => {
       version: appVersion(),
       live: pane.live,
       producing: pane.producing,
-      ask: ask ? { ...ask, screen } : null,
+      ask: ask ? { ...ask, screen, customAnswerSupported: customAnswersVerified && pane.provider==='claude' && !ask.multiSelect && ask.stage!=='review' } : null,
+      desk: Boolean(deskRoot(pane)),
+      answerReceipt: ask ? choiceReceipts.get(pane.id, ask.id) : null,
+      questionResults: questionResults(pane),
       ...readFeed(pane, { limit }),
     });
   }
@@ -211,19 +235,34 @@ const server = http.createServer(async (req, res) => {
         return json(res, result.error ? 400 : 200, result);
       }
 
-      if (payload.choice) {
+      if (payload.choice || typeof payload.answer === 'string') {
+        if(typeof payload.answer==='string' && !customAnswersVerified)return json(res,409,{error:'Custom answers are disabled until this terminal form has been verified. Use its choices or the terminal.',notSent:true});
+        const existing = choiceReceipts.get(pane.id, payload.askId);
+        const answer = payload.choice || payload.answer;
+        if (existing && existing.state !== 'not-sent') {
+          const result = await choiceReceipts.send(pane.id, payload.askId, answer, () => {throw new Error('Unreachable');});
+          return json(res, result.error ? 409 : 200, result);
+        }
         // Re-read immediately before injecting a key. A phone can keep an old
         // prompt visible after the terminal has moved on or asked a new one.
         const fresh = (await currentPanes()).panes.find((candidate) => candidate.id === payload.pane);
-        const freshScreen = fresh ? await screenOf(fresh.id) : '';
+        const visible = fresh ? visibleScreenOf(fresh.id) : null;
+        const freshScreen = fresh ? visible ?? await screenOf(fresh.id) : '';
         const freshAsk = fresh && (pendingAsk(fresh, { screen: freshScreen }) || screenPermissionAsk(fresh, freshScreen));
-        if (!fresh || !matchesAsk(freshAsk, payload.askId, payload.choice)) {
+        if (!fresh || !freshAsk || freshAsk.id !== payload.askId || (payload.choice && !matchesAsk(freshAsk, payload.askId, payload.choice)) || (typeof payload.answer==='string' && (freshAsk.kind!=='question' || freshAsk.stage==='review'))) {
           return json(res, 409, { error: 'That question or permission request is no longer active. Refresh and check the terminal again.' });
         }
         const adapter = adapterFor(fresh);
-        const result = await answerPrompt(fresh, payload.choice, adapter?.approval, freshAsk.kind);
+        if (freshAsk.kind === 'question' && (visible===null || freshAsk.multiSelect || !String(freshScreen).replace(/\s+/g,' ').includes(freshAsk.title.replace(/\s+/g,' ')))) return json(res,409,{error:'This question needs a fresh visible single-answer field in TermFleet. Check the terminal before answering.',notSent:true});
+        const result = await choiceReceipts.send(fresh.id, freshAsk.id, answer, () => typeof payload.answer==='string'
+          ? sendCustomAnswer(fresh, freshAsk, payload.answer, {screen:(options) => visibleScreenOf(fresh.id,options) || ''})
+          : answerPrompt(fresh, payload.choice, adapter?.approval, freshAsk.stage==='review'?'question-submit':freshAsk.kind));
         return json(res, result.error ? 400 : 200, result);
       }
+
+      const screen = await screenOf(pane.id);
+      const active = pendingAsk(pane, {screen}) || screenPermissionAsk(pane,screen);
+      if (active) return json(res,409,{error:'A question is open. Use its choices or Write my answer so your reply reaches the right field.'});
 
       const result = await sendToPane(pane, payload.text, { force: Boolean(payload.force) });
       return json(res, result.error && !result.busy ? 400 : 200, result);
