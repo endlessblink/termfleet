@@ -10592,16 +10592,17 @@ Report and concrete proposed acceptance suite: `/home/endlessblink/Documents/Cod
 
 ## 2026-10-05 — Reading each terminal at a glance (TC-205)
 
-**Status: PREPARED / VERIFYING — source work prepared; dock/native acceptance pending.**
+**Status: PREPARED / VERIFYING — source integrated, uncommitted; dock/native acceptance pending.**
 
 - [x] Inspect all five actual owner screenshots and bind the incorrect Idle card to its exact pane/conversation without interrupting work.
 - [x] Recognize rotating auto-mode activity chrome with fresh, live-bottom pane/run/session provenance; retain newer completion, unknown and v2 authority.
 - [x] Share readable Goal / Task / Now across both map terminal header branches and split panes; display grounded inference with source time and no authorization.
 - [x] Add stable 1–5 word terminal topics; collapse Services/Scope by default with persisted reveal; fix narrow overlap/overflow.
 - [x] Verify isolated renders, HE/EN, light tokens, independent windows, pane identity, resizing and keyboard expansion.
+- [x] Restore the three TC-203 hunks dropped during candidate integration; audit the whole scoped diff and verify Agents navigation/persistence and immersive-mode handling.
 - [ ] After explicit approval, promote an immutable release and verify the real dock UI while preserving daemon/PTYs and conversation IDs.
 
-Evidence: focused79/79; new screenshot logic29/29; full relevant30-file suite567/567; rendered8/8; frontend build, map-source and typography checks pass. Older integration43 pass/6 unchanged baseline failures/18 pre-existing skips (unchanged baseline40/9/18); no failures hidden. Doctor/build-age and installed frontend checksum checks remain red because the candidate is not activated. Safe screenshots and hashes: [TC-205 report](docs/pane-context-tc205.md), `docs/verification/tc205-screenshot-hashes.json`; dark map SHA `7495c70219f922436548c086ba39e4319ada6cdb0d551e65b147aa7c1be3cf23`. TF-032/044/058/080/081 stay verifying. No install, restart, input injection, session close, authority switch, paid inference, staging, commit or push by this task.
+Evidence: focused79/79; new screenshot logic29/29; combined relevant32-file suite569/569; rendered8/8; combined frontend build, canonical map-source and typography checks pass. Older integration43 pass/6 unchanged baseline failures/18 pre-existing skips (unchanged baseline40/9/18); no failures hidden. Fresh doctor passes; installed frontend checksum still differs from the current build and TC-205 is not activated. Safe screenshots and hashes: [TC-205 report](docs/pane-context-tc205.md), `docs/verification/tc205-screenshot-hashes.json`; dark map SHA `67989f7089e0feafdf214021f39bd5f653ec57bcd7283c24f3dfe465d6726b85`. TF-032/044/058/080/081 stay verifying. No install, restart, input injection, session close, authority switch, paid inference, staging, commit or push by this task.
 
 ### 2026-10-05 (night) — TC-203 built, TC-086/122/123 partly done
 
@@ -10610,3 +10611,7 @@ Goal (Noam): "do whatever you can safely from the master plan, including the age
 - **TC-203 (VERIFYING):** Agents tab (robot button in the left rail) shows the same page as the phone and signs itself in on this machine only (`/embed`: loopback, not proxied, iframe-only). Release b9d2f78 installed and `verify:installed-release` OK. Proven in headless Chromium: an iframe from another origin shows the real fleet (8 rows, no login form). NOT yet seen inside the real WebKit window — needs one relaunch of the TermFleet window.
 - **TC-122 (DONE) / TC-123 (partly):** login limiter ignores spoofable forwarding headers unless the peer is this machine, attempts map is capped; cross-site writes refused (Origin must match Host); a bad Host header or thrown error can no longer crash the bridge. Tests: `termcontrol/test/bridge-guard.test.mjs`, `embed-signin.test.mjs` (6 new). Still open under TC-123: an explicit Host allowlist (needs the phone's real hostnames); TC-086 idle-session timeout and destructive-key confirmation; TC-121.
 - Known flake, unrelated: `run.mjs` "terminal keys reach the terminal" talks to the live daemon and fails when the machine is under heavy load; "message text is escaped" is the older literal-source check.
+
+### 2026-10-05 (night) — TC-206: Voice dictation, Hebrew + English (VERIFYING)
+
+Mic button in the TermControl message box (tap to talk, tap to stop, words land in the box for review). `POST /api/transcribe` → local faster-whisper worker (`termcontrol/bridge/transcribe/`): language auto-detected (small multilingual model), Hebrew → `ivrit-ai/faster-whisper-v2-d4`, English → `Systran/faster-whisper-large-v3`, local cache only, nothing leaves the machine; worker stops after 10 idle minutes. PyAV 19 broke faster-whisper's own decoder, so the worker decodes itself. Proven: JFK clip transcribed word-perfect through the live bridge (English, auto-detected); a Hebrew recording auto-detected and transcribed; 4 new tests (stub worker over real HTTP incl. auth/size limits, and a browser test of the mic button). Limits: CPU only by default (≈8–20 s per 11 s clip on a loaded machine) — the GPU is mostly full and CUDA's cublas/cudnn are missing from the whisper venv (`TC_STT_DEVICE=cuda` once fixed; copies exist in other venvs); `ivrit-ai/whisper-large-v3-ct2` cache is incomplete (no model.bin); microphone access needs https or localhost, and is unverified inside the TermFleet Agents tab (WebKit permission).
