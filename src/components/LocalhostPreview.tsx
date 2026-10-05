@@ -245,6 +245,9 @@ export function LocalhostPreview({
         <button style={styles.quickButton} type="button" onClick={() => setPreviewUrl("http://127.0.0.1:5173")}>
           :5173
         </button>
+        <button style={styles.quickButton} type="button" onClick={() => setPreviewUrl("http://127.0.0.1:7810")}>
+          TermControl
+        </button>
         <span style={styles.statusText} aria-live="polite">
           {reachability === "checking" ? "checking" : reachability === "live" ? "live" : "offline"}
         </span>
