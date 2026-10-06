@@ -11,7 +11,7 @@ export function AgentsView() {
         title="Agents"
         src={AGENTS_URL}
         style={{ width: "100%", height: "100%", border: 0, display: "block", background: "transparent" }}
-        allow="clipboard-read; clipboard-write"
+        allow="clipboard-read; clipboard-write; microphone"
       />
     </section>
   );

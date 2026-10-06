@@ -146,7 +146,16 @@ export function mintSession(user) {
   return { value: `${body}.${sig}`, maxAge: DAYS * 86400 };
 }
 
-export function readSession(cookie) {
+// Optional idle sign-out (off unless TC_SESSION_IDLE_MS is set): a session that has
+// not been used for that long must sign in again. Kept in memory, so a bridge
+// restart starts every session's idle clock afresh.
+const lastSeen = new Map();
+function idleLimitMs() {
+  const n = Number(process.env.TC_SESSION_IDLE_MS);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+export function readSession(cookie, now = Date.now()) {
   if (!cookie) return null;
   const parts = String(cookie).split('.');
   if (parts.length !== 3) return null;
@@ -157,7 +166,15 @@ export function readSession(cookie) {
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   if (Number(expires) < Date.now()) return null;
   const user = load().users.find((u) => u.id === id);
-  return user ? { id: user.id, email: user.email } : null;
+  if (!user) return null;
+  const limit = idleLimitMs();
+  if (limit) {
+    const seen = lastSeen.get(sig);
+    if (seen !== undefined && now - seen > limit) { lastSeen.delete(sig); return null; }
+    if (lastSeen.size > 2000) for (const [k, t] of lastSeen) if (now - t > limit) lastSeen.delete(k);
+    lastSeen.set(sig, now);
+  }
+  return { id: user.id, email: user.email };
 }
 
 /** Simple in-memory throttle: slows guessing without a database. */
