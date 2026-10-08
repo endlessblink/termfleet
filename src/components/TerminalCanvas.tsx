@@ -1974,7 +1974,10 @@ export function TerminalCanvas({
   const copySelection = () => {
     const buffer = bufferRef.current;
     const range = selectionRef.current;
-    if (!buffer || !range) {
+    // TF-090: a click leaves a zero-width selection behind. Copying it wrote one
+    // character over text an agent had just copied itself (OSC 52), so the
+    // copy shortcut leaves the clipboard alone unless something is selected.
+    if (!buffer || !range || !hasSelectionExtent(range)) {
       if (DEBUG_TERM_HUD) bumpHud({ clip: "copy:no-sel" });
       return;
     }
