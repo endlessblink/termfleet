@@ -43,8 +43,10 @@ const RANK = { waiting: 0, working: 1, idle: 2 };
 export function byProject(panes) {
   const groups = new Map();
   for (const pane of panes) {
-    const key = pane.mapGroupId || pane.project || 'Other';
+    const key = pane.mapGroupId ? `map:${pane.mapGroupId}` : `pane:${pane.id}`;
     if (!groups.has(key)) groups.set(key, {
+      id: key,
+      mapGroupId: pane.mapGroupId || null,
       project: pane.mapGroupName || pane.project || 'Other',
       emoji: pane.emoji || null,
       panes: [],

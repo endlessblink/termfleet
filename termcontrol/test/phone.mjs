@@ -242,7 +242,7 @@ async function main() {
       const msg = await p.textContent('.sendstate');
       const kept = await p.inputValue('.composer textarea');
       await ctx.setOffline(false);
-      ok(/could not reach|did not answer/i.test(msg), `unclear message: ${msg}`);
+      ok(/could not reach|did not answer|no answer from/i.test(msg), `unclear message: ${msg}`);
       ok(kept.length > 0, 'your text was thrown away');
       return 'text preserved';
     });

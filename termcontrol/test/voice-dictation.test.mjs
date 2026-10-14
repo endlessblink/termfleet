@@ -81,7 +81,7 @@ test('the microphone button records, sends the clip, and puts the words in the m
       };
     });
     const pane = { id: 'p1', project: 'demo', provider: 'claude', cwd: '/x', task: 'Demo', turn: 'idle', updatedAt: Date.now() };
-    await page.route('http://termcontrol.design/**', async (route) => {
+    await page.route('https://termcontrol.design/**', async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
       if (url.pathname === '/api/panes') return route.fulfill({ json: { panes: [pane], groups: [{ project: 'demo', panes: [pane] }], daemon: true, view: 'projects' } });
@@ -89,9 +89,9 @@ test('the microphone button records, sends the clip, and puts the words in the m
       if (url.pathname === '/api/transcribe') { sentType = route.request().headers()['content-type']; return route.fulfill({ json: { text: 'שלום, add an agent', language: 'he' } }); }
       return route.fulfill({ json: {} });
     });
-    await page.goto('http://termcontrol.design/');
+    await page.goto('https://termcontrol.design/');
     await page.locator('.pane').first().click();
-    await page.waitForSelector('.composer .mic');
+    await page.waitForSelector('.composer .mic',{state:'attached'});await page.evaluate(()=>{const m=document.querySelector('.composer-menu');if(m)m.open=true;});
     await page.locator('.composer .mic').click();           // start
     await page.waitForSelector('.composer .mic.rec', { timeout: 5000 });  // shows that it is listening
     await page.locator('.composer .mic').click({ force: true });  // stop -> send (it is pulsing, so not "stable")

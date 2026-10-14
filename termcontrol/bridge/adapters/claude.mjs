@@ -41,9 +41,15 @@ export function readFeed(pane, { limit = 60, bytes = 512 * 1024 } = {}) {
   for (let i = lines.length - 1; i >= 0 && collected.length < limit; i--) {
     let o;
     try { o = JSON.parse(lines[i]); } catch { continue; }
+    const at = o.timestamp || null;
+    const queued = o.type === 'attachment' && o.attachment?.type === 'queued_command' ? o.attachment : null;
+    if (queued && (queued.origin?.kind === 'human' || queued.humanTurn === true) && typeof queued.prompt === 'string') {
+      const text = clean(queued.prompt.trim());
+      if (text && !isNoise(queued.prompt)) collected.push({ kind: 'user', at: queued.timestamp || at, text });
+      continue;
+    }
     const msg = o.message;
     if (!msg) continue;
-    const at = o.timestamp || null;
     const blocks = Array.isArray(msg.content) ? msg.content : [];
 
     if (msg.role === 'user') {

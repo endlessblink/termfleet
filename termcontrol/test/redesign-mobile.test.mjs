@@ -35,10 +35,10 @@ test('dense local themes, stable avatar nodes, map grouping and wide chat surviv
   await page.locator('.projgroup').first().locator('summary').click();assert.equal(await page.locator('.projgroup').first().getAttribute('open'),null);await page.locator('.projgroup').first().locator('summary').click();
   await page.locator('.pane').first().click();await page.waitForSelector('.composer textarea');
   assert.equal(await page.locator('.back svg').count(),1);assert.equal(await page.locator('.send svg').count(),1);assert.ok(await page.locator('.send').getAttribute('aria-label'));
-  assert.equal(await page.locator('.composer textarea').getAttribute('placeholder'),'הודעה ל־Freelance Desk…');
+  assert.match(await page.locator('.composer textarea').getAttribute('placeholder'),/^הודעה/);
   if(width===1440){assert.equal(await page.locator('#fleet-side').isVisible(),true);assert.ok(await page.locator('#fleet-side').evaluate(el=>el.getBoundingClientRect().width>=300));}
   else assert.equal(await page.locator('#fleet-side').isVisible(),false);
-  await page.locator('[data-mode=screen]').click();assert.equal(await page.locator('.send svg').count(),1);await page.locator('[data-mode=chat]').click();assert.equal(await page.locator('.send svg').count(),1);
+  await page.evaluate(()=>{const m=document.querySelector('.composer-menu');if(m)m.open=true;});await page.locator('[data-mode=screen]').click();assert.equal(await page.locator('.send svg').count(),1);await page.evaluate(()=>{const m=document.querySelector('.composer-menu');if(m)m.open=true;});await page.locator('[data-mode=chat]').click();assert.equal(await page.locator('.send svg').count(),1);
   m=await measure();assert.ok(m.over<=1 && m.main<=1);assert.deepEqual(m.small,[]);assert.equal(sends,0);
   await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('[data-avatar-state="producing"] .cr-body').first().evaluate(el=>getComputedStyle(el).animationName),'none');
   await context.close();

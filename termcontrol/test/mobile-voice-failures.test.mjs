@@ -1,0 +1,22 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import {chromium} from 'playwright';
+const html=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
+async function pageFor(browser,{kind='ok',url='https://termcontrol.test/'}={}){
+ const page=await browser.newPage();await page.addInitScript(({kind})=>{
+  window.voiceProbe={gets:0,stops:0,uploads:0};
+  Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:kind==='insecure'?undefined:{getUserMedia:async()=>{window.voiceProbe.gets++;if(kind==='denied')throw new DOMException('Denied','NotAllowedError');if(kind==='no-device')throw new DOMException('None','NotFoundError');if(kind==='pending')await new Promise(r=>window.resolveMic=r);return {getTracks:()=>[{stop(){window.voiceProbe.stops++;}}]};}}});
+  window.MediaRecorder=class{static isTypeSupported(t){return t==='audio/mp4';}constructor(stream,options){if(kind==='constructor')throw new DOMException('Codec','NotSupportedError');this.state='inactive';this.mimeType='audio/mp4';window.fakeRecorder=this;window.selectedMime=options?.mimeType;}start(){if(kind==='start')throw new DOMException('No capture','NotSupportedError');this.state='recording';}stop(){this.state='inactive';this.ondataavailable?.({data:new Blob([new Uint8Array(16)],{type:'audio/mp4'})});this.onstop?.();}};
+ },{kind});
+ const pane={id:'one',project:'demo',mapGroupId:'demo',provider:'claude',task:'Demo',turn:'idle',updatedAt:Date.now()};
+ await page.route('**/*',async route=>{const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:html});if(u.pathname==='/api/panes')return route.fulfill({json:{panes:[pane],groups:[{id:'map:demo',project:'demo',panes:[pane]}],daemon:true}});if(u.pathname==='/api/feed')return route.fulfill({json:{pane,events:[],reachedStart:true}});if(u.pathname==='/api/transcribe'){await page.evaluate(()=>window.voiceProbe.uploads++);if(kind==='busy'){await new Promise(r=>setTimeout(r,300));}return route.fulfill({json:{text:'test words',language:'en'}});}return route.fulfill({json:{}});});
+ await page.goto(url);await page.locator('.pane').first().click();await page.waitForSelector('.composer .mic',{state:'attached'});await page.evaluate(()=>{const m=document.querySelector('.composer-menu');if(m)m.open=true;});return page;
+}
+test('mobile capture failures, codec choice and cancellation are handled without leaking a microphone',async()=>{
+ const browser=await chromium.launch({headless:true});try{
+ for(const kind of ['constructor','start']){const p=await pageFor(browser,{kind});await p.locator('.mic').click();await p.waitForTimeout(40);assert.equal(await p.evaluate(()=>voiceProbe.stops),1,kind+' must release capture');assert.match(await p.locator('.sendstate').innerText(),/record|browser/i);await p.close();}
+ const insecure=await pageFor(browser,{kind:'insecure',url:'http://termcontrol.test/'});await insecure.locator('.mic').click();assert.match(await insecure.locator('.sendstate').innerText(),/HTTPS/i);await insecure.close();
+ const missing=await pageFor(browser,{kind:'no-device'});await missing.locator('.mic').click();assert.match(await missing.locator('.sendstate').innerText(),/no microphone|not found/i);await missing.close();
+ const p=await pageFor(browser);await p.locator('.mic').click();assert.equal(await p.evaluate(()=>selectedMime),'audio/mp4');await p.locator('.back').click();await p.waitForTimeout(30);assert.equal(await p.evaluate(()=>voiceProbe.stops),1);assert.equal(await p.evaluate(()=>voiceProbe.uploads),0,'navigation discards capture');await p.close();
+ const pending=await pageFor(browser,{kind:'pending'});await pending.locator('.mic').click();await pending.locator('.mic').click({force:true});assert.equal(await pending.evaluate(()=>voiceProbe.gets),1,'permission pending must be single flight');await pending.locator('.back').click();await pending.evaluate(()=>resolveMic());await pending.waitForTimeout(30);assert.equal(await pending.evaluate(()=>voiceProbe.stops),1);await pending.close();
+ const busy=await pageFor(browser,{kind:'busy'});await busy.locator('.mic').click();await busy.locator('.mic').click({force:true});await busy.locator('.mic').click({force:true});assert.equal(await busy.evaluate(()=>voiceProbe.gets),1,'transcribing must not open another capture');await busy.waitForFunction(()=>document.querySelector('.composer textarea').value==='test words');await busy.close();
+ }finally{await browser.close();}
+});

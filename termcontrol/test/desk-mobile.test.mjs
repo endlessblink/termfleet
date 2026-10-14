@@ -42,7 +42,8 @@ test('mobile fixture: native day, readable conversation, copy and safe choices',
    assert.equal(await page.locator('.msg.user .text-line').nth(1).getAttribute('dir'),'ltr');
    assert.equal(await page.locator('[data-choice="1"]').evaluate(el=>getComputedStyle(el).direction),'rtl');
    if(width===390){await page.locator('.asktoggle').click();await page.screenshot({path:path.join(out,'after-chat-reading-390.png'),fullPage:true});await page.locator('.asktoggle').click();}
-   const copy=page.locator('.msg.user .copy-message');
+   await page.locator('.msg.user .message-menu > summary').first().click();
+   const copy=page.locator('.msg.user .copy-message').first();
    await copy.click();
    assert.equal(await page.evaluate(()=>window.__copied),userText,'copy contains original Markdown, no UI labels');
    await copy.click(); assert.equal(await page.evaluate(()=>window.__copied),userText);
@@ -59,7 +60,7 @@ test('mobile fixture: native day, readable conversation, copy and safe choices',
    assert.equal(await copy.getAttribute('aria-label'),'Copy message');
    const target=await copy.boundingBox();assert.ok(target.height>=44 && target.width>=44);
    await page.locator('.copy-fallback button').click();
-   await page.getByRole('button',{name:'Today',exact:true}).click();
+   await page.evaluate(()=>{const m=document.querySelector('.composer-menu');if(m)m.open=true;});await page.getByRole('button',{name:'Today',exact:true}).click();
    await page.waitForSelector('.desk-agenda');
    assert.match(await page.locator('.desk-agenda').innerText(),/09:30/);
    await page.locator('.desk-bucket').filter({has:page.getByText('Overdue',{exact:false})}).first().locator('summary').click();
@@ -72,7 +73,7 @@ test('mobile fixture: native day, readable conversation, copy and safe choices',
     deskResponse={available:false,error:'The timeline could not be read.'};await page.locator('[data-desk-refresh]').click();await page.getByText('The timeline could not be read.',{exact:true}).waitFor();
     deskResponse={...desk,fixed_blocks:[],calendar_events:[],today:[],overdue:[]};await page.locator('[data-desk-refresh]').click();await page.getByText('No scheduled blocks are recorded for this date.',{exact:true}).waitFor();assert.ok(await page.getByText('No items in this snapshot.',{exact:true}).count()>0);
    }
-   await page.getByRole('button',{name:'Chat',exact:true}).click();
+   await page.evaluate(()=>{const m=document.querySelector('.composer-menu');if(m)m.open=true;});await page.getByRole('button',{name:'Chat',exact:true}).click();
    await page.waitForSelector('main > .askbox');
    assert.equal(await page.locator('main > .askbox').count(),1,'question belongs to the conversation');
    failure=true;
@@ -130,13 +131,13 @@ test('custom answer editor preserves bilingual drafts, local back and real ackno
   assert.equal(await editor.inputValue(),text);assert.equal(await page.locator('.approvalmsg').count(),0);
   fail=false;await send.evaluate(el=>{el.click();el.click();});await page.waitForSelector('.approvalmsg');
   assert.equal(sends,2,'one refused attempt and one request-bound retry');assert.equal(received.answer,text);assert.equal(received.askId,q.id);
-  assert.match(await page.locator('.approvalmsg .delivery-note').innerText(),/awaiting agent confirmation/);
+  assert.match(await page.locator('.approvalmsg .delivery-details').textContent(),/awaiting agent confirmation/);
   await page.reload();await page.waitForSelector('.askbox');assert.equal(await page.locator('[data-choice]').count(),0,'reconnect cannot send the same answer again');
   results=[{sourceId:q.sourceId,declined:false,text:JSON.stringify({answers:{[q.title]:text}})}];question=null;
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await page.waitForFunction(()=>document.querySelector('.approvalmsg .delivery-note')?.textContent.includes('Confirmed'));
+  await page.waitForFunction(()=>document.querySelector('.approvalmsg .delivery-details')?.textContent.includes('Confirmed'));
   assert.equal(sends,2,'read-back never repeats the answer');
-  await page.locator('.approvalmsg .copy-message').click();
+  await page.locator('.approvalmsg .message-menu > summary').click();await page.locator('.approvalmsg .copy-message').click();
   const approvalFallback=page.locator('.approvalmsg .copy-fallback textarea');
   if(await approvalFallback.count()){assert.equal(await approvalFallback.inputValue(),text,'copy excludes answer UI labels');await page.locator('.approvalmsg .copy-fallback button').click();}
   const composer=page.locator('.composer textarea');await composer.fill('שלום לעולם\nEnglish editing');assert.equal(await composer.evaluate(el=>getComputedStyle(el).direction),'rtl');

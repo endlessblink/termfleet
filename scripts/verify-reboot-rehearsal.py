@@ -25,8 +25,10 @@ ROOT = Path(__file__).resolve().parent.parent
 CARGO_TARGET_DIR = Path(os.environ.get("CARGO_TARGET_DIR", "/tmp/tw-restart-restore-target"))
 BIN = CARGO_TARGET_DIR / "debug" / "terminal-workspace"
 DAEMON_ARG = "--terminal-workspace-daemon"
+# An empty XDG_DATA_HOME (set but blank in some agent shells) means "unset";
+# treating it as "" made the path relative and the rehearsal crash.
 REAL_DATA = Path(
-    os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")
+    os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share"
 ) / "terminal-workspace"
 
 

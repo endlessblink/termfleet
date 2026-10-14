@@ -506,18 +506,22 @@ async function main() {
     ok(/nothing to send/i.test(j.error || ''), 'should refuse blank text');
   });
 
-  await check('refuses an oversized message', async () => {
-    const p = panes.panes[0];
-    const r = await req('/api/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pane: p.id, text: 'x'.repeat(9000) }) });
+  await check('never refuses a long pasted message for its length', async () => {
+    // Aimed at a pane that does not exist so nothing is typed anywhere: the
+    // request must get past the size checks and fail only on the pane.
+    const r = await req('/api/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pane: 'no-such-pane', text: 'x'.repeat(200000) }) });
     const j = await r.json();
-    ok(/too long/i.test(j.error || ''), 'should refuse very long text');
+    ok(!/too long|too large/i.test(j.error || ''), `a 200k-character paste was refused: ${j.error}`);
+    ok(/closed/i.test(j.error || ''), `expected the unknown-pane answer, got: ${j.error}`);
   });
 
-  await check('asks before interrupting a busy agent', async () => {
+  await check('asks before typing into a busy plain shell', async () => {
+    // Agents queue a mid-turn message and get it at once (owner, 2026-10-11), so only a
+    // plain shell still asks. Never aim this at an agent: it would really be sent.
     // Re-read: a terminal can finish between listing and sending.
     const fresh = await (await req('/api/panes')).json();
-    const busy = fresh.panes.find((p) => p.producing || p.turn === 'working');
-    if (!busy) return 'nothing busy right now — skipped';
+    const busy = fresh.panes.find((p) => (p.producing || p.turn === 'working') && !['claude', 'codex', 'opencode'].includes(p.provider));
+    if (!busy) return 'no busy plain shell right now — skipped';
     const r = await req('/api/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pane: busy.id, text: 'hello' }) });
     const j = await r.json();
     ok(j.busy === true, 'a busy agent must prompt first');
@@ -831,7 +835,8 @@ async function main() {
 
   await check('message text is escaped, not injected', () => {
     const html = fs.readFileSync(path.join(here, '..', 'app', 'index.html'), 'utf8');
-    ok(html.includes('esc(e.text)'), 'message bodies must be escaped');
+    // Message bodies go through richText → inlineRich, which escapes before formatting.
+    ok(/const inlineRich = \(s\) => esc\(s\)/.test(html), 'message bodies must be escaped');
     ok(html.includes('esc(p.project)'), 'project names must be escaped');
   });
 

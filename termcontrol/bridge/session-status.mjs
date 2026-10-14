@@ -125,6 +125,30 @@ export function readSessionStatus(pane,options={}) {
    task:view.task?.text ?? null,workingSince:view.lifecycle==='working' ? legacy.workingSince : null} : {})};
 }
 
+/**
+ * Claude keeps its own idle / busy / waiting status per running process. When it
+ * is present it beats hook records and transcript guesses: a hook can be missed,
+ * but this is the agent describing itself (2026-10-12: one live pane was waiting
+ * on the operator while the phone said "working").
+ */
+export function applyVendorStatus(pane) {
+  const status = pane?.vendorStatus?.status;
+  if (!status) return pane;
+  const turn = status === 'busy' ? 'working' : status === 'waiting' ? 'waiting' : pane.turn === 'working' || pane.turn === 'waiting' ? 'idle' : pane.turn;
+  const live = pane.sessionAuthority && pane.sessionViewV2
+    ? { sessionViewV2: { ...pane.sessionViewV2, lifecycle: status === 'busy' ? 'working' : status === 'waiting' ? 'waiting' : pane.sessionViewV2.lifecycle === 'working' || pane.sessionViewV2.lifecycle === 'waiting' ? 'finished' : pane.sessionViewV2.lifecycle } }
+    : {};
+  return { ...pane, ...live, turn, turnSource: 'agent' };
+}
+
+export const STALL_AFTER_MS = 20 * 60 * 1000;
+/** How long a "working" agent has shown no sign of life, or 0. Waiting on the operator is never a stall. */
+export function stalledFor(pane, life, lastActiveAt, now = Date.now()) {
+  if (pane.turn !== 'working' || life.producing || !lastActiveAt) return 0;
+  const quiet = now - lastActiveAt;
+  return quiet >= STALL_AFTER_MS ? quiet : 0;
+}
+
 export function subscribeSessionEventHeads(listener,dir=statusDir()) {
  ensureHeadWatcher(dir);subscribers.add(listener);return ()=>subscribers.delete(listener);
 }

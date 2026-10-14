@@ -153,7 +153,25 @@ if (daemonProcesses.length === 1 && socketListeners.length === 1) {
   );
 }
 
+// The keeper owns the terminals and only picks up new code when it restarts.
+// Say plainly when its code is older than the installed release, so a fix that
+// "didn't take" is recognised as waiting for a restart, not as broken.
+function releaseBuiltAt(binary) {
+  try {
+    const built = readFileSync(path.join(path.dirname(binary), "manifest.env"), "utf8").match(/^TERMFLEET_BUILT_AT=(.+)$/m)?.[1];
+    const at = Date.parse(built || "");
+    return Number.isFinite(at) ? at : null;
+  } catch { return null; }
+}
 if (daemonExecutable && existsSync(installedBinary)) {
+  const keeperBuilt = releaseBuiltAt(daemonExecutable), dockBuilt = releaseBuiltAt(realpathSync(installedBinary));
+  if (keeperBuilt && dockBuilt && dockBuilt - keeperBuilt > 3_600_000) {
+    report(
+      "warn",
+      "Keeper code age",
+      `the terminal keeper runs code built ${new Date(keeperBuilt).toISOString().slice(0, 16)}Z, the installed release was built ${new Date(dockBuilt).toISOString().slice(0, 16)}Z — keeper-side fixes made in between (terminal text, restore, input) start only after a keeper restart or a reboot`,
+    );
+  }
   if (daemonExecutable === realpathSync(installedBinary)) {
     report("ok", "Runtime release alignment", `canonical daemon matches installed release ${daemonExecutable}`);
   } else if (

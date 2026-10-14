@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-import { listPanes, reconcileLivePanes, retiredTerminalIds } from '../bridge/inventory.mjs';
+import { listPanes, reconcileLivePanes, retiredTerminalIds, withLayoutTerminals } from '../bridge/inventory.mjs';
 import { liveness } from '../bridge/liveness.mjs';
 import { PATHS } from '../bridge/paths.mjs';
 
@@ -49,21 +49,21 @@ test('the phone lists each live, still-owned terminal exactly once (no handed-ov
   assert.equal(life.reachable, true, 'the terminal daemon must be reachable for parity proof');
   // A handed-over or closed card keeps its daemon session on purpose, and an
   // exited shell lingers too; neither is a terminal the operator still has.
-  const retired = retiredTerminalIds(JSON.parse(fs.readFileSync(PATHS.workspace, 'utf8')));
-  const ws0 = JSON.parse(fs.readFileSync(PATHS.workspace, 'utf8'));
+  const retired = retiredTerminalIds(withLayoutTerminals(JSON.parse(fs.readFileSync(PATHS.workspace, 'utf8'))));
+  const ws0 = withLayoutTerminals(JSON.parse(fs.readFileSync(PATHS.workspace, 'utf8')));
   const owned = new Set(ws0.tabs.flatMap((tab) => tab.terminals.map((term) => term.id)));
   const live = [...life.byId].filter(([id, one]) => !one.exited && !retired.has(id) && owned.has(id)).map(([id]) => id);
-  const phone = reconcileLivePanes(listPanes(), life.byId).map((pane) => pane.id);
+  const phone = reconcileLivePanes(listPanes(), life.byId, undefined, new Map()).map((pane) => pane.id);
 
   assert.equal(phone.length, new Set(phone).size, 'the phone contains duplicate terminal identities');
   assert.deepEqual([...phone].sort(), [...live].sort(), 'the phone and desktop daemon have different live terminal identities');
 
-  const workspace = JSON.parse(fs.readFileSync(PATHS.workspace, 'utf8'));
+  const workspace = withLayoutTerminals(JSON.parse(fs.readFileSync(PATHS.workspace, 'utf8')));
   assert.deepEqual(phone, expectedLiveSidebarOrder(workspace, live), 'the phone order differs from the TermFleet project sidebar');
 
   const refreshed = await liveness();
   assert.equal(refreshed.reachable, true, 'the terminal daemon must remain reachable during order verification');
-  const afterRefresh = reconcileLivePanes(listPanes(), refreshed.byId).map((pane) => pane.id);
+  const afterRefresh = reconcileLivePanes(listPanes(), refreshed.byId, undefined, new Map()).map((pane) => pane.id);
   assert.deepEqual(afterRefresh, phone, 'a liveness refresh moved terminals without the user moving them');
 });
 

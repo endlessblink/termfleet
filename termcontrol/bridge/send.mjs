@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { requestDaemon, defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
-import { visibleScreenOf } from './screen.mjs';
+import { visibleScreenOf, observedScreenOf } from './screen.mjs';
 
 /**
  * Every keystroke this bridge puts into a live terminal is recorded. Without
@@ -41,10 +41,15 @@ export async function liveSessionIds() {
  */
 const inFlight = new Set();
 
+// A pasted document is a normal thing to send, so the only cap is a guard
+// against a runaway request, far above any real paste and well under the
+// terminal service's own 16 MB request limit.
+export const MAX_MESSAGE_CHARS = 2_000_000;
+
 export async function sendToPane(pane, text, { force = false } = {}) {
   const body = String(text ?? '');
   if (!body.trim()) return { error: 'Nothing to send.' };
-  if (body.length > 8000) return { error: 'That message is too long.' };
+  if (body.length > MAX_MESSAGE_CHARS) return { error: 'That message is over 2 million characters. Send it as a file instead.' };
 
   if (inFlight.has(pane.id)) return { error: 'Still sending your last message.' };
 
@@ -57,7 +62,11 @@ export async function sendToPane(pane, text, { force = false } = {}) {
   // visibly producing output right now. The second is the more reliable of
   // the two, and catches an agent that never updates its own status.
   const busy = pane.turn === 'working' || pane.producing === true;
-  if (busy && !force) {
+  // Agents queue a message typed mid-turn and read it next, so it is sent at once
+  // (owner, 2026-10-11: "All should be sent now ... and appended"). Only a plain
+  // shell still asks, since typing into a running command can feed that command.
+  const agentQueues = ['claude', 'codex', 'opencode'].includes(pane.provider);
+  if (busy && !force && !agentQueues) {
     return {
       error: 'busy',
       busy: true,
@@ -88,11 +97,14 @@ export async function sendToPane(pane, text, { force = false } = {}) {
 
     // Don't claim success just because the write returned. Look at what the
     // terminal actually shows and report honestly if the text never appeared.
+    const enterAt = Date.now();
     const delivered = await landedInTerminal(pane.id, body, sizeBefore);
     audit({
       pane: pane.id, project: pane.project, provider: pane.provider,
       turn: pane.turn, bytes: body.length, ok: true, delivered,
     });
+    // Runs after the reply: the phone should not wait on the desktop's next look.
+    confirmSubmitted(pane, body, enterAt).catch(() => {});
     return { ok: true, delivered, sentAt: Date.now() };
   } catch (error) {
     audit({ pane: pane.id, project: pane.project, bytes: body.length, ok: false, error: String(error.message || error) });
@@ -132,6 +144,76 @@ async function landedInTerminal(id, body, sizeBefore) {
     if (now != null && sizeBefore != null && now > sizeBefore) return true;
   }
   return false;
+}
+
+/**
+ * What the agent's input box holds on this screen, or null when the box cannot be
+ * found. Claude's box sits between the last two horizontal rules after "❯"; Codex's
+ * is the last "›" line, up to its status line.
+ */
+export function inputBoxText(screen, provider) {
+  const lines = String(screen || '').split('\n');
+  if (provider === 'claude') {
+    // A rule can carry a stray damaged character (TF-093), so "mostly ─" counts.
+    const isRule = (line) => { const t = line.trim(); return t.length >= 10 && (t.match(/─/g) || []).length >= t.length * 0.9; };
+    const rules = lines.map((line, i) => (isRule(line) ? i : -1)).filter((i) => i >= 0);
+    if (rules.length < 2) return null;
+    const [top, bottom] = rules.slice(-2);
+    if (bottom - top < 2) return null;
+    return lines.slice(top + 1, bottom).join('\n').replace(/^\s*❯\s?/, '').trim();
+  }
+  if (provider === 'codex') {
+    const start = lines.findLastIndex((line) => /^\s*›(\s|$)/.test(line));
+    if (start < 0) return null;
+    const end = lines.findIndex((line, i) => i > start && /% left|Context \d+% used|for shortcuts|esc to interrupt/.test(line));
+    return lines.slice(start, end < 0 ? undefined : end).join('\n').replace(/^\s*›\s?/, '').trim();
+  }
+  return null;
+}
+
+/**
+ * Is this message still sitting unsent in the input box? True only on positive
+ * evidence — the message's own words, or the box's pasted-text / image marker.
+ */
+export function heldInInput(screen, body, provider) {
+  const box = inputBoxText(screen, provider);
+  if (box == null) return null;
+  if (!box) return false;
+  const squash = (s) => String(s).replace(/\S*\/\S+\.(?:png|jpe?g|webp|gif)\b/gi, '').replace(/\s+/g, '').toLowerCase();
+  const words = squash(body);
+  const tail = words.slice(-24);
+  if (tail.length >= 3 && squash(box).includes(tail)) return true;
+  if (body.includes('\n') && /\[Pasted text #\d+/.test(box)) return true;
+  if (/\.(?:png|jpe?g|webp|gif)\b/i.test(body) && /\[Image #\d+\]/.test(box) && (tail.length < 3 || squash(box).includes(tail.slice(-8)))) return true;
+  return false;
+}
+
+/**
+ * A submit key can be swallowed while the agent is still taking in a pasted image
+ * or a long paste; the message then sits in the box until the next one pushes it
+ * out (owner report 2026-10-10: a photo + "Here" waited 30 minutes). Watch the next
+ * fresh look at the pane and press submit again, at most twice, only while the
+ * box still visibly holds this message.
+ */
+export async function confirmSubmitted(pane, body, enterAt, deps = {}) {
+  const { screen = (since) => observedScreenOf(pane.id, { since }), write = (data) => ask({ type: 'writeSession', id: pane.id, data }),
+    pause = (ms) => new Promise((r) => setTimeout(r, ms)), record = audit, deadlineMs = 15000 } = deps;
+  let since = enterAt + 300, resubmits = 0;
+  const started = Date.now();
+  while (Date.now() - started < deadlineMs) {
+    await pause(1000);
+    const seen = screen(since);
+    if (seen == null) continue;
+    const held = heldInInput(seen, body, pane.provider);
+    if (held === null || held === false) { if (resubmits) record({ pane: pane.id, submitRetry: resubmits, delivered: true, outcome: 'cleared' }); return { resubmits, held: false }; }
+    if (resubmits >= 2) break;
+    await write('\r');
+    resubmits++;
+    since = Date.now() + 300;
+  }
+  // A screen that never came into view after a clean submit is not worth a log line.
+  if (resubmits) record({ pane: pane.id, submitRetry: resubmits, delivered: resubmits < 2, outcome: resubmits >= 2 ? 'still-held' : 'unobserved' });
+  return { resubmits, held: resubmits >= 2 ? true : null };
 }
 
 /** How much this terminal has printed so far, or null if it cannot be read. */
@@ -184,8 +266,9 @@ export async function sendCustomAnswer(pane, question, text, {
   record = audit,
 } = {}) {
   const answer = String(text ?? '').replace(/\r/g, '');
-  if (!answer.trim() || answer.length > 8000 || /[\x00-\x08\x0b-\x1f\x7f]/.test(answer)) return {error:'Use 1–8000 characters of plain text.',notSent:true};
-  if (pane.provider !== 'claude' || question.multiSelect) return {error:'This question needs the terminal’s own text field. Open Screen to answer.',notSent:true};
+  if (!answer.trim() || answer.length > MAX_MESSAGE_CHARS || /[\x00-\x08\x0b-\x1f\x7f]/.test(answer)) return {error:'Use plain text (no control characters).',notSent:true};
+  if (pane.provider !== 'claude') return {error:'This question needs the terminal’s own text field. Open Screen to answer.',notSent:true};
+  if (question.multiSelect) return typeMultiCustomAnswer(pane, question, answer, { screen, write, pause, record });
   const sameQuestion = value => String(value).replace(/\s+/g,' ').includes(question.title.replace(/\s+/g,' '));
   const inEditor = value => sameQuestion(value) && /Type something\.|Type your answer|Enter your answer/i.test(value) && !/\d+\.\s*(?:Type something|Other)|Chat about this/i.test(value);
   let snapshot = await screen();
@@ -205,6 +288,140 @@ export async function sendCustomAnswer(pane, question, text, {
   await write('\r');
   record({pane:pane.id,project:pane.project,askId:question.id,customAnswer:true,bytes:answer.length,ok:true});
   return {ok:true,sentAt:Date.now()};
+}
+
+/**
+ * Claude's pick-several question (verified against the installed form's source):
+ * a digit ticks or unticks that option without moving the focus; the "Type
+ * something" row (last option) takes typed text and ticks itself once it has text;
+ * Enter on that row would untick it, so it is never pressed there; Down from the
+ * last option focuses Submit, and Enter there submits. Every step re-reads the
+ * screen and stops before the next key unless the previous one is confirmed.
+ */
+export function multiSelectState(screen, optionCount) {
+  const text = String(screen || '');
+  const rows = [];
+  for (let n = 1; n <= optionCount + 1; n++) {
+    const match = text.match(new RegExp(`^[ \\t]*(❯)?[ \\t]*${n}\\.[ \\t]*\\[(.)\\][ \\t]*([^\\n]*)$`, 'm'));
+    if (!match) return null;
+    rows.push({ focused: Boolean(match[1]), checked: match[2].trim() !== '', label: match[3].trim() });
+  }
+  // The button reads "Next" on every question but the last.
+  const submitFocused = /^[ \t]*❯[ \t]*(?:Submit|Next)[ \t]*$/m.test(text);
+  const focusIndex = rows.findIndex((row) => row.focused);
+  const input = rows[optionCount];
+  return {
+    rows,
+    focus: submitFocused ? 'submit' : focusIndex >= 0 ? focusIndex + 1 : null,
+    inputRow: optionCount + 1,
+    checked: rows.slice(0, optionCount).flatMap((row, index) => (row.checked ? [String(index + 1)] : [])),
+    customText: input && !/^Type something\b/i.test(input.label) ? input.label : '',
+    customChecked: Boolean(input?.checked),
+  };
+}
+
+const UP = '\u001b[A', DOWN = '\u001b[B';
+
+async function waitFor(screen, pause, after, accept) {
+  let snapshot = '';
+  for (let i = 0; i < 24; i++) {
+    await pause(150);
+    snapshot = await screen({ after });
+    if (accept(snapshot)) return snapshot;
+  }
+  return null;
+}
+
+function multiDeps(pane, deps = {}) {
+  return {
+    screen: deps.screen || (async (options) => visibleScreenOf(pane.id, options) || ''),
+    write: deps.write || ((data) => ask({ type: 'writeSession', id: pane.id, data })),
+    pause: deps.pause || ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+    record: deps.record || audit,
+  };
+}
+
+/** Leave the typing row (or Submit) so a digit ticks an option instead of being typed. */
+async function focusAnOption(question, state, { screen, write, pause }) {
+  const count = question.options.length;
+  if (state.focus !== state.inputRow && state.focus !== 'submit') return state;
+  const sentAt = Date.now();
+  await write(UP);
+  const moved = await waitFor(screen, pause, sentAt, (value) => {
+    const next = multiSelectState(value, count);
+    return next && next.focus !== state.inputRow && next.focus !== 'submit';
+  });
+  return moved ? multiSelectState(moved, count) : null;
+}
+
+export async function toggleMultiChoice(pane, question, key, deps) {
+  const { screen, write, pause, record } = multiDeps(pane, deps);
+  const count = question.options.length;
+  if (!/^[1-9]$/.test(String(key)) || Number(key) > count) return { error: 'Unknown choice.', notSent: true };
+  const sameQuestion = (value) => String(value).replace(/\s+/g, ' ').includes(question.title.replace(/\s+/g, ' '));
+  let snapshot = await screen();
+  let state = sameQuestion(snapshot) ? multiSelectState(snapshot, count) : null;
+  if (!state) return { error: 'That question is no longer on screen. Refresh before answering.', notSent: true };
+  state = await focusAnOption(question, state, { screen, write, pause });
+  if (!state) return { error: 'Could not move off the typing field. Nothing was ticked. Check Screen.', notSent: true };
+  const wasChecked = state.checked.includes(String(key));
+  const sentAt = Date.now();
+  await write(String(key));
+  snapshot = await waitFor(screen, pause, sentAt, (value) => {
+    const next = sameQuestion(value) && multiSelectState(value, count);
+    return next && next.checked.includes(String(key)) !== wasChecked;
+  });
+  if (!snapshot) return { error: 'The tick did not show in the terminal. Check Screen before trying again.', uncertain: true };
+  const next = multiSelectState(snapshot, count);
+  record({ pane: pane.id, project: pane.project, askId: question.id, multiToggle: String(key), ok: true });
+  return { ok: true, sentAt: Date.now(), checked: next.checked, customText: next.customText };
+}
+
+export async function typeMultiCustomAnswer(pane, question, answer, deps) {
+  const { screen, write, pause, record } = multiDeps(pane, deps);
+  const count = question.options.length;
+  const sameQuestion = (value) => String(value).replace(/\s+/g, ' ').includes(question.title.replace(/\s+/g, ' '));
+  let snapshot = await screen();
+  let state = sameQuestion(snapshot) ? multiSelectState(snapshot, count) : null;
+  if (!state) return { error: 'That question is no longer on screen. Refresh before answering.', notSent: true };
+  if (state.customText) return { error: 'The typing field already has text. Edit it in the terminal.', notSent: true };
+  if (state.focus !== state.inputRow) {
+    // From Submit, Up lands on the typing row (the last option); from an option, Down.
+    const keys = state.focus === 'submit' ? UP : state.focus === null ? '' : DOWN.repeat(state.inputRow - state.focus);
+    if (!keys) return { error: 'Could not find the focused choice. Check Screen.', notSent: true };
+    const sentAt = Date.now();
+    await write(keys);
+    snapshot = await waitFor(screen, pause, sentAt, (value) => multiSelectState(value, count)?.focus === state.inputRow);
+    if (!snapshot) return { error: 'Could not confirm the typing field. Your text was not sent. Check Screen.', notSent: true };
+  }
+  const typedAt = Date.now();
+  await write(`\u001b[200~${answer}\u001b[201~`);
+  const flat = (value) => String(value).replace(/\s+/g, ' ');
+  snapshot = await waitFor(screen, pause, typedAt, (value) => sameQuestion(value) && flat(value).includes(flat(answer)));
+  if (!snapshot) return { error: 'Your text is not confirmed in the answer field. Check Screen before retrying.', uncertain: true };
+  record({ pane: pane.id, project: pane.project, askId: question.id, customAnswer: true, multiSelect: true, bytes: answer.length, ok: true });
+  const next = multiSelectState(snapshot, count);
+  return { ok: true, sentAt: Date.now(), checked: next?.checked || [], customText: next?.customText || answer, kept: true };
+}
+
+export async function submitMultiChoice(pane, question, deps) {
+  const { screen, write, pause, record } = multiDeps(pane, deps);
+  const count = question.options.length;
+  const sameQuestion = (value) => String(value).replace(/\s+/g, ' ').includes(question.title.replace(/\s+/g, ' '));
+  let snapshot = await screen();
+  const state = sameQuestion(snapshot) ? multiSelectState(snapshot, count) : null;
+  if (!state) return { error: 'That question is no longer on screen. Refresh before answering.', notSent: true };
+  if (!state.checked.length && !state.customChecked) return { error: 'Tick at least one choice first.', notSent: true };
+  if (state.focus !== 'submit') {
+    if (state.focus === null) return { error: 'Could not find the focused choice. Check Screen.', notSent: true };
+    const sentAt = Date.now();
+    await write(DOWN.repeat(state.inputRow - state.focus + 1));
+    snapshot = await waitFor(screen, pause, sentAt, (value) => multiSelectState(value, count)?.focus === 'submit');
+    if (!snapshot) return { error: 'Could not reach Submit. Nothing was submitted. Check Screen.', notSent: true };
+  }
+  await write('\r');
+  record({ pane: pane.id, project: pane.project, askId: question.id, multiSubmit: true, ok: true });
+  return { ok: true, sentAt: Date.now() };
 }
 
 /**

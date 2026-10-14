@@ -1,10 +1,36 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { PATHS } from './paths.mjs';
 
 const readJson = (p) => {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
 };
+
+/**
+ * A restored map card can persist its split leaves before the runtime terminal
+ * records attach. Those leaves still own their exact terminal-<tab>-<pane> IDs.
+ * Project a complete read-only inventory; never guess ownership from a cwd,
+ * replace an explicit runtime binding, or revive a closed/predecessor ID.
+ */
+export function withLayoutTerminals(workspace) {
+  if (!Array.isArray(workspace?.tabs)) return workspace;
+  const retired = new Set(workspace.closedSessionIds || []);
+  for (const tab of workspace.tabs) for (const earlier of tab.earlierSessions || []) {
+    for (const id of earlier.ptyIds || []) retired.add(id);
+  }
+  const leaves = (node) => node?.type === 'terminal' && node.id ? [node.id]
+    : node?.type === 'split' ? (node.children || []).flatMap(leaves) : [];
+  return { ...workspace, tabs: workspace.tabs.map((tab) => {
+    const terminals = tab.terminals || [];
+    // Populated records already carry the authoritative runtime bindings.
+    if (terminals.length || !tab.id) return tab;
+    const inferred = leaves(tab.splitLayout).map((paneId) => ({
+      id: `terminal-${tab.id}-${paneId}`, paneId, initialCwd: tab.initialCwd,
+    })).filter((terminal) => !retired.has(terminal.id));
+    return inferred.length ? { ...tab, terminals: inferred } : tab;
+  }) };
+}
 
 /**
  * The desktop rewrites workspace.json (over a megabyte) while termcontrol reads
@@ -19,10 +45,26 @@ export function readWorkspace() {
   if (mtimeMs === lastWorkspace.mtimeMs && lastWorkspace.value) return lastWorkspace.value;
   const fresh = readJson(PATHS.workspace);
   if (fresh && Array.isArray(fresh.tabs)) {
-    lastWorkspace = { mtimeMs, value: fresh };
-    return fresh;
+    lastWorkspace = { mtimeMs, value: withLayoutTerminals(fresh) };
+    return lastWorkspace.value;
   }
   return lastWorkspace.value;
+}
+
+/** Stable version of ownership, order and shared project identity, never activity. */
+export function inventoryVersion(workspace) {
+  const ownership = {
+    tabs: (workspace?.tabs || []).map((tab) => ({ id: tab.id, groupId: tab.groupId,
+      terminals: (tab.terminals || []).map((terminal) => ({ id: terminal.id, paneId: terminal.paneId })),
+      splitLayout: tab.splitLayout, earlierIds: (tab.earlierSessions || []).flatMap((earlier) => earlier.ptyIds || []),
+    })),
+    groups: (workspace?.groups || []).map(({ id, name, emoji, color }) => ({ id, name, emoji, color })),
+    nodes: (workspace?.canvasState?.nodes || []).map(({ id, type, terminalTabId }) => ({ id, type, terminalTabId })),
+    order: workspace?.workspaceUiState?.canvasSidebarManualOrder,
+    sort: workspace?.workspaceUiState?.canvasSidebarSortMode,
+    closed: workspace?.closedSessionIds,
+  };
+  return createHash('sha256').update(JSON.stringify(ownership)).digest('hex');
 }
 
 const PROVIDERS = { claude: 'claude', codex: 'codex', opencode: 'opencode' };
@@ -80,13 +122,19 @@ export function agentsByPane({ procRoot = '/proc', claudeSessions = path.join(pr
         }
       } catch { /* not ours to read */ }
       codexSeen.set(paneId, seen);
-    } else if (provider === 'claude') {
-      sessionId = readJson(path.join(claudeSessions, `${pid}.json`))?.sessionId || null;
+    }
+    let vendorStatus = null;
+    if (provider === 'claude') {
+      // Claude's own per-process record: its conversation, and whether it is idle,
+      // busy or waiting on the operator. That status comes from the agent itself.
+      const record = readJson(path.join(claudeSessions, `${pid}.json`));
+      sessionId = record?.sessionId || null;
+      if (['idle', 'busy', 'waiting'].includes(record?.status)) vendorStatus = { status: record.status, at: Number(record.statusUpdatedAt) || null };
     }
     const previous = byPane.get(paneId);
     // The wrapper and the real binary share a terminal; keep whichever knows
     // the conversation.
-    if (!previous || (!previous.sessionId && sessionId)) byPane.set(paneId, { provider, sessionId });
+    if (!previous || (!previous.sessionId && sessionId)) byPane.set(paneId, { provider, sessionId, ...(vendorStatus ? { vendorStatus } : {}) });
   }
   for (const [paneId, seen] of codexSeen) {
     const main = seen.open.find((item) => item.id === seen.resumed)
@@ -289,6 +337,7 @@ export function attachOperatorGoal(pane, workspace) {
  * desktop. The workspace supplies the same project identity and ordering.
  */
 export function reconcileLivePanes(panes, liveById, workspace = readWorkspace(), agents = agentsByPane()) {
+  workspace = withLayoutTerminals(workspace);
   const everyone = liveById instanceof Map ? liveById : new Map();
   // Only terminals that are still running and that the desktop still owns. An
   // exited shell and a handed-over predecessor both linger in the daemon.
@@ -306,9 +355,10 @@ export function reconcileLivePanes(panes, liveById, workspace = readWorkspace(),
   // last claimed for its terminal.
   const reconciled = dedupePanes(panes).filter((pane) => live.has(pane.id)).map((pane) => {
     const agent = agents.get(pane.id);
+    const withStatus = agent?.vendorStatus && agent.provider === pane.provider ? { ...pane, vendorStatus: agent.vendorStatus } : pane;
     return agent?.sessionId && agent.provider === pane.provider && agent.sessionId !== pane.sessionId
-      ? { ...pane, sessionId: agent.sessionId }
-      : pane;
+      ? { ...withStatus, sessionId: agent.sessionId }
+      : withStatus;
   });
   const known = new Set(reconciled.map((pane) => pane.id));
   const { byTerminal, byProjectName } = tabDecorations(workspace);
@@ -341,6 +391,7 @@ export function reconcileLivePanes(panes, liveById, workspace = readWorkspace(),
       mapGroupName: decoration.groupName || null,
       provider,
       sessionId: agent?.sessionId || null,
+      ...(agent?.vendorStatus ? { vendorStatus: agent.vendorStatus } : {}),
       cwd,
       project,
       turn: 'idle',
@@ -357,8 +408,7 @@ export function reconcileLivePanes(panes, liveById, workspace = readWorkspace(),
   ));
 }
 
-export function listPanes({ maxAgeMs = null } = {}) {
-  const workspace = readWorkspace();
+export function listPanes({ maxAgeMs = null, workspace = readWorkspace() } = {}) {
   const { byTerminal, byProjectName } = tabDecorations(workspace);
   const now = Date.now();
   const panes = [];

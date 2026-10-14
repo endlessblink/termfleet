@@ -3,9 +3,13 @@
 Protocol: one JSON object per line on stdin -> one JSON object per line on stdout.
   {"id": "...", "path": "/tmp/clip.webm", "language": "he"|"en"|null}
   -> {"id": "...", "text": "...", "language": "he", "seconds": 1.2}  or  {"id": "...", "error": "..."}
+  {"id": "...", "op": "prepare", "language": "he"|"en"|null}
+  -> {"id": "...", "prepared": true, "timings": {...}} (no clip or inference)
 Models come from the local Hugging Face cache; nothing is downloaded or sent anywhere.
 """
-import json, os, sys, time
+import json, os, re, sys, time
+
+BOOT_STARTED = time.perf_counter()
 
 import av
 import numpy as np
@@ -41,7 +45,33 @@ SUPPORTED = ("he", "en")
 _loaded = {}  # repo -> model; at most the detector plus one large model
 
 
-def load(repo, big):
+def model_label(repo):
+    # Custom local paths can contain owner names. Never expose them in telemetry.
+    return repo if not os.path.isdir(repo) and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) and len(repo) <= 120 else "local/custom"
+
+
+def timing_record():
+    return {"decodeMs": 0, "warmupMs": 0, "detectMs": 0, "inferenceMs": 0,
+            "audioSeconds": 0, "coldModel": False, "coldDetector": False}
+
+
+def load(repo, big, timings=None):
+    started = time.perf_counter()
+    cold = repo not in _loaded
+    model = _load(repo, big)
+    if timings is not None:
+        timings["warmupMs"] += (time.perf_counter() - started) * 1000
+        timings["coldModel" if big else "coldDetector"] = cold
+        if big:
+            timings.update(model=model_label(repo), device=model.model.device,
+                           computeType=model.model.compute_type,
+                           cpuThreads=int(os.environ.get("TC_STT_THREADS", "8")))
+        else:
+            timings["detector"] = model_label(repo)
+    return model
+
+
+def _load(repo, big):
     if repo in _loaded:
         return _loaded[repo]
     if big:  # keep memory bounded: only one large model at a time
@@ -65,29 +95,58 @@ def load(repo, big):
     raise last
 
 
-def detect(audio):
-    model = load(DETECTOR, False)
+def detect(audio, timings=None):
+    model = load(DETECTOR, False, timings)
+    started = time.perf_counter()
     language, probability, _ = model.detect_language(audio[: 16000 * 30])
+    if timings is not None:
+        timings["detectMs"] = (time.perf_counter() - started) * 1000
     return language if language in SUPPORTED else ("he" if probability < 0.5 else "en"), probability
 
 
+def prepare(request):
+    """Overlap cold loading with recording; keep any active recognizer resident.
+
+    This is a loading hint only. Dictation still detects the actual language.
+    No audio is received and no inference or model replacement is performed.
+    """
+    timings = timing_record()
+    active = next((repo for repo in _loaded if repo != DETECTOR), None)
+    language = request.get("language")
+    repo = active or (MODELS[language] if language in SUPPORTED else None)
+    load(DETECTOR, False, timings)
+    if repo is not None:
+        load(repo, True, timings)
+    return {"prepared": True, "timings": timings}
+
+
 def transcribe(request):
-    started = time.time()
+    started = time.perf_counter()
+    timings = timing_record()
+    stage = time.perf_counter()
     audio = decode(request["path"])
+    timings["decodeMs"] = (time.perf_counter() - stage) * 1000
+    timings["audioSeconds"] = round(len(audio) / 16000, 3)
     language = request.get("language")
     if language not in SUPPORTED:
-        language, _ = detect(audio)
-    model = load(MODELS[language], True)
+        language, _ = detect(audio, timings)
+    model = load(MODELS[language], True, timings)
+    stage = time.perf_counter()
     segments, _info = model.transcribe(
         audio, language=language, beam_size=5, vad_filter=True,
         condition_on_previous_text=False, temperature=0.0,
     )
     text = " ".join(s.text.strip() for s in segments).strip()
-    return {"text": text, "language": language, "seconds": round(time.time() - started, 2)}
+    # faster-whisper segments are lazy: include consumption, not just creation.
+    timings["inferenceMs"] = (time.perf_counter() - stage) * 1000
+    for key in ("decodeMs", "warmupMs", "detectMs", "inferenceMs"):
+        timings[key] = round(timings[key], 1)
+    return {"text": text, "language": language,
+            "seconds": round(time.perf_counter() - started, 2), "timings": timings}
 
 
 def main():
-    print(json.dumps({"ready": True}), flush=True)
+    print(json.dumps({"ready": True, "bootMs": round((time.perf_counter() - BOOT_STARTED) * 1000, 1)}), flush=True)
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -97,7 +156,7 @@ def main():
         except ValueError:
             continue
         try:
-            reply = transcribe(request)
+            reply = prepare(request) if request.get("op") == "prepare" else transcribe(request)
         except Exception as error:
             reply = {"error": str(error)[:300]}
         reply["id"] = request.get("id")

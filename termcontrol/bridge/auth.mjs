@@ -158,6 +158,9 @@ function page(res, code, { mode, error, email, recoveryToken }) {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#141413">
 <title>TermControl</title>
+<link rel="manifest" href="/app/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/app/favicon-32.png">
+<link rel="apple-touch-icon" href="/app/apple-touch-icon.png">
 <style>
  :root{color-scheme:dark;--bg:#141413;--surface:#1c1c1a;--line:#2f2f2b;--text:#f0eee6;--muted:#9a9993;--accent:#d97757}
  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}

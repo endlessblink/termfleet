@@ -54,7 +54,7 @@ test('custom answer fails closed on stale, unsupported or unverified terminal fi
  const pane={provider:'claude',id:'fixture'},q={title:'Current question?',kind:'question'};let writes=[];
  const io={screen:async()=>'A different question?\n3. Type something',write:async k=>writes.push(k),pause:async()=>{}};
  assert.equal((await sendCustomAnswer(pane,q,'תשובה',io)).notSent,true);assert.deepEqual(writes,[]);
- assert.equal((await sendCustomAnswer(pane,q,'  ',io)).notSent,true);assert.equal((await sendCustomAnswer(pane,q,'x'.repeat(8001),io)).notSent,true);
+ assert.equal((await sendCustomAnswer(pane,q,'  ',io)).notSent,true);assert.equal((await sendCustomAnswer(pane,q,'x'.repeat(2_000_001),io)).notSent,true);
  assert.equal((await sendCustomAnswer({...pane,provider:'codex'},q,'answer',io)).notSent,true);
  io.screen=async()=>q.title+'\n3. Type something\n4. Chat about this';assert.equal((await sendCustomAnswer(pane,q,'answer',io)).notSent,true);assert.deepEqual(writes,['3'],'never enters text before a verified field');
 });

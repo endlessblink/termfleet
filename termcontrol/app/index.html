@@ -7,6 +7,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#141312">
 <title>TermControl</title>
+<link rel="manifest" href="/app/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/app/favicon-32.png">
+<link rel="apple-touch-icon" href="/app/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="TermControl">
 <style>
   :root{
     color-scheme:dark;
@@ -210,7 +214,7 @@
   .fleetbar{display:flex;flex-direction:column;gap:6px;margin:0 0 14px}
   .fleetbar .chips{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none}
   .fleetbar .chips::-webkit-scrollbar{display:none}
-  .fleetbar .lbl{flex:none;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;min-width:38px}
+  .fleetbar .lbl{flex:none;font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;min-width:38px}
   .fleetbar button{
     flex:none;appearance:none;border:1px solid var(--line);background:transparent;color:var(--muted);
     font:600 12px var(--ui);padding:6px 11px;border-radius:999px;min-height:32px;cursor:pointer;
@@ -307,7 +311,7 @@
     .stacked td:has(> div:empty){display:none}
     .stacked td::before{
       content:attr(data-label);display:block;
-      font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;
+      font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;
     }
     .stacked td:first-child{font-weight:600}
   }
@@ -516,7 +520,7 @@
 
 /* Owner scope: original dark shell above, conversation-only improvements below. */
 main .msg{margin:0 0 28px;min-width:0}main .who{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;line-height:1.4;margin-bottom:8px}main .who .when{font-size:12px;color:var(--muted);font-weight:400}main .copy-message{margin-inline-start:auto;border:0;background:none;color:var(--muted);display:inline-flex;gap:6px;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:8px;font-size:13px;border-radius:10px}main .copy-message svg{width:17px;height:17px}main .copy-status{font-size:12px;color:var(--muted);font-weight:400}main .copy-status:empty{display:none}main .bubble{min-width:0;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}main .msg.user{margin-inline-start:12%;}main .msg.user .who{justify-content:flex-end}main .msg.user .bubble{background:var(--bg);padding:13px 16px;border-radius:16px}main .msg.assistant .bubble{font-size:16px;line-height:1.65}main .msg.approvalmsg .delivery-note{margin-top:10px;color:var(--muted);font-size:13px}main .delivery-note{display:block;margin-top:8px;font-size:13px;color:var(--muted)}main .text-line{display:block;text-align:start;unicode-bidi:isolate}main .rich p{margin:0 0 14px;white-space:pre-wrap;text-align:start}main .rich p:last-child{margin-bottom:0}main .rich h4{font-size:19px;font-weight:650;margin:22px 0 10px}main .rich ul,main .rich ol{margin:10px 0 16px;padding-inline-start:24px}main .rich li{margin:8px 0;text-align:start}main .rich strong{font-weight:650}main .rich a{color:var(--accent);unicode-bidi:isolate}main .rich code{font:14px/1.5 var(--mono);direction:ltr;unicode-bidi:isolate;background:var(--bg);padding:2px 5px;border-radius:5px;overflow-wrap:anywhere}main .rich pre{direction:ltr;unicode-bidi:isolate;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);padding:14px;border-radius:12px;font:14px/1.5 var(--mono);text-align:left}main .rich pre code{padding:0;background:none}main .tablewrap{width:100%;margin:18px 0;overflow:auto}main .rich table{border-collapse:collapse;width:100%;font-size:15px}main .rich th,main .rich td{text-align:start;vertical-align:top;padding:10px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}main .rich th{font-weight:600;color:var(--muted)}main .rich td code{white-space:normal}main .copy-fallback{margin-top:12px}main .copy-fallback label{display:block;font-size:14px}main .copy-fallback textarea{display:block;width:100%;min-height:120px;max-height:220px;padding:12px;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text);font-size:16px;text-align:start}main .copy-fallback button{min-height:44px;padding:8px 12px;border:0;border-radius:12px;background:var(--bg);color:var(--text);margin-top:8px}main .message-details{margin:12px 0;font-size:14px;color:var(--muted)}main .message-details>summary{min-height:44px;padding:10px 0;cursor:pointer}main .message-details pre{direction:ltr;unicode-bidi:isolate;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.5 var(--mono);background:var(--bg);padding:12px;border-radius:12px}main .system-notice{margin:20px 0;color:var(--muted);font-size:14px}main .system-notice>summary{min-height:44px;display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}main .system-notice>summary::before{content:'›';font-size:20px}main .system-notice[open]>summary::before{content:'⌄'}main .system-notice>summary::-webkit-details-marker{display:none}main .system-notice .msg{margin-top:10px}main .system-notice.warning>summary{color:var(--waiting)}
-main .askbox{margin:24px 0 8px;padding:18px;border-radius:16px;background:var(--surface-2);border:1px solid #bac6ed;position:relative}main .askheading{display:flex;align-items:center;gap:8px}main .askheading h3{font-size:14px;font-weight:600;color:var(--accent);margin:0;flex:1;min-width:0}main .asktoggle{border:0;background:transparent;color:var(--accent);min-width:44px;min-height:44px;font-size:13px;padding:8px}main .askbody{margin-top:4px}main .askbody>p:first-child{font-size:18px;font-weight:600;line-height:1.5;color:var(--text);margin:4px 0 16px}main .askbody>p{margin:8px 0 14px;font-size:14px;color:var(--muted)}main .opts{display:flex;flex-direction:column;gap:10px}main .opts button{display:block;width:100%;min-height:52px;padding:13px 14px;text-align:start;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text);font-size:16px;font-weight:550}main .opts .detail{display:block;font-size:13px;color:var(--muted);font-weight:400;margin-top:4px}main .typeinstead{width:100%;min-height:44px;margin-top:12px;padding:8px;border:0;border-radius:12px;background:transparent;color:var(--accent);font-size:14px;text-align:center}main .custom-answer label{display:block;font-size:14px;margin-bottom:8px}main .custom-answer textarea{display:block;width:100%;min-height:110px;max-height:180px;padding:12px;resize:vertical;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text);font-size:16px;line-height:1.5;text-align:start}main .custom-answer #answer-help{font-size:13px;color:var(--muted);margin:10px 0}main .custom-actions{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:-1px;background:var(--surface-2);padding-top:8px}main .custom-actions button,main .receipt button{min-height:44px;border:0;border-radius:12px;background:var(--surface);color:var(--text);padding:10px 12px;font-size:14px}main .custom-actions button[type=submit]{background:var(--accent);color:white}main .askresult{font-size:14px;color:var(--waiting);margin:12px 0 0}main .askresult:empty{display:none}main .unsupported-answer{font-size:13px;color:var(--muted)}
+main .askbox{margin:24px 0 8px;padding:18px;border-radius:16px;background:var(--surface-2);border:1px solid #bac6ed;position:relative}main .askheading{display:flex;align-items:center;gap:8px}main .askheading h3{font-size:14px;font-weight:600;color:var(--accent);margin:0;flex:1;min-width:0}main .asktoggle{border:0;background:transparent;color:var(--accent);min-width:44px;min-height:44px;font-size:13px;padding:8px}main .askbody{margin-top:4px}main .askbody>p:first-child{font-size:18px;font-weight:600;line-height:1.5;color:var(--text);margin:4px 0 16px}main .askbody>p{margin:8px 0 14px;font-size:14px;color:var(--muted)}main .opts{display:flex;flex-direction:column;gap:10px}main .opts button{display:block;width:100%;min-height:52px;padding:13px 14px;text-align:start;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text);font-size:16px;font-weight:550}main .opts .detail{display:block;font-size:13px;color:var(--muted);font-weight:400;margin-top:4px}main .typeinstead{width:100%;min-height:44px;margin-top:12px;padding:8px;border:0;border-radius:12px;background:transparent;color:var(--accent);font-size:14px;text-align:center}main .custom-answer label{display:block;font-size:14px;margin-bottom:8px}main .custom-answer textarea{display:block;width:100%;min-height:110px;max-height:180px;padding:12px;resize:vertical;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text);font-size:16px;line-height:1.5;text-align:start}main .custom-answer #answer-help{font-size:13px;color:var(--muted);margin:10px 0}main .custom-actions{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:-1px;background:var(--surface-2);padding-top:8px}main .custom-actions button,main .receipt button{min-height:44px;border:0;border-radius:12px;background:var(--surface);color:var(--text);padding:10px 12px;font-size:14px}main .custom-actions button[type=submit]{background:var(--accent);color:white}main .askresult{font-size:14px;color:var(--waiting);margin:12px 0 0}main .opts button[aria-pressed] .tick{opacity:0}main .opts button[aria-pressed=true]{border-color:var(--accent)}main .opts button[aria-pressed=true] .tick{opacity:1}main .opts button[aria-pressed=true] svg{color:var(--accent)}main .multi-hint,main .multi-custom{font-size:14px;color:var(--muted);margin:12px 0 0}main .multi-custom bdi{color:var(--text)}main .multi-submit{display:block;width:100%;min-height:48px;margin-top:12px;border:0;border-radius:12px;background:var(--accent);color:white;font-size:16px;font-weight:550}main .askresult:empty{display:none}main .unsupported-answer{font-size:13px;color:var(--muted)}
 main .desk-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:22px}main .desk-head h2{font-size:26px;line-height:1.3;font-weight:650;margin:0}main .desk-head p{font-size:13px;color:var(--muted);margin:6px 0 0}main .desk-head button{min-width:44px;min-height:44px;border:0;border-radius:12px;background:var(--bg);color:var(--text);padding:8px 12px;margin-inline-start:auto;font-size:14px}main .desk-date{display:flex;align-items:center;gap:10px;margin:0 0 26px}main .desk-date label{font-size:14px;color:var(--muted)}main .desk-date select{min-height:44px;flex:1;min-width:0;padding:8px 10px;border:1px solid var(--control);border-radius:12px;background:var(--surface);color:var(--text)}main .desk-view h3{font-size:17px;margin:28px 0 16px;font-weight:600}main .desk-agenda{list-style:none;padding:0;margin:0}main .agenda-row{position:relative;display:grid;grid-template-columns:85px minmax(0,1fr);gap:16px;padding:0 0 22px;min-width:0}main .agenda-row time{font-variant-numeric:tabular-nums;font-size:14px;color:var(--accent);line-height:1.5;padding-top:2px}main .agenda-content{padding-inline-start:16px;border-inline-start:1px solid var(--line);position:relative;min-width:0}main .agenda-content::before{content:'';position:absolute;width:9px;height:9px;border-radius:50%;background:var(--accent);inset-inline-start:-5px;top:7px}main .agenda-row strong{display:block;font-size:16px;font-weight:600;text-align:start;overflow-wrap:anywhere}main .agenda-row p{margin:5px 0 0;font-size:14px;color:var(--muted);text-align:start;overflow-wrap:anywhere}main .agenda-source{display:block;font-size:12px;color:var(--muted);margin-top:6px}main .desk-empty{font-size:14px;color:var(--muted);margin:10px 0 20px}main .desk-bucket{border-top:1px solid var(--line)}main .desk-bucket>summary{min-height:52px;padding:14px 0;font-size:16px;font-weight:550;cursor:pointer}main .bucket-count{font-size:13px;color:var(--muted);font-weight:400;margin-inline-start:8px}main .desk-bucket ul{list-style:none;padding:0;margin:0}main .desk-item{padding:0 0 18px;list-style:none}main .desk-item strong{display:block;font-size:15px;font-weight:550;overflow-wrap:anywhere;text-align:start}main .desk-item p{font-size:14px;color:var(--muted);margin:4px 0;overflow-wrap:anywhere;text-align:start}main .desk-id{font-size:12px;color:var(--muted);direction:ltr;unicode-bidi:isolate;overflow-wrap:anywhere}main .desk-gaps{margin-top:24px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}main .desk-gaps>summary{min-height:44px;cursor:pointer}main .desk-gaps p{margin:8px 0}main .snapshot-warning{color:var(--waiting);font-size:14px;padding:12px;background:#fff3d4;border-radius:12px}
   :root{--control:#55554f}
   [hidden]{display:none!important}
@@ -549,12 +553,12 @@ main .desk-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:22px}
 :root{--bg:#141312;--deep:#0f0e0d;--surface:#1f1d1b;--surface-2:#292623;--line:#393530;--text:#f2eee9;--muted:#b0a89f;--dim:#a69e94;--accent:#d97757;--waiting:#d97757;--working:#b4b7b0;--control:#645d55;--user:#292623;--ui:Rubik,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
 :root[data-theme="light"]{color-scheme:light;--bg:#f5f2ed;--deep:#ede8e1;--surface:#ffffff;--surface-2:#e9e4dd;--line:#d5cfc6;--text:#26221e;--muted:#665e54;--dim:#73695e;--working:#535c54;--control:#aaa093;--user:#e9e4dd}
 body{font-size:14px}header{min-height:56px;padding:6px 12px;gap:8px}header h1{font-weight:500}header>.theme-toggle{margin-inline-start:auto;flex:none}header .sub{max-width:680px}.theme-toggle,.back{width:44px;height:44px;min-width:44px;min-height:44px;display:grid;place-items:center;padding:0;margin:0;color:var(--muted);background:transparent;border:0;border-radius:10px;cursor:pointer}.back:dir(rtl) svg{transform:rotate(180deg)}.theme-toggle:hover,.back:hover{background:var(--surface-2)}
-main{max-width:none;padding:0 0 12px}body.chat main{padding:20px 20px 16px;max-width:760px}main .fleet-content{padding:0 12px}.fleetbar{display:flex;flex-direction:row;gap:10px;padding:4px 0 8px;margin:0;border:0}.fleetbar label{display:flex;align-items:center;gap:6px;min-width:0;flex:1;font-size:11px;color:var(--muted)}.fleetbar select{min-width:0;flex:1;width:100%;min-height:44px;border:0;border-radius:8px;background:var(--bg);color:var(--text);font:13px var(--ui);padding:0 4px;cursor:pointer}
-.projgroup{margin:0}.projhead{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;margin:0;color:var(--muted);font-size:12px;font-weight:500;list-style:none;cursor:pointer}.projhead::-webkit-details-marker{display:none}.projhead::after{content:'⌄';width:18px;text-align:center;font-size:16px}.projgroup:not([open])>.projhead::after{content:'›'}.projhead .count{background:transparent;padding:0;border:0;margin-inline-start:auto;font-size:11px;color:var(--muted)}.group-color{width:7px;height:7px;border-radius:2px;flex:none}.group-rows{min-width:0}.pane{min-height:44px;height:44px;display:flex;gap:9px;align-items:center;padding:4px 4px;margin:0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font-size:13px}.pane.waiting,.pane.idle{padding:4px;background:transparent;border:0;border-bottom:1px solid var(--line)}.pane.waiting::before{display:none}.pane:hover,.pane:active,.pane.selected{background:var(--surface-2)}.pane .project,.pane.idle .project,.pane.waiting .project{color:var(--text);font-size:13px;font-weight:500}.pane-copy{flex:1;min-width:0;display:flex;flex-direction:column}.pane .row1{margin:0;gap:6px;min-height:17px}.pane .badge{font-family:var(--ui);text-transform:none;letter-spacing:0;font-size:10px;font-weight:400;color:var(--muted);background:transparent;border:0;padding:0;margin:0;white-space:nowrap}.pane .task{display:block;font-size:11px;line-height:15px;min-height:15px;max-width:100%;color:var(--muted)}.row-color{width:2px;height:22px;border-radius:1px;flex:none}.pane-meta{flex:none;display:flex;flex-direction:column;text-align:end;gap:1px;max-width:90px}.pane .state{display:block;background:transparent;padding:0;border:0;border-radius:0;font-size:10px;margin:0;color:var(--muted);line-height:15px}.pane.waiting .state{color:var(--waiting)}.last-active{font-size:10px;color:var(--muted);line-height:13px;white-space:nowrap}
-.attention-panel{margin:0 0 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}.attention-panel summary{min-height:44px;padding:0 2px;font-size:12px;font-weight:500;color:var(--waiting)}.attention-count{height:18px;min-width:18px;font-size:10px;padding:0 5px;background:var(--waiting);color:#141312}.attention-list{border:0;max-height:176px}.attention-item{height:44px;padding:0 2px;gap:8px;border-color:var(--line)}.attention-project{font-size:12px;font-weight:500}.attention-reason{font-size:11px;line-height:14px;margin:0}.attention-review{min-height:44px;height:44px;min-width:62px;padding:0 8px;font-size:12px;font-weight:500;border:0;border-radius:8px;background:transparent;color:var(--waiting)}.attention-review:hover{background:var(--surface-2)}
+main{max-width:none;padding:0 0 12px}body.chat main{padding:20px 20px 16px;max-width:760px}main .fleet-content{padding:0 12px}.fleetbar{display:flex;flex-direction:row;gap:10px;padding:4px 0 8px;margin:0;border:0}.fleetbar label{display:flex;align-items:center;gap:6px;min-width:0;flex:1;font-size:12px;color:var(--muted)}.fleetbar select{min-width:0;flex:1;width:100%;min-height:44px;border:0;border-radius:8px;background:var(--bg);color:var(--text);font:13px var(--ui);padding:0 4px;cursor:pointer}
+.projgroup{margin:0}.projhead{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;margin:0;color:var(--muted);font-size:12px;font-weight:500;list-style:none;cursor:pointer}.projhead::-webkit-details-marker{display:none}.projhead::after{content:'⌄';width:18px;text-align:center;font-size:16px}.projgroup:not([open])>.projhead::after{content:'›'}.projhead .count{background:transparent;padding:0;border:0;margin-inline-start:auto;font-size:12px;color:var(--muted)}.group-color{width:7px;height:7px;border-radius:2px;flex:none}.group-rows{min-width:0}.pane{min-height:44px;height:44px;display:flex;gap:9px;align-items:center;padding:4px 4px;margin:0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font-size:13px}.pane.waiting,.pane.idle{padding:4px;background:transparent;border:0;border-bottom:1px solid var(--line)}.pane.waiting::before{display:none}.pane:hover,.pane:active,.pane.selected{background:var(--surface-2)}.pane .project,.pane.idle .project,.pane.waiting .project{color:var(--text);font-size:13px;font-weight:500}.pane-copy{flex:1;min-width:0;display:flex;flex-direction:column}.pane .row1{margin:0;gap:6px;min-height:17px}.pane .badge{font-family:var(--ui);text-transform:none;letter-spacing:0;font-size:10px;font-weight:400;color:var(--muted);background:transparent;border:0;padding:0;margin:0;white-space:nowrap}.pane .task{display:block;font-size:12px;line-height:15px;min-height:15px;max-width:100%;color:var(--muted)}.row-color{width:2px;height:22px;border-radius:1px;flex:none}.pane-meta{flex:none;display:flex;flex-direction:column;text-align:end;gap:1px;max-width:90px}.pane .state{display:block;background:transparent;padding:0;border:0;border-radius:0;font-size:10px;margin:0;color:var(--muted);line-height:15px}.pane.waiting .state{color:var(--waiting)}.last-active{font-size:10px;color:var(--muted);line-height:13px;white-space:nowrap}
+.attention-panel{margin:0 0 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}.attention-panel summary{min-height:44px;padding:0 2px;font-size:12px;font-weight:500;color:var(--waiting)}.attention-count{height:18px;min-width:18px;font-size:10px;padding:0 5px;background:var(--waiting);color:#141312}.attention-list{border:0;max-height:176px}.attention-item{height:44px;padding:0 2px;gap:8px;border-color:var(--line)}.attention-project{font-size:12px;font-weight:500}.attention-reason{font-size:12px;line-height:14px;margin:0}.attention-review{min-height:44px;height:44px;min-width:62px;padding:0 8px;font-size:12px;font-weight:500;border:0;border-radius:8px;background:transparent;color:var(--waiting)}.attention-review:hover{background:var(--surface-2)}
 main .msg.user .bubble{background:var(--user);border-radius:18px;padding:12px 16px}main .msg{margin-bottom:24px}main .who{font-weight:500}main .rich a,main .agenda-row time{color:var(--text)}main .agenda-content::before{background:var(--muted)}main .snapshot-warning{color:var(--text);background:var(--surface-2)}main .askbox{border:1px solid var(--waiting);background:var(--surface);border-radius:14px}main .askheading h3,main .asktoggle,main .typeinstead{color:var(--waiting)}main .opts button:first-child{border-color:var(--control)}main .custom-actions{background:var(--surface)}main .custom-actions button[type=submit]{background:var(--waiting)}.screen{background:var(--deep)}.cmdlist .cmd{color:var(--text)}
 .composer{position:relative;max-width:720px;width:calc(100% - 24px);margin:6px auto calc(12px + env(safe-area-inset-bottom));padding:8px 8px 8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:26px;gap:6px;align-items:flex-end}.composer textarea{background:transparent;border:0;border-radius:0;padding:9px 4px;min-height:44px;color:var(--text);font-size:16px}.composer textarea:focus{box-shadow:none}.composer .attach{border:0;background:transparent;border-radius:50%;width:44px;color:var(--muted)}.composer button.send{height:44px;width:44px;min-width:44px;display:grid;place-items:center;padding:0;border-radius:50%;color:var(--bg);background:var(--text)}.composer .mic{border:0;background:transparent;border-radius:50%;width:44px;height:44px;flex:none;color:var(--muted);display:grid;place-items:center;padding:0}.composer .mic.rec{color:var(--waiting);animation:mic-pulse 1.1s ease-in-out infinite}.composer .mic.busy{opacity:.5;animation:mic-pulse 1.4s ease-in-out infinite}@keyframes mic-pulse{50%{transform:scale(.82)}}@media(prefers-reduced-motion:reduce){.composer .mic{animation:none!important}}.composer .toolrow{margin:0;min-height:44px}.modeswitch{border:0;background:transparent;padding:0;gap:0;border-radius:12px;flex-wrap:nowrap}.modeswitch button{color:var(--muted);min-width:44px;min-height:44px;padding:0 10px;font-weight:500}.modeswitch button[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}.composer.question-open{border-color:var(--line);padding:4px 10px;border-radius:20px}.composer.question-open .pending-answer{padding:0;font-size:13px}.composer .terminal-tools{margin:0}.sendstate{max-width:696px;margin-inline:auto;bottom:142px;background:var(--surface-2);color:var(--text)}.sendstate.err{background:var(--surface-2);color:var(--text);border-color:var(--waiting)}.sendstate .acts button.go,.prompt button.yes{background:var(--text);color:var(--bg)}.dot.producing{background:var(--working);box-shadow:none}.headlive{font-weight:400}.chatstatus:empty{display:none}
-#fleet-side,.blank-pane{display:none}.empty{color:var(--muted)}.side-heading{height:56px;padding:0 16px;display:flex;align-items:center;font-size:15px;border-bottom:1px solid var(--line)}.side-count{margin-inline-start:auto;color:var(--muted);font-size:11px}.side-content{min-height:0;overflow:auto;padding:0 12px 16px}.side-content .fleet-content{padding:0}.blank-pane>div{margin:auto;text-align:center}.blank-pane h2{font-size:21px;font-weight:500}.blank-pane p{color:var(--muted);font-size:14px}
+#fleet-side,.blank-pane{display:none}.empty{color:var(--muted)}.side-heading{height:56px;padding:0 16px;display:flex;align-items:center;font-size:15px;border-bottom:1px solid var(--line)}.side-count{margin-inline-start:auto;color:var(--muted);font-size:12px}.side-content{min-height:0;overflow:auto;padding:0 12px 16px}.side-content .fleet-content{padding:0}.blank-pane>div{margin:auto;text-align:center}.blank-pane h2{font-size:21px;font-weight:500}.blank-pane p{color:var(--muted);font-size:14px}
 @media(min-width:1000px){body{display:grid;grid-template-columns:360px minmax(0,1fr);grid-template-rows:56px minmax(0,1fr) auto}body>header{grid-column:1;grid-row:1;min-width:0}main{grid-column:1;grid-row:2;min-width:0;margin:0;width:100%;height:100%}.blank-pane{display:flex;grid-column:2;grid-row:1/-1;background:var(--deep);border-inline-start:1px solid var(--line)}body.chat>header{grid-column:2}body.chat main{grid-column:2;grid-row:2;width:100%;margin:0 auto;height:100%;max-width:760px}body.chat #fleet-side{display:flex;flex-direction:column;grid-column:1;grid-row:1/-1;border-inline-end:1px solid var(--line);min-height:0}body.chat .blank-pane{display:none}body.chat .composer{grid-column:2;grid-row:3}.sendstate{left:384px;right:24px}}
 @media(max-width:360px){main .fleet-content{padding-inline:8px}.fleetbar{gap:6px}.fleetbar label{gap:2px}.fleetbar select{font-size:12px}.pane{gap:6px}.pane-meta{max-width:74px}.pane .project{font-size:12px}body.chat main{padding-inline:14px}.composer{width:calc(100% - 16px);padding-inline:6px}.modeswitch button{padding-inline:7px}}
 @media(prefers-reduced-motion:reduce){.dot{animation:none!important;transition:none!important}}
@@ -610,7 +614,7 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 @keyframes busy-bounce{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-6px);opacity:1}}
 @keyframes busy-sheen{from{background-position:120% 0}to{background-position:-100% 0}}
 @keyframes busy-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){.busyline,.busyorb i,.busytext{animation:none!important}.busytext{color:var(--accent,#4f8cff);background:none}}
+@media(prefers-reduced-motion:reduce){.busyline{animation:none!important}.busyorb i,body.chat main .busyorb i{animation:busy-fade 1.2s ease-in-out infinite!important}.busytext,body.chat main .busytext{animation:busy-breathe 2s ease-in-out infinite!important}.busytext{color:var(--accent,#4f8cff);background:none}}
 /* Calm pass: only what earns its place. Name + one plain line; state shows only when it matters. */
 .row-color{display:none}
 .pane:has([data-avatar-state="producing"]) .state,.pane:has([data-avatar-state="working"]) .state{color:var(--muted);font-weight:400;font-size:12px}
@@ -619,7 +623,7 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 .pane .project{font-weight:500;color:var(--text)}
 .pane .task{color:var(--muted);font-size:13px}
 .pane.idle .project{color:var(--text);font-weight:500}
-.projhead{font-size:11px;font-weight:400;letter-spacing:.04em;opacity:.7}
+.projhead{font-size:12px;font-weight:400;letter-spacing:.04em;opacity:.7}
 .projhead::-webkit-details-marker{display:none}.projhead>svg,.projhead::after{display:none}
 .fleetbar{opacity:.65;transition:opacity .2s}.fleetbar:hover,.fleetbar:focus-within{opacity:1}
 .addagent{margin-inline-start:auto}
@@ -627,6 +631,310 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 @keyframes cr-blink{0%,100%{transform:scale(1)}50%{transform:scale(.55)}}
 @keyframes cr-spin{to{transform:rotate(360deg)}}@keyframes cr-twinkle{0%,100%{transform:scale(1)}50%{transform:scale(.9)}}
 @media(prefers-reduced-motion:reduce){.cr-body{animation:none!important}}
+/* In-chat navigation leaves the fleet row gestures to their own actions. */
+body.chat #nav{display:flex;flex:none;gap:0}
+.chat-step{width:44px;height:44px;min-width:44px;min-height:44px;border:0;border-radius:10px;background:transparent;color:var(--muted);font-size:22px;cursor:pointer}
+.chat-step:hover{background:var(--surface-2)}.chat-step:disabled{opacity:.28;cursor:default}
+body.chat #main{touch-action:pan-y pinch-zoom}
+body.chat #main pre,body.chat #main .tablewrap,body.chat #main .screen{touch-action:pan-x pan-y pinch-zoom}
+.chat-navigation-notice{position:fixed;z-index:25;inset-inline:24px;top:96px;margin:auto;max-width:500px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);box-shadow:0 8px 24px #0002;pointer-events:none;text-align:center;overflow-wrap:anywhere}
+.fleetbar .global-new-agent{opacity:1;flex:none;margin:0;width:44px;height:44px;min-width:44px;min-height:44px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font-size:24px}
+.newagent{max-height:calc(100dvh - 32px);overflow:auto}.newagent select{display:block;width:100%;min-height:44px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}.newagent .project-folder{font-size:12px;overflow-wrap:anywhere;color:var(--muted)}.newagent .providers{flex-wrap:wrap;border:0;padding:0;margin:0}.newagent .providers legend{margin-bottom:8px}.newagent .providers label{min-height:44px;min-width:72px}.newagent .providers label:focus-within{outline:2px solid var(--accent)}.newagent button{min-height:44px}
+/* Keep the dialog inside the usable phone/keyboard viewport. */
+.newagent-back{overflow:auto;overscroll-behavior:contain}.newagent{box-sizing:border-box;min-width:0;min-height:0;overscroll-behavior:contain}.newagent>label,.newagent fieldset{min-width:0}.newagent textarea{min-width:0;max-width:100%;width:100%}.newagent .err{overflow-wrap:anywhere}.newagent .actions{position:sticky;bottom:-20px;background:var(--surface);padding-block:10px;margin-block-end:-10px}.newagent button:disabled{opacity:.4;cursor:default}.newagent [hidden]{display:none!important}
+/* Only the conversation moves; the composer retains its exact recipient. */
+body.chat #main.chat-swipe-active{will-change:transform;background:var(--bg);box-shadow:0 0 18px #0003}
+.chat-navigation-preview{position:fixed;z-index:4;overflow:hidden;pointer-events:none;contain:layout paint;background:var(--bg);color:var(--text);padding:16px 12px;will-change:transform;border-inline:1px solid var(--line)}
+.chat-preview-heading{display:flex;align-items:center;gap:10px;padding:4px 0 18px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.chat-preview-heading strong{display:block;font-size:16px;overflow-wrap:anywhere}.chat-preview-heading small{color:var(--muted);font-size:12px}
+.chat-preview-caption{margin:0 0 14px;color:var(--accent);font-size:12px}.chat-preview-body{opacity:.85}.chat-preview-body .bubble{overflow-wrap:anywhere}
+.chat-navigation-preview.reduced{height:auto!important;max-height:160px;box-shadow:0 8px 24px #0002;border:1px solid var(--line);border-radius:12px;will-change:auto}
+.chat-navigation-preview.reduced .chat-preview-heading{margin:0;padding:0;border:0}.chat-navigation-preview.reduced .chat-preview-body{display:none}
+/* Physical page motion: the destination uses the same message geometry as #main. */
+body.chat #main.chat-swipe-ready{will-change:transform}
+.chat-navigation-preview{padding:0;border:0;box-shadow:0 0 20px #0003}
+.chat-navigation-preview main.chat-preview-body{position:absolute;inset:0;width:100%;height:100%;max-width:none;min-height:0;margin:0;flex:none;overflow:hidden;opacity:1;background:var(--bg)}
+.chat-navigation-preview .chat-preview-heading{position:absolute;z-index:1;inset-inline:12px;top:10px;display:flex;gap:8px;width:fit-content;max-width:calc(100% - 24px);padding:8px 12px;margin:0;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 3px 12px #0002}
+.chat-navigation-preview .chat-preview-heading strong{font-size:14px}.chat-navigation-preview .chat-preview-heading small{display:block;font-size:12px;color:var(--muted)}
+.chat-navigation-preview.handoff{z-index:6}.chat-navigation-preview.handoff .chat-preview-heading{display:none}
+.chat-navigation-preview.reduced{height:86px!important;max-height:86px}.chat-navigation-preview.reduced .chat-preview-heading{position:static;margin:8px;box-shadow:none;border:0}.chat-navigation-preview.reduced main.chat-preview-body{display:none}
+main .read-failure .read-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}main .read-failure button,main .read-failure .read-actions a{min-height:44px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);font:inherit}main .read-failure .message-details{text-align:start;margin-top:16px}main .read-failure pre{white-space:pre-wrap;overflow-wrap:anywhere}
+/* Conversation refinement: message text leads; secondary controls open on request. */
+body.chat header>#nav+div{flex:1;min-width:0}
+body.chat header h1{white-space:normal;overflow:visible;gap:6px;line-height:1.25}
+body.chat header .head-avatar{flex:none;margin-inline-end:0}
+body.chat header .chat-project{min-width:0;overflow-wrap:anywhere}
+@media(max-width:640px){body.chat header{gap:4px;padding-inline:8px}}
+@media(max-width:360px){body.chat header .head-avatar svg.creature{width:28px;height:28px}}
+/* The mobile project identity sits above the thread, with a fade that never covers its first message. */
+@media(max-width:999px){
+  body.chat header{position:relative;display:flex;justify-content:center;min-height:104px;padding:10px 58px 14px;background:radial-gradient(ellipse 120px 70px at 50% 16px,color-mix(in srgb,var(--surface-2) 70%,transparent),transparent 85%),var(--bg)}
+  body.chat header::after{content:'';position:absolute;inset-inline:0;bottom:-16px;height:16px;background:linear-gradient(var(--bg),transparent);pointer-events:none}
+  body.chat header>#nav+div{flex:none;width:100%;text-align:center}
+  body.chat header h1{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:14px;line-height:1.25;text-align:center}
+  body.chat header .head-avatar,body.chat header .head-avatar svg.creature{width:40px;height:40px}
+  body.chat header .chat-project{max-width:100%;text-align:center}
+  body.chat header .sub{font-size:12px;margin-top:4px;max-width:100%;text-align:center}
+  body.chat header #nav{position:absolute;inset:8px;display:block;pointer-events:none}
+  body.chat header #nav .back{position:absolute;inset-block-start:0;inset-inline-start:0;pointer-events:auto}
+  body.chat header #nav .chat-step{position:absolute;inset-block-end:0;pointer-events:auto}
+  body.chat header #nav [data-chat-step="-1"]{inset-inline-start:0}
+  body.chat header #nav [data-chat-step="1"]{inset-inline-end:0}
+  body.chat header>.theme-toggle{position:absolute;inset-block-start:8px;inset-inline-end:8px;margin:0}
+  body.chat main{padding-block-start:18px}
+}
+body.chat{--incoming:var(--surface-2);--outgoing:color-mix(in srgb,var(--surface-2) 90%,var(--text))}
+:root[data-theme="light"] body.chat{--incoming:var(--surface);--outgoing:var(--surface-2)}
+body.chat main .msg{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 44px;column-gap:4px;row-gap:4px;margin:0 0 14px;min-width:0}
+body.chat main .msg>.bubble{grid-column:1;grid-row:1;min-width:0}
+body.chat main .msg>.delivery-details,body.chat main .msg>.pending-delivery,body.chat main .msg>.copy-fallback{grid-column:1/-1}
+body.chat main .msg.user{margin-left:12%;margin-right:0;grid-template-columns:44px minmax(0,1fr)}
+body.chat main .msg.user>.bubble{grid-column:2;border:0;background:var(--outgoing);border-radius:22px;padding:12px 14px;font-size:16px;line-height:1.6}
+body.chat main .msg.user>.message-menu:not([open]){grid-column:1}
+body.chat main .msg.user>.message-menu[open]>summary{inset-inline-start:auto;inset-inline-end:auto;left:0;right:auto}
+body.chat main .msg.assistant{margin-left:0;margin-right:4%}
+body.chat main .msg.assistant>.bubble{background:var(--incoming);border:0;border-radius:22px;padding:13px 14px;font-size:16px;line-height:1.65;letter-spacing:0}
+body.chat main .msg.assistant>.message-menu[open]>summary{inset-inline-start:auto;inset-inline-end:auto;left:auto;right:0}
+:root:dir(rtl) body.chat main .msg.user{grid-template-columns:minmax(0,1fr) 44px}
+:root:dir(rtl) body.chat main .msg.user>.bubble{grid-column:1}
+:root:dir(rtl) body.chat main .msg.user>.message-menu:not([open]){grid-column:2}
+:root:dir(rtl) body.chat main .msg.assistant{grid-template-columns:44px minmax(0,1fr)}
+:root:dir(rtl) body.chat main .msg.assistant>.bubble{grid-column:2}
+:root:dir(rtl) body.chat main .msg.assistant>.message-menu:not([open]){grid-column:1}
+body.chat main .rich p{margin:0 0 12px}
+body.chat main .rich p:last-child{margin-bottom:0}
+main .message-menu{position:static;grid-column:2;grid-row:1;min-width:44px;width:44px;height:44px;margin:0;color:var(--muted)}
+main .message-menu>summary{list-style:none;cursor:pointer;width:44px;min-width:44px;min-height:44px;display:grid;place-items:center;font:20px/1 var(--ui);border-radius:10px}
+main .message-menu>summary::-webkit-details-marker,.composer-menu>summary::-webkit-details-marker{display:none}
+main .message-menu[open]{grid-column:1/-1;grid-row:auto;width:100%;height:auto;padding-block-start:4px}
+main .message-menu[open]>summary{position:absolute;inset-block-start:0;inset-inline-end:0}
+main .message-menu-panel{border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:var(--surface);font-size:14px;color:var(--text);overflow-wrap:anywhere}
+main .message-provenance{font-size:13px;color:var(--muted);margin:4px 0 8px;text-align:start}
+main .message-menu .copy-message{margin:0;min-height:44px;padding:8px 0;justify-content:flex-start;color:var(--text);font:14px var(--ui)}
+main .message-menu .copy-status{display:block;font-size:13px;color:var(--muted);margin:4px 0}
+main .message-menu .copy-status:empty{display:none}
+main .message-menu-panel .message-details{margin:0}
+main .message-menu-panel .message-details>summary{min-height:44px;padding:10px 0}
+main .message-menu pre{font:13px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;text-align:start;max-width:100%;margin:4px 0 12px}
+main .message-menu>summary:hover,.composer-menu>summary:hover{background:var(--surface-2)}
+main .activity-details{margin:0 0 16px;font-size:14px;color:var(--muted)}
+main .activity-details>summary{min-height:44px;display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;overflow-wrap:anywhere}
+main .activity-details>summary::before{content:'›';font-size:18px}
+main .activity-details[open]>summary::before{content:'⌄'}
+main .activity-details>summary::-webkit-details-marker{display:none}
+main .activity-details>summary small{font:inherit;color:var(--dim)}
+main .activity-details .msg{margin:8px 0 16px}
+main .activity-details .msg.user{margin-inline-start:0}
+main .activity-details .msg.user .bubble{background:transparent;padding:0;font-size:14px}
+main .activity-details .bubble{font-size:14px;color:var(--muted)}
+body.chat main .activity-details .msg{margin-left:0;margin-right:0;grid-template-columns:minmax(0,1fr) 44px}
+body.chat main .activity-details .msg>.bubble{grid-column:1;background:transparent;border-radius:0;padding:0;font-size:14px}
+body.chat main .activity-details .msg>.message-menu:not([open]){grid-column:2}
+body.chat main .activity-details .msg>.message-menu[open]>summary{left:auto;right:auto;inset-inline-start:auto;inset-inline-end:0}
+main .msg.notice>.bubble{color:var(--text);font-size:16px;border-inline-start:2px solid var(--waiting);padding-inline-start:12px}
+main .activity-details .msg.notice>.bubble{border:0;padding:0;color:var(--muted)}
+main .delivery-details{margin:4px 0 0;font-size:13px;color:var(--muted)}
+main .delivery-details>summary{cursor:pointer;min-height:44px;padding-block:10px}
+main .delivery-details p{margin:0 0 8px;overflow-wrap:anywhere}
+main .pending-delivery{font-size:13px;color:var(--muted);margin-top:4px}
+body.chat main .start{display:none}
+body.chat main .askbox{margin:16px 0 12px;padding:0;border:0;border-radius:0;background:transparent}
+body.chat main .askheading{position:absolute;inset-block-start:-8px;inset-inline-end:-8px;justify-content:flex-end}
+body.chat main .askheading h3{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+body.chat main .asktoggle{color:var(--muted);font-size:0}
+body.chat main .asktoggle::after{content:'−';font:20px/1 var(--ui)}
+body.chat main .askbox:has(.askbody[hidden]) .askheading{position:static;justify-content:space-between}
+body.chat main .askbox:has(.askbody[hidden]) .askheading h3,body.chat main .askbox.has-progress .askheading h3{position:static;width:auto;height:auto;clip-path:none;font:14px var(--ui);color:var(--muted)}
+body.chat main .askbox.has-progress .askheading{position:static;margin-bottom:8px}
+body.chat main .asktoggle[aria-expanded=false]::after{content:'+'}
+body.chat main .askbody>p:first-child{font-size:17px;font-weight:500;line-height:1.6;padding-inline-end:36px;margin:4px 0 12px}
+body.chat main .opts{gap:0}
+body.chat main .opts button{display:flex;align-items:center;gap:12px;justify-content:space-between;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font-weight:400;font-size:16px;min-height:56px;padding:14px 0;text-align:start}
+body.chat main .askbox .opts button:first-child{border-color:var(--line)}
+body.chat main .opts .choice-copy{flex:1;min-width:0}
+body.chat main .opts button svg{width:16px;height:16px;color:var(--muted)}
+body.chat main .opts button:dir(rtl) svg{transform:rotate(180deg)}
+body.chat main .opts button:active{background:var(--surface)}
+@media(hover:hover){body.chat main .opts button:hover{background:var(--surface)}}
+body.chat main .opts .detail{font-size:13px;line-height:1.5;font-weight:400;margin-top:4px}
+body.chat main .answer-tools{display:flex;align-items:flex-start;flex-wrap:wrap;margin-top:8px;gap:8px}
+body.chat main .typeinstead{flex:1;width:auto;min-height:44px;margin:0;padding:10px 0;text-align:start;color:var(--muted);font-size:14px;font-weight:400}
+body.chat main .answer-explanation{margin:0;font-size:14px;color:var(--muted)}
+body.chat main .answer-explanation>summary{min-height:44px;min-width:44px;cursor:pointer;padding:10px 0}
+body.chat main .answer-explanation[open]{flex-basis:100%}
+body.chat main .custom-actions{background:var(--bg)}
+body.chat main .busyline{animation:none;color:var(--muted);gap:8px}
+body.chat main .busyorb{padding:0;background:none}
+body.chat main .busyorb i{width:6px;height:6px;background:var(--muted);animation:busy-bounce 1.2s ease-in-out infinite}
+body.chat main .busyorb i:nth-child(2){animation-delay:.15s}body.chat main .busyorb i:nth-child(3){animation-delay:.3s}
+body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);background:none;animation:busy-breathe 2s ease-in-out infinite}
+@keyframes busy-breathe{50%{opacity:.5}}@keyframes busy-fade{0%,60%,100%{opacity:.3}30%{opacity:1}}
+.composer{padding:6px;border-radius:22px;gap:4px}
+:root:dir(rtl) .composer textarea:placeholder-shown{direction:rtl;text-align:start}
+.composer-menu{flex:none;width:44px;height:44px;color:var(--muted)}
+.composer-menu>summary{display:grid;place-items:center;width:44px;min-width:44px;min-height:44px;list-style:none;cursor:pointer;border-radius:50%}
+.composer-menu:has(.mic.rec)>summary{color:var(--waiting);animation:mic-pulse 1.1s ease-in-out infinite}.composer-menu:has(.mic.busy)>summary{opacity:.5;animation:mic-pulse 1.4s ease-in-out infinite}@media(prefers-reduced-motion:reduce){.composer-menu>summary{animation:none!important}}
+.composer-menu-panel{position:absolute;bottom:calc(100% + 8px);inset-inline-start:0;width:min(280px,calc(100vw - 32px));padding:8px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);z-index:8;box-shadow:0 6px 20px #0002;max-height:50dvh;overflow:auto}
+.composer-menu .modeswitch{display:flex;margin:0 0 8px;padding:0}
+.composer-menu .modeswitch button{flex:1;min-height:44px;min-width:44px;font-size:14px}
+.composer-menu-panel .attach,.composer-menu-panel .mic{width:100%;height:auto;min-height:44px;display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:8px 0;border-radius:0;background:transparent;text-align:start;font:14px var(--ui);color:var(--text)}
+.composer.question-open{padding:4px 8px;min-height:54px;border:0;border-radius:0;background:transparent;margin-top:0}
+.composer.question-open .pending-answer{font-size:14px;font-weight:400;text-align:start;color:var(--text);padding-inline:8px}
+
+.rooms-panel{margin:0 0 18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.rooms-panel summary{list-style:none;display:flex;align-items:center;gap:8px;padding:12px 14px;font-weight:500;cursor:pointer}
+.rooms-panel summary::-webkit-details-marker{display:none}
+.rooms-list{display:flex;flex-direction:column;padding:0 6px 8px}
+.room-row{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px;border:0;border-radius:12px;background:transparent;color:var(--text);text-align:start;font:inherit;cursor:pointer}
+.room-row:hover,.room-row:focus-visible{background:var(--surface-2)}
+.room-icon{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--surface-2);color:var(--accent);font-weight:500;font-size:18px}
+.room-icon.head{display:inline-grid;width:30px;height:30px;font-size:15px;margin-inline-end:8px;vertical-align:middle}
+.room-copy{display:flex;flex-direction:column;min-width:0;flex:1}
+.room-name{font-weight:500}
+.room-last{color:var(--muted);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rooms-empty{margin:0;padding:4px 10px 8px;color:var(--muted);font-size:14px;line-height:1.5}
+.new-room{align-self:flex-start;margin:4px 8px;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:20px;background:transparent;color:var(--text);font:inherit;font-size:14px;cursor:pointer}
+.room-busy{display:inline-flex;gap:3px;align-items:center;margin-inline-start:6px}
+.room-busy i{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:busy-fade 1.4s infinite}
+.room-busy i:nth-child(2){animation-delay:.2s}.room-busy i:nth-child(3){animation-delay:.4s}
+.room-member{color:var(--muted);text-decoration:none;margin-inline-end:8px;white-space:nowrap}
+.room-member.gone{opacity:.5;text-decoration:line-through}
+.room-delete{border:0;background:none;color:var(--muted);font:inherit;font-size:13px;padding:6px 0;cursor:pointer}
+.room-delete[data-armed=true]{color:var(--accent)}
+.room-feed{display:flex;flex-direction:column}
+.room-author{font-size:13px;color:var(--muted);margin:6px 2px 4px}
+.room-author bdi{color:var(--text);font-weight:500}
+.room-author span{color:var(--dim);margin-inline-start:4px}
+.room-author.mine{text-align:end}
+.room-system{align-self:center;margin:4px 0 14px;padding:6px 12px;border-radius:12px;background:var(--surface-2);color:var(--muted);font-size:13px;text-align:center}
+.room-working{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px;margin:4px 2px 12px}
+.room-mentions{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:6px}
+.room-mentions:empty{display:none}
+.room-mentions button{flex:none;min-height:44px;padding:0 10px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);font:inherit;font-size:13px}
+.room-dialog{width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 48px);border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);padding:20px}
+.room-dialog::backdrop{background:rgba(0,0,0,.5)}
+.room-dialog h2{margin:0 0 16px;font-size:20px;font-weight:500}
+.room-field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.room-field input{min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:16px}
+.room-dialog fieldset{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:2px;max-height:50dvh;overflow:auto}
+.room-dialog legend{margin-bottom:8px;color:var(--muted);font-size:14px}
+.room-agent{display:grid;grid-template-columns:24px 1fr;align-items:center;column-gap:10px;min-height:48px;padding:4px 6px;border-radius:10px}
+.room-agent input{width:20px;height:20px;accent-color:var(--accent)}
+.room-agent small{grid-column:2;color:var(--muted);font-size:12px}
+.room-error{color:var(--accent);min-height:1em;margin:10px 0 0;font-size:14px}
+.room-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.room-actions button{min-height:44px;padding:0 18px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit}
+.room-actions .room-create{background:var(--accent);border-color:var(--accent);color:#fff}
+.pane.stalled .state{color:var(--waiting)}
+.stallnote{display:block;color:var(--waiting);font-size:13px;margin-bottom:4px}
+.memfill{display:inline-block;color:var(--muted);font-size:12px;margin-inline-start:8px}
+.pane-meta .memfill{display:block;margin:2px 0 0}
+.memfill.high{color:var(--waiting)}
+.rooms-empty-line{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:0 2px}
+.rooms-empty-line>span:first-child{font-weight:500}
+.rooms-hint{flex:1;min-width:0;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rooms-empty-line .new-room{margin:0}
+
+.open-inbox{margin-inline-start:auto;min-height:36px;padding:0 12px;border:1px solid var(--accent);border-radius:18px;background:transparent;color:var(--accent);font:inherit;font-size:13px;cursor:pointer}
+.inbox{display:flex;flex-direction:column;gap:14px;padding-bottom:24px}
+.inbox-card{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:14px;outline:none;transition:opacity .3s}
+.inbox-card.focused{border-color:var(--accent)}
+.inbox-card.answered{opacity:.55}
+.inbox-who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.inbox-who bdi{color:var(--text);font-weight:500}
+.inbox-who .group-color{width:8px;height:8px;border-radius:50%}
+.inbox-card h3{margin:8px 0 12px;font-size:16px;font-weight:500;line-height:1.45}
+.inbox-opts{display:flex;flex-direction:column;gap:8px}
+.inbox-opts button{display:flex;align-items:center;gap:10px;min-height:44px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--text);font:inherit;font-size:15px;text-align:start;cursor:pointer}
+.inbox-opts button.recommended{border-color:var(--accent)}
+.inbox-opts button:disabled{opacity:.5}
+.inbox-n{flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--surface-2);color:var(--muted);font-size:12px}
+.inbox-note{margin:0;color:var(--muted);font-size:14px}
+.inbox-foot{display:flex;align-items:center;gap:12px;margin-top:10px;font-size:14px}
+.inbox-open{color:var(--accent);text-decoration:none;min-height:44px;display:inline-flex;align-items:center}
+.inbox-result{color:var(--muted)}
+.inbox-keys{color:var(--dim);font-size:12px}
+
+.routinesline{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.routinesline:empty{display:none}
+.routine-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:2px 4px 2px 10px;border:1px solid var(--line);border-radius:14px;color:var(--muted);font-size:12px}
+.routine-pill svg{width:14px;height:14px;flex:none}
+.routine-pill>span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.routine-pill button{min-width:32px;min-height:32px;border:0;background:none;color:var(--muted);font:inherit;cursor:pointer}
+.routine-pill[data-armed=true] button{color:var(--accent)}
+.routine-warn{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;background:var(--waiting);color:#191512;font-size:12px;font-weight:500}
+.room-field textarea{min-height:72px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:16px;resize:vertical}
+.day-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.day-row label{position:relative}
+.day-row input{position:absolute;opacity:0;inset:0}
+.day-row span{display:grid;place-items:center;min-width:44px;min-height:44px;padding:0 8px;border:1px solid var(--line);border-radius:12px;font-size:14px}
+.day-row input:checked+span{background:var(--accent);border-color:var(--accent);color:#fff}
+.day-row input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+
+/* 2026-10-12 contact-list redesign (owner: "design is still very bad"); last layer wins. */
+main .fleet-content{padding:0 10px}
+.fleetbar{display:flex;flex-direction:row;align-items:center;gap:6px;padding:4px 0 10px;margin:0;opacity:1}
+.fleetbar label{flex:1 1 0;min-width:0;display:flex;align-items:center}
+.fleetbar label>span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.fleetbar select{width:100%;min-width:0;min-height:44px;padding:0 8px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font:inherit;font-size:13px}
+.fleetbar .icon-button,.fleetbar .global-new-agent{flex:none;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;margin:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font-size:22px;line-height:1;cursor:pointer}
+.fleetbar .icon-button svg{width:20px;height:20px}
+.projgroup{margin:4px 0 10px}
+.projhead{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 6px;font-size:13px;font-weight:500;letter-spacing:0;opacity:1;color:var(--muted)}
+.projhead .group-color{width:8px;height:8px;border-radius:50%}
+.group-rows{display:flex;flex-direction:column;gap:2px}
+.pane,.pane.waiting,.pane.idle{display:flex;align-items:center;gap:12px;width:100%;min-height:72px;height:72px;padding:8px;margin:0;border:0;border-radius:12px;background:transparent;text-align:start}
+.pane::before{display:none}
+.pane:hover{background:var(--surface)}
+.pane.selected,.pane:active{background:var(--surface-2)}
+.pane .avatar-slot,.pane .avatar-slot svg.creature{width:42px;height:42px}
+.pane-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.pane .row1{display:flex;align-items:baseline;gap:8px;margin:0;min-width:0}
+.pane .project,.pane.idle .project{flex:1;min-width:0;font-size:15px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pane .when{flex:none;font-size:12px;color:var(--dim)}
+.pane .row2{display:flex;align-items:center;gap:6px;min-width:0;font-size:13px;line-height:18px;color:var(--muted)}
+.pane .row2>span:not(.state-dot){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pane .row2 .task,.pane.idle .task{flex:1;min-width:0;display:block;font-size:13px;color:var(--muted);-webkit-line-clamp:unset}
+.pane .row2 .state{display:inline;flex:none;font-size:13px;font-weight:500}
+.pane .row2 .state::after{content:none}
+.pane .row2 .state+.task::before,.pane .row2 .provider+.task::before{content:"· ";color:var(--dim)}
+.pane .row2 .provider{flex:none;color:var(--dim)}
+.pane .row2 .memfill{flex:none;margin:0;font-size:12px}
+.state-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--idle)}
+.pane[data-state=working] .state-dot,.pane[data-state=producing] .state-dot{background:var(--working);animation:busy-fade 1.6s infinite}
+.pane[data-state=working] .state,.pane[data-state=producing] .state{color:var(--working)}
+.pane[data-state=needs-you] .state-dot{background:var(--accent)}
+.pane[data-state=needs-you] .state{color:var(--accent)}
+.pane[data-state=stalled] .state-dot{background:var(--waiting)}
+.pane[data-state=stalled] .state{color:var(--waiting)}
+.pane[data-state=exited]{opacity:.6}
+@media(prefers-reduced-motion:reduce){.pane .state-dot{animation:none!important}}
+/* Calm list: only an agent that is doing something or needs you carries a dot; quiet controls. */
+.pane[data-state=idle] .state-dot,.pane[data-state=exited] .state-dot{display:none}
+.speak-message,.schedule-message{min-height:44px;min-width:44px}
+.fleetbar select{border-color:transparent;background:transparent;color:var(--muted);font-size:13px;padding-inline:4px}
+.fleetbar select:hover,.fleetbar select:focus-visible{background:var(--surface);color:var(--text)}
+.fleetbar .icon-button,.fleetbar .global-new-agent{border-color:transparent;background:transparent;color:var(--muted)}
+.fleetbar .icon-button:hover,.fleetbar .global-new-agent:hover{background:var(--surface);color:var(--text)}
+@media(max-width:700px){body.chat header .chatstatus,body.chat header .agentstatus{justify-content:center;text-align:center}}
+.attention-panel{margin:0 0 6px;padding:0 6px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.attention-item{display:flex;align-items:center;gap:10px;min-height:52px;padding:6px 0;border-top:1px solid var(--line)}
+.attention-project{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.attention-where{color:var(--dim);font-weight:400}
+.attention-reason{font-size:13px;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.attention-copy{flex:1;min-width:0}
+.attention-review{flex:none;min-height:36px;padding:0 12px;border:1px solid var(--accent);border-radius:18px;background:transparent;color:var(--accent);font:inherit;font-size:13px}
+
+/* 2026-10-12 chat screen: quieter chrome, wider bubbles on narrow screens. */
+header h1 .chat-project{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+header #title{min-width:0}
+body.chat main .msg .message-menu:not([open])>summary{opacity:.3;transition:opacity .15s}
+body.chat main .msg:hover .message-menu>summary,body.chat main .msg .message-menu>summary:focus-visible{opacity:1}
+@media(max-width:480px){
+  body.chat main{padding:14px 10px 12px}
+  body.chat main .msg.user{margin-left:2%}
+  .composer textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
 </style>
 </head>
 <body>
@@ -638,6 +946,7 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
     <h1 id="title">TermControl</h1>
     <div class="sub" id="sub">loading…</div>
     <div class="chatstatus" id="chat-status"></div>
+    <div class="routinesline" id="routines-line"></div>
   </div>
 <button class="theme-toggle" type="button" aria-label="Switch to light mode"></button>
 </header>
@@ -646,24 +955,225 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 
 <script type="module">
 const main = document.getElementById('main');
+const routinesLine = document.getElementById('routines-line');
 const chromeLocale=localStorage.getItem('termcontrol-language') || (navigator.language.startsWith('he')?'he':'en');
 document.documentElement.lang=chromeLocale;document.documentElement.dir=chromeLocale==='he'?'rtl':'ltr';
 const ui=(en,he)=>chromeLocale==='he'?he:en;
+const composerPlaceholder=name=>innerWidth<360?ui("Message…","הודעה…"):ui(`Message \u2068${name}\u2069…`,`הודעה אל \u2068${name}\u2069…`);
 const noticeSummary=content=>{if(content==='Technical context')return ui('Technical details','פרטים טכניים');const first=content.split('\n')[0];const count=first.match(/Planning check blocked: (\d+) open items/);return count?ui(`${count[1]} planning items need review`,`${count[1]} פריטי תכנון דורשים בדיקה`):/Planning check blocked/i.test(first)?ui('Planning needs review','התכנון דורש בדיקה'):first.slice(0,160);};
 const deliveryError=message=>{const errors=[[/request changed|question changed|no longer current/i,'The question changed. Refresh and review it again.','השאלה השתנתה. רעננו ובדקו אותה שוב.'],[/already.*(sent|dispatch)|already answered/i,'An answer has already been sent. Check the terminal.','תשובה כבר נשלחה. בדקו במסוף.'],[/Custom answers are disabled/i,'Custom answers are disabled until this terminal form is verified.','תשובות אישיות מושבתות עד לאימות הטופס הזה.']];const known=errors.find(([pattern])=>pattern.test(message));return known?ui(known[1],known[2]):message;};
-const shortTask=text=>{let t=String(text||'').replace(/\s+/g,' ').trim();if(!t)return '';if(/^(?:Read|Open)\s+\//i.test(t))return ui('Continuing from a handoff','ממשיך מהעברה');t=t.replace(/^[-–•*>\s]+/,'').replace(/\/[\w.\-\/]{6,}/g,'').replace(/\s+/g,' ').trim();const first=t.split(/(?<=[.!?:])\s/)[0]||t;return first.length>46?first.slice(0,44).replace(/\s+\S*$/,'')+'…':first;};
+const shortTask=text=>{let t=String(text||'').replace(/\s+/g,' ').trim();if(!t)return '';if(/^(?:Read|Open)\s+\//i.test(t))return ui('Continuing from a handoff','ממשיך מהעברה');t=t.replace(/^[-–•*>\s]+/,'').replace(/\/[\w.\-\/]{6,}/g,'').replace(/\s+/g,' ').trim();let first=t.split(/(?<=[.!?:])\s/)[0]||t;if(first.length<20&&first.endsWith(':'))first=t;return first.length>46?first.slice(0,44).replace(/\s+\S*$/,'')+'…':first;};
 const technicalTask=text=>/^\s*(?:Read|Open)\s+\/[^\n]+\/HANDOFF[^\n/]*\.md\.?\s*$/i.test(String(text || ''));
 let visitNotice=null,focusedPane=null;
+// Freeze the rendered fleet order for one traversal; polling never retargets a swipe.
+let fleetPaneRecords=new Map(),chatOrder=[],chatNavigationBusy=false,saveChatView=null;
+const chatMemories=new Map();
+const chatBinding=p=>String(p?.instanceId || p?.sessionId || '');
+const chatMemoryKey=id=>{const p=chatOrder.find(p=>p.id===id)||fleetPaneRecords.get(id);return id+':'+chatBinding(p);};
+const chatMemory=id=>{const key=chatMemoryKey(id);if(!chatMemories.has(key))chatMemories.set(key,{});return chatMemories.get(key);};
+function rememberCurrentChat(){
+  if(!focusedPane)return;document.querySelector('.composer')?.saveDraft?.();saveChatView?.();
+  // Capture once when leaving; never serialize the conversation on drag frames.
+  const snapshot=main.cloneNode(true);snapshot.querySelectorAll('.askbox,.copy-fallback').forEach(el=>el.remove());
+  snapshot.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));chatMemory(focusedPane).previewMarkup=snapshot.innerHTML;
+}
+function freezeChatOrder(id,container){
+  const ids=[...container.querySelectorAll('.pane')].map(el=>el.dataset.id);
+  if(!ids.includes(id))ids.unshift(id);
+  chatOrder=[...new Set(ids)].map(id=>({...fleetPaneRecords.get(id),id}));
+}
+function chatNeighbor(step){const at=chatOrder.findIndex(p=>p.id===focusedPane);return at<0?null:chatOrder[at+step]||null;}
+const chatName=p=>p?.title || p?.name || p?.mapGroupName || p?.project || ui('Agent','סוכן');
+const chatNavigationBlocked=()=>Boolean(document.querySelector('.composer[data-sending="true"],.composer[data-preparing="true"],.mic.rec,.mic.busy,.custom-answer:not([hidden])'));
+function paintChatNavigation(){
+  const rtl=document.documentElement.dir==='rtl';
+  nav.querySelectorAll('[data-chat-step]').forEach(button=>{
+    const step=Number(button.dataset.chatStep),target=chatNeighbor(step);
+    button.disabled=chatNavigationBusy || !target || chatNavigationBlocked();
+    button.textContent=(step===1)!==rtl?'›':'‹';
+    const label=step===1?ui('Next chat','השיחה הבאה'):ui('Previous chat','השיחה הקודמת');
+    button.setAttribute('aria-label',label+(target?': '+chatName(target):''));button.title=button.getAttribute('aria-label');
+  });
+}
+function chatNavigationNotice(text){
+  document.querySelector('.chat-navigation-notice')?.remove();
+  const notice=document.createElement('div');notice.className='chat-navigation-notice';notice.setAttribute('role','status');notice.textContent=text;document.body.append(notice);
+  setTimeout(()=>notice.remove(),6500);
+}
+async function navigateChat(step,motion=null){
+  if(!motion)clearChatGesture();
+  const target=motion?.target || chatNeighbor(step),from=focusedPane,fromView=view;
+  if(!target || chatNavigationBusy || chatNavigationBlocked() || window.getSelection()?.toString())return;
+  chatNavigationBusy=true;paintChatNavigation();
+  const settling=motion?settleChatGesture(motion,true):Promise.resolve(true);
+  try{
+    const response=await fetch('/api/panes',{signal:AbortSignal.timeout(12000)});
+    if(!response.ok)throw new Error(ui('Could not check the next chat. Try again when connected.','לא ניתן לבדוק את השיחה הבאה. נסו שוב לאחר החיבור.'));
+    const inventory=await response.json();
+    if(focusedPane!==from || view!==fromView || (motion && chatGesture!==motion))return;
+    const fresh=inventory.panes?.find(p=>p.id===target.id);
+    if(inventory.daemon===false || !fresh || fresh.alive===false || (chatBinding(target) && chatBinding(fresh)!==chatBinding(target)))throw new Error(ui('This chat changed or is no longer available. Return to All agents to refresh the list.','השיחה השתנתה או אינה זמינה. חזרו לכל הסוכנים לרענון הרשימה.'));
+    // Release motion and identity validation run together; the recipient changes only after both.
+    const initialFeed=motion?await motion.feedPromise:null;
+    if(motion?.changed)throw new Error(ui('This chat changed. Return to All agents to refresh the list.','השיחה השתנתה. חזרו לכל הסוכנים לרענון הרשימה.'));
+    if(!await settling || (motion && chatGesture!==motion))return;
+    if(focusedPane!==from || view!==fromView || chatNavigationBlocked() || window.getSelection()?.toString())return;
+    document.querySelector('.chat-navigation-notice')?.remove();
+    history.replaceState({...history.state,pane:target.id},'', '#'+target.id);
+    recordVisit(target.id);
+    await chat(target.id,{motion,initialFeed});
+  }catch(error){
+    if(motion && chatGesture===motion)await settleChatGesture(motion,false);
+    if(focusedPane===from && view===fromView)chatNavigationNotice(error.message);
+  }finally{if(motion && chatGesture===motion)clearChatGesture();chatNavigationBusy=false;paintChatNavigation();}
+}
+// Native vertical scrolling, text selection, code scrolling and browser edge gestures win.
+const chatGestureExcluded=target=>!target?.closest || Boolean(target.closest('.composer,button,a,input,textarea,select,summary,details,.askbox,pre,code,.tablewrap,.screen,[contenteditable]'));
+let chatGesture=null,chatPreview=null,chatHandoff=null;
+const chatReducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
+const motionClamp=(value,min,max)=>Math.min(max,Math.max(min,value));
+function clearChatGesture(keepPreview=false){
+  const gesture=chatGesture;chatGesture=null;
+  if(gesture){cancelAnimationFrame(gesture.frame);clearTimeout(gesture.timer);gesture.abort?.abort();gesture.finish?.(false);}
+  main.classList.remove('chat-swipe-active','chat-swipe-ready');main.style.removeProperty('transform');main.style.removeProperty('transition');
+  if(keepPreview===true && chatPreview && !gesture?.reduced){
+    chatHandoff?.remove();chatHandoff=chatPreview;chatPreview=null;chatHandoff.classList.add('handoff');
+    Object.assign(chatHandoff.style,{transform:'none',transition:'none',opacity:'1'});
+  }else{chatPreview?.remove();chatPreview=null;chatHandoff?.remove();chatHandoff=null;}
+}
+function drawChatGesture(gesture){
+  if(chatGesture!==gesture || gesture.reduced)return;
+  const progress=motionClamp(Math.abs(gesture.offset)/gesture.width,0,1);
+  main.style.transform=`translate3d(${gesture.offset}px,0,0)`;
+  if(chatPreview){
+    const gap=8*(1-progress),scale=.97+.03*progress;
+    chatPreview.style.transform=`translate3d(${gesture.offset+gesture.side*(gesture.width+gap)}px,0,0) scale(${scale})`;
+    chatPreview.style.opacity=String(.88+.12*progress);
+  }
+}
+function queueChatGesture(gesture){
+  if(gesture.frame)return;
+  gesture.frame=requestAnimationFrame(()=>{gesture.frame=0;drawChatGesture(gesture);});
+}
+function chatReleaseVelocity(gesture,time){
+  const samples=gesture.samples.filter(sample=>time-sample.t<100);
+  if(samples.length<3 || time-samples.at(-1).t>70)return 0;
+  const first=samples[0],last=samples.at(-1),elapsed=last.t-first.t;
+  return elapsed>=30?(last.x-first.x)/elapsed:0;
+}
+function settleChatGesture(gesture,commit){
+  if(chatGesture!==gesture)return Promise.resolve(false);
+  const current=new DOMMatrixReadOnly(getComputedStyle(main).transform).m41;
+  clearTimeout(gesture.timer);gesture.finish?.(false);gesture.finish=null;
+  gesture.phase='settling';cancelAnimationFrame(gesture.frame);gesture.frame=0;
+  main.style.removeProperty('transition');if(chatPreview)chatPreview.style.removeProperty('transition');
+  gesture.offset=current;drawChatGesture(gesture);
+  if(gesture.reduced){if(!commit)clearChatGesture();return Promise.resolve(commit);}
+  return new Promise(resolve=>{
+    gesture.finish=resolve;main.getBoundingClientRect();
+    const destination=commit?-gesture.side*gesture.width:0,travel=Math.abs(destination-current);
+    const speed=Math.max(0,Math.sign(destination-current)*(gesture.velocity || 0));
+    const duration=Math.round(commit?motionClamp(130+travel/Math.max(.8,speed)*.52,180,320):motionClamp(120+travel*.65,160,280));
+    // Match the release speed, then decelerate. No overshoot or elastic bounce.
+    const slope=motionClamp(speed*duration/Math.max(1,travel),.15,2.2);
+    const easing=commit?`cubic-bezier(.2,${(.2*slope).toFixed(3)},.35,1)`:'cubic-bezier(.22,.55,.36,1)';
+    main.style.transition=`transform ${duration}ms ${easing}`;
+    if(chatPreview)chatPreview.style.transition=`transform ${duration}ms ${easing}, opacity ${duration}ms ${easing}`;
+    gesture.offset=destination;drawChatGesture(gesture);
+    gesture.timer=setTimeout(()=>{gesture.finish=null;const current=chatGesture===gesture;if(current && !commit)clearChatGesture();resolve(current);},duration+20);
+  });
+}
+// Messages sent from this phone that the agent's own record does not show yet.
+// Several can be on their way at once (sent while the agent is busy); each stays
+// visible until the record shows it, so a newer message never hides an older one.
+function unconfirmedSent(queue,events){
+  const shown=(events || []).filter(e=>e.kind==='user').map(e=>String(e.text || ''));
+  return [].concat(queue || []).filter(entry=>entry && entry.text && !shown.some(text=>text.includes(entry.text)));
+}
+function chatPreviewMarkup(feed,memory){
+  const messages=feed.events || [];
+  let html=conversationHtml(messages,e=>messageHtml(e.kind,e.text,e.kind==='user'?ui('You','אתה'):e.kind==='notice'?ui('Status','עדכון'):projectLabel(feed.pane.project),e.at?ago(new Date(e.at).getTime()):'','',e.delivery || '',e.details));
+  html+=unconfirmedSent(memory.sentQueue,messages).map(entry=>messageHtml('user',entry.text,'you',entry.delivered?'sent — waiting for the agent to read it':'sending…',' mine pendingmsg')).join('');
+  return html || `<div class="empty">${ui('Opening the conversation…','פותח את השיחה…')}</div>`;
+}
+function showChatPreview(gesture,target,step){
+  gesture.abort?.abort();chatPreview?.remove();gesture.target=target;
+  const preview=document.createElement('section');chatPreview=preview;preview.className='chat-navigation-preview'+(gesture.reduced?' reduced':'');
+  preview.setAttribute('aria-hidden','true');preview.inert=true;
+  Object.assign(preview.style,{left:gesture.rect.left+'px',top:gesture.rect.top+'px',width:gesture.width+'px',height:gesture.rect.height+'px',transformOrigin:gesture.side===1?'left center':'right center'});
+  preview.innerHTML=`<div class="chat-preview-heading"><span aria-hidden="true">${blobSvg(target,36)}</span><div><small>${step===1?ui('Next chat','השיחה הבאה'):ui('Previous chat','השיחה הקודמת')}</small><strong dir="auto">${esc(chatName(target))}</strong></div></div><main class="chat-preview-body" aria-hidden="true"></main>`;
+  const body=preview.querySelector('.chat-preview-body'),memory=chatMemory(target.id);
+  body.style.padding=gesture.padding;
+  body.innerHTML=memory.previewMarkup || `<div class="empty">${ui('Release to open this conversation.','שחררו לפתיחת השיחה.')}</div>`;
+  document.body.append(preview);body.scrollTop=Number.isFinite(memory.scrollTop)?memory.scrollTop:body.scrollHeight;drawChatGesture(gesture);
+  const abort=new AbortController();gesture.abort=abort;
+  // Preload the destination once during intent. Reuse it at handoff instead of flashing a spinner.
+  gesture.feedPromise=fetch(`/api/feed?pane=${encodeURIComponent(target.id)}&limit=${memory.shown || 60}`,{signal:AbortSignal.any([abort.signal,AbortSignal.timeout(12000)])}).then(async response=>{
+    if(!response.ok)return null;const feed=await response.json();
+    if(chatGesture!==gesture || chatPreview!==preview || abort.signal.aborted || feed.error)return null;
+    if(feed.pane?.id!==target.id || (chatBinding(target) && chatBinding(feed.pane)!==chatBinding(target))){gesture.changed=true;return null;}
+    if(!memory.previewMarkup && !gesture.reduced){body.innerHTML=chatPreviewMarkup(feed,memory);body.scrollTop=Number.isFinite(memory.scrollTop)?memory.scrollTop:body.scrollHeight;}
+    return feed;
+  }).catch(()=>null);
+}
+main.addEventListener('pointerdown',event=>{
+  const interrupted=Boolean(chatGesture);clearChatGesture();
+  if(interrupted || !focusedPane || chatNavigationBusy || chatNavigationBlocked() || event.pointerType!=='touch' || !event.isPrimary || event.button!==0 || event.clientX<24 || event.clientX>innerWidth-24 || chatGestureExcluded(event.target) || window.getSelection()?.toString())return;
+  const rect=main.getBoundingClientRect();
+  chatGesture={pointer:event.pointerId,x:event.clientX,y:event.clientY,pane:focusedPane,view,rtl:document.documentElement.dir==='rtl',rect,width:rect.width,padding:getComputedStyle(main).padding,offset:0,phase:'possible',reduced:chatReducedMotion.matches,scrollTop:main.scrollTop,samples:[{x:0,t:event.timeStamp}]};
+  if(!chatGesture.reduced)main.classList.add('chat-swipe-ready');
+},{passive:true});
+main.addEventListener('pointermove',event=>{
+  const gesture=chatGesture;if(!gesture || !['possible','dragging'].includes(gesture.phase))return;
+  if(event.pointerId!==gesture.pointer || gesture.pane!==focusedPane || gesture.view!==view || chatNavigationBlocked() || window.getSelection()?.toString() || main.scrollTop!==gesture.scrollTop){clearChatGesture();return;}
+  const dx=event.clientX-gesture.x,dy=event.clientY-gesture.y;
+  if(Math.abs(dy)>14 && Math.abs(dy)>=Math.abs(dx)/2){clearChatGesture();return;}
+  if(Math.abs(dx)<8){if(gesture.phase==='dragging'){gesture.offset=dx;queueChatGesture(gesture);}return;}
+  if(Math.abs(dx)<=2*Math.abs(dy))return;
+  gesture.samples.push({x:dx,t:event.timeStamp});gesture.samples=gesture.samples.filter(sample=>event.timeStamp-sample.t<120);
+  gesture.phase='dragging';gesture.side=dx<0?1:-1;
+  const step=(dx<0)!==gesture.rtl?1:-1,target=chatNeighbor(step);gesture.step=step;
+  gesture.offset=target?Math.sign(dx)*Math.min(Math.abs(dx),gesture.width):Math.sign(dx)*Math.min(Math.abs(dx)*.18,32);
+  if(!gesture.reduced)main.classList.add('chat-swipe-active');
+  if(target && gesture.target!==target)showChatPreview(gesture,target,step);
+  if(!target){gesture.target=null;gesture.abort?.abort();chatPreview?.remove();chatPreview=null;}
+  queueChatGesture(gesture);
+},{passive:true});
+main.addEventListener('pointerup',event=>{
+  const gesture=chatGesture;if(!gesture || !['possible','dragging'].includes(gesture.phase))return;
+  if(event.pointerId!==gesture.pointer || gesture.pane!==focusedPane || gesture.view!==view || chatNavigationBlocked() || window.getSelection()?.toString()){clearChatGesture();return;}
+  const dx=event.clientX-gesture.x,dy=event.clientY-gesture.y,step=(dx<0)!==gesture.rtl?1:-1;
+  gesture.velocity=chatReleaseVelocity(gesture,event.timeStamp);
+  const carried=Math.abs(dx)>=52 && Math.sign(gesture.velocity)===Math.sign(dx) && Math.abs(gesture.velocity)>.45 && Math.abs(dx+gesture.velocity*180)>=gesture.width*.32;
+  if(gesture.phase==='dragging' && (Math.abs(dx)>=90 || carried) && Math.abs(dx)>2*Math.abs(dy) && gesture.target && step===gesture.step){gesture.phase='checking';navigateChat(step,gesture);}
+  else settleChatGesture(gesture,false);
+},{passive:true});
+main.addEventListener('scroll',()=>{if(chatGesture && ['possible','dragging'].includes(chatGesture.phase) && main.scrollTop!==chatGesture.scrollTop)clearChatGesture();},{passive:true});
+// Track interruptions outside the scroll surface as well (composer, browser, second finger).
+document.addEventListener('pointerdown',event=>{if(chatGesture && (event.pointerId!==chatGesture.pointer || !main.contains(event.target) || !['possible','dragging'].includes(chatGesture.phase)))clearChatGesture();},{capture:true,passive:true});
+document.addEventListener('touchstart',event=>{if(event.touches.length>1)clearChatGesture();},{capture:true,passive:true});
+document.addEventListener('pointercancel',clearChatGesture,{passive:true});
+document.addEventListener('lostpointercapture',event=>{if(event.pointerId===chatGesture?.pointer && ['possible','dragging'].includes(chatGesture.phase))clearChatGesture();},{passive:true});
+document.addEventListener('selectionchange',()=>{if(window.getSelection()?.toString())clearChatGesture();});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')clearChatGesture();});
+window.addEventListener('blur',clearChatGesture);window.addEventListener('pagehide',clearChatGesture);window.addEventListener('resize',clearChatGesture);
+chatReducedMotion.addEventListener('change',clearChatGesture);
+document.addEventListener('keydown',event=>{
+  if(!focusedPane || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !['ArrowLeft','ArrowRight'].includes(event.key) || chatGestureExcluded(event.target))return;
+  event.preventDefault();navigateChat((event.key==='ArrowRight')!==(document.documentElement.dir==='rtl')?1:-1);
+});
 // Same-origin authenticated event stream; polling remains a missed-event check.
 const sessionEvents=typeof EventSource==='function' ? new EventSource('/api/session-events') : null;
-if(sessionEvents) sessionEvents.onmessage=()=>{if(!focusedPane) fleet();};
+if(sessionEvents) sessionEvents.onmessage=()=>fleet(Boolean(focusedPane));
+const refreshFleet=()=>{if(document.visibilityState!=='hidden')fleet(Boolean(focusedPane));};
+window.addEventListener('online',refreshFleet);window.addEventListener('pageshow',refreshFleet);document.addEventListener('visibilitychange',refreshFleet);
 const recordVisit=id=>fetch('/api/visit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id}),signal:AbortSignal.timeout(6000)}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error);visitNotice=null;return result;}).catch(()=>{visitNotice=id;const status=document.getElementById('chat-status');if(status && location.hash==='#'+id)status.textContent=ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.');});
 const projectLabel=name=>name==='freelance-desk'?'Freelance Desk':String(name || 'Agent');
-const icons={back:'M15 5l-7 7 7 7',copy:'M9 7h10v14H9z M5 17V3h10',mic:'M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z M5 11a7 7 0 0014 0 M12 18v3',attach:'M8 12l6-6a4 4 0 015 5l-9 9a6 6 0 01-8-8l10-10',terminal:'M5 7l5 5-5 5 M13 17h6',send:'M12 19V5 M5 12l7-7 7 7',sun:'M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6L7 7 M17 17l1.4 1.4 M5.6 18.4L7 17 M17 7l1.4-1.4 M16 12a4 4 0 11-8 0 4 4 0 018 0',search:'M10 18a8 8 0 110-16 8 8 0 010 16z M16 16l6 6'};
+const icons={back:'M15 5l-7 7 7 7',copy:'M9 7h10v14H9z M5 17V3h10',mic:'M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z M5 11a7 7 0 0014 0 M12 18v3',attach:'M8 12l6-6a4 4 0 015 5l-9 9a6 6 0 01-8-8l10-10',terminal:'M5 7l5 5-5 5 M13 17h6',send:'M12 19V5 M5 12l7-7 7 7',sun:'M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6L7 7 M17 17l1.4 1.4 M5.6 18.4L7 17 M17 7l1.4-1.4 M16 12a4 4 0 11-8 0 4 4 0 018 0',search:'M10 18a8 8 0 110-16 8 8 0 010 16z M16 16l6 6',clock:'M12 21a9 9 0 110-18 9 9 0 010 18z M12 7v5l3 2',speaker:'M4 9h4l5-4v14l-5-4H4z M16 9a4 4 0 010 6 M19 6a8 8 0 010 12'};
 const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${icons[name] || icons.terminal}"/></svg>`;
 let viewTabs=document.createElement('div');
 const side=document.getElementById('fleet-side'),sideContent=side.querySelector('.side-content');
-let fleetTimer=null;
+let fleetTimer=null, fleetRequest=0;
 const themeButton=document.querySelector('.theme-toggle');
 function setTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('termcontrol-theme',theme);themeButton.innerHTML=icon('sun');themeButton.setAttribute('aria-label',theme==='light'?ui('Switch to dark mode','מעבר לתצוגה כהה'):ui('Switch to light mode','מעבר לתצוגה בהירה'));document.querySelector('meta[name="theme-color"]').content=theme==='light'?'#f5f2ed':'#141312';}
 setTheme(localStorage.getItem('termcontrol-theme')==='light'?'light':'dark');
@@ -705,24 +1215,68 @@ function patchFleet(root,html){
   children(root,template.content);
 }
 
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
   const plus=e.target.closest?.('.addagent');if(!plus)return;
   e.preventDefault();e.stopPropagation();
-  const project=plus.dataset.project;
   const back=document.createElement('div');back.className='newagent-back';
-  back.innerHTML=`<form class="newagent" role="dialog" aria-modal="true"><h3></h3><div class="providers"><label><input type="radio" name="p" value="claude" checked>Claude</label><label><input type="radio" name="p" value="codex">Codex</label></div><textarea required dir="auto" placeholder="${esc(ui('What should it work on?','על מה הסוכן יעבוד?'))}"></textarea><div class="err" role="status"></div><div class="actions"><button type="button" class="cancel">${esc(ui('Cancel','ביטול'))}</button><button type="submit" class="go">${esc(ui('Start','התחלה'))}</button></div></form>`;
-  const form=back.querySelector('form');form.querySelector('h3').textContent=ui('New agent in ','סוכן חדש ב־')+projectLabel(project);
-  const close=()=>back.remove();
-  back.addEventListener('click',ev=>{if(ev.target===back)close();});form.querySelector('.cancel').onclick=close;
-  form.onsubmit=async ev=>{
-    ev.preventDefault();const go=form.querySelector('.go'),err=form.querySelector('.err');go.disabled=true;go.textContent=ui('Starting…','מתחיל…');err.textContent='';
-    try{
-      const r=await fetch('/api/spawn',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({project,provider:form.p.value,task:form.querySelector('textarea').value}),signal:AbortSignal.timeout(70000)});
-      const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not start.');
-      close();
-    }catch(x){err.textContent=x.message;go.disabled=false;go.textContent=ui('Start','התחלה');}
+  back.innerHTML=`<form class="newagent" role="dialog" aria-modal="true" aria-labelledby="new-agent-title"><h3 id="new-agent-title">${ui('New agent','סוכן חדש')}</h3><label>${ui('Project','פרויקט')}<select name="projectId" required aria-label="${ui('Project','פרויקט')}"><option value="">${ui('Loading projects…','טוען פרויקטים…')}</option></select></label><div class="project-folder" dir="ltr"></div><fieldset class="providers"><legend>${ui('Agent','סוכן')}</legend></fieldset><textarea required maxlength="4000" dir="auto" placeholder="${esc(ui('What should it work on?','על מה הסוכן יעבוד?'))}"></textarea><div class="err" role="status"></div><div class="actions"><button type="button" class="cancel">${esc(ui('Cancel','ביטול'))}</button><button type="submit" class="go" disabled>${esc(ui('Start','התחלה'))}</button></div></form>`;
+  const form=back.querySelector('form'),picker=form.querySelector('select'),task=form.querySelector('textarea'),go=form.querySelector('.go'),err=form.querySelector('.err'),providers=form.querySelector('.providers');
+  let catalog=null,starting=false,unconfirmed=false,legacyProject=null;
+  const fitDialog=()=>{const vv=window.visualViewport,height=vv?.height || innerHeight;Object.assign(back.style,{top:(vv?.offsetTop || 0)+'px',left:(vv?.offsetLeft || 0)+'px',width:(vv?.width || innerWidth)+'px',height:height+'px',right:'auto',bottom:'auto'});form.style.maxHeight=Math.max(120,height-32)+'px';};
+  window.visualViewport?.addEventListener('resize',fitDialog);window.visualViewport?.addEventListener('scroll',fitDialog);window.addEventListener('resize',fitDialog);
+  const close=()=>{document.removeEventListener('keydown',keys);window.visualViewport?.removeEventListener('resize',fitDialog);window.visualViewport?.removeEventListener('scroll',fitDialog);window.removeEventListener('resize',fitDialog);back.remove();if(plus.isConnected)plus.focus();};
+  const keys=event=>{if(event.key==='Escape' && !starting){event.preventDefault();close();}if(event.key==='Tab'){const focusable=[...form.querySelectorAll('button,input,select,textarea')].filter(el=>!el.disabled && el.getClientRects().length),first=focusable[0],last=focusable.at(-1);if(event.shiftKey && document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first?.focus();}}};
+  document.addEventListener('keydown',keys);back.addEventListener('click',event=>{if(event.target===back && !starting)close();});form.querySelector('.cancel').onclick=close;
+  const updateNeeded=ui('Global project creation needs the updated TermFleet app. Use + beside an open project for now.','יצירת סוכן בפרויקט נפרד דורשת עדכון של TermFleet. בינתיים אפשר להשתמש ב־+ ליד פרויקט פתוח.');
+  const showUnavailable=message=>{picker.replaceChildren(new Option(ui('Unavailable','לא זמין'),''));picker.disabled=true;providers.hidden=true;task.hidden=true;go.disabled=true;go.hidden=true;err.textContent=message;form.querySelector('.cancel').focus();};
+  const sync=()=>{const selected=catalog?.projects.find(project=>project.id===picker.value);form.querySelector('.project-folder').textContent=selected?.cwd || '';go.disabled=starting || unconfirmed || !catalog?.ready || !selected || !task.value.trim() || !form.querySelector('[name=provider]:checked');};
+  const legacyChoice=()=>{
+    if(!plus.dataset.projectId)return null;
+    const all=[...fleetPaneRecords.values()],owned=all.filter(p=>p.mapGroupId===plus.dataset.projectId && p.cwd && p.alive!==false);
+    if(!owned.length || new Set(owned.map(p=>p.cwd)).size!==1 || new Set(owned.map(p=>p.project)).size!==1)return null;
+    const project=owned[0].project;
+    if(all.some(p=>p.project===project && p.mapGroupId!==plus.dataset.projectId))return null;
+    return {id:plus.dataset.projectId,name:plus.dataset.project || project,cwd:owned[0].cwd,project};
   };
-  document.body.append(back);form.querySelector('textarea').focus();
+  const paintCatalog=()=>{
+    picker.replaceChildren(new Option(ui('Choose a project','בחירת פרויקט'),''),...catalog.projects.map(project=>new Option(project.name,project.id)));
+    picker.value=plus.dataset.projectId || '';picker.disabled=Boolean(legacyProject);
+    for(const [index,provider] of catalog.providers.entries()){const label=document.createElement('label'),input=document.createElement('input');input.type='radio';input.name='provider';input.value=provider.id;input.checked=index===0;input.onchange=sync;label.append(input,document.createTextNode(provider.name));providers.append(label);}
+    if(!catalog.ready)err.textContent=updateNeeded;
+    sync();
+  };
+  const olderBridge=()=>{
+    const selected=legacyChoice();
+    if(!selected)return showUnavailable(updateNeeded);
+    legacyProject=selected.project;
+    catalog={ready:true,projects:[selected],providers:[{id:'claude',name:'Claude'},{id:'codex',name:'Codex'}]};
+    paintCatalog();task.focus();
+  };
+  picker.onchange=sync;task.oninput=sync;
+  form.onsubmit=async event=>{
+    event.preventDefault();if(go.disabled || starting)return;
+    if(legacyProject && legacyChoice()?.project!==legacyProject){go.disabled=true;err.textContent=ui('That project changed. Refresh before starting.','הפרויקט השתנה. רעננו לפני פתיחת סוכן.');return;}
+    const request={...(legacyProject?{project:legacyProject}:{projectId:picker.value}),provider:form.querySelector('[name=provider]:checked').value,task:task.value.trim()};
+    starting=true;sync();go.textContent=ui('Starting…','מתחיל…');err.textContent='';form.querySelector('.cancel').disabled=true;
+    try{
+      const response=await fetch('/api/spawn',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(request),signal:AbortSignal.timeout(70000)});
+      const result=await response.json();unconfirmed=Boolean(result.uncertain) || (response.ok && (!result.ok || !result.childPaneId));if(!response.ok || !result.ok || !result.childPaneId)throw new Error(result.error || ui('The new terminal was not confirmed. Check TermFleet before retrying.','יצירת המסוף לא אושרה. בדקו ב־TermFleet לפני ניסיון נוסף.'));
+      close();fleet(Boolean(focusedPane));
+    }catch(error){if(['TimeoutError','TypeError','SyntaxError'].includes(error.name))unconfirmed=true;err.textContent=unconfirmed?ui('The new terminal was not confirmed. Your prompt is kept here. Check TermFleet before retrying.','יצירת המסוף לא אושרה. ההנחיה נשמרה כאן. בדקו ב־TermFleet לפני ניסיון נוסף.'):error.message;starting=false;sync();go.textContent=ui('Start','התחלה');form.querySelector('.cancel').disabled=false;}
+  };
+  document.body.append(back);fitDialog();picker.focus();
+  try{
+    const response=await fetch('/api/projects',{signal:AbortSignal.timeout(12000)});
+    if(!back.isConnected)return;
+    if(response.status===404 || response.status===405)return olderBridge();
+    if(response.status===401)return showUnavailable(ui('Signed out. Reload and sign in to start an agent.','החיבור הסתיים. רעננו והתחברו לפני פתיחת סוכן.'));
+    if(!response.ok)return showUnavailable(ui('Could not load projects. Try again when connected.','לא ניתן לטעון פרויקטים. נסו שוב לאחר החיבור.'));
+    if(!response.headers.get('content-type')?.includes('application/json'))return olderBridge();
+    let result;try{result=await response.json();}catch{return showUnavailable(ui('Could not load projects. Try again when connected.','לא ניתן לטעון פרויקטים. נסו שוב לאחר החיבור.'));}
+    if(!back.isConnected)return;
+    if(!Array.isArray(result?.projects) || !Array.isArray(result?.providers) || typeof result.ready!=='boolean')return olderBridge();
+    catalog=result;paintCatalog();
+  }catch{if(back.isConnected)showUnavailable(ui('Could not load projects. Try again when connected.','לא ניתן לטעון פרויקטים. נסו שוב לאחר החיבור.'));}
 },true);
 const fitViewport=()=>{if(window.visualViewport)document.body.style.height=visualViewport.height+'px';const editor=main.querySelector('.custom-answer:not([hidden])');if(editor && editor.contains(document.activeElement))requestAnimationFrame(()=>editor.closest('.askbox')?.scrollIntoView({block:'start'}));};
 window.visualViewport?.addEventListener('resize',fitViewport);fitViewport();
@@ -748,6 +1302,15 @@ const nav = document.getElementById('nav');
 let timer = null;
 let clockTimer = null;
 
+// Chat-list time: "now", "5m", "3h", a weekday within the week, else a date.
+const shortWhen = (ms) => {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return ui('now','עכשיו');
+  if (s < 3600) return ui(`${Math.round(s / 60)}m`,`${Math.round(s / 60)} דק׳`);
+  if (s < 86400) return ui(`${Math.round(s / 3600)}h`,`${Math.round(s / 3600)} שע׳`);
+  const d = new Date(ms);
+  return s < 6 * 86400 ? d.toLocaleDateString(chromeLocale==='he'?'he-IL':'en-GB',{weekday:'short'}) : d.toLocaleDateString(chromeLocale==='he'?'he-IL':'en-GB',{day:'numeric',month:'short'});
+};
 const ago = (ms) => {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   if (s < 60) return ui(`${s}s ago`,`לפני ${s} שנ׳`);
@@ -788,12 +1351,15 @@ const quotaHtml = (limits) => {
     weekly != null ? `<span class="quota">weekly ${Math.round(weekly)}% left</span>` : '',
   ].filter(Boolean).join('');
 };
+const stallAge = (ms) => { const m = Math.round(ms / 60000); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`; };
 const statusHtml = (pane) => {
   const working = pane.workingSince
     ? `<span class="workingtime" data-working-since="${Number(pane.workingSince)}">Working (${duration(Date.now() - pane.workingSince)})</span>`
     : '';
   const quotas = quotaHtml(pane.limits);
-  return working || quotas ? `<div class="agentstatus">${working}${quotas}</div>` : '';
+  const memory = Number.isFinite(pane.contextPercent) ? `<span class="memfill${pane.contextPercent>=80?' high':''}" title="${ui('How full the agent’s working memory is. Near full, it summarises or hands over.','כמה מלא הזיכרון של הסוכן. כשהוא כמעט מלא הוא מסכם או מעביר הלאה.')}">${ui(`Memory ${pane.contextPercent}% full`,`זיכרון ${pane.contextPercent}% מלא`)}</span>` : '';
+  const stalled = pane.stalledForMs ? `<span class="stallnote" role="status">${ui(`No activity for ${stallAge(pane.stalledForMs)} — it may be stuck. Check its screen.`,`ללא פעילות ${stallAge(pane.stalledForMs)} — ייתכן שנתקע. בדקו את המסך.`)}</span>` : '';
+  return working || quotas || stalled || memory ? `<div class="agentstatus">${stalled}${working}${memory}${quotas}</div>` : '';
 };
 const updateClocks = () => {
   document.querySelectorAll('[data-working-since]').forEach((el) => {
@@ -915,13 +1481,30 @@ function richText(src) {
   return `<div class="rich">${out.join('')}</div>`;
 }
 
+// Recognize the complete generated continuation envelope, never a filename or
+// keyword inside an owner's message. An appended owner message stays visible.
+const continuationEnvelope=text=>/^Read \/[^\n]+\/HANDOFF[^\n/]*\.md\. It is a handoff from the previous instance: continue exactly where it left off\. First confirm what you understood: quote the newest messages and the first next step in full\. Do that first step before any side investigation: a failing test or odd finding on the way is a sub-step of it, never a replacement for it\.$/.test(String(text || '').trim());
+const secondaryEvent=event=>event.kind==='tool' || (event.kind==='notice' && event.technical===true) || (event.kind==='user' && continuationEnvelope(event.text));
+function conversationHtml(events,renderMessage){
+  const out=[];let activity=[];
+  const flush=()=>{if(!activity.length)return;const first=activity[0],key=`${first.kind}:${first.at || ''}:${first.text || first.summary || ''}`;out.push(`<details class="activity-details" data-detail-key="${esc(key)}"><summary>${ui('Details','פרטים')} <small>${esc(activity.length)}</small></summary>${activity.map(event=>renderMessage(event.kind==='tool'?{...event,text:[event.name,event.summary,event.text].filter(Boolean).join('\n')}:event)).join('')}</details>`);activity=[];};
+  for(const event of events){if(secondaryEvent(event)){activity.push(event);continue;}flush();out.push(renderMessage(event));}flush();return out.join('');
+}
 function messageHtml(kind, text, who, when='', extra='', delivery='', details='') {
-  const content=readableText(text);
-  const message=`<article class="msg ${kind}${extra}"><div class="who">${esc(who)}${when?`<span class="when">${esc(when)}</span>`:''}
-    <button type="button" class="copy-message" aria-label="${ui('Copy message','העתקת הודעה')}">${icon('copy')}${ui('Copy','העתקה')}</button><span class="copy-status" role="status" aria-live="polite"></span></div>
-    <div class="bubble richbubble" data-copy-text="${esc(content).replace(/"/g,'&quot;')}">${richText(content)}</div>
-    ${delivery?`<span class="delivery-note">${esc(delivery)}</span>`:''}${details?`<details class="message-details"><summary>${ui('Technical details','פרטים טכניים')}</summary><pre>${esc(details)}</pre><button type="button" class="copy-message" data-copy-source="${esc(details).replace(/"/g,'&quot;')}">${ui('Copy original details','העתקת הפרטים המקוריים')}</button></details>`:''}</article>`;
-  return kind==='notice'?`<details class="system-notice${/blocked|failed|error/i.test(content)?' warning':''}"><summary dir="auto">${esc(noticeSummary(content))}</summary>${message}</details>`:message;
+  const source=String(text || ''),content=readableText(text);
+  const confirmed=delivery===ui('Confirmed in the agent’s answer record.','אושר ברישום התשובה של הסוכן.');
+  const awaiting=delivery===ui('Sent to the terminal · awaiting agent confirmation.','נשלח למסוף · ממתין לאישור הסוכן.');
+  return `<article class="msg ${kind}${extra}" aria-label="${esc(who)}">
+    <div class="bubble richbubble" data-copy-text="${esc(source)}">${richText(content)}</div>
+    ${extra.includes('pendingmsg') && when?`<div class="pending-delivery" role="status" dir="auto">${esc(when)}</div>`:''}
+    ${delivery?`<details class="delivery-details" data-detail-key="delivery:${esc(source)}"><summary dir="auto">${esc(confirmed?ui('Confirmed by the agent','אושר אצל הסוכן'):awaiting?ui('Awaiting agent confirmation','ממתין לאישור הסוכן'):delivery)}</summary><p dir="auto">${esc(delivery)}</p></details>`:''}
+    <details class="message-menu" data-detail-key="message:${esc(kind+':'+source)}"><summary aria-label="${ui('Message actions and source details','פעולות ופרטי מקור ההודעה')}" title="${ui('Message menu','תפריט ההודעה')}">⋯</summary><div class="message-menu-panel">
+      <p class="message-provenance"><bdi dir="auto">${esc(who)}</bdi>${when?` · <bdi dir="auto">${esc(when)}</bdi>`:''}</p>
+      <button type="button" class="copy-message" aria-label="${ui('Copy message','העתקת הודעה')}">${icon('copy')}${ui('Copy message','העתקת הודעה')}</button><span class="copy-status" role="status" aria-live="polite"></span>
+      ${kind==='assistant'?`<button type="button" class="speak-message">${icon('speaker')}${ui('Read aloud','הקראה בקול')}</button>`:''}
+      <details class="message-details"><summary>${ui('Source text','טקסט המקור')}</summary><pre dir="auto">${esc(source)}</pre></details>
+      ${details?`<details class="message-details" data-detail-key="source:${esc(details)}"><summary>${ui('Original details','הפרטים המקוריים')}</summary><pre dir="auto">${esc(details)}</pre><button type="button" class="copy-message" data-copy-source="${esc(details)}">${ui('Copy original details','העתקת הפרטים המקוריים')}</button></details>`:''}
+    </div></details></article>`;
 }
 main.addEventListener('click',async event=>{
   const button=event.target.closest('.copy-message'); if(!button) return;
@@ -938,6 +1521,51 @@ main.addEventListener('click',async event=>{
     const field=area.querySelector('textarea');field.value=text;msg.append(area);field.focus();field.select();
     area.querySelector('button').onclick=()=>{area.remove();button.focus();};
   }
+});
+// Read a reply aloud with the device's own voice (nothing leaves the phone).
+function speakableText(text){
+  return String(text || '')
+    .replace(/```[\s\S]*?```/g,' ')            // code blocks are not worth hearing
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/!?\[([^\]]+)\]\([^)]+\)/g,'$1')   // links: keep the words
+    .replace(/https?:\/\/\S+/g,'')
+    .replace(/^\s*[#>*\-•|]+\s*/gm,'')
+    .replace(/[*_~]+/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+main.addEventListener('click',event=>{
+  const button=event.target.closest('.speak-message');if(!button)return;
+  event.stopPropagation();
+  const status=button.closest('.msg')?.querySelector('.copy-status');
+  if(!('speechSynthesis' in window)){if(status)status.textContent=ui('Reading aloud is not available on this device.','הקראה אינה זמינה במכשיר הזה.');return;}
+  if(speechSynthesis.speaking && button.dataset.speaking==='true'){speechSynthesis.cancel();return;}
+  speechSynthesis.cancel();
+  const text=speakableText(button.closest('.msg').querySelector('[data-copy-text]').dataset.copyText);
+  const utterance=new SpeechSynthesisUtterance(text);
+  utterance.lang=/[֐-׿]/.test(text)?'he-IL':'en-US';
+  const voice=speechSynthesis.getVoices().find(v=>v.lang?.toLowerCase().startsWith(utterance.lang.slice(0,2)));if(voice)utterance.voice=voice;
+  const label=button.innerHTML;
+  utterance.onend=utterance.onerror=()=>{button.dataset.speaking='false';button.innerHTML=label;};
+  button.dataset.speaking='true';button.innerHTML=`${icon('speaker')}${ui('Stop reading','עצירת ההקראה')}`;
+  speechSynthesis.speak(utterance);
+});
+
+// Native disclosures keep secondary actions reachable without persistent toolbars.
+document.addEventListener('toggle',event=>{
+  const menu=event.target;
+  if(!menu.matches?.('.message-menu,.composer-menu') || !menu.open)return;
+  document.querySelectorAll('.message-menu[open],.composer-menu[open]').forEach(other=>{if(other!==menu)other.open=false;});
+},true);
+document.addEventListener('click',event=>{
+  if(!event.target.isConnected)return;
+  // A live recording's only stop control sits in the composer menu, so it stays open until dictation ends.
+  document.querySelectorAll('.message-menu[open],.composer-menu[open]').forEach(menu=>{if(!menu.contains(event.target) && !menu.querySelector('.mic.rec,.mic.busy'))menu.open=false;});
+});
+document.addEventListener('keydown',event=>{
+  if(event.key!=='Escape')return;
+  const menu=event.target.closest?.('.message-menu[open],.composer-menu[open]');
+  if(!menu)return;
+  event.preventDefault();menu.open=false;menu.querySelector(':scope > summary')?.focus();
 });
 function deskHtml(data, selectedDay) {
   if(!data.available) return `<section class="desk-view"><div class="desk-head"><h2>${ui('Your day','היום שלך')}</h2><button type="button" data-desk-refresh>${ui('Try again','ניסיון נוסף')}</button></div><p class="desk-empty" role="status">${esc(data.error || ui('No timeline is available.','אין כרגע ציר זמן זמין.'))}</p></section>`;
@@ -982,6 +1610,8 @@ const rememberApproval = (id, entry) => {
 
 function openFleetPane(el) {
   const id = el.dataset.id;
+  rememberCurrentChat();
+  freezeChatOrder(id,el.closest('.fleet-content') || main);
   recordVisit(id);
   const mainRect = main.getBoundingClientRect();
   const paneRect = el.getBoundingClientRect();
@@ -1018,11 +1648,40 @@ function restoreFleetReturn() {
   }));
 }
 
+function failedRead(response, route) {
+  const error=new Error('TermControl view could not be loaded.');
+  error.readStatus=response.status;
+  error.readRoute=route;
+  error.readRay=(response.headers.get('cf-ray') || '').slice(0,80);
+  return error;
+}
+
+function showReadFailure(error, retry) {
+  const status=Number(error.readStatus) || 0;
+  sub.textContent=status===403?ui('Access refused','הגישה סורבה'):status===401?ui('Sign-in needed','נדרשת התחברות'):ui('View unavailable','התצוגה אינה זמינה');
+  const message=status===401?ui('Sign in again to reconnect to TermControl.','יש להתחבר שוב כדי לחזור ל־TermControl.'):
+    status===403?ui('Access to TermControl was refused. Open All agents to check the connection.','הגישה ל־TermControl סורבה. פתחו את כל הסוכנים לבדיקת החיבור.'):
+    status===404 && error.readRoute==='/api/feed'?ui('This conversation is unavailable. Open All agents to find its current card.','השיחה אינה זמינה. פתחו את כל הסוכנים כדי למצוא את הכרטיס העדכני שלה.'):
+    error.name==='TimeoutError'?ui('TermControl is taking too long to load this view.','טעינת התצוגה ב־TermControl מתארכת.'):
+    ui('TermControl could not load this view. Try loading again or open All agents.','לא ניתן לטעון את התצוגה ב־TermControl. נסו לטעון שוב או פתחו את כל הסוכנים.');
+  const details=[`Time: ${new Date().toISOString()}`,`View: ${error.readRoute || 'current view'}`,status?`HTTP ${status}`:'No HTTP response',focusedPane?`Pane: ${focusedPane}`:'',error.readRay?`Request: ${error.readRay}`:'',seenVersion?`App: ${seenVersion}`:''].filter(Boolean).join('\n');
+  main.innerHTML=`<section class="empty read-failure"><p role="status">${esc(message)}</p><div class="read-actions"><button type="button" data-read-retry>${ui('Try loading again','טעינה חוזרת')}</button><button type="button" data-all-agents>${ui('All agents','כל הסוכנים')}</button>${status===401?`<a href="/login">${ui('Sign in','התחברות')}</a>`:''}</div><details class="message-details"><summary>${ui('Connection details','פרטי החיבור')}</summary><pre dir="ltr">${esc(details)}</pre><button type="button" data-copy-read>${ui('Copy connection details','העתקת פרטי החיבור')}</button></details></section>`;
+  main.querySelector('[data-read-retry]').onclick=()=>retry();
+  main.querySelector('[data-all-agents]').onclick=()=>{history.pushState({},'',location.pathname);fleet();};
+  main.querySelector('[data-copy-read]').onclick=async event=>{
+    const button=event.currentTarget;
+    try{if(!navigator.clipboard?.writeText)throw new Error('unavailable');await navigator.clipboard.writeText(details);button.textContent=ui('Copied','הועתקו');}
+    catch{const disclosure=button.closest('details');disclosure.open=true;const range=document.createRange();range.selectNodeContents(disclosure.querySelector('pre'));const selection=getSelection();selection?.removeAllRanges();selection?.addRange(range);button.textContent=ui('Select and copy the details','בחרו והעתיקו את הפרטים');}
+  };
+}
+
 async function fleet(background=false) {
   if(background && !focusedPane)return;
   const selected=focusedPane;
+  const request=++fleetRequest;
   const mine=background?view:++view;
   if(!background){
+  rememberCurrentChat();saveChatView=null;clearChatGesture();chatOrder=[];
   focusedPane=null;
   const cached=sideContent.querySelector('.fleet-content');if(cached)main.replaceChildren(cached);
 
@@ -1035,21 +1694,25 @@ async function fleet(background=false) {
   document.querySelector('.sendstate')?.remove();
   nav.innerHTML = '';
   title.textContent = 'TermControl';
-  chatStatus.innerHTML = '';
+  chatStatus.innerHTML = '';routinesLine.innerHTML = '';
   }
   let r;
+  const roomsRequest=fetch('/api/rooms',{signal:AbortSignal.timeout(8000)}).then(response=>response.ok?response.json():null).catch(()=>null);
   try {
     const resp = await fetch('/api/panes', { signal: AbortSignal.timeout(12000) });
-    if (!resp.ok) throw new Error(resp.status === 401 ? 'Signed out — reload to sign in.' : 'Your machine did not answer.');
+    if (!resp.ok) throw failedRead(resp,'/api/panes');
     r = await resp.json();
   } catch (e) {
+    if (mine !== view || request !== fleetRequest) return;
     if(background){side.querySelector('.side-count').textContent=ui('Offline','מנותק');return;}
-    main.innerHTML = `<div class="empty">${esc(e.name === 'TimeoutError' ? 'Your machine is taking too long to answer.' : e.message)}<br><br>Pull down to try again.</div>`;
-    sub.textContent = 'not connected';
+    showReadFailure(e,()=>fleet());
     return;
   }
-  if (mine !== view) return;
+  if (mine !== view || request !== fleetRequest) return;
   checkVersion(r.version);
+  fleetPaneRecords=new Map(r.panes.map(p=>[p.id,p]));
+  const roomsData=await roomsRequest;
+  if (mine !== view || request !== fleetRequest) return;
   const sortBy = localStorage.getItem('termcontrol-sort') || 'map';
   const windowKey = localStorage.getItem('termcontrol-window') || 'all';
   const WINDOWS = { today: 24, '3d': 72, week: 168 };
@@ -1060,7 +1723,7 @@ async function fleet(background=false) {
   const panes = everything.filter((p) => !cutoff || p.turn === 'waiting' || lastUsed(p) >= cutoff);
   const waiting = panes.filter((p) => p.turn === 'waiting');
   if(!background)sub.textContent = r.daemon === false
-    ? 'TermFleet is not running — showing the last known list'
+    ? ui('Cannot check TermFleet right now — showing last known status','לא ניתן לבדוק את TermFleet כרגע — מוצג המצב האחרון הידוע')
     : waiting.length
       ? `${waiting.length} waiting for you`
       : `${panes.length} terminal${panes.length === 1 ? '' : 's'}`;
@@ -1069,11 +1732,11 @@ async function fleet(background=false) {
   const attention = panes.filter((p) => p.attention || p.turn==='waiting');
   const attentionOpen = sessionStorage.getItem('termcontrol-attention-open') !== 'closed';
   const attentionPanel = attention.length ? `<details data-key="attention" class="attention-panel"${attentionOpen ? ' open' : ''}>
-      <summary><span>${ui('Needs you','דורשים מענה')}</span><span class="attention-count">${attention.length}</span></summary>
+      <summary><span>${ui('Needs you','דורשים מענה')}</span><span class="attention-count">${attention.length}</span>${attention.length>1?`<button type="button" class="open-inbox">${ui('Answer all here','מענה לכולם כאן')}</button>`:''}</summary>
       <div class="attention-list">
         ${attention.map((p) => `<div class="attention-item">
           <div class="attention-copy">
-            <div class="attention-project">${esc(p.project)} · ${esc(p.provider)}</div>
+            <div class="attention-project" dir="auto">${esc(shortTask(p.task) || projectLabel(p.project))}<span class="attention-where"> · ${esc(projectLabel(p.project))}</span></div>
             <div class="attention-reason">${esc(p.attention?.title || ui('Waiting for your answer','ממתין לתשובה'))}</div>
           </div>
           <button class="attention-review" data-id="${esc(p.id)}" aria-label="Review ${esc(p.project)} approval">${ui('Review','בדיקה')}</button>
@@ -1082,7 +1745,7 @@ async function fleet(background=false) {
     </details>` : '';
 
   const options=(current,list)=>list.map(([value,en,he])=>`<option value="${value}"${current===value?' selected':''}>${ui(en,he)}</option>`).join('');
-  const bar=`<div class="fleetbar" data-key="controls"><label><span>${ui('Sort','מיון')}</span><select data-pref="sort" aria-label="${ui('Sort agents','מיון סוכנים')}">${options(sortBy,[['map','Map order','סדר המפה'],['recent','Last used','בשימוש לאחרונה'],['needs','Needs you','דורשים מענה']])}</select></label><label><span>${ui('Live','פעילות')}</span><select data-pref="window" aria-label="${ui('Activity window','טווח פעילות')}">${options(windowKey,[['today','Today','היום'],['3d','3 days','3 ימים'],['week','Week','שבוע'],['all','All','הכול']])}</select></label></div>`;
+  const bar=`<div class="fleetbar" data-key="controls"><label><span>${ui('Sort','מיון')}</span><select data-pref="sort" aria-label="${ui('Sort agents','מיון סוכנים')}">${options(sortBy,[['map','Map order','סדר המפה'],['recent','Last used','בשימוש לאחרונה'],['needs','Needs you','דורשים מענה']])}</select></label><label><span>${ui('Live','פעילות')}</span><select data-pref="window" aria-label="${ui('Activity window','טווח פעילות')}">${options(windowKey,[['today','Today','היום'],['3d','3 days','3 ימים'],['week','Week','שבוע'],['all','All','הכול']])}</select></label><button type="button" class="new-room icon-button" aria-label="${ui('New room: several agents in one chat','חדר חדש: כמה סוכנים בשיחה אחת')}" title="${ui('New room','חדר חדש')}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 6h16v10H9l-5 4z M9 11h6"/></svg></button><button type="button" class="addagent global-new-agent" aria-label="${ui('New agent','סוכן חדש')}" title="${ui('New agent','סוכן חדש')}">+</button></div>`;
   const hidden = everything.length - panes.length;
   const none = panes.length ? '' : '<div class="empty">Nothing was live in this period.</div>';
   const footer = hidden > 0 ? `<div class="empty" style="padding:8px 0 24px">${hidden} older terminal${hidden === 1 ? '' : 's'} hidden</div>` : '';
@@ -1100,33 +1763,272 @@ async function fleet(background=false) {
 
   const mode = r.view === 'manual' ? 'manual' : 'projects';
   const content=mode==='manual'?(paneOrder?[...panes].sort(paneOrder):panes).map(card).join(''):shownGroups.map(g=>{
-    const groupKey=g.panes[0].mapGroupId || g.project;
+    const groupKey=g.id || g.panes[0].mapGroupId || `pane:${g.panes[0].id}`;
     const closed=sessionStorage.getItem(`termcontrol-group:${groupKey}`)==='closed';
-    if(g.panes.length===1)return `<div class="solo" data-key="group:${esc(groupKey)}">${card(g.panes[0])}${g.panes[0].cwd?`<button type="button" class="addagent" data-project="${esc(g.project)}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</div>`;
-    return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span>${g.panes.length>1?`<span class="count">${g.panes.length}</span>`:''}${g.panes.some(p=>p.cwd)?`<button type="button" class="addagent" data-project="${esc(g.project)}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
+    // Every project gets its own heading, even with one agent: a headerless
+    // card reads as part of the group above it.
+    return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span>${g.panes.length>1?`<span class="count">${g.panes.length}</span>`:''}${g.panes.some(p=>p.cwd)?`<button type="button" class="addagent" data-project="${esc(g.project)}" data-project-id="${esc(g.mapGroupId || g.panes[0]?.mapGroupId || '')}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
   }).join('');
   const root=background?sideContent:main;
   let container=root.querySelector('.fleet-content');if(!container){root.replaceChildren();container=document.createElement('div');container.className='fleet-content';root.append(container);}
-  patchFleet(container,bar+attentionPanel+none+content+footer);
+  patchFleet(container,bar+roomsPanelHtml(roomsData)+attentionPanel+none+content+footer);
   side.querySelector('.side-count').textContent=ui(`${panes.length} agents`,`${panes.length} סוכנים`);
   container.querySelectorAll('.fleetbar select').forEach(el=>{el.onchange=()=>{localStorage.setItem(`termcontrol-${el.dataset.pref}`,el.value);fleet(Boolean(focusedPane));};});
   container.querySelectorAll('.attention-review,.pane').forEach(el=>{el.classList.toggle('selected',el.classList.contains('pane') && el.dataset.id===selected);el.onclick=()=>openFleetPane(el);});
+  container.querySelectorAll('[data-room]').forEach(el=>{el.onclick=()=>{history.pushState({room:el.dataset.room},'','#room:'+el.dataset.room);openRoom(el.dataset.room);};});
+  const inboxButton=container.querySelector('.open-inbox');if(inboxButton)inboxButton.onclick=event=>{event.preventDefault();event.stopPropagation();history.pushState({inbox:true},'','#inbox');openInbox();};
+  const newRoomButton=container.querySelector('.new-room');if(newRoomButton)newRoomButton.onclick=()=>newRoom(roomsData?.agents || []);
   container.querySelectorAll('details[data-group]').forEach(el=>{el.querySelector('summary').onclick=()=>sessionStorage.setItem(`termcontrol-group:${el.dataset.group}`,el.open?'closed':'open');});
   const attentionDetails=container.querySelector('.attention-panel');attentionDetails?.querySelector('summary')?.addEventListener('click',()=>sessionStorage.setItem('termcontrol-attention-open',attentionDetails.open?'closed':'open'),{once:true});
-  if(background)return;
+  if(background){if(!chatOrder.length){freezeChatOrder(focusedPane,container);paintChatNavigation();}return;}
   restoreFleetReturn();
   clearInterval(fleetTimer);fleetTimer=setInterval(()=>fleet(Boolean(focusedPane)),15000);
 }
 
-function card(p) {
-  const session=p.sessionAuthority?p.sessionViewV2:null;
-  const state=avatarState(p),label=({producing:ui('Producing','מפיק פלט'),working:ui('Working','עובד'),'needs-you':ui('Needs you','נדרש מענה'),idle:ui('Idle','ממתין'),exited:ui('Exited','הסתיים')})[state];
-  const task=session?(session.task?.label || session.now?.label || label):technicalTask(p.task)?ui('Startup context · open to read','הנחיית פתיחה · לפתיחה'):shortTask(p.task) || ui('No task declared','לא הוגדרה משימה');
-  const time=localStorage.getItem('termcontrol-sort')==='recent'?(p.lastUsedAt?ago(p.lastUsedAt):ui('use unknown','פתיחה לא ידועה')):p.lastActiveAt || p.updatedAt?ago(p.lastActiveAt || p.updatedAt):'';
-  return `<button type="button" class="pane ${p.turn || 'idle'}" data-id="${esc(p.id)}" data-key="pane:${esc(p.id)}" aria-label="${esc(p.project)}, ${esc(p.provider)}, ${label}. ${esc(task)}"><span class="row-color" style="background:${groupColor(p.color)}" aria-hidden="true"></span>${avatar(p)}<span class="pane-copy"><span class="row1"><span class="project" dir="auto">${esc(p.title || p.name || projectLabel(p.project))}</span><span class="badge">${esc(p.provider)}</span></span><span class="task" dir="auto">${esc(task)}</span></span><span class="pane-meta"><span class="state">${label}</span><span class="last-active">${time}</span></span></button>`;
+// Scheduled messages: "every weekday at 8, send this to the agent".
+const DAY_NAMES=[['Sun','א׳'],['Mon','ב׳'],['Tue','ג׳'],['Wed','ד׳'],['Thu','ה׳'],['Fri','ו׳'],['Sat','ש׳']];
+async function loadRoutines(paneId){
+  let data;
+  try{const r=await fetch(`/api/routines?pane=${encodeURIComponent(paneId)}`,{signal:AbortSignal.timeout(8000)});data=await r.json();if(!r.ok)return;}catch{return;}
+  if(location.hash!=='#'+paneId)return;
+  routinesLine.innerHTML=(data.routines || []).map(r=>`<span class="routine-pill" data-routine="${esc(r.id)}">${icon('clock')}<span dir="auto">${esc(r.label)} ${esc(r.time)} · ${esc(r.text.length>40?r.text.slice(0,38)+'…':r.text)}</span>${r.lastResult && !r.lastResult.ok?`<span class="routine-warn" title="${esc(r.lastResult.reason || '')}">!</span>`:''}<button type="button" aria-label="${ui('Delete this schedule','מחיקת התזמון')}">✕</button></span>`).join('');
+  routinesLine.querySelectorAll('.routine-pill button').forEach(button=>{button.onclick=async()=>{
+    const pill=button.closest('.routine-pill');
+    if(pill.dataset.armed!=='true'){pill.dataset.armed='true';button.textContent=ui('Delete?','למחוק?');setTimeout(()=>{if(pill.isConnected){pill.dataset.armed='false';button.textContent='✕';}},4000);return;}
+    await fetch('/api/routines/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:pill.dataset.routine})}).catch(()=>{});
+    loadRoutines(paneId);
+  };});
+}
+function scheduleDialog(paneId,draft){
+  document.querySelector('.room-dialog')?.remove();
+  const dialog=document.createElement('dialog');dialog.className='room-dialog';
+  dialog.innerHTML=`<form><h2>${ui('Schedule a message','תזמון הודעה')}</h2>
+    <label class="room-field"><span>${ui('Message','הודעה')}</span><textarea name="text" rows="3" dir="auto" required placeholder="${ui('e.g. Give me today’s plan','למשל: תן לי את התוכנית להיום')}"></textarea></label>
+    <fieldset class="day-picks"><legend>${ui('Days','ימים')}</legend><div class="day-row">${DAY_NAMES.map(([en,he],d)=>`<label><input type="checkbox" value="${d}"${d<=4?' checked':''}><span>${ui(en,he)}</span></label>`).join('')}</div></fieldset>
+    <label class="room-field"><span>${ui('Time','שעה')}</span><input name="time" type="time" value="08:00" required></label>
+    <p class="room-error" role="alert"></p>
+    <div class="room-actions"><button type="button" class="room-cancel">${ui('Cancel','ביטול')}</button><button type="submit" class="room-create">${ui('Schedule','תזמון')}</button></div></form>`;
+  document.body.append(dialog);
+  const form=dialog.querySelector('form'),error=dialog.querySelector('.room-error');
+  form.elements.text.value=draft || '';
+  dialog.querySelector('.room-cancel').onclick=()=>{dialog.close();dialog.remove();};
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    const days=[...form.querySelectorAll('.day-row input:checked')].map(box=>Number(box.value));
+    const button=form.querySelector('.room-create');button.disabled=true;error.textContent='';
+    try{
+      const r=await fetch('/api/routines',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:paneId,text:form.elements.text.value,days,time:form.elements.time.value}),signal:AbortSignal.timeout(10000)});
+      const result=await r.json();if(!r.ok)throw new Error(result.error);
+      dialog.close();dialog.remove();loadRoutines(paneId);
+      const box=document.querySelector('.composer textarea');if(box && draft && box.value===draft){box.value='';box.dispatchEvent(new Event('input'));}
+      note(ui('Scheduled.','תוזמן.'));setTimeout(()=>document.querySelector('.sendstate')?.remove(),1400);
+    }catch(e){error.textContent=e.message || ui('Could not save the schedule.','לא ניתן לשמור את התזמון.');button.disabled=false;}
+  };
+  dialog.showModal();form.elements.text.focus();
 }
 
-async function chat(id) {
+// One inbox: every agent's open question in one list, answered in place.
+async function openInbox(){
+  rememberCurrentChat();saveChatView=null;clearChatGesture();
+  document.querySelector('.composer')?.releaseDraft?.();document.querySelector('.composer')?.remove();document.querySelector('.askbox')?.remove();
+  const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
+  focusedPane=null;const mine=++view;
+  clearInterval(timer);clearInterval(fleetTimer);releaseChatScroll?.();releaseChatWake?.();
+  document.body.classList.add('chat');
+  nav.innerHTML=`<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
+  nav.querySelector('.back').onclick=()=>{history.pushState({},'',location.pathname);fleet();};
+  title.textContent=ui('Needs you','דורשים מענה');sub.textContent='';routinesLine.innerHTML='';chatStatus.innerHTML=matchMedia('(pointer:fine)').matches?`<span class="inbox-keys">${ui('J / K move · 1–9 answer · Enter recommended · R reply in words','J / K מעבר · 1–9 מענה · Enter המומלץ · R תשובה במילים')}</span>`:'';
+  main.innerHTML='<div class="spin">loading…</div>';
+  let signature='',busy=false,focusIndex=0;
+  const cards=()=>[...main.querySelectorAll('.inbox-card')];
+  const focusCard=i=>{const list=cards();if(!list.length)return;focusIndex=(i+list.length)%list.length;list.forEach((card,n)=>card.classList.toggle('focused',n===focusIndex));list[focusIndex].focus({preventScroll:false});};
+  const recommended=ask=>ask.options.find(o=>/recommended|מומלץ/i.test(o.label));
+  const cardHtml=item=>{
+    const ask=item.ask,name=item.pane.title || item.pane.project;
+    const answerable=ask && !ask.multiSelect && ask.stage!=='review' && ask.options.length;
+    const opts=answerable?ask.options.map((o,i)=>`<button type="button" data-choice="${esc(o.key)}"${recommended(ask)===o?' class="recommended"':''}><span class="inbox-n">${i+1}</span><span dir="auto">${esc(o.label)}</span></button>`).join(''):'';
+    return `<article class="inbox-card" tabindex="0" data-pane="${esc(item.pane.id)}" data-ask="${esc(ask?.id || '')}">
+      <div class="inbox-who"><span class="group-color" style="background:${groupColor(item.pane.color)}"></span><bdi dir="auto">${esc(name)}</bdi><span>${esc(item.pane.provider)}</span></div>
+      <h3 dir="auto">${esc(ask?.title || ui('Waiting for you','ממתין לך'))}</h3>
+      ${opts?`<div class="inbox-opts">${opts}</div>`:`<p class="inbox-note">${ask?.multiSelect?ui('Pick several in the chat.','בחירה מרובה בשיחה.'):ui('Answer this in the chat.','יש לענות בשיחה.')}</p>`}
+      <div class="inbox-foot"><a href="#${esc(item.pane.id)}" class="inbox-open">${ui('Open chat','פתיחת השיחה')}</a><span class="inbox-result" role="status"></span></div></article>`;
+  };
+  const answer=async(card,choice)=>{
+    if(busy)return;busy=true;
+    const buttons=card.querySelectorAll('[data-choice]'),result=card.querySelector('.inbox-result');
+    buttons.forEach(b=>b.disabled=true);result.textContent=ui('Sending…','שולח…');
+    let response;
+    try{const sent=await fetch('/api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:card.dataset.pane,askId:card.dataset.ask,choice}),signal:AbortSignal.timeout(12000)});response=await sent.json();if(!sent.ok && !response.error)response={error:ui('The terminal did not acknowledge this answer.','המסוף לא אישר את התשובה.')};}
+    catch{response={error:ui('No answer from your machine. Check the chat before answering again.','אין תשובה מהמחשב. בדקו בשיחה לפני מענה נוסף.'),uncertain:true};}
+    busy=false;
+    if(response.error){result.textContent=deliveryError(response.error);buttons.forEach(b=>b.disabled=Boolean(response.uncertain));return;}
+    card.classList.add('answered');result.textContent=ui('Sent ✓','נשלח ✓');
+    setTimeout(()=>{signature='';render();},1500);
+  };
+  const render=async()=>{
+    if(busy)return;
+    let data;
+    try{const r=await fetch('/api/inbox',{signal:AbortSignal.timeout(15000)});data=await r.json();if(!r.ok)throw new Error(data.error);}
+    catch(e){if(mine!==view)return;if(!signature)main.innerHTML=`<div class="empty">${esc(e.message || 'Could not load.')}</div>`;return;}
+    if(mine!==view)return;
+    const items=data.items || [];
+    sub.textContent=items.length?ui(`${items.length} waiting`,`${items.length} ממתינים`):'';
+    const html=items.length?items.map(cardHtml).join(''):`<div class="empty">${ui('Nothing is waiting for you.','אין מה לענות כרגע.')}</div>`;
+    if(html===signature)return;signature=html;
+    main.innerHTML=`<div class="inbox">${html}</div>`;
+    cards().forEach((card,i)=>{card.onclick=event=>{if(!event.target.closest('a,button'))focusCard(i);};card.querySelectorAll('[data-choice]').forEach(button=>{button.onclick=()=>answer(card,button.dataset.choice);});});
+    if(matchMedia('(pointer:fine)').matches)focusCard(Math.min(focusIndex,cards().length-1));
+  };
+  const onKey=event=>{
+    if(mine!==view){document.removeEventListener('keydown',onKey);return;}
+    if(event.target.closest?.('input,textarea') || event.ctrlKey || event.metaKey || event.altKey)return;
+    const card=cards()[focusIndex];
+    if(event.key==='j'||event.key==='ArrowDown'){event.preventDefault();focusCard(focusIndex+1);}
+    else if(event.key==='k'||event.key==='ArrowUp'){event.preventDefault();focusCard(focusIndex-1);}
+    else if(/^[1-9]$/.test(event.key) && card){const button=card.querySelectorAll('[data-choice]')[Number(event.key)-1];if(button && !button.disabled){event.preventDefault();button.click();}}
+    else if(event.key==='Enter' && card){const button=card.querySelector('[data-choice].recommended');if(button && !button.disabled){event.preventDefault();button.click();}}
+    else if((event.key==='r'||event.key==='R') && card){event.preventDefault();location.hash=card.dataset.pane;}
+  };
+  document.addEventListener('keydown',onKey);
+  await render();
+  if(mine===view)timer=setInterval(render,5000);
+}
+
+// Shared rooms: the operator and several agents in one conversation.
+function roomsPanelHtml(data){
+  if(!data)return '';
+  const rooms=data.rooms || [];
+  const open=sessionStorage.getItem('termcontrol-rooms-open')!=='closed';
+  const list=rooms.map(room=>`<button type="button" class="room-row" data-room="${esc(room.id)}" data-key="room:${esc(room.id)}"><span class="room-icon" aria-hidden="true">#</span><span class="room-copy"><span class="room-name" dir="auto">${esc(room.name)}</span><span class="room-last" dir="auto">${room.last?`${esc(room.last.author==='You'?ui('You','אני'):room.last.author)}: ${esc(room.last.text)}`:esc(room.members.map(m=>'@'+m.handle).join(' '))}</span></span>${room.waiting?`<span class="room-busy" aria-label="${ui('Agents are answering','סוכנים עונים')}"><i></i><i></i><i></i></span>`:''}</button>`).join('');
+  if(!rooms.length)return '';
+  return `<details class="rooms-panel" data-key="rooms"${open?' open':''}><summary><span>${ui('Rooms','חדרים')}</span>${rooms.length?`<span class="attention-count">${rooms.length}</span>`:''}</summary><div class="rooms-list">${list || `<p class="rooms-empty">${ui('Put several agents in one chat. Mention one with @ to ask it directly.','שימו כמה סוכנים בשיחה אחת. כתבו @ ושם כדי לפנות לאחד מהם.')}</p>`}</div></details>`;
+}
+
+function newRoom(agents){
+  document.querySelector('.room-dialog')?.remove();
+  const dialog=document.createElement('dialog');dialog.className='room-dialog';
+  dialog.innerHTML=`<form method="dialog"><h2>${ui('New room','חדר חדש')}</h2>
+    <label class="room-field"><span>${ui('Name','שם')}</span><input name="name" dir="auto" maxlength="60" required placeholder="${ui('e.g. Release check','למשל: בדיקת שחרור')}"></label>
+    <fieldset><legend>${ui('Agents in the room','סוכנים בחדר')}</legend>${agents.length?agents.map(agent=>`<label class="room-agent"><input type="checkbox" value="${esc(agent.id)}"><span dir="auto">${esc(agent.label)}</span><small>${esc(agent.provider)}${agent.project && agent.project!==agent.label?` · ${esc(agent.project)}`:''}</small></label>`).join(''):`<p>${ui('No agents are running right now.','אין סוכנים פעילים כרגע.')}</p>`}</fieldset>
+    <p class="room-error" role="alert"></p>
+    <div class="room-actions"><button type="button" value="cancel" class="room-cancel">${ui('Cancel','ביטול')}</button><button type="submit" class="room-create">${ui('Create room','יצירת חדר')}</button></div></form>`;
+  document.body.append(dialog);
+  const form=dialog.querySelector('form'),error=dialog.querySelector('.room-error');
+  dialog.querySelector('.room-cancel').onclick=()=>{dialog.close();dialog.remove();};
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    const panes=[...form.querySelectorAll('input[type=checkbox]:checked')].map(box=>box.value);
+    const name=form.elements.name.value.trim();
+    if(!name){error.textContent=ui('Give the room a name.','תנו שם לחדר.');return;}
+    if(!panes.length){error.textContent=ui('Pick at least one agent.','בחרו לפחות סוכן אחד.');return;}
+    const button=form.querySelector('.room-create');button.disabled=true;error.textContent='';
+    try{
+      const response=await fetch('/api/rooms',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,panes}),signal:AbortSignal.timeout(10000)});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error);
+      dialog.close();dialog.remove();
+      history.pushState({room:result.room.id},'','#room:'+result.room.id);openRoom(result.room.id);
+    }catch(e){error.textContent=e.message || ui('Could not create the room.','לא ניתן ליצור את החדר.');button.disabled=false;}
+  };
+  dialog.showModal();form.elements.name.focus();
+}
+
+function roomMessageHtml(message,members){
+  if(message.from==='system')return `<div class="room-system" dir="auto">${esc(message.text)}</div>`;
+  const mine=message.from==='operator',member=members.find(m=>m.pane===message.from);
+  const when=new Date(message.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const name=mine?ui('You','אני'):member?.label || message.author;
+  return `<div class="room-author${mine?' mine':''}"><bdi dir="auto">${esc(name)}</bdi>${mine?'':` <span>${esc(message.author)}</span>`} <span>${esc(when)}</span></div>`+messageHtml(mine?'user':'assistant',message.text,message.author,when);
+}
+
+async function openRoom(id){
+  rememberCurrentChat();saveChatView=null;clearChatGesture();
+  document.querySelector('.composer')?.releaseDraft?.();document.querySelector('.composer')?.remove();document.querySelector('.askbox')?.remove();document.querySelector('.room-dialog')?.remove();
+  const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
+  sideContent.querySelectorAll('.pane').forEach(el=>el.classList.remove('selected'));
+  focusedPane=null;const mine=++view;
+  clearInterval(timer);clearInterval(fleetTimer);releaseChatScroll?.();releaseChatWake?.();
+  document.body.classList.add('chat');
+  nav.innerHTML=`<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
+  nav.querySelector('.back').onclick=()=>{history.pushState({},'',location.pathname);fleet();};
+  main.innerHTML='<div class="spin">loading…</div>';chatStatus.innerHTML='';routinesLine.innerHTML='';title.textContent=ui('Room','חדר');sub.textContent='';
+  let following=true,signature='',members=[];
+  const onScroll=()=>{following=main.scrollHeight-main.scrollTop-main.clientHeight<=80;};
+  main.addEventListener('scroll',onScroll,{passive:true});
+  releaseChatScroll=()=>{main.removeEventListener('scroll',onScroll);releaseChatScroll=null;};
+
+  const bar=document.createElement('div');bar.className='composer room-composer';
+  bar.innerHTML=`<div class="stack"><div class="room-mentions" role="group" aria-label="${ui('Mention an agent','פנייה לסוכן')}"></div><textarea rows="1" dir="auto" enterkeyhint="send" aria-label="${ui('Message the room','הודעה לחדר')}" placeholder="${ui('Message everyone, or @ one agent…','הודעה לכולם, או @ לסוכן אחד…')}"></textarea></div><button type="button" class="send" aria-label="${ui('Send to the room','שליחה לחדר')}" disabled>${icon('send')}</button>`;
+  document.body.append(bar);
+  const field=bar.querySelector('textarea'),send=bar.querySelector('.send'),draftKey='tc-room-draft:'+id;
+  try{field.value=sessionStorage.getItem(draftKey) || '';}catch{}
+  const grow=()=>{field.style.height='auto';field.style.height=Math.min(field.scrollHeight,160)+'px';send.disabled=!field.value.trim() || bar.dataset.sending==='true';try{sessionStorage.setItem(draftKey,field.value);}catch{}};
+  field.oninput=grow;grow();
+  const post=async()=>{
+    const text=field.value.trim();if(!text || bar.dataset.sending==='true')return;
+    bar.dataset.sending='true';send.disabled=true;
+    try{
+      const response=await fetch('/api/room/post',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,text}),signal:AbortSignal.timeout(20000)});
+      const result=await response.json();if(!response.ok)throw new Error(result.error);
+      field.value='';try{sessionStorage.removeItem(draftKey);}catch{}following=true;
+    }catch(e){note(e.message || ui('The message was not sent.','ההודעה לא נשלחה.'),true);}
+    finally{bar.dataset.sending='false';grow();render();}
+  };
+  send.onclick=post;
+  field.onkeydown=event=>{if(event.key==='Enter' && !event.shiftKey && !event.isComposing && !matchMedia('(pointer:coarse)').matches){event.preventDefault();post();}};
+
+  const render=async()=>{
+    let data;
+    try{const response=await fetch(`/api/room?id=${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(10000)});data=await response.json();if(!response.ok)throw new Error(data.error);}
+    catch(e){if(mine!==view)return;if(signature){chatStatus.innerHTML='<span class="connection-note" role="status">Connection lost. Showing the last snapshot.</span>';return;}main.innerHTML=`<div class="empty">${esc(e.message || 'Could not open the room.')}</div>`;bar.remove();return;}
+    if(mine!==view)return;
+    const room=data.room;members=room.members;
+    title.innerHTML=`<span class="room-icon head" aria-hidden="true">#</span><bdi dir="auto">${esc(room.name)}</bdi>`;
+    sub.innerHTML=members.map(m=>`<a class="room-member${m.alive?'':' gone'}" href="#${esc(m.pane)}"><bdi dir="auto">@${esc(m.handle)}</bdi>${m.waiting?`<span class="room-busy"><i></i><i></i><i></i></span>`:''}</a>`).join(' ');
+    chatStatus.innerHTML=`<button type="button" class="room-delete">${ui('Delete room','מחיקת החדר')}</button>`;
+    const del=chatStatus.querySelector('.room-delete');
+    del.onclick=async()=>{if(del.dataset.armed!=='true'){del.dataset.armed='true';del.textContent=ui('Tap again to delete','הקישו שוב למחיקה');setTimeout(()=>{if(del.isConnected){del.dataset.armed='false';del.textContent=ui('Delete room','מחיקת החדר');}},4000);return;}
+      const response=await fetch('/api/rooms/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})});if(response.ok){history.pushState({},'',location.pathname);fleet();}else note(ui('The room could not be deleted.','לא ניתן למחוק את החדר.'),true);};
+    const chips=bar.querySelector('.room-mentions');
+    const chipHtml=members.map(m=>`<button type="button" data-handle="${esc(m.handle)}">@${esc(m.handle)}</button>`).join('');
+    if(chips.dataset.html!==chipHtml){chips.dataset.html=chipHtml;chips.innerHTML=chipHtml;chips.querySelectorAll('button').forEach(button=>{button.onclick=()=>{const tag='@'+button.dataset.handle+' ';if(!field.value.includes(tag))field.value=(tag+field.value).trimEnd()+' ';field.focus();grow();};});}
+    const waiting=members.filter(m=>m.waiting);
+    const html=(room.messages.length?room.messages.map(m=>roomMessageHtml(m,members)).join(''):`<div class="empty">${ui('Nobody has written here yet. Mention an agent with @, or write to everyone.','עוד לא נכתב כאן דבר. פנו לסוכן עם @, או כתבו לכולם.')}</div>`)
+      +(waiting.length?`<div class="room-working" role="status"><span class="room-busy"><i></i><i></i><i></i></span>${esc(waiting.map(m=>'@'+m.handle).join(', '))} ${ui('working on it','עובדים על זה')}</div>`:'');
+    if(html!==signature){signature=html;main.innerHTML=`<div class="room-feed">${html}</div>`;if(following)main.scrollTop=main.scrollHeight;}
+  };
+  await render();
+  if(mine===view)timer=setInterval(render,3000);
+}
+
+// What a chat is about: its own name if it has one, else its task, else its project.
+function paneHeadline(p){
+  const session=p?.sessionAuthority?p.sessionViewV2:null;
+  const task=session?(session.task?.label || session.now?.label || ''):technicalTask(p?.task)?ui('Continuing from a handoff','ממשיך מהעברה'):shortTask(p?.task) || '';
+  const named=p?.title || p?.name || '',projectName=projectLabel(p?.project);
+  return {headline:named && named!==p?.project && named!==projectName?named:task || projectName,task,projectName};
+}
+function card(p) {
+  const session=p.sessionAuthority?p.sessionViewV2:null;
+  const state=avatarState(p),stalled=state==='working' && p.stalledForMs,label=stalled?ui(`No activity ${stallAge(p.stalledForMs)}`,`ללא פעילות ${stallAge(p.stalledForMs)}`):({producing:ui('Working','עובד'),working:ui('Working','עובד'),'needs-you':ui('Needs you','נדרש מענה'),idle:ui('Idle','ממתין'),exited:ui('Exited','הסתיים')})[state];
+  const task=session?(session.task?.label || session.now?.label || ''):technicalTask(p.task)?ui('Continuing from a handoff','ממשיך מהעברה'):shortTask(p.task) || '';
+  const named=p.title || p.name || '',projectName=projectLabel(p.project);
+  // The project is the group heading, so the row is named by what this chat is about.
+  const headline=named && named!==p.project && named!==projectName?named:task || projectName;
+  const latest=p.sessionViewV2?.now,said=latest && !latest.stale && !/^Using\s/.test(latest.label || '')?String(latest.label || '').trim():'';
+  const detail=said && said!==headline?said:headline===task?'':task;
+  const at=localStorage.getItem('termcontrol-sort')==='recent'?p.lastUsedAt:(p.lastActiveAt || p.updatedAt);
+  const active=['working','producing','needs-you'].includes(state) || stalled;
+  const memory=p.contextPercent>=60?`<span class="memfill${p.contextPercent>=80?' high':''}">${ui(`memory ${p.contextPercent}%`,`זיכרון ${p.contextPercent}%`)}</span>`:'';
+  return `<button type="button" class="pane ${p.turn || 'idle'}${stalled?' stalled':''}" data-id="${esc(p.id)}" data-key="pane:${esc(p.id)}" data-state="${stalled?'stalled':state}" aria-label="${esc(headline)}, ${esc(projectName)}, ${esc(p.provider)}, ${label}">${avatar(p)}<span class="pane-copy"><span class="row1"><span class="project" dir="auto">${esc(headline)}</span><span class="when">${at?shortWhen(at):''}</span></span><span class="row2"><span class="state-dot" aria-hidden="true"></span>${active?`<span class="state">${label}</span>`:detail?'':`<span class="provider">${esc(p.provider)}</span>`}${detail?`<span class="task" dir="auto">${esc(detail)}</span>`:''}${memory}</span></span></button>`;
+}
+
+async function chat(id,{motion=null,initialFeed=null}={}) {
+  rememberCurrentChat();saveChatView=null;clearChatGesture(Boolean(motion && chatGesture===motion));
+  document.querySelector('.composer')?.releaseDraft?.();
+  document.querySelector('.composer')?.remove();
+  document.querySelector('.askbox')?.remove();
+  const remembered=chatMemory(id),restorePosition=Number.isFinite(remembered.scrollTop);
   const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
   sideContent.querySelectorAll('.pane').forEach(el=>el.classList.toggle('selected',el.dataset.id===id));
   focusedPane=id;
@@ -1138,25 +2040,30 @@ async function chat(id) {
   releaseChatWake?.();
   nav.innerHTML = `<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
   nav.querySelector('.back').onclick = () => {if(history.state?.openedFromAgents){history.back();}else{history.pushState({},'',location.pathname);fleet();}};
+  for(const step of [-1,1]){const button=document.createElement('button');button.type='button';button.className='chat-step';button.dataset.chatStep=step;button.onclick=()=>navigateChat(step);nav.append(button);}
+  nav.setAttribute('aria-label',ui('Chat navigation','ניווט בין שיחות'));paintChatNavigation();
   main.innerHTML = '<div class="spin">loading…</div>';
-  chatStatus.innerHTML = '';
+  chatStatus.innerHTML = '';routinesLine.innerHTML = '';loadRoutines(id);
 
   let lastSignature = '';
   // A message typed into an agent only turns up in its record once the agent
   // reads it — sometimes a minute later. Until then, show it as yours, marked
   // as on its way, so it never looks like the message vanished.
-  let justSent = null;
+  let sentQueue = [].concat(remembered.sentQueue || remembered.justSent || []);
   let approvalHistory = readApprovalHistory(id);
-  let shown = 60;                     // how far back this chat is showing
-  let mode = ['screen','today'].includes(sessionStorage.getItem('tc-mode')) ? sessionStorage.getItem('tc-mode') : 'chat';
+  let shown = remembered.shown || 60;                     // how far back this chat is showing
+  let mode = remembered.mode || (['screen','today'].includes(sessionStorage.getItem('tc-mode')) ? sessionStorage.getItem('tc-mode') : 'chat');
   let deskDay = null;
 
   // Follow the newest message until the reader scrolls away from the end.
   // Deciding "are we at the bottom?" afresh on every refresh gets it wrong
   // when a refresh lands while the layout is still settling.
-  let following = true;
+  let following = restorePosition ? remembered.following : true;
+  const savedTop=remembered.scrollTop;
+  saveChatView=()=>Object.assign(remembered,{scrollTop:main.scrollTop,following,shown,mode,sentQueue});
   const onScroll = () => {
     following = main.scrollHeight - main.scrollTop - main.clientHeight <= 80;
+    saveChatView?.();
   };
   main.addEventListener('scroll', onScroll, { passive: true });
   releaseChatScroll?.();
@@ -1165,27 +2072,32 @@ async function chat(id) {
     releaseChatScroll = null;
   };
 
+  let firstFeed=initialFeed;
   const render = async () => {
     let d;
     try {
+      if(firstFeed){d=firstFeed;firstFeed=null;}else{
       const r = await fetch(`/api/feed?pane=${encodeURIComponent(id)}&limit=${shown}`, {
         signal: AbortSignal.timeout(12000),
       });
-      if (!r.ok) throw new Error(r.status === 401 ? 'Signed out — reload to sign in.' : 'Your machine did not answer.');
+      if (!r.ok) throw failedRead(r,'/api/feed');
       d = await r.json();
+      }
     } catch (e) {
+      if(mine!==view)return;
       if (lastSignature) { chatStatus.innerHTML='<span class="connection-note" role="status">Connection lost. Showing the last snapshot.</span>'; return; }
-      main.innerHTML = `<div class="empty">${esc(e.name === 'TimeoutError' ? 'Your machine is taking too long to answer.' : e.message)}<br><br>Pull down to try again.</div>`;
+      showReadFailure(e,()=>render());
       return;
     }
     if (mine !== view) return;
     checkVersion(d.version);
     if (d.error) { main.innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
-    title.innerHTML = `<span class="head-avatar" aria-hidden="true">${blobSvg(d.pane,36)}</span>` + esc(projectLabel(d.pane.project))
+    const named=paneHeadline(d.pane);
+    title.innerHTML = `<span class="head-avatar" aria-hidden="true">${blobSvg(d.pane,36)}</span><bdi class="chat-project" dir="auto">${esc(named.headline)}</bdi>`
       + (d.producing
           ? '<span class="headlive"><span class="dot producing" aria-hidden="true"></span>live</span>'
           : '<span class="headlive quiet"><span class="dot idle" aria-hidden="true"></span>quiet</span>');
-    sub.innerHTML = esc(`${d.pane.provider}${d.pane.task && !technicalTask(d.pane.task) ? ' · ' + d.pane.task : ''}`)
+    sub.innerHTML = esc(`${named.projectName} · ${d.pane.provider}`)
       + (d.producing && d.lastLine ? `<span class="headtail">${esc(d.lastLine)}</span>` : '');
     chatStatus.innerHTML = statusHtml(d.pane)+(visitNotice===id?`<span role="status">${ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.')}</span>`:'');
     const preservedAsk=document.querySelector('.askbox');
@@ -1194,7 +2106,7 @@ async function chat(id) {
       if(preservedAsk?.dataset.askId===d.ask.id && !preservedAsk.isConnected)main.append(preservedAsk);
       mountAsk(id,d.ask,answer=>{approvalHistory=rememberApproval(id,answer);lastSignature='';following=true;return render();},d.answerReceipt || (approvalHistory.find(entry=>entry.askId===d.ask.id)?{state:'sent'}:null));
     };
-    const goQuestion=async()=>{await document.querySelector('[data-mode="chat"]')?.onclick();const question=main.querySelector('.askbox');if(!question){const pending=document.querySelector('.pending-answer');if(pending)pending.textContent=ui('The question changed. Refresh to check.','השאלה השתנתה. רעננו לבדיקה.');return;}if(question.querySelector('.askbody')?.hidden)question.querySelector('.asktoggle')?.click();const target=question.querySelector('[data-choice]:not(:disabled)') || question.querySelector('[data-check-screen]') || question.querySelector('.asktoggle');question.querySelector('.askresult').textContent=question.querySelector('.receipt')?ui('Check the terminal before answering again.','בדקו במסוף לפני תשובה נוספת.'):ui('Choose an answer below.','בחרו תשובה מהאפשרויות.');target?.focus({preventScroll:true});target?.scrollIntoView({block:'center'});};
+    const goQuestion=async()=>{if(mode!=='chat')await document.querySelector('[data-mode="chat"]')?.onclick();const question=main.querySelector('.askbox'),pending=document.querySelector('.pending-answer');if(!question){if(pending)pending.textContent=ui('The question changed. Refresh to check.','השאלה השתנתה. רעננו לבדיקה.');return;}if(question.querySelector('.askbody')?.hidden)question.querySelector('.asktoggle')?.click();const target=question.querySelector('[data-choice]:not(:disabled)') || question.querySelector('[data-check-screen]') || question.querySelector('.asktoggle');if(question.querySelector('.receipt'))question.querySelector('.askresult').textContent=ui('Check the terminal before answering again.','בדקו במסוף לפני תשובה נוספת.');if(pending)pending.textContent=ui('Choices shown above','האפשרויות מוצגות למעלה');target?.focus({preventScroll:true});target?.scrollIntoView({block:'center'});};
 
 
     if (!document.querySelector('.composer')) {
@@ -1202,9 +2114,10 @@ async function chat(id) {
         id,
         (entry) => {
           if (entry?.refresh) { lastSignature = ''; return render(); }
-          justSent = entry; following = true; render();
+          sentQueue = [...sentQueue, entry]; following = true; render();
         },
         (next) => {
+          clearChatGesture();
           mode = next;
           sessionStorage.setItem('tc-mode', mode);
           lastSignature = '';
@@ -1221,7 +2134,7 @@ async function chat(id) {
     const composer=document.querySelector('.composer'),blocked=Boolean(d.ask) && mode!=='screen';
     composer.classList.toggle('question-open',blocked);composer.querySelector('textarea').readOnly=blocked;composer.querySelector('.attach').disabled=blocked;
     composer.querySelector('.send').disabled=blocked || !composer.querySelector('textarea').value.trim();
-    composer.querySelector('textarea').placeholder=blocked?ui('Answer above','למענה, בחרו בשאלה'):mode==='screen'?ui('Type into the terminal…','הקלדה בטרמינל…'):ui(`Message ${projectLabel(d.pane.project)}…`,`הודעה ל־${projectLabel(d.pane.project)}…`);
+    composer.querySelector('textarea').placeholder=blocked?ui('Answer above','למענה, בחרו בשאלה'):mode==='screen'?ui('Type into the terminal…','הקלדה בטרמינל…'):composerPlaceholder(projectLabel(d.pane.project));
     composer.querySelector('textarea').onclick=()=>{if(blocked)goQuestion();};
     const pendingAnswer=composer.querySelector('.pending-answer');pendingAnswer.hidden=!blocked;pendingAnswer.textContent=ui('Show answer choices','הצגת אפשרויות המענה');pendingAnswer.onclick=goQuestion;
     approvalHistory=approvalHistory.map(entry=>{
@@ -1250,8 +2163,9 @@ async function chat(id) {
       // telling someone there is nothing here.
       const shown = await fetch(`/api/screen?pane=${encodeURIComponent(id)}`)
         .then((x) => x.json()).catch(() => ({}));
+      if(mine!==view)return;
       const screen = shown.screen || '';
-      const pending = justSent ? messageHtml('user',justSent.text,'you',justSent.delivered?'sent — waiting for the agent to read it':'sending…',' mine pendingmsg') : '';
+      const pending = sentQueue.map(entry=>messageHtml('user',entry.text,'you',entry.delivered?'sent — waiting for the agent to read it':'sending…',' mine pendingmsg')).join('');
       const approvals = approvalHistory.map((entry) => messageHtml('user',entry.answer || entry.text,'You · answer',entry.at?ago(entry.at):'',' mine approvalmsg',entry.delivery==='agent'?ui('Confirmed in the agent’s answer record.','אושר ברישום התשובה של הסוכן.'):entry.delivery==='declined'?ui('The request was declined. This answer was not confirmed.','הבקשה נדחתה. התשובה הזו לא אושרה.'):ui('Sent to the terminal · awaiting agent confirmation.','נשלח למסוף · ממתין לאישור הסוכן.'))).join('');
       // Chat mode stays a chat even here: the screen is shown as the
       // terminal's latest message, with its tables and lists made readable.
@@ -1268,6 +2182,7 @@ async function chat(id) {
     if (mode === 'screen') {
       const shown = await fetch(`/api/screen?pane=${encodeURIComponent(id)}`)
         .then((x) => x.json()).catch(() => ({}));
+      if(mine!==view)return;
       const screenHtml = `<div class="screen">${esc(shown.screen || 'Nothing on the screen yet.')}</div>`;
       if (screenHtml !== lastSignature) {
         lastSignature = screenHtml;
@@ -1281,7 +2196,7 @@ async function chat(id) {
       ? `<div class="start">${ui('Start of this conversation','תחילת השיחה')}</div>`
       : `<button type="button" class="earlier">${ui('Show earlier messages','הצגת הודעות קודמות')}</button>`;
 
-    const visibleEvents = d.events.filter((event) => event.kind !== 'tool');
+    const visibleEvents = d.events;
     // Approval answers are local chat events, but they still belong at their
     // real time in the conversation. Appending them after every transcript
     // event makes an old answer cover newer agent replies and looks frozen.
@@ -1296,23 +2211,19 @@ async function chat(id) {
       const bTime = new Date(b.at || 0).getTime();
       return aTime - bTime || a.order - b.order;
     });
-    const context=technicalTask(d.pane.task)?`<details class="message-details technical-context"><summary>${ui('Technical startup context','הנחיית פתיחה טכנית')}</summary><pre>${esc(d.pane.task)}</pre></details>`:'';
-    const html = context + older + displayEvents.map((e) => {
+    const context=technicalTask(d.pane.task)?`<details class="message-details technical-context" data-detail-key="startup:${esc(d.pane.task)}"><summary>${ui('Details: startup context','פרטים: הנחיית פתיחה')}</summary><pre>${esc(d.pane.task)}</pre></details>`:'';
+    const html = context + older + conversationHtml(displayEvents,(e) => {
       const when = e.at ? ago(new Date(e.at).getTime()) : '';
       const delivery=e.localApproval?(e.delivery==='agent'?ui('Confirmed in the agent’s answer record.','אושר ברישום התשובה של הסוכן.'):e.delivery==='declined'?ui('The request was declined on the terminal. This answer was not confirmed.','הבקשה נדחתה במסוף. התשובה הזו לא אושרה.'):ui('Sent to the terminal · awaiting agent confirmation.','נשלח למסוף · ממתין לאישור הסוכן.')):'';
       return messageHtml(e.kind,e.text,e.localApproval?ui('Your answer','התשובה שלך'):e.kind==='user'?ui('You','אתה'):e.kind==='notice'?ui('Status','עדכון'):projectLabel(d.pane.project),when,e.localApproval?' mine approvalmsg':'',delivery,e.details);
-    }).join('')
-      + (justSent && !visibleEvents.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))
-        ? messageHtml('user',justSent.text,'you',justSent.delivered?'sent — waiting for the agent to read it':'sending…',' mine pendingmsg')
-        : '')
+    })
+      + unconfirmedSent(sentQueue,visibleEvents).map(entry=>messageHtml('user',entry.text,'you',entry.delivered?'sent — waiting for the agent to read it':'sending…',' mine pendingmsg')).join('')
       + (d.producing || ['working','producing'].includes(avatarState(d.pane))
         ? `<div class="busyline" role="status"><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${ui('Working on it','עובד על זה')}</span></div>`
         : '');
 
     // Once the agent's own record shows it, stop holding our copy.
-    if (justSent && visibleEvents.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))) {
-      justSent = null;
-    }
+    sentQueue = unconfirmedSent(sentQueue,visibleEvents);
 
     // Re-rendering identical content would throw away the reader's position.
     if (html === lastSignature) {presentAsk();return;}
@@ -1325,7 +2236,9 @@ async function chat(id) {
     if(!first && (main.querySelector('.copy-fallback textarea:focus') || (selection?.toString() && main.contains(selection.anchorNode)) || (main.querySelector('.custom-answer textarea:focus') && preservedAsk?.dataset.askId===d.ask?.id && preservedAsk.dataset.receiptState===(d.answerReceipt?.state || '')))){presentAsk();return;}
 
     lastSignature = html;
+    const disclosureState=new Map([...main.querySelectorAll('details[data-detail-key]')].map(el=>[el.dataset.detailKey,el.open]));
     main.innerHTML = html;
+    main.querySelectorAll('details[data-detail-key]').forEach(el=>{if(disclosureState.has(el.dataset.detailKey))el.open=disclosureState.get(el.dataset.detailKey);});
     presentAsk();
 
     const earlier = main.querySelector('.earlier');
@@ -1343,7 +2256,9 @@ async function chat(id) {
       };
     }
 
-    if (first || nearBottom) {
+    if (first && restorePosition) {
+      main.scrollTop=savedTop;
+    } else if (first || nearBottom) {
       main.scrollTop = main.scrollHeight;
     } else if (false) {
       // Wait for layout: text rewraps and heights settle a frame after the
@@ -1392,8 +2307,12 @@ async function chat(id) {
   // message once the layout has actually settled.
   requestAnimationFrame(() => requestAnimationFrame(() => {
     if (mine !== view) return;
-    window.scrollTo(0, document.body.scrollHeight);
-    following = true;                       // opening always lands at the end
+    if(restorePosition){main.scrollTop=savedTop;following=remembered.following;}
+    else{window.scrollTo(0, document.body.scrollHeight);following=true;}
+    saveChatView?.();
+    paintChatNavigation();
+    chatHandoff?.remove();chatHandoff=null;
+    //                       // opening always lands at the end
   }));
   timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
 }
@@ -1402,21 +2321,24 @@ function mountAsk(id, ask, onDone, receipt=null) {
   document.body.classList.add('chat');
   const current=document.querySelector('.askbox');
   const state=receipt?.state || '';
-  const supported=String(ask.customAnswerSupported!==false && !ask.multiSelect);
-  if(current?.dataset.askId===ask.id && current.dataset.supported===supported && (current.dataset.receiptState===state || current.dataset.sending==='true'))return;
+  const supported=String(ask.customAnswerSupported!==false);
+  const multi=Boolean(ask.multiSelect) && ask.stage!=='review';
+  const picked=multi?`${(ask.checked||[]).join(',')}|${ask.customText||''}`:'';
+  if(current?.dataset.askId===ask.id && current.dataset.supported===supported && (current.dataset.picked||'')===picked && (current.dataset.receiptState===state || current.dataset.sending==='true'))return;
   current?.remove();
-  const box=document.createElement('section');box.className='askbox';box.dataset.askId=ask.id;box.dataset.receiptState=state;
+  const box=document.createElement('section');box.className='askbox'+(ask.questionCount>1 && ask.stage!=='review'?' has-progress':'');box.dataset.askId=ask.id;box.dataset.receiptState=state;box.dataset.picked=picked;
   box.dataset.supported=supported;
   box.setAttribute('aria-label',ask.kind==='permission'?ui('Permission request','בקשת הרשאה'):ui('Question from the agent','שאלה מהסוכן'));
   const waiting=receipt && receipt.state!=='not-sent';
-  const customSupported=ask.customAnswerSupported!==false && !ask.multiSelect && ask.stage!=='review';
+  const customSupported=ask.customAnswerSupported!==false && ask.stage!=='review';
   const customKey=`tc-answer-draft:${id}:${ask.id}`;
   box.innerHTML=`<div class="askheading"><h3><bdi dir="auto">${waiting?ui('Answer awaiting confirmation','התשובה ממתינה לאישור'):esc(ask.header || (ask.kind==='permission'?ui('Permission requested','נדרשת הרשאה'):ui('Your answer is needed','נדרשת תשובה שלך')))}</bdi>${ask.questionCount>1 && ask.stage!=='review'?` · <bdi dir="ltr">${ask.questionIndex+1} / ${ask.questionCount}</bdi>`:''}</h3><button type="button" class="asktoggle" aria-expanded="${!waiting}">${waiting?ui('Show','הצגה'):ui('Hide','צמצום')}</button></div>
     <div class="askbody"${waiting?' hidden':''}><p dir="auto">${esc(ask.title)}</p>${ask.detail?`<p dir="auto">${esc(ask.detail)}</p>`:''}${ask.kind==='permission' && ask.screen?`<details class="message-details"><summary>${ui('Terminal request details','פרטי הבקשה במסוף')}</summary><pre class="askscreen">${esc(ask.screen)}</pre></details>`:''}
     ${ask.stage==='review'?`${ask.reviewAnswers?.length?`<dl class="review-answers">${ask.reviewAnswers.map(item=>`<div><dt dir="auto">${esc(item.question)}</dt><dd dir="auto">${esc(item.answer)}</dd></div>`).join('')}</dl>`:''}<details class="message-details"><summary>${ui('Review in the terminal','הסיכום במסוף')}</summary><pre class="askscreen">${esc(ask.screen||'')}</pre></details>`:''}
     ${waiting?`<div class="receipt"><p role="status">${ui('An answer was sent or is unconfirmed. Check the terminal before answering again.','תשובה נשלחה או שמסירתה לא אושרה. בדקו במסוף לפני תשובה נוספת.')}</p><button type="button" data-check-screen>${ui('Check terminal','בדיקה במסוף')}</button></div>`:`
-    <div class="opts">${ask.options.map(option=>`<button type="button" dir="${dirOf(option.label)}" data-choice="${esc(option.key)}"${ask.multiSelect?' disabled':''}><span dir="auto">${esc(option.label)}</span>${option.detail?`<span class="detail" dir="auto">${esc(option.detail)}</span>`:''}</button>`).join('')}</div>
-    ${ask.kind==='question' && ask.stage!=='review'?`<button type="button" class="typeinstead" aria-label="${ui('Write my answer','כתיבת התשובה שלי')}"${customSupported?'':' disabled aria-describedby="unsupported-answer"'}>${ui('Write my own answer','כתיבת תשובה אחרת')}</button>${customSupported?'':`<p class="unsupported-answer" id="unsupported-answer">${ui('Custom answers are disabled until this terminal form is verified. The choices use the existing request.','תשובות אישיות מושבתות עד לאימות הטופס הזה. האפשרויות משתמשות בבקשה הקיימת.')}</p>`}
+    <div class="opts">${ask.options.map(option=>`<button type="button" dir="${dirOf(option.label)}" data-choice="${esc(option.key)}"${multi?` aria-pressed="${(ask.checked||[]).includes(option.key)}"`:''}><span class="choice-copy"><span dir="auto">${esc(option.label)}</span>${option.detail?`<span class="detail" dir="auto">${esc(option.detail)}</span>`:''}</span>${multi?'<svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="13" height="13" rx="3"/><path class="tick" d="m6.5 10.2 2.4 2.4 4.6-5.2"/></svg>':'<svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m8 5 5 5-5 5"/></svg>'}</button>`).join('')}</div>
+     ${multi?`<p class="multi-hint" dir="auto">${ui('Pick all that apply, then submit.','בחרו את כל המתאימות ואז שלחו.')}</p>${ask.customText?`<p class="multi-custom" dir="auto">${ui('Your own answer','התשובה שלך')}: <bdi>${esc(ask.customText)}</bdi></p>`:''}<button type="button" class="multi-submit" data-submit-multi>${ui('Submit choices','שליחת הבחירות')}</button>`:''}
+    ${ask.kind==='question' && ask.stage!=='review'?`<div class="answer-tools"><button type="button" class="typeinstead" aria-label="${ui('Write my answer','כתיבת התשובה שלי')}"${customSupported?'':' disabled aria-describedby="unsupported-answer"'}>${customSupported?ui('Write my own answer','כתיבת תשובה אחרת'):ui('Custom answer unavailable','תשובה אישית אינה זמינה')}</button>${customSupported?'':`<details class="answer-explanation"><summary aria-label="${ui('Why is a custom answer unavailable?','למה תשובה אישית אינה זמינה?')}">${ui('Why?','למה?')}</summary><p class="unsupported-answer" id="unsupported-answer">${ui('Custom answers are disabled until this terminal form is verified. The choices use the existing request.','תשובות אישיות מושבתות עד לאימות הטופס הזה. האפשרויות משתמשות בבקשה הקיימת.')}</p></details>`}</div>
     <form class="custom-answer" hidden><label for="custom-answer-text">${ui('Your answer to this question','התשובה שלך לשאלה הזו')}</label><textarea id="custom-answer-text" rows="2" maxlength="8000" dir="auto" aria-describedby="answer-help"></textarea><p id="answer-help">${ui('Back keeps this draft and returns to the choices. It does not decline the question.','חזרה שומרת את הטיוטה ומחזירה לאפשרויות. היא לא דוחה את הבקשה.')}</p><div class="custom-actions"><button type="submit" disabled>${ui('Send answer','שליחת תשובה')}</button><button type="button" data-cancel-answer>${ui('Back to choices','חזרה לאפשרויות')}</button></div></form>`:''}`}
     <p class="askresult" role="status" aria-live="polite"></p></div>`;
   main.append(box);
@@ -1434,18 +2356,28 @@ function mountAsk(id, ask, onDone, receipt=null) {
   let sending=false;
   const submit=async(choice,answer)=>{
     if(sending || (!choice && !customSupported))return;sending=true;box.dataset.sending='true';
-    box.querySelectorAll('[data-choice],.typeinstead,[type=submit]').forEach(button=>button.disabled=true);
-    const result=box.querySelector('.askresult');result.textContent=ui('Sending to this question…','שולח תשובה לשאלה הזו…');result.scrollIntoView({block:'center'});let response;
-    try{const sent=await fetch('/api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id,askId:ask.id,...(choice?{choice}:{answer})}),signal:AbortSignal.timeout(10000)});response=await sent.json();if(!response.ok && !response.error)response={error:ui('The terminal did not acknowledge this answer.','המסוף לא אישר את קבלת התשובה הזו.')};}
+    box.querySelectorAll('[data-choice],.typeinstead,[type=submit],[data-submit-multi]').forEach(button=>button.disabled=true);
+    const result=box.querySelector('.askresult');result.textContent=multi && choice!=='submit-multi'?ui('Updating the terminal…','מעדכן במסוף…'):ui('Sending to this question…','שולח תשובה לשאלה הזו…');result.scrollIntoView({block:'center'});let response;
+    try{const sent=await fetch('/api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id,askId:ask.id,...(choice?{choice}:{answer}),...(multi?{multi:true}:{})}),signal:AbortSignal.timeout(multi?15000:10000)});response=await sent.json();if(!response.ok && !response.error)response={error:ui('The terminal did not acknowledge this answer.','המסוף לא אישר את קבלת התשובה הזו.')};}
     catch{response={error:ui('Delivery is unconfirmed. Your draft is saved. Check the terminal before retrying.','מסירת התשובה לא אושרה. הטיוטה נשמרה. בדקו במסוף לפני ניסיון נוסף.'),uncertain:true};}
     sending=false;box.dataset.sending='false';
-    if(response.error){result.textContent=deliveryError(response.error);result.scrollIntoView({block:'center'});box.querySelectorAll('[data-choice],.typeinstead,[type=submit]').forEach(button=>button.disabled=Boolean(response.uncertain) || (button.matches('.typeinstead,[type=submit]') && !customSupported) || (button.matches('[data-choice]') && ask.multiSelect));if(field && !response.uncertain)field.oninput();return;}
+    if(response.error){result.textContent=deliveryError(response.error);result.scrollIntoView({block:'center'});box.querySelectorAll('[data-choice],.typeinstead,[type=submit],[data-submit-multi]').forEach(button=>button.disabled=Boolean(response.uncertain) || (button.matches('.typeinstead,[type=submit]') && !customSupported));if(field && !response.uncertain)field.oninput();return;}
+    if(multi && choice!=='submit-multi'){
+      box.querySelectorAll('[data-choice],.typeinstead,[data-submit-multi]').forEach(button=>button.disabled=false);
+      box.querySelectorAll('[data-choice]').forEach(button=>button.setAttribute('aria-pressed',String((response.checked||[]).includes(button.dataset.choice))));
+      if(answer){try{sessionStorage.removeItem(customKey);}catch{}field.value='';close();ask.customText=response.customText||answer;}
+      box.dataset.picked=`${(response.checked||[]).join(',')}|${ask.customText||''}`;
+      result.textContent=answer?ui('Your answer is typed in and ticked. Submit when ready.','התשובה שלך הוקלדה וסומנה. שלחו כשמוכנים.'):ui('Updated in the terminal.','עודכן במסוף.');
+      if(answer && !box.querySelector('.multi-custom'))box.querySelector('.multi-hint')?.insertAdjacentHTML('afterend',`<p class="multi-custom" dir="auto">${ui('Your own answer','התשובה שלך')}: <bdi>${esc(ask.customText)}</bdi></p>`);
+      return;
+    }
     result.textContent=ui('Sent to the terminal. Awaiting the agent’s answer record.','נשלח למסוף. ממתין לרישום התשובה אצל הסוכן.');
-    const option=ask.options.find(item=>item.key===choice);const value=choice?option?.label || choice:answer;
+    const option=ask.options.find(item=>item.key===choice);const value=choice==='submit-multi'?[...ask.options.filter(item=>box.querySelector(`[data-choice="${item.key}"]`)?.getAttribute('aria-pressed')==='true').map(item=>item.label),...(ask.customText?[ask.customText]:[])].join(', '):choice?option?.label || choice:answer;
     if(history.state?.answerEditor===ask.id){const next={...history.state};delete next.answerEditor;history.replaceState(next,'',location.hash);}
     onDone?.({askId:ask.id,sourceId:ask.sourceId,answer:value,completeRequest:ask.stage==='review',delivery:'terminal',text:`${ask.kind==='permission'?'Permission answer':'Question answer'}: ${value}`,at:response.sentAt || Date.now()});
   };
   box.querySelectorAll('[data-choice]').forEach(button=>{button.onclick=()=>submit(button.dataset.choice);});
+  box.querySelector('[data-submit-multi]')?.addEventListener('click',()=>submit('submit-multi'));
   if(form)form.onsubmit=event=>{event.preventDefault();if(field.value.trim())submit(null,field.value);};
 }
 
@@ -1457,12 +2389,17 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
 
   const bar = document.createElement('div');
   bar.className = 'composer';
+  bar.dataset.recipient=id;
+  const draftMemory=chatMemory(id);
   bar.innerHTML = `
-    <button type="button" class="attach" aria-label="${ui('Attach an image','צירוף תמונה')}">${icon('attach')}</button>
-    <input type="file" accept="image/*" aria-hidden="true">
+    <details class="composer-menu"><summary aria-label="${ui('Attachments, voice and views','צירוף תמונה, קול ותצוגות')}" title="${ui('Composer tools','כלי ההודעה')}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14 M5 12h14"/></svg></summary><div class="composer-menu-panel">
+      <div class="modeswitch" role="group" aria-label="${ui('What to show','תצוגה')}"><button type="button" data-mode="chat">${ui('Chat','שיחה')}</button>${hasDesk?`<button type="button" data-mode="today">${ui('Today','היום')}</button>`:''}<button type="button" data-mode="screen">${ui('Screen','מסך')}</button></div>
+      <button type="button" class="attach" aria-label="${ui('Attach an image','צירוף תמונה')}">${icon('attach')}${ui('Attach an image','צירוף תמונה')}</button><input type="file" accept="image/*" aria-hidden="true">
+      <button type="button" class="mic" aria-label="${ui('Dictate a message','הקלדה בקול')}">${icon('mic')}${ui('Dictate a message','הקלדה בקול')}</button>
+      <button type="button" class="schedule-message">${icon('clock')}${ui('Schedule a message','תזמון הודעה')}</button>
+    </div></details>
     <div class="stack">
-      <div class="toolrow"><div class="modeswitch" role="group" aria-label="${ui('What to show','תצוגה')}"><button type="button" data-mode="chat">${ui('Chat','שיחה')}</button>${hasDesk?`<button type="button" data-mode="today">${ui('Today','היום')}</button>`:''}<button type="button" data-mode="screen">${ui('Screen','מסך')}</button></div></div>
-      <button type="button" class="pending-answer" hidden>${ui('Answer the current question','למענה על השאלה')}</button>
+      <button type="button" class="pending-answer" aria-live="polite" hidden>${ui('Answer the current question','למענה על השאלה')}</button>
       <details class="terminal-tools"><summary>${ui('Terminal tools','כלי טרמינל')}</summary>
         <div class="keys" role="group" aria-label="Terminal keys">
         <button type="button" data-ins="/" aria-label="Slash">/</button>
@@ -1488,10 +2425,10 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
       </div>
       <textarea rows="1" dir="auto" placeholder="${ui('Reply to this agent…','הודעה לסוכן…')}" enterkeyhint="send" aria-label="${ui('Your reply','ההודעה שלך')}"></textarea>
     </div>
-    <button type="button" class="mic" aria-label="${ui('Dictate a message','הקלדה בקול')}">${icon('mic')}</button>
     <button type="button" class="send" aria-label="${ui('Send message','שליחת הודעה')}" disabled>${icon('send')}</button>`;
   document.body.appendChild(bar);
   viewTabs=bar.querySelector('.modeswitch');
+  bar.querySelector('.schedule-message').onclick=()=>{bar.querySelector('.composer-menu').open=false;scheduleDialog(id,bar.querySelector('textarea').value);};
 
   const cmdlist = bar.querySelector('.cmdlist');
   let commands = null;
@@ -1603,12 +2540,14 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
     attached.hidden = false;
     preview.removeAttribute('src');
     nameEl.textContent = 'preparing…';
+    bar.dataset.preparing='true';paintChatNavigation();
     sync();
 
     // Phone photos are huge; sending one raw over mobile data is what makes an
     // upload look stuck. Shrink it first, and fall back to the original if the
     // browser cannot decode it.
     const prepared = await shrink(blob).catch(() => blob);
+    delete bar.dataset.preparing;paintChatNavigation();
     image = { blob: prepared, label };
 
     if (preview.src) URL.revokeObjectURL(preview.src);
@@ -1689,36 +2628,88 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
   // Dictation: tap to talk, tap again to stop. The words land in the box so you
   // can read and fix them before sending. Hebrew and English are detected.
   const mic = bar.querySelector('.mic');
-  let recorder = null;
+  let recorder = null, stream = null, phase = 'idle', disposed = false, transcribeAbort = null, stoppedAt = null;
+  const releaseStream = () => { stream?.getTracks().forEach((t) => t.stop()); stream = null; };
+  const resetMic = () => { recorder = null; stoppedAt = null; phase = 'idle'; mic.disabled = false; mic.classList.remove('rec', 'busy'); };
+  const cancelVoice = () => {
+    if (disposed) return;
+    disposed = true; observer.disconnect(); window.removeEventListener('pagehide', cancelVoice);
+    transcribeAbort?.abort();
+    if (recorder) { recorder.onstop = recorder.onerror = recorder.ondataavailable = null; if (recorder.state !== 'inactive') try { recorder.stop(); } catch {} }
+    releaseStream(); resetMic();
+  };
+  const observer = new MutationObserver(() => { if (!bar.isConnected) cancelVoice(); });
+  observer.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('pagehide', cancelVoice);
   mic.onclick = async () => {
-    if (recorder) { recorder.stop(); return; }
-    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      return note(ui('Voice needs a newer browser.', 'הקלדה בקול דורשת דפדפן חדש יותר.'), true);
+    if (disposed || phase === 'requesting' || phase === 'transcribing') return;
+    if (phase === 'recording') { stoppedAt = performance.now(); try { recorder.stop(); } catch { releaseStream(); resetMic(); note(ui('Recording stopped. Try again.', 'ההקלטה הופסקה. נסו שוב.'), true); } return; }
+    if (!window.isSecureContext) return note(ui('Voice needs HTTPS on your phone. Open the secure TermControl address.', 'הקלדה בקול בטלפון דורשת HTTPS. פתחו את הכתובת המאובטחת של TermControl.'), true);
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return note(ui('Voice recording is not supported in this browser.', 'הקלטה בקול אינה נתמכת בדפדפן הזה.'), true);
+    phase = 'requesting';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (disposed || !bar.isConnected) { releaseStream(); return; }
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find((type) => MediaRecorder.isTypeSupported?.(type));
+      const chunks = [], rec = recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onerror = () => { rec.onstop = null; if (rec.state !== 'inactive') try { rec.stop(); } catch {} releaseStream(); resetMic(); note(ui('Recording failed. Try another browser.', 'ההקלטה נכשלה. נסו דפדפן אחר.'), true); };
+      rec.onstop = async () => {
+        releaseStream(); recorder = null;
+        if (disposed || !bar.isConnected) return;
+        phase = 'transcribing'; mic.disabled = true; mic.classList.remove('rec'); mic.classList.add('busy');
+        transcribeAbort = new AbortController();
+        const timeout = setTimeout(() => transcribeAbort?.abort(), 180000);
+        try {
+          const type = rec.mimeType || chunks.find((c) => c.type)?.type || 'application/octet-stream';
+          const audio = new Blob(chunks, { type });
+          if (!audio.size) throw new Error(ui('No sound was recorded. Try again.', 'לא הוקלט קול. נסו שוב.'));
+          if (audio.size > 25 * 1024 * 1024) throw new Error(ui('That recording is too long.', 'ההקלטה ארוכה מדי.'));
+          note(ui('Turning your recording into text…', 'מתמלל את ההקלטה…'));
+          const requestedAt = performance.now();
+          const r = await fetch('/api/transcribe', { method: 'POST', headers: { 'content-type': type }, body: audio, signal: transcribeAbort.signal });
+          const d = await r.json();
+          // Content-free diagnostics for the last 20 clips, including phone/network
+          // time absent from server timings. Never retain audio or the returned words.
+          const timing = { clientMs: Math.round(performance.now() - requestedAt), status: r.status };
+          if (Number.isFinite(stoppedAt)) {
+            timing.captureFinalizeMs = Math.round(requestedAt - stoppedAt);
+            timing.stopToTextMs = Math.round(performance.now() - stoppedAt);
+          }
+          for (const key of ['uploadMs', 'queueMs', 'workerStartupMs', 'warmupMs', 'decodeMs', 'detectMs', 'inferenceMs', 'requestMs']) {
+            if (Number.isFinite(d.timings?.[key]) && d.timings[key] >= 0) timing[key] = d.timings[key];
+          }
+          const history = window.termcontrolDictationTimings ||= [];
+          history.push(timing); if (history.length > 20) history.shift();
+          if (!r.ok) throw new Error(r.status === 401 ? ui('Signed out. Reload and sign in to dictate.', 'החיבור הסתיים. רעננו והתחברו כדי לתמלל.') : d.error || ui('Could not turn that into text.', 'לא ניתן לתמלל את ההקלטה.'));
+          if (disposed || !bar.isConnected) return;
+          if (!d.text) return note(ui('No speech heard.', 'לא נשמע דיבור.'), true);
+          // Remember only the successful language, never the dictated words.
+          try { if (['he', 'en'].includes(d.language)) localStorage.setItem('termcontrol-dictation-language', d.language); } catch {}
+          const before = box.value, at = box.selectionStart ?? before.length;
+          const gap = before && !/\s$/.test(before.slice(0, at)) ? ' ' : '';
+          box.value = before.slice(0, at) + gap + d.text + before.slice(box.selectionEnd ?? at);
+          box.selectionStart = box.selectionEnd = at + gap.length + d.text.length;
+          box.focus(); sync(); document.querySelector('.sendstate')?.remove();
+        } catch (e) { if (!disposed) note(e.name === 'AbortError' ? ui('Transcription took too long. Try a shorter recording.', 'התמלול ארך זמן רב מדי. נסו הקלטה קצרה יותר.') : e.message, true); }
+        finally { clearTimeout(timeout); transcribeAbort = null; resetMic(); }
+      };
+      rec.start(); phase = 'recording'; mic.classList.add('rec');
+      // Load while the owner speaks, using the previous dictation language rather
+      // than guessing from the UI. A first clip only warms the detector. The clip
+      // itself still uses automatic Hebrew/English detection.
+      let previousLanguage;
+      try { previousLanguage = localStorage.getItem('termcontrol-dictation-language'); } catch {}
+      const hint = ['he', 'en'].includes(previousLanguage) ? '?lang=' + previousLanguage : '';
+      fetch('/api/transcribe/prepare' + hint, { method: 'POST' }).catch(() => {});
+    } catch (error) {
+      releaseStream(); resetMic();
+      const message = error.name === 'NotAllowedError' ? ui('Allow the microphone in your browser settings to dictate.', 'יש לאשר מיקרופון בהגדרות הדפדפן כדי לתמלל.')
+        : error.name === 'NotFoundError' ? ui('No microphone was found on this device.', 'לא נמצא מיקרופון במכשיר הזה.')
+        : error.name === 'NotReadableError' ? ui('The microphone is busy. Close other apps using it and retry.', 'המיקרופון תפוס. סגרו יישומים שמשתמשים בו ונסו שוב.')
+        : ui('Voice recording failed in this browser. Try another browser.', 'ההקלטה נכשלה בדפדפן הזה. נסו דפדפן אחר.');
+      if (!disposed) note(message, true);
     }
-    let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch { return note(ui('Allow the microphone to dictate.', 'יש לאשר גישה למיקרופון.'), true); }
-    const chunks = [];
-    const rec = recorder = new MediaRecorder(stream);
-    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-    rec.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      recorder = null; mic.classList.remove('rec'); mic.classList.add('busy');
-      try {
-        const type = rec.mimeType || 'audio/webm';
-        const r = await fetch('/api/transcribe', { method: 'POST', headers: { 'content-type': type }, body: new Blob(chunks, { type }) });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Could not turn that into text.');
-        if (!d.text) return note(ui('No speech heard.', 'לא נשמע דיבור.'), true);
-        const before = box.value, at = box.selectionStart ?? before.length;
-        const gap = before && !/\s$/.test(before.slice(0, at)) ? ' ' : '';
-        box.value = before.slice(0, at) + gap + d.text + before.slice(box.selectionEnd ?? at);
-        box.selectionStart = box.selectionEnd = at + gap.length + d.text.length;
-        box.focus(); sync();
-      } catch (e) { note(e.message, true); }
-      finally { mic.classList.remove('busy'); }
-    };
-    rec.start(); mic.classList.add('rec');
   };
   bar.querySelector('.drop').onclick = clearImage;
   file.onchange = () => {
@@ -1735,11 +2726,18 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
     if (blob) { e.preventDefault(); showImage(blob, 'pasted image').catch(() => { clearImage(); note('That image could not be read.', true); }); }
   });
 
+  bar.saveDraft=()=>Object.assign(draftMemory,{text:box.value,start:box.selectionStart,end:box.selectionEnd,image});
+  bar.releaseDraft=()=>{if(preview.src)URL.revokeObjectURL(preview.src);};
   const sync = () => {
+    bar.saveDraft();
     box.style.height = 'auto';
     box.style.height = Math.min(box.scrollHeight, 140) + 'px';
     btn.disabled = box.value.trim().length === 0 && !image;
   };
+  box.value=draftMemory.text || '';
+  box.setSelectionRange(draftMemory.start ?? box.value.length,draftMemory.end ?? box.value.length);
+  if(draftMemory.image)showImage(draftMemory.image.blob,draftMemory.image.label);
+  sync();
   box.addEventListener('input', () => {
     sync();
     const typed = box.value;
@@ -1762,6 +2760,8 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
   const send = async (force = false) => {
     let text = box.value.trim();
     if (!text && !image) return;
+    bar.dataset.sending='true';paintChatNavigation();
+    try{
     btn.disabled = true;
 
     if (image) {
@@ -1784,24 +2784,27 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
 
     note('Sending…');
     const slow = setTimeout(() => note('Still trying to reach your machine…'), 3000);
+    // One id per draft: a retry after a timeout is recognised, never typed twice.
+    if (bar.sendDraft !== text) { bar.sendDraft = text; bar.sendId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
     let r;
     try {
       const resp = await fetch('/api/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ pane: id, text, force }),
+        body: JSON.stringify({ pane: id, text, force, sendId: bar.sendId }),
         signal: AbortSignal.timeout(8000),
       });
       r = await resp.json();
       if (resp.status === 401) r = { error: 'Signed out — reload to sign in.' };
     } catch {
-      r = { error: 'Could not reach your machine. Your message is still here.' };
+      r = { error: 'No answer from your machine. Your message is still here; sending again is safe — it will not arrive twice.' };
     }
     clearTimeout(slow);
     btn.disabled = false;
 
     if (r.busy) return confirmBusy(r.message, () => send(true));
     if (r.error) return note(r.error, true);
+    bar.sendDraft = null;
     onSent?.({ text, delivered: r.delivered !== false, at: Date.now() });
     box.value = '';
     hideCommands();
@@ -1814,6 +2817,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
     }
     note('Delivered');
     setTimeout(() => { const n = document.querySelector('.sendstate'); if (n) n.remove(); }, 1400);
+    }finally{delete bar.dataset.sending;paintChatNavigation();}
   };
 
   // Context views are above the thread; the composer only handles the reply.
@@ -1825,12 +2829,12 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
     bar.classList.toggle('always', screening);
     btn.innerHTML = icon('send');
     btn.setAttribute('aria-label',screening ? ui('Type into terminal','הקלדה במסוף') : ui('Send message','שליחת הודעה'));
-    box.placeholder = screening ? ui('Type into the terminal…','הקלדה בטרמינל…') : ui(`Message ${agentName}…`,`הודעה ל־${agentName}…`);
+    box.placeholder = screening ? ui('Type into the terminal…','הקלדה בטרמינל…') : composerPlaceholder(agentName);
     bar.querySelector('.terminal-tools').open=screening;
   };
 
   viewTabs.querySelectorAll('[data-mode]').forEach((el) => {
-    el.onclick = async () => {await onMode?.(el.dataset.mode);paintSwitch();};
+    el.onclick = async () => {bar.querySelector('.composer-menu').open=false;await onMode?.(el.dataset.mode);paintSwitch();};
   });
   paintSwitch();
 
@@ -1895,6 +2899,9 @@ window.addEventListener('popstate', (e) => {
   if(ask?.localEditorNavigation){ask.localEditorNavigation=false;return;}
   if(editor && !editor.hidden && !e.state?.answerEditor){ask.closeAnswerEditor(false);return;}
   if(ask && e.state?.answerEditor===ask.dataset.askId){ask.openAnswerEditor(false);return;}
+  if(e.state?.inbox || location.hash==='#inbox'){openInbox();return;}
+  const roomId = e.state?.room ?? (location.hash.startsWith('#room:') ? location.hash.slice(6) : null);
+  if(roomId){openRoom(roomId);return;}
   const id = e.state?.pane ?? location.hash.slice(1);
   if(id){if(id!==focusedPane)recordVisit(id);chat(id);}else fleet();
 });
@@ -1902,14 +2909,18 @@ window.addEventListener('popstate', (e) => {
 // Following a link to #<terminal> while the app is already open changes only
 // the hash — no navigation, no popstate — so listen for that too.
 window.addEventListener('hashchange', () => {
+  if(location.hash==='#inbox'){openInbox();return;}
+  if(location.hash.startsWith('#room:')){openRoom(location.hash.slice(6));return;}
   const id = location.hash.slice(1);
   if(id){if(id!==focusedPane)recordVisit(id);chat(id);}else fleet();
 });
 
-const opening = location.hash.slice(1);
-if(opening && performance.getEntriesByType('navigation')[0]?.type==='navigate')recordVisit(opening);
+const opening = location.hash.startsWith('#room:') || location.hash==='#inbox' ? '' : location.hash.slice(1);
+if(location.hash==='#inbox'){history.replaceState({inbox:true},'',location.hash);openInbox();}
+else if(location.hash.startsWith('#room:')){history.replaceState({room:location.hash.slice(6)},'',location.hash);openRoom(location.hash.slice(6));}
+else if(opening && performance.getEntriesByType('navigation')[0]?.type==='navigate')recordVisit(opening);
 if (opening) { history.replaceState({ pane: opening }, '', location.hash); chat(opening); }
-else fleet();
+else if(!location.hash.startsWith('#room:') && location.hash!=='#inbox') fleet();
 </script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+import { multiSelectState } from './send.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { claudeTranscript } from './paths.mjs';
@@ -164,9 +165,11 @@ export function questionFromRecords(pane, lines, screen = '') {
         detail: String(opt.description || '').slice(0, 140),
       }));
 
+      const picked = q.multiSelect ? multiSelectState(screen, options.length) : null;
       const ask = {
         kind: 'question',
         sourceId: b.id,
+        ...(picked ? { checked: picked.checked, customText: picked.customText } : {}),
         questionIndex: questions.indexOf(q), questionCount: questions.length, multiSelect: Boolean(q.multiSelect),
         title: String(q.question || 'The agent is asking you something.').slice(0, 200),
         header: String(q.header || '').slice(0, 40),

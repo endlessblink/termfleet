@@ -177,8 +177,8 @@ async function main() {
     // conversation before judging it.
     await p.evaluate(() => sessionStorage.setItem('tc-mode', 'chat'));
     const chat = await p.$('.composer [data-mode="chat"]');
-    if (chat) { await chat.click(); await wait(1200); }
-    const roles = await p.$$eval('.who', (els) => [...new Set(els.map((e) => e.textContent.trim()))]);
+    if (chat) { await p.evaluate(() => { const m = document.querySelector('.composer-menu'); if (m) m.open = true; }); await chat.click(); await wait(1200); }
+    const roles = await p.$$eval('main .msg[aria-label]', (els) => [...new Set(els.map((e) => e.getAttribute('aria-label').trim()).filter(Boolean))]);
     ok(roles.length >= 1, 'no speaker labels at all');
     return roles.join(', ');
   });
@@ -395,7 +395,7 @@ async function main() {
   });
 
   await check('it is marked as waiting for the agent, not as read', async () => {
-    const label = await p.textContent('.msg.mine .when');
+    const label = await p.textContent('.msg.mine .pending-delivery, .msg.mine .delivery-details');
     ok(/waiting for the agent/i.test(label), `unclear state: ${label}`);
     return label.trim();
   });

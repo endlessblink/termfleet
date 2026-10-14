@@ -313,6 +313,7 @@ test('every daemon-owned terminal remains visible without an agent status sideca
       ['terminal-shell', { initialCwd: '/work/termfleet' }],
     ]),
     workspace,
+    new Map(),
   );
 
   assert.deepEqual(panes.map((pane) => pane.id), ['terminal-agent', 'terminal-shell']);
