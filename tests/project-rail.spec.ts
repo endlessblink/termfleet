@@ -94,7 +94,7 @@ test("project rail promotes work in use and keeps inactive folders compact", asy
   await expect(rail.getByRole("button", { name: "Switch to flow-state" })).toBeVisible();
   await expect(rail.getByRole("button", { name: "Switch to paper-bot" })).not.toBeVisible();
 
-  const botsSection = rail.getByRole("button", { name: /Bots & automation/ });
+  const botsSection = rail.getByRole("button", { name: /Bot projects/ });
   await expect(botsSection).toHaveAttribute("aria-expanded", "false");
   await botsSection.click();
   await expect(rail.getByRole("button", { name: "Switch to paper-bot" })).toBeVisible();

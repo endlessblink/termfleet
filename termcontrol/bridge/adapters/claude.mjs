@@ -16,6 +16,8 @@ const textOf = (blocks) =>
 function summariseTool(block) {
   const i = block.input || {};
   const first = (v) => String(v).split('\n')[0].slice(0, 140);
+  // A reply sent with termfleet-say is shown whole, not cut to one line.
+  if (i.command && /^\s*termfleet-say\b/.test(i.command)) return String(i.command).trim().slice(0, 4000);
   if (i.command) return first(i.command);
   if (i.file_path) return first(i.file_path);
   if (i.pattern) return first(i.pattern);
@@ -43,8 +45,12 @@ export function readFeed(pane, { limit = 60, bytes = 512 * 1024 } = {}) {
     try { o = JSON.parse(lines[i]); } catch { continue; }
     const at = o.timestamp || null;
     const queued = o.type === 'attachment' && o.attachment?.type === 'queued_command' ? o.attachment : null;
-    if (queued && (queued.origin?.kind === 'human' || queued.humanTurn === true) && typeof queued.prompt === 'string') {
-      const text = clean(queued.prompt.trim());
+    // A message sent while the agent was busy. With a picture attached its prompt is
+    // a list of blocks, not text (2026-10-16: every screenshot message vanished).
+    const queuedText = !queued ? null : typeof queued.prompt === 'string' ? queued.prompt
+      : Array.isArray(queued.prompt) ? queued.prompt.map((b) => (b?.type === 'text' ? b.text : b?.type === 'image' ? '[picture]' : '')).filter(Boolean).join('\n') : null;
+    if (queued && (queued.origin?.kind === 'human' || queued.humanTurn === true) && typeof queuedText === 'string') {
+      const text = clean(queuedText.trim());
       if (text && !isNoise(queued.prompt)) collected.push({ kind: 'user', at: queued.timestamp || at, text });
       continue;
     }

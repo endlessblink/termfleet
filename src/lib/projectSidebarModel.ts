@@ -26,8 +26,10 @@ export interface ProjectSidebarModel {
 
 const CATEGORY_LABELS: Record<string, string> = {
   devops: "DevOps",
-  "bots+automation": "Bots & automation",
-  "bots-automation": "Bots & automation",
+  // TF-096: "Bots" is now the section of bots (managers outside the terminals);
+  // the folders of bot projects keep their own group under this name.
+  "bots+automation": "Bot projects",
+  "bots-automation": "Bot projects",
   "content-creation": "Content creation",
   productivity: "Productivity",
   freelance: "Freelance",

@@ -11,6 +11,9 @@ import crypto from 'node:crypto';
 const DIR = process.env.TC_UPLOAD_DIR
   || path.join(os.homedir(), 'Pictures', 'termcontrol');
 
+/** Where pictures sent from the app are kept (bots may only be handed files from here). */
+export const uploadDir = () => DIR;
+
 const KINDS = new Map([
   ['image/png', '.png'],
   ['image/jpeg', '.jpg'],

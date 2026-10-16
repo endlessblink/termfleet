@@ -54,6 +54,7 @@ import {
   useWorkspaceStore,
 } from "../stores/workspace";
 import { FolderPicker } from "./FolderPicker";
+import { BotsSidebarSection } from "./BotsSidebarSection";
 import { EmojiPicker } from "./EmojiPicker";
 import type {
   CanvasNode,
@@ -3165,6 +3166,7 @@ function SessionsPanel({
               </div>
             ) : (
               <div style={styles.projectGrid}>
+                <BotsSidebarSection />
                 {projectModel.inUse.length > 0 && (
                   <section aria-labelledby="project-section-in-use">
                     <div

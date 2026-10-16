@@ -162,10 +162,32 @@ function submit(audio, language, op, uploadMs) {
   return result.finally(() => { clearTimeout(queueTimer); pendingJobs--; });
 }
 
+// Freelance Desk's voice helper (one Hebrew fine-tune of Whisper large-v3 that writes
+// Hebrew, English and mixed speech correctly) already runs on this PC. Use it first;
+// our own worker is the fallback when it is not running. Tests bring their own worker.
+const deskUrl = () => process.env.TC_DESK_STT_URL || 'http://127.0.0.1:8791';
+const useDesk = () => process.env.TC_DESK_STT !== '0' && (!process.env.TC_STT_WORKER || Boolean(process.env.TC_DESK_STT_URL));
+
+async function viaDesk(audio, uploadMs) {
+  const started = performance.now();
+  let res;
+  try {
+    res = await fetch(`${deskUrl()}/transcribe`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: audio, signal: AbortSignal.timeout(JOB_MS) });
+  } catch { return null; }   // not running: fall back
+  if (!res.ok) return null;
+  const out = await res.json().catch(() => null);
+  if (!out) return null;
+  const timings = { engine: 'desk', bytes: audio.length, totalMs: Math.round((performance.now() - started) * 10) / 10, ...(typeof uploadMs === 'number' ? { uploadMs } : {}) };
+  remember(timings, out.text ? 'ok' : 'error');
+  if (!out.text) throw Object.assign(new Error(out.reason === 'silent' ? 'No sound reached the microphone.' : 'No words were heard. Try again a little closer to the mic.'), { timings });
+  return { text: out.text, language: /[֐-׿]/.test(out.text) ? 'he' : 'en', seconds: out.secs, timings };
+}
+
 /** Turns one recorded clip into text. `language` is 'he', 'en' or empty for automatic. */
-export function transcribe(audio, { language, uploadMs } = {}) {
-  if (!audio?.length) return Promise.reject(new Error('No audio was received.'));
-  if (audio.length > MAX_AUDIO_BYTES) return Promise.reject(new Error('That recording is too long.'));
+export async function transcribe(audio, { language, uploadMs } = {}) {
+  if (!audio?.length) throw new Error('No audio was received.');
+  if (audio.length > MAX_AUDIO_BYTES) throw new Error('That recording is too long.');
+  if (useDesk()) { const r = await viaDesk(audio, uploadMs); if (r) return r; }
   return submit(audio, language, 'transcribe', uploadMs);
 }
 

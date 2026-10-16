@@ -37,6 +37,27 @@ export function mentionedMembers(room, text) {
   return [...found];
 }
 
+const words = (text) => new Set((String(text || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []));
+
+/**
+ * TF-096 part 6 (Grok Bot's groups): a message without an @ goes to the member
+ * whose name or job fits it best. When nothing clearly fits, every member is asked
+ * but told to answer only if it is theirs, and to reply PASS otherwise.
+ */
+export function pickResponder(room, text) {
+  const asked = words(text);
+  const scored = room.members.map((m) => {
+    const about = words(`${m.label || ''} ${m.handle || ''} ${m.job || ''} ${m.project || ''}`);
+    let score = 0;
+    for (const w of asked) if (about.has(w)) score += 1;
+    return { member: m, score };
+  }).sort((a, b) => b.score - a.score);
+  if (scored.length && scored[0].score > 0 && (scored.length === 1 || scored[0].score > scored[1].score)) return [scored[0].member.pane];
+  return null;
+}
+
+export const PASS = /^\s*PASS\.?\s*$/i;
+
 /** What an agent receives: who is in the room, the recent talk, the new message. */
 export function messageForAgent(room, member, message) {
   const others = room.members.filter((m) => m.pane !== member.pane).map((m) => `@${m.handle}`).join(', ') || 'nobody else yet';
@@ -48,6 +69,7 @@ export function messageForAgent(room, member, message) {
     `${message.author}: ${message.text}`,
     '',
     'Your final answer will be posted to the room. To ask another agent, mention them with their @name. Only answer what concerns you.',
+    message.everyone ? 'This message was not addressed to anyone. If it is not about your job, or another member fits it better, reply with exactly: PASS' : '',
   ].filter((line) => line !== '').join('\n');
 }
 
@@ -96,7 +118,7 @@ export class Rooms {
     const members = panes.map((pane) => {
       const handle = handleFor(pane, taken);
       taken.add(handle);
-      return { pane: pane.id, handle, label: pane.title || pane.name || pane.project || handle, provider: pane.provider };
+      return { pane: pane.id, handle, label: pane.title || pane.name || pane.project || handle, provider: pane.provider, job: pane.job || pane.profile?.job || '', project: pane.project || '' };
     });
     const room = { id: crypto.randomBytes(6).toString('hex'), name: clean, createdAt: this.now(), members, messages: [], pending: [], seq: 0 };
     this.data.rooms.push(room);
@@ -126,8 +148,9 @@ export class Rooms {
     const body = String(text || '').trim();
     if (!body) return { error: 'Write a message first.' };
     const tagged = mentionedMembers(room, body);
-    const message = this.addMessage(room, { author: 'You', from: 'operator', text: body, tagged });
-    const targets = tagged.length ? tagged : room.members.map((m) => m.pane);
+    const chosen = tagged.length ? null : pickResponder(room, body);
+    const message = this.addMessage(room, { author: 'You', from: 'operator', text: body, tagged, everyone: !tagged.length && !chosen });
+    const targets = tagged.length ? tagged : chosen || room.members.map((m) => m.pane);
     const delivered = await this.deliver(room, message, targets, livePanes, 0);
     this.save();
     return { ok: true, message, delivered };
@@ -193,6 +216,7 @@ export class Rooms {
         if (wait.mark !== mark) { wait.mark = mark; wait.quietSince = this.now(); changed = true; continue; }
         if (this.now() - (wait.quietSince || this.now()) < SETTLE_MS) continue;
         drop();
+        if (PASS.test(latest.text)) continue;   // not theirs: stays quiet in the room
         const answer = this.addMessage(room, { author: `@${member.handle}`, from: member.pane, text: latest.text });
         const next = mentionedMembers(room, latest.text).filter((id) => id !== member.pane);
         answer.tagged = next;

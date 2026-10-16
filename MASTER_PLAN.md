@@ -1,3 +1,207 @@
+## 2026-10-16 — TF-097: Bridge restarts are invisible on the phone; memory capped (VERIFYING)
+
+Asked by the Freelance Desk agent for the operator ("check why TermControl crashed during the rebuild and fix it"): every restart of termcontrol.service (11:52, 12:19, 12:42) dropped the phone (tunnel "unexpected EOF" on the live stream), and the bridge had peaked at 5.2 GB + 4 GB swap.
+
+- Cause, phone: a 502 from the tunnel during the restart gap closes a browser event stream for good (no live updates until reload), and a chat opened in the gap showed the error screen. The old bridge also exited mid-reply on SIGTERM.
+- Cause, memory: no steady leak found (isolated probe: 21 panes, RSS spikes 79 -> 586 MB on repeated long-conversation reads, back to 139 MB after GC); each conversation read loads up to 48 MB, repeated by the phone, rooms and teammates, and Node's default heap let it balloon.
+- Fix: bridge stops taking connections, tells live streams to come back in 1 s, waits up to 10 s for in-flight replies, then exits; phone reopens a closed stream with backoff and refreshes, and retries quietly ("Reconnecting…") for up to a minute before any error screen; same conversation state is parsed once per 3 s (max 40 cached); stalled live-stream sockets over 1 MB are dropped; memory guard restarts the bridge gently above 1.5 GB; systemd unit (user config, backup `.bak.20261016-tf092`) runs Node with a 1 GB heap, MemoryHigh 1800M, MemoryMax 2500M, RestartSec 1, TimeoutStopSec 15.
+- Proof: `termcontrol/test/restart-invisible.test.mjs` — in-flight reply finishes across a restart; on a 390x844 phone window the open chat stays, no error screen, and the live stream reconnects through a 502 gap. Both fail on the pre-fix copy. TermControl unit tests 170 (3 timing tests flaked under parallel load, pass alone); run.mjs 67/0. Deployed 12:58, bridge running with the 1 GB heap cap.
+- Open: confirm on the real phone through the tunnel at the next restart.
+
+## 2026-10-16 — TF-096: Every agent works like a Grok Bot teammate (IN PROGRESS)
+
+**Operator correction 2026-10-16:** "I didn't want to connect this to grok bot. I wanted to implement that architecture in this agents mode." The Grok Bot webhook lane (button, routes, CLI, rule text) was removed the same hour. Design agreed in a grill session (operator's picks):
+
+1. A teammate is a lasting identity (name, job, rules, memory, schedules) that outlives any one conversation. Only agents you create or name become teammates; one-off terminals stay plain. Teammates may propose new teammates; they appear only after you approve. Day one starts empty.
+2. Memory: each teammate keeps its own short memory page, updates it itself, reads it at every fresh start; you can open and correct it.
+3. Fresh start: automatic when its conversation memory passes ~80%, only between turns (never mid-reply); also when its terminal closed or crashed. (This is per teammate; the old global auto-handover stays off.)
+4. Chat: one continuous chat across fresh starts, with a small "fresh start" line between conversations, on desktop and phone.
+5. Agent kind (Claude/Codex/OpenCode) is set in the profile; a change takes effect at the next fresh start, memory carries over. Home folder in the profile; helpers may work elsewhere.
+6. Helpers a teammate opens appear inside it ("3 helpers working", tap to expand); on the map they sit next to it.
+7. Always on = wake when needed: an idle teammate has no terminal; a message, schedule or event starts one (resuming the same conversation unless full). Default: close after 2 h idle, never while helpers run or it waits on you.
+8. Group chats: without @, the teammate whose job fits answers and the others stay quiet; @name picks one.
+9. Handoffs show in both chats: sender sees "Handed to X: …", receiver "From Y: …", reply links back.
+10. Wake-ups: schedules plus events (another teammate finished, new code in its project, a watched file changed).
+11. Approvals from a teammate woken by a schedule/event/teammate expire after 10 minutes as "denied" and it continues without that step.
+12. One shared skill library across Claude, Codex and OpenCode; "save what we just did as a skill" works for all; one list to view/remove.
+13. List layout: teammates and group chats first, then plain terminals grouped by project.
+14. Phone notifications from the agents app (finished / needs you), per-teammate on/off.
+15. Teach a task: build it. A separate teammates' browser on this PC that all teammates share (your own browser stays private); you demonstrate there, it becomes a draft skill. Live view on phone and desktop; take-over (logins, codes) at the PC.
+
+16. Where it lives (operator, 2026-10-16: "sidbar bot section + termcontrol app"): teammates replace the desktop side list's "Bots & automation" group, and the TermControl app (desktop Agents view and phone) becomes the teammates app — teammates and group chats first, plain terminals below.
+17. Memory (operator: "The page is memory is not enough. Research long lasting memory"; "my agents are really not good with memory and compact too much or change course and forget things"; "dont understand what I ask and build broken things"). Deep research (docs/teammates-research-2026-10-16.md §2) says the bottleneck is holding the ask and proving the work, not fact recall. So: (a) Ask Ledger — every operator request verbatim, split into items with status todo/partial/done/dropped-with-reason and proof, re-injected after every compaction and fresh start (Claude SessionStart source=compact, Codex compaction hooks, OpenCode compacting plugin); (b) Done gate — a Stop hook refuses "done" while items lack outside proof, and the final message must name anything partial (the "light pass reported as deep research" case); (c) Understand-first — new or unclear asks are restated as numbered items in his words, gaps asked, then built; (d) verbatim, searchable archive of every past conversation from every agent kind (keyword + local embeddings, Hebrew tested first), one recall tool; (e) small curated card (<2k tokens) of his preferences/corrections, decisions, failed approaches and lessons — agents only propose, he approves; superseded entries filtered out; (f) nightly tidy with a local model only, propose-only. Measured by: items fully done, reopened "done"s, how often he repeats himself.
+18. Model fallback (operator: "If a model runs out of credits it should move to another so its possible to set default and than fallback based on what is working"). Research §1: per teammate a default agent + ordered fallbacks; detect from typed signals (Claude StopFailure rate_limit/billing_error and statusline rate_limits; Codex rollout rate_limits / usageLimitExceeded) with screen text as backup; never switch on overload/short throttles; switch only between turns — cancel Claude's own auto-wait first, hand over from the ledger + git state, continue in the same folder; card line "Claude reached its limit (resets 3:45pm) — continuing on Codex" with a short undo; return to the default after the reset at the next idle point; only between different providers he pays for, never rotating accounts of one provider.
+19. Never blocked, never disconnected (operator: "they get disconnected from the pc's, get blocked on basic things"). Research §3: last week 2,287 Claude tool results were blocks, the top ~1,600 from our own hooks/allowlists. Teammates get: a supervisor link independent of any window with a real-work heartbeat and endless reconnect; a preflight on wake (logins, tools, disk, network, git) that asks once before starting; a non-interactive environment (no pagers/editors/password prompts); per-teammate pre-approved safe actions; one-tap phone approvals instead of hard blocks, all asks logged with times; a per-blocker recovery playbook; a health light per card. Quick wins applied 2026-10-16 on his OK.
+
+Four more asks (relayed by a research helper, confirmed by the operator 2026-10-16 "Yes, do all four"):
+- (1) "create skills based on the findings": DONE. Three shared skills (hold-the-ask, never-blocked, out-of-credits) in one place, linked into Claude, Codex and OpenCode.
+- (2) "create a gate that forces you to run /sure and pass it only on high": DONE and LIVE. A sure gate on code edits for Claude (Edit/Write/MultiEdit/NotebookEdit/ctx_patch) and Codex (apply_patch). It unlocks after a HIGH /sure answer recorded with `termfleet-sure`, until the operator writes again. Notes, plans and scratch files are exempt. The answer is recorded as a command because a plain text reply was sometimes not saved before the next tool ran (seen live). 8 tests pass; live block -> record HIGH -> allow verified in this session. Off switch: TERMFLEET_SURE_GATE=off. Known gap: edits made through shell commands are not gated.
+- (3) "research all the features and architecture of grok bot app — this one needs to look and act like it with all features and backend reliability": RUNNING (deep research).
+- (4) "we need to allow payment approvals if I approve them ... making them stuck is not security — its breaking the workflow": render guard now asks (phone-answerable) instead of blocking. The Freelance Desk agent declined to change its paid/pixel gates without the operator's direct word in its own chat; pending.
+
+**Architecture correction (operator, 2026-10-16): "I was thinking that there will be the terminal mode where subagents / agents run and the 'grok bots' (until we have a better name) are the orchestrators that run outside of the terminals like grok bot".** So there are two layers:
+- **Terminal mode = workers.** Claude, Codex and OpenCode agents and their subagents run in visible terminals on the map, as today.
+- **Bots = orchestrators that run OUTSIDE terminals,** like Grok Bot's bots. Each bot has a chat, memory, routines and a profile, and lives in an always-on service on this PC (the agents bridge). A bot uses terminal agents as its hands: it starts, steers, reads and stops them.
+- **Bot brain:** each bot reply runs Claude or Codex headless (`claude -p` / `codex exec`, resumed per bot) on the operator's existing plans and logins, with the credits fallback between them. These are unmodified CLIs with his own login, so there is no extra cost.
+- **What a bot does itself:** light work — reading files, checking status, answering. Real changes and long jobs go to terminal agents visible on the map.
+- **Where bots show up:** bots and group chats top the agents app (desktop and phone) and replace the side list's Bots group. Terminals stay below and on the map.
+- **Planned so far for "teammates", now applied to bots:** profile, memory tiers, request list and done gate, routines and wake-ups, notifications, skills.
+- **Still applied to terminal agents too:** the request list, the done gate and /sure.
+
+**Part 1 (bots exist) — BUILT 2026-10-16, goal set by the operator.**
+- What was built:
+  - A bot service in the agents bridge: bots stored on this PC, one continuous chat each, one run at a time per bot. Messages sent during a run go to the bot together, oldest first.
+  - A headless brain (Claude `-p` resumed per bot, or Codex `exec`/`resume`) with read-only tools plus `termfleet-team`. Edit/Write are denied, permission mode is dontAsk, and the brain gets a clean environment: never a terminal's identity, never an interactive prompt.
+  - A Bots section in the agents app (desktop + phone) with New bot, a bot chat showing live "what it's doing" lines, and name/job/rules editing.
+  - A Bots section on top of the desktop side list that opens a bot's chat in the Agents view; the old folder group is now "Bot projects".
+  - `termfleet-team read` shows a plain terminal's screen.
+  - Bot messages to agents say "From the bot X".
+- Proof:
+  - 11 bot tests and 185/185 agents-app tests pass.
+  - Phone (390x844) and desktop screenshots: create → chat → working → answer, using a stand-in brain.
+  - Release installed (TERMFLEET_RELEASE_PROMOTED e8bc5626fb0a-f6557ebf5645-…).
+  - LIVE with the operator's OK: a test bot on his Claude plan started a plain terminal, read it and reported "bot-check-ok-42" in 22 s. Independently confirmed by reading that terminal's screen. The test bot was then deleted.
+- Not yet proven: the Codex brain live (unit-tested only; no live Codex call was approved). The desktop side list needs one app relaunch to show the Bots section. A bot run in progress is lost if the bridge restarts mid-run (part 5).
+
+**Part 2 (your requests are kept) — BUILT 2026-10-16.**
+- **One command, `termfleet-asks`,** wired as a hook in Claude and Codex on UserPromptSubmit, SessionStart and Stop, plus a CLI. It covers bots too, because their brains are Claude/Codex runs.
+- **Every new message** re-shows Noam's unfinished requests verbatim with their status. A new or unclear request gets a read-back instruction: numbered items in his words, at most 2 gap questions, then build.
+- **After a compaction or resume,** his words are re-injected (SessionStart).
+- **Saying done:** a reply that claims done while requests are unmarked is refused once (reminder mode, never loops). The agent must mark each request — done with proof, partial with what's missing, or dropped with why — and name partials first.
+- **Marks** are the agent's own `termfleet-asks done|partial|dropped <n> "<proof>"` commands, read back from the record.
+- **Numbering is stable** from the start of each conversation, using an incremental per-record cache. A 200 MB Codex record is scanned once in 1.2 s, then in 0 ms.
+- **Visible in the agents app (desktop + phone):** "Your requests: X of Y done …", which expands to his words with done / partial / open and the proof note. It stays open across refreshes.
+- **Proof:**
+  - 10 request-list tests; 194/194 agents-app tests.
+  - Real-record dry runs on this session and on the largest Codex record.
+  - A phone screenshot (390x844) of a real chat with the list open.
+- **Open:** a stricter mode (refuse every time, not once) after a few days, if Noam wants it.
+
+**Part 3 (lasting memory) — BUILT 2026-10-16.**
+- **Searchable chat.** The chat stays one continuous, verbatim conversation per bot. `termfleet-memory search` finds anything said in it, in Hebrew and English (keyword scoring plus a recency boost; local, nothing sent out).
+- **Memory card.**
+  - The bot suggests entries with `termfleet-memory propose`. Nothing is used until Noam approves it in the bot's Memory screen on phone or desktop.
+  - The approved card (capped at about 6k characters) is in every brain run. Forgotten entries never return.
+  - Pending suggestions show as "N memories to review" on the bot row and as "Memory · N to review" in the chat.
+- **Automatic fresh start.** At 80% working memory, measured from the bot's own record, the bot starts a new brain conversation before the next message. It carries Noam's unfinished requests in his words, the last 12 messages verbatim and the card, and posts a plain "Fresh start" line in the chat.
+- **Proof:** 7 memory tests, 202/202 agents-app tests, and phone screenshots of chat → review → approved using a stand-in brain that really ran the propose command.
+- **Not yet proven live** on the Claude plan: a fresh start and memory use in a real long conversation. Codex's fill is not measured yet, so a Codex bot does not fresh-start (part 4/5 follow-up).
+
+**Part 4 (out of credits) — BUILT 2026-10-16.**
+- **Plans:** each bot has a main plan and a backup (Claude/Codex, or no backup). Both can be set in the bot form on phone and desktop.
+- **Detecting a limit:** the tools' own limit wording is recognised (Claude result / rate_limit_event / "You've hit your … limit · resets", Codex "You've hit your usage limit … try again at", OpenCode "usage limit reached"). Overloaded, throttles and sign-in errors are not treated as limits.
+- **Claude's auto-wait:** Claude's "Usage limit reached · continuing automatically" wait is stopped at once.
+- **Switching:** the limited plan is marked in a shared health file with its reset time. The same message is re-run on the backup, between turns, with a handover: open requests in Noam's words, the latest messages and the memory card. One plain line goes in the chat ("Claude reached its limit (resets 23:45), so Quill is continuing on Codex"), and the header shows "on Codex (backup) until Claude resets 23:45".
+- **Switching back:** at the first message after the reset, with a "Back on Claude" line.
+- **No plan free:** the message is kept and answered automatically once a plan resets (checked every minute), and is never duplicated. Accounts of one provider are never rotated.
+- **Codex brain access:** the Codex brain's safety box now opens only the helper-request folder, the terminal service socket and the bots folder, plus network, with "never ask".
+- **Proof:** 4 new tests (wording, switch and return, kept message, stopping Claude's wait); 206/206 agents-app tests; phone screenshot of a real switch using stand-in Claude and Codex programs.
+- **Not proven live:** a real Codex brain run (needs Noam's OK to spend Codex usage) and a real limit event (it cannot be triggered on purpose).
+
+**Part 5 (never stuck or cut off) — BUILT 2026-10-16.**
+- **Check before every run.** Each bot run starts with a local preflight, with no network and no plan spent: brain program found, signed in (Claude credentials / Codex auth), home folder exists, at least 500 MB disk, terminal service socket up.
+  - If only the main plan fails, the bot uses its backup and says so in one line.
+  - Otherwise it stops before starting and shows ONE plain ask with a Retry button (a "Needs you" card on phone and desktop). The message is kept, so one tap reruns it.
+- **Picks up after a restart.** A running turn is written down. After a bridge restart (deploy, crash, memory guard), the bot picks it up again, told that it was cut off so it checks before redoing anything.
+- **Never waits on a stuck brain.** A brain that goes silent for 10 minutes (a prompt nobody can answer, a hung command) is stopped and reported, instead of waiting out 30 minutes.
+- **Health light.** Every bot row has a dot: green ready/working, amber on backup or waiting for a reset, red needs you or last reply failed. The row text says why.
+- **Already applied earlier today:**
+  - Paid runs and renders ask instead of block.
+  - Codex network.
+  - Read-only command allowlist.
+  - Non-interactive brain environment (no pagers, editors or git prompts).
+- **Proof:**
+  - 5 new tests: login missing → one ask → Retry runs; backup when only the main plan is down; terminal service / disk / folder asks; resume after restart; silent-brain stop.
+  - 210/211 agents-app tests. The 1 that failed was the restart-on-phone test under parallel load; it passed twice alone.
+  - Phone screenshots of the Needs-you card and the red dot.
+
+**Part 6 (working together) — BUILT 2026-10-16, plus Noam's 17:53 change.**
+- **Noam, 17:53 (with a screenshot of the New bot form):** "Job and rules should be created when starting and based on the chat. Check how it is done in grok bot. Location should be the same one with each agent next to the other, under Termfleet somewhere maybe?"
+  - New bot = name + main plan + backup only.
+  - A bot with no job drafts its job and rules from the first chat (`termfleet-memory profile`), the way Grok Bot bots set themselves up by talking.
+  - Noam gets a "suggests its job and rules" card with Use these / Edit / Not now; nothing applies until he accepts.
+  - Every bot's working folder sits side by side in ~/TermFleet/bots/<name>.
+- **Group chats:** bots can join group chats. A message without @ goes to the member whose name or job fits; when unclear, everyone is asked with a "reply PASS if it's not yours" rule, and PASS replies stay out of the room.
+- **Handoffs in both chats:** a bot's handoffs and the terminal agents it starts appear in its chat ("↪ Handed to …", linking to that terminal), along with a "Terminal agents it started: N (k working)" list. A terminal agent's own handoffs now show in its chat too.
+- **Grok Bot's missing pieces:**
+  - Pin / Hide (pinned first, "Hidden bots (N)" kept apart).
+  - A search box that filters the list and finds words in any bot chat.
+  - Message delivery states in bot chats: "Sending…" → joins the chat, or "Not sent" with Resend / Discard.
+- **Approval cards:** already existed for terminal agents (answer buttons on phone, inbox). Bots never wait on approvals; they ask with the Needs-you card.
+- **Proof:** 6 new tests; 216/217 agents-app tests (1 upload-timing test failed under load and passes alone); phone screenshots of the name-only form, the suggestion card with a handoff line and the helpers list, the accepted job and rules, and search results.
+
+**Phone chat fixes, 2026-10-16 17:55-18:10.**
+- **Noam's reports:** "Messages I send here disappear and you dont respond to them (term control)" and "Nothing from what I sent appears".
+- **Cause 1: the app watched the wrong conversation.** The bridge recognised only a process named `claude`. The restarted chat ran as `claude.exe`, so the app kept following the old process and showed a conversation frozen at 17:30.
+  - Fixed: inventory and single-chat-owner accept `claude.exe`, and with two claude processes in one terminal the most recently updated record wins.
+  - Test: chat-rendering two-process case.
+- **Cause 2: messages with a screenshot were dropped.** A message sent while the agent was busy is stored as a queued_command with a block list, which the adapter discarded.
+  - Fixed: its text is now read, with a "[picture]" marker.
+- **Cause 3: the request list skipped queued messages.** It now counts them. Several marks chained in one command now all count.
+- **Mid-turn replies now reach the phone.** Plain replies written mid-turn are often not saved before the next tool runs. The new `termfleet-say "<text>"` command is always saved and shows in the phone chat as the agent's message.
+- **Verified:** this terminal's phone chat at 360px with large text shows his screenshot messages and the termfleet-say reply.
+- **Also from Noam's screenshots:**
+  - "Design the model dropdown better", then "Now its too crammped": model choice is now full-width tap cards plus one row of backup pills.
+  - "please redesign this": every + menu row uses the same style and icon size, with a person icon for Name, job and rules.
+- **Part 7 so far:**
+  - Bots run their own schedules (routines target bot:<id>; a bot's `termfleet-team routine add` defaults to itself).
+  - Events wake bots: a terminal agent the bot started finishes; one of its approvals goes unanswered for 10 minutes and is denied (questions never auto-answered); new commits in folders it watches (`termfleet-team watch add`).
+  - 5 event tests. Phone notifications are still to do.
+
+**Part 7 (wake-ups and notifications) — BUILT 2026-10-16.**
+- **Schedules:** a bot runs its own schedules. Routines can target bot:<id>; a bot's `termfleet-team routine add` defaults to itself; the bot chat has a Schedule button and shows its schedules.
+- **Events** (checked every 30 s) wake a bot when:
+  - a terminal agent it started finishes;
+  - one of that agent's approvals has waited 10 minutes — it is denied with the agent's own "no" key (questions are never auto-answered) and the bot is told to find another way or ask Noam;
+  - new commits land in a folder it watches (`termfleet-team watch add`).
+  - Events show in the bot chat as ⏰ lines.
+- **Phone notifications:** standard Web Push without a payload.
+  - The bridge signs each push with its own VAPID key (ES256). The worker served at /sw.js fetches the text from the signed-in bridge, so no message text goes through the push service.
+  - Sent on a bot's reply or a needs-you, never while the app is visibly open (presence ping), with an on/off per bot. A phone that unsubscribes is dropped.
+  - Turned on with one tap ("🔔 Turn on phone notifications" in the Bots panel).
+- **Proof:** 5 event tests and 3 push tests (signature verified with the public key, no payload, app-open suppression, per-bot off); 225/226 agents-app tests (1 swipe-timing flake); phone-size screenshots of the enable button and the per-bot toggle; live: /sw.js 200 without sign-in, key route 401 without sign-in.
+- **Not yet proven:** a notification actually arriving on Noam's phone — that needs his one tap to allow notifications.
+
+**Part 8 (skills and the bots' browser) — BUILT 2026-10-16.**
+- **Built:**
+  - shared skill library (suggest → Noam approves → linked into Claude, Codex and OpenCode, never over an existing name);
+  - `termfleet-skill` for bots; Skills panel with Approve/Reject and a waiting count;
+  - "/" picker in the bot chat;
+  - the bots' browser: Chrome with its own profile on port 9333, local only; `termfleet-browser start|status`; Playwright MCP given to both Claude and Codex bot brains;
+  - Browser view with a live picture every 2 s;
+  - Teach a task: a CDP recorder with clicks, typing and pages; passwords, codes and card numbers are never recorded; 10-minute cap; saved as a suggested skill.
+- **Proof:**
+  - 4 skill tests and 3 browser tests, including a real hidden Chrome teaching a task with no password leak;
+  - 232/233 agents-app tests (the 1 failure is the known swipe-timing flake);
+  - phone-size (360px) screenshots of the Skills review, the "/" picker, the live Browser view and Teach recording;
+  - live: the real browser opened on the PC, took a picture and closed; routes 401 without sign-in.
+- **Live bot proof (Noam approved):** a test Claude bot started the bots' browser itself, opened a local test page (the page logged 2 visits from that browser) and reported its secret word "browser-check-ok-77" in 24 s; test bot deleted, window closed. The raw-code browser tool is now blocked for Claude and Codex bots.
+- **Design (kept for reference):**
+- **(a) Shared skill library**, one place: ~/.local/share/termfleet/skills, already linked into Claude, Codex and OpenCode.
+  - The chat composer shows the skills when Noam types "/" and inserts "Use the <name> skill: ".
+  - A bot saves "what we just did" with `termfleet-skill save` as a SUGGESTED skill. Noam approves it in a Skills panel, and only then is it added to the library for every agent.
+- **(b) The bots' browser:** one Chrome window on the PC with its own profile (~/TermFleet/bots/.browser) and a local debugging port. Bots drive it through the Playwright MCP connected to that port (allowed only for bot brains). Noam watches it from the phone as a live screenshot in the bot chat ("Browser"), and takes over at the PC window (logins, codes, payments).
+- **(c) Teach a task:** "Teach a task" starts recording clicks and typing in the bots' browser (a recorder injected through the debugging port), for up to 10 minutes. On stop, the steps become a suggested skill draft for Noam to approve, edit and test.
+
+Build order, revised after the deep research and the bots-outside-terminals correction (each phase goes live when done): A0 bot service (orchestrators outside terminals: headless brain per bot, chat in the agents app, tools to start/steer/read terminal agents); A Ask Ledger + done gate + understand-first + re-inject after compaction (helps every agent at once) and teammate identity/profile/list layout; B memory archive + recall + curated card + fresh start from the ledger + continuous chat; C model fallback; D reliability (supervisor link, heartbeat, preflight, non-interactive env, phone approvals with logging, health light); E helpers inside + handoffs in both chats + group "right one answers"; F wake-on-demand + event wake-ups + approval expiry + phone notifications; G shared skills; H teammates' browser + live view + teach a task.
+
+
+Operator (2026-10-16): "Make the agents view into actual orchestrators that can open terminals in the background and subagents and anything else needed like Grokbot agents — research what that is and how it works e2e"; then "Desktop and mobile apps"; "Not one orchestrator... Just follow how grok bot is built e2e". "Grok bot" = xAI's Grok Bot (desktop + mobile always-on cloud bots, v0.71.2 installed here, signed out), NOT the Grok Build CLI.
+
+Grok Bot model (from docs.x.ai/grok-bot): named bots each with a chat, memory, routines and own screen; a shared computer; bots message each other directly and in 2-6 bot group chats with @mentions and visible handoffs; one owner per stage; bots start and steer coding agents (queue a follow-up or interrupt); routines created by asking the bot; approval cards; "Needs attention / unread / working" rows; same bots on desktop and phone. No public API: the only documented way in is a routine Webhook trigger; answers come back through local execution.
+
+Mapping onto TermFleet (already present: agent list, chats, Rooms = group chats, routines = scheduled messages, inbox = approvals, live screen, voice). Built 2026-10-16:
+- Any agent can lead (no single orchestrator): `termfleet-team` command (list, read, send [--interrupt], ask, wait, start helper, routine add/list/remove, grokbot status/instruction/connect/send/wait/list). Core shared with the bridge in `termcontrol/bridge/orchestrate.mjs`.
+- Handoffs: a message from one agent arrives framed with the sender, and the chat (desktop Agents view + phone) shows it as "From the X agent", not as the operator.
+- Agents create their own routines; the bridge re-reads the routines file so it never overwrites one an agent added.
+- Grok Bot lane: Grok Bot button on the agents screen (setup steps, copyable routine instruction, webhook + key stored privately, send a task, answers listed from the outbox). Never retried automatically (a lost reply could double a task).
+- "New answer" mark (Grok Bot's unread): an idle agent whose conversation moved since this viewer last opened or left its chat shows a dot and a stronger name; working/needs-you keep their own marks. Per-viewer, never reorders the list. Unit test in orchestrate.test.mjs (TermControl 166 tests; one swipe-feel timing test flaked under load and passed twice on rerun).
+- Teammate profile (Grok Bot's Edit Profile): composer menu "Name, job and rules" on desktop and phone; name shows in the list and chat title, job under it; changed standing rules are told to the agent once through the checked send; `termfleet-team` finds a teammate by its name (@Quill). Stored per machine in TermControl's profiles file. Phone screenshot of the dialog taken (not saved to a real agent). 168/168 TermControl unit tests.
+- Global rule "Teammates on TermFleet" in ~/.claude/CLAUDE.md, ~/.codex/AGENTS.md, ~/.config/opencode/AGENTS.md (backups `.bak.20261016-tf092`); `lean-ctx allow termfleet-team`.
+- Tests: `termcontrol/test/orchestrate.test.mjs` (15) + all 165 TermControl unit tests pass; webhook only tested against a fake (no live Grok Bot calls).
+- termcontrol:test: run.mjs 67/0. phone.mjs/flows.mjs have 6-7 failures that read the LIVE fleet (keys bar, Needs-you collapse, model question, timer); a copy with TF-096 reverted fails the same family (6 failures), so they predate this work. Bridge restarted (terminals untouched); Grok Bot window screenshotted at phone (setup) and desktop (connected) size from an isolated bridge.
+- Open: operator connects Grok Bot (sign in, paste the routine instruction, paste webhook + key, allow local execution); room handles from profile names; 2-6 member limit and direct handoff marks in Rooms; Grok Build hook payload mismatch (its sessions run our Claude hook with camelCase fields).
+
 ## 2026-10-05 — TF-079: Building the approved roomy STACK fleet
 
 Status: **implementation and isolated verification complete; owner phone acceptance pending (verifying)**. This owner's newer approval supersedes the earlier conversation-only shell restriction below: use the original D/STACK family and roomy rows, with dark and light equally usable. No D1 round substitution.

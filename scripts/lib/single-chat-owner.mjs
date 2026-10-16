@@ -71,7 +71,8 @@ export function terminalOf(procRoot, pid) {
 /** Is this process the agent program itself (not a node wrapper or a shell)? */
 export function isProviderProcess(provider, args) {
   const program = basename(args[0] ?? "");
-  if (provider === "claude") return program === "claude";
+  // The native build is named claude.exe, also on Linux.
+  if (provider === "claude") return program === "claude" || program === "claude.exe";
   // The native Codex binary; its `node .../bin/codex` launcher exits with it.
   if (provider === "codex") return program === "codex";
   return false;

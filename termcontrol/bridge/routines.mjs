@@ -38,7 +38,23 @@ export class Routines {
     this.file = file;
     this.send = send;
     this.now = now;
-    try { this.data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { this.data = { routines: [] }; }
+    this.mtime = null;
+    this.data = { routines: [] };
+    this.load();
+  }
+
+  /**
+   * Agents create their own schedules from the command line (TF-096, the way a
+   * Grok Bot sets up a routine when asked), so the file can change under the
+   * bridge. Re-read it whenever it changed, before every read or write.
+   */
+  load() {
+    let mtime = null;
+    try { mtime = fs.statSync(this.file).mtimeMs; } catch { /* no file yet */ }
+    if (mtime === this.mtime) return;
+    try { this.data = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch { this.data = { routines: [] }; }
+    if (!Array.isArray(this.data.routines)) this.data.routines = [];
+    this.mtime = mtime;
   }
 
   save() {
@@ -46,13 +62,16 @@ export class Routines {
     const tmp = `${this.file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(this.data, null, 1), { mode: 0o600 });
     fs.renameSync(tmp, this.file);
+    try { this.mtime = fs.statSync(this.file).mtimeMs; } catch { this.mtime = null; }
   }
 
   forPane(paneId) {
+    this.load();
     return this.data.routines.filter((r) => r.pane === paneId);
   }
 
-  create({ pane, text, days, time }) {
+  create({ pane, text, days, time, createdBy = null }) {
+    this.load();
     const body = String(text || '').trim();
     const cleanDays = [...new Set((days || []).map(Number).filter((d) => d >= 0 && d <= 6))];
     if (!body) return { error: 'Write the message to send.' };
@@ -60,13 +79,14 @@ export class Routines {
     if (!cleanDays.length) return { error: 'Pick at least one day.' };
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time))) return { error: 'Pick a time.' };
     const routine = { id: crypto.randomBytes(5).toString('hex'), pane, text: body, days: cleanDays, time, enabled: true,
-      createdAt: this.now(), nextRunAt: nextRunAt(cleanDays, time, this.now()), lastRunAt: null, lastResult: null };
+      createdAt: this.now(), nextRunAt: nextRunAt(cleanDays, time, this.now()), lastRunAt: null, lastResult: null, ...(createdBy ? { createdBy } : {}) };
     this.data.routines.push(routine);
     this.save();
     return { ok: true, routine };
   }
 
   remove(id) {
+    this.load();
     const before = this.data.routines.length;
     this.data.routines = this.data.routines.filter((r) => r.id !== id);
     if (before === this.data.routines.length) return { error: 'That schedule no longer exists.' };
@@ -76,6 +96,7 @@ export class Routines {
 
   /** Send whatever is due. `panes` are the live panes. */
   async tick(panes) {
+    this.load();
     let changed = false;
     for (const routine of this.data.routines) {
       if (!routine.enabled || !routine.nextRunAt || routine.nextRunAt > this.now()) continue;

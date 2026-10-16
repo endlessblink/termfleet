@@ -129,3 +129,17 @@ test('the phone preserves aligned spaces in an assistant message', async () => {
     await browser.close();
   }
 });
+
+test('two claude processes in one terminal: the conversation updated last is the live one (2026-10-16)', () => {
+  const { root, claudeSessions } = fakeProc();
+  const proc2 = (pid, cmd, pane) => {
+    fs.mkdirSync(path.join(root, String(pid), 'fd'), { recursive: true });
+    fs.writeFileSync(path.join(root, String(pid), 'cmdline'), cmd.split(' ').join('\0'));
+    fs.writeFileSync(path.join(root, String(pid), 'environ'), `TERMFLEET_PANE_ID=${pane}\0`);
+  };
+  proc2(150, 'claude', 'terminal-e-5');
+  proc2(950, '/x/claude-code/bin/claude.exe --session-id x', 'terminal-e-5');
+  fs.writeFileSync(path.join(claudeSessions, '150.json'), JSON.stringify({ sessionId: 'old-conv', statusUpdatedAt: 1000 }));
+  fs.writeFileSync(path.join(claudeSessions, '950.json'), JSON.stringify({ sessionId: 'new-conv', statusUpdatedAt: 9e15 }));
+  assert.equal(agentsByPane({ procRoot: root, claudeSessions }).get('terminal-e-5').sessionId, 'new-conv');
+});

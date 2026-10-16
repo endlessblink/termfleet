@@ -29,7 +29,7 @@ test("project categories follow the workspace folder hierarchy", () => {
   });
   expect(projectCategoryForPath("/work/ai-development/bots+automation/paper-bot")).toEqual({
     id: "bots+automation",
-    label: "Bots & automation",
+    label: "Bot projects",
   });
   expect(projectCategoryForPath("/work/ai-development/content-creation/arthouse")).toEqual({
     id: "content-creation",
@@ -66,7 +66,7 @@ test("current live and pinned projects are promoted without duplicating inactive
     ["flow-state", 1, false, false],
   ]);
   expect(model.sections.map((section) => [section.label, section.projects.map((item) => item.name)])).toEqual([
-    ["Bots & automation", ["paper-bot"]],
+    ["Bot projects", ["paper-bot"]],
     ["Content creation", ["arthouse"]],
   ]);
 });

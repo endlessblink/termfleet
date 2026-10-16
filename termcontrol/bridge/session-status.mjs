@@ -35,11 +35,14 @@ function namedLimits(rateLimits) {
     .map(limitSnapshot)
     .filter(Boolean);
   const byMinutes = (minutes) => candidates.find((item) => item.windowMinutes === minutes) || null;
+  // Position decides only for older logs that never said how long a window is: a
+  // weekly-only record (primary = 10080 min, no secondary) once showed the same
+  // weekly figure as both "5-hour" and "weekly" (2026-10-16).
+  const unlabelled = (snapshot) => (snapshot && snapshot.windowMinutes == null ? snapshot : null);
   return {
-    // Codex calls these primary and secondary. Prefer their declared window
-    // lengths; the positional fallback preserves useful status on older logs.
-    fiveHour: byMinutes(300) || limitSnapshot(rateLimits?.primary),
-    weekly: byMinutes(10080) || limitSnapshot(rateLimits?.secondary),
+    // Codex calls these primary and secondary. Prefer their declared window lengths.
+    fiveHour: byMinutes(300) || unlabelled(limitSnapshot(rateLimits?.primary)),
+    weekly: byMinutes(10080) || unlabelled(limitSnapshot(rateLimits?.secondary)),
   };
 }
 

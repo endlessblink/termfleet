@@ -93,13 +93,16 @@ export function agentsByPane({ procRoot = '/proc', claudeSessions = path.join(pr
   // afterwards: the one named by `codex resume <id>`, else the oldest — helpers
   // are always started after the conversation that spawned them.
   const codexSeen = new Map();
+  const freshest = new Map();   // paneId -> when the kept claude record was last updated
   let pids = [];
   try { pids = fs.readdirSync(procRoot).filter((name) => /^\d+$/.test(name)); } catch { return byPane; }
   for (const pid of pids) {
     let cmd = '';
     try { cmd = fs.readFileSync(path.join(procRoot, pid, 'cmdline'), 'utf8').split('\0').join(' '); } catch { continue; }
     const provider = /(^|\/)codex( |$)/.test(cmd) ? 'codex'
-      : /(^|\/)claude( |$)/.test(cmd) ? 'claude'
+      // Claude Code's native build runs as claude.exe on Linux too (2026-10-16: a
+      // restarted chat ran as claude.exe and the phone kept showing the old one).
+      : /(^|\/)claude(\.exe)?( |$)/.test(cmd) ? 'claude'
       : /(^|\/)opencode( |$)/.test(cmd) ? 'opencode'
       : null;
     if (!provider) continue;
@@ -124,17 +127,26 @@ export function agentsByPane({ procRoot = '/proc', claudeSessions = path.join(pr
       codexSeen.set(paneId, seen);
     }
     let vendorStatus = null;
+    let freshness = 0;
     if (provider === 'claude') {
       // Claude's own per-process record: its conversation, and whether it is idle,
       // busy or waiting on the operator. That status comes from the agent itself.
-      const record = readJson(path.join(claudeSessions, `${pid}.json`));
+      const recordFile = path.join(claudeSessions, `${pid}.json`);
+      const record = readJson(recordFile);
       sessionId = record?.sessionId || null;
       if (['idle', 'busy', 'waiting'].includes(record?.status)) vendorStatus = { status: record.status, at: Number(record.statusUpdatedAt) || null };
+      try { freshness = Math.max(Number(record?.statusUpdatedAt) || 0, fs.statSync(recordFile).mtimeMs); } catch { freshness = Number(record?.statusUpdatedAt) || 0; }
     }
     const previous = byPane.get(paneId);
-    // The wrapper and the real binary share a terminal; keep whichever knows
-    // the conversation.
-    if (!previous || (!previous.sessionId && sessionId)) byPane.set(paneId, { provider, sessionId, ...(vendorStatus ? { vendorStatus } : {}) });
+    // The wrapper and the real binary share a terminal; keep whichever knows the
+    // conversation. When two claude processes both know one (a leftover original
+    // after a restart moved the chat to a new record, 2026-10-16), the one whose
+    // record was updated last is the live conversation: following the other made
+    // the phone show a frozen chat where new messages "disappeared".
+    if (!previous || (!previous.sessionId && sessionId) || (sessionId && previous.sessionId && freshness > (freshest.get(paneId) || 0))) {
+      byPane.set(paneId, { provider, sessionId, ...(vendorStatus ? { vendorStatus } : {}) });
+      freshest.set(paneId, freshness);
+    }
   }
   for (const [paneId, seen] of codexSeen) {
     const main = seen.open.find((item) => item.id === seen.resumed)

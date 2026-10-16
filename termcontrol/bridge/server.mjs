@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { canvasSidebarView, listPanes, reconcileLivePanes, readWorkspace, inventoryVersion } from './inventory.mjs';
 import { transcriptPath as codexTranscript } from './adapters/codex.mjs';
@@ -35,6 +36,14 @@ import { Rooms } from './rooms.mjs';
 import { createSendOnce } from './send-once.mjs';
 import { contextFill } from './context-fill.mjs';
 import { Routines, describeDays } from './routines.mjs';
+import { profiles, rulesMessage } from './profiles.mjs';
+import { Bots, PROVIDERS as BOT_PROVIDERS } from './bots.mjs';
+import { listSkills, approveSkill, rejectSkill, suggestSkill, checkSkill } from './skills.mjs';
+import { BotBrowser } from './bot-browser.mjs';
+import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
+import { checkBotEvents } from './bot-events.mjs';
+import { Push } from './push.mjs';
+import { asksForFile } from '../../scripts/termfleet-asks.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..', 'app');
@@ -168,30 +177,84 @@ async function currentPanes() {
       };
     });
 
-  return { panes: withLife, daemon: true, ...snapshot };
+  const named = profiles.all();
+  return { panes: withLife.map((p) => (named[p.id] ? { ...p, profile: named[p.id] } : p)), daemon: true, ...snapshot };
 }
 
 const sendOnce = createSendOnce();
 
+// Bots (TF-096): managers that run outside the terminals and direct terminal agents.
+const push = new Push();
+const botBrowser = new BotBrowser();
+// Codex bots cannot open the browser from inside their safety box; they ask us.
+setInterval(() => { botBrowser.serveRequests().catch(() => {}); }, 1000).unref();
+// The daily agent counts are read from big conversation records, so they are updated
+// in a separate low-priority process: a few minutes the first time, seconds after.
+let healthRun = null;
+function refreshAgentHealth() {
+  if (healthRun || process.env.TC_NO_AGENT_HEALTH) return;
+  healthRun = spawn('nice', ['-n', '15', process.execPath, fileURLToPath(new URL('../../scripts/termfleet-agent-health.mjs', import.meta.url))], { stdio: 'ignore' });
+  healthRun.on('exit', () => { healthRun = null; });
+  healthRun.on('error', () => { healthRun = null; });
+}
+setTimeout(refreshAgentHealth, 90_000).unref();
+setInterval(refreshAgentHealth, 60 * 60_000).unref();
+const bots = new Bots({ notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
+
+/** Bots join group chats like terminal agents do: as members with a chat to read. */
+function botMembers() {
+  return bots.list().map((b) => ({ id: `bot:${b.id}`, provider: 'bot', project: b.name, title: b.name, name: b.name, job: b.job, turn: b.state === 'working' ? 'working' : 'idle', producing: false, live: b.state === 'working' ? 'working' : 'quiet' }));
+}
+async function roomPanes() { return [...(await currentPanes()).panes, ...botMembers()]; }
+// A turn cut off by a restart is picked up again.
+setTimeout(() => { try { bots.resumeInterrupted(); } catch (error) { console.error('[bots]', error.message); } }, 3000).unref?.();
+// TF-096 part 7: events wake bots (helper finished, approval expired, new code).
+const helperSeen = new Map();
+async function botEvents() {
+  if (!bots.list().length) return;
+  await checkBotEvents({
+    bots, panes: (await currentPanes()).panes, seen: helperSeen,
+    readAsk: async (pane) => { const screen = visibleScreenOf(pane.id) ?? await screenOf(pane.id); return pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen); },
+    answer: (pane, ask) => answerPrompt(pane, 'no', adapterFor(pane)?.approval, ask.kind),
+  });
+}
+setInterval(() => { botEvents().catch((error) => console.error('[bot events]', error.message)); }, 30_000).unref?.();
+// A message that waited for a plan to reset is answered once one does.
+setInterval(() => { try { bots.retryDue(); } catch (error) { console.error('[bots]', error.message); } }, 60_000).unref?.();
+
+/**
+ * TF-096 part 2: the operator's requests in one conversation, in his words, with
+ * done / partial / open. Read from the conversation record (the last 8 MB).
+ */
+function asksForTranscript(file) {
+  if (!file) return null;
+  try {
+    const asks = asksForFile(file);
+    return asks.length ? asks.slice(-30).map((a) => ({ n: a.n, text: a.text.slice(0, 600), status: a.status, note: String(a.note || '').slice(0, 200) })) : null;
+  } catch { return null; }
+}
+
 // Shared rooms deliver through the same path as a typed phone message.
 const rooms = new Rooms({
-  send: (pane, text) => sendToPane(pane, text),
-  readFeed: (pane) => readFeed(pane, { limit: 30 }),
+  send: (pane, text) => (String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4), text) : sendToPane(pane, text)),
+  readFeed: (pane) => (String(pane.id).startsWith('bot:')
+    ? { events: bots.messages(pane.id.slice(4)).filter((m) => m.role === 'bot' || m.role === 'operator').map((m) => ({ kind: m.role === 'bot' ? 'assistant' : 'user', at: m.at, text: m.text })) }
+    : readFeed(pane, { limit: 30 })),
 });
 let roomPolling = false;
 setInterval(async () => {
   if (roomPolling || !rooms.data.rooms.some((room) => room.pending.length)) return;
   roomPolling = true;
-  try { await rooms.poll((await currentPanes()).panes); } catch (error) { console.error('[rooms]', error.message); } finally { roomPolling = false; }
+  try { await rooms.poll(await roomPanes()); } catch (error) { console.error('[rooms]', error.message); } finally { roomPolling = false; }
 }, 3000).unref();
 
 // Scheduled messages go out through the same checked path as a typed one.
-const routines = new Routines({ send: (pane, text) => sendToPane(pane, text) });
+const routines = new Routines({ send: (pane, text) => (String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4), text) : sendToPane(pane, text)) });
 let routineTicking = false;
 setInterval(async () => {
   if (routineTicking || !routines.data.routines.some((r) => r.enabled && r.nextRunAt && r.nextRunAt <= Date.now())) return;
   routineTicking = true;
-  try { await routines.tick((await currentPanes()).panes); } catch (error) { console.error('[routines]', error.message); } finally { routineTicking = false; }
+  try { await routines.tick(await roomPanes()); } catch (error) { console.error('[routines]', error.message); } finally { routineTicking = false; }
 }, 30000).unref();
 
 async function readJson(req, max = 64 * 1024) {
@@ -205,16 +268,16 @@ const AGENT_PROVIDERS = new Set(['claude', 'codex', 'opencode']);
 async function handleRooms(req, res, url) {
   if (url.pathname === '/api/rooms' && req.method === 'GET') {
     const { panes } = await currentPanes();
-    const agents = panes.filter((p) => AGENT_PROVIDERS.has(p.provider))
-      .map((p) => ({ id: p.id, label: p.title || p.name || p.project, project: p.project, provider: p.provider, color: p.color }));
+    const agents = [...botMembers().map((b) => ({ id: b.id, label: b.name, project: 'bot', provider: 'bot' })), ...panes.filter((p) => AGENT_PROVIDERS.has(p.provider))
+      .map((p) => ({ id: p.id, label: p.title || p.name || p.project, project: p.project, provider: p.provider, color: p.color }))];
     return json(res, 200, { rooms: rooms.list(), agents });
   }
   let body;
   try { body = req.method === 'POST' ? await readJson(req) : {}; } catch (error) { return json(res, error.code || 400, { error: error.message }); }
   if (url.pathname === '/api/rooms' && req.method === 'POST') {
-    const { panes } = await currentPanes();
+    const panes = await roomPanes();
     const ids = Array.isArray(body.panes) ? body.panes : [];
-    const chosen = ids.map((id) => panes.find((p) => p.id === id && AGENT_PROVIDERS.has(p.provider))).filter(Boolean);
+    const chosen = ids.map((id) => panes.find((p) => p.id === id && (AGENT_PROVIDERS.has(p.provider) || p.provider === 'bot'))).filter(Boolean);
     if (chosen.length !== ids.length) return json(res, 409, { error: 'One of those agents is no longer running. Refresh and pick again.' });
     const result = rooms.create(body.name, chosen);
     return json(res, result.error ? 400 : 200, result.error ? result : { ok: true, room: result.room });
@@ -234,7 +297,7 @@ async function handleRooms(req, res, url) {
     return json(res, 200, { room: { id: room.id, name: room.name, members, messages: room.messages.slice(-200) } });
   }
   if (url.pathname === '/api/room/post' && req.method === 'POST') {
-    const { panes } = await currentPanes();
+    const panes = await roomPanes();
     const result = await rooms.post(body.id, body.text, panes);
     return json(res, result.error ? 400 : 200, result);
   }
@@ -247,6 +310,8 @@ const handle = async (req, res) => {
   if (crossSiteWrite(req)) return json(res, 403, { error: 'Cross-site request refused.' });
 
   if (req.method === 'GET' && PUBLIC_APP_FILES.has(url.pathname)) return serveStatic(res, url.pathname.slice(5));
+  // The notification worker must load before sign-in checks (it holds no data).
+  if (url.pathname === '/sw.js') return serveStatic(res, 'sw.js');
   if (await handleAuthRoutes(req, res, url)) return;
   if (res.writableEnded) return;
   if (!currentUser(req)) {
@@ -256,8 +321,11 @@ const handle = async (req, res) => {
 
   if(req.method==='GET' && url.pathname==='/api/session-events') {
     res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});
-    res.write('data: "rescan"\n\n');
-    const unsubscribe=subscribeSessionEventHeads(name=>res.write(`data: ${JSON.stringify(name)}\n\n`));
+    // retry: tells the browser to come back after 1 s if the stream drops (restart).
+    res.write('retry: 1000\ndata: "rescan"\n\n');
+    // A phone that vanished without closing leaves a socket nobody reads; drop it
+    // instead of queueing events for it forever.
+    const unsubscribe=subscribeSessionEventHeads(name=>{if(res.writableLength>1048576){res.destroy();return;}res.write(`data: ${JSON.stringify(name)}\n\n`);});
     const heartbeat=setInterval(()=>res.write(': heartbeat\n\n'),15000);
     req.on('close',()=>{unsubscribe();clearInterval(heartbeat);});return;
   }
@@ -281,9 +349,132 @@ const handle = async (req, res) => {
     let body;
     try { body = await readJson(req, 64 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
     if (url.pathname === '/api/routines/delete') { const result = routines.remove(body.id); return json(res, result.error ? 404 : 200, result); }
-    const { panes } = await currentPanes();
+    const panes = await roomPanes();
     if (!panes.some((p) => p.id === body.pane)) return json(res, 409, { error: 'That agent is no longer running.' });
     const result = routines.create(body);
+    return json(res, result.error ? 400 : 200, result);
+  }
+
+  // A teammate's profile (TF-096): name, job, standing rules. New rules are
+  // told to the agent once, through the same checked send as a typed message.
+  if (url.pathname === '/api/profile' && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 64 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    const { panes } = await currentPanes();
+    const pane = panes.find((p) => p.id === body.pane);
+    if (!pane) return json(res, 409, { error: 'That agent is no longer running.' });
+    const saved = profiles.save(pane.id, body);
+    if (saved.error) return json(res, 400, saved);
+    let told = null;
+    if (saved.rulesChanged && saved.profile?.rules && AGENT_PROVIDERS.has(pane.provider)) told = await sendToPane(pane, rulesMessage(saved.profile));
+    return json(res, 200, { ok: true, profile: saved.profile, told: told ? Boolean(told.ok) : null, toldError: told?.error || null });
+  }
+
+  // Bots (TF-096). Same sign-in gate as every route below it.
+  if (url.pathname === '/api/bots' && req.method === 'GET') {
+    return json(res, 200, { bots: bots.list(), providers: BOT_PROVIDERS, home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
+  }
+  // Phone notifications (TF-096 part 7).
+  if (url.pathname === '/api/push/key' && req.method === 'GET') return json(res, 200, { publicKey: push.keys().publicKey });
+  if (url.pathname === '/api/push/latest' && req.method === 'GET') return json(res, 200, { note: push.latest() });
+  if (url.pathname === '/api/presence' && req.method === 'POST') { push.seen(); return json(res, 200, { ok: true }); }
+  if (url.pathname === '/api/push/report' && req.method === 'POST') {
+    let body = {};
+    try { body = await readJson(req, 4 * 1024); } catch { /* ignore a bad report */ }
+    const line = `[push] phone sign-up failed at "${String(body.step || '?').slice(0, 20)}": ${String(body.error || '').slice(0, 200)} (home screen app: ${Boolean(body.standalone)}; ${String(body.ua || '').slice(0, 160)})`;
+    console.error(line);
+    push.noteProblem?.(line);
+    return json(res, 200, { ok: true });
+  }
+  if (url.pathname === '/api/push/subscribe' && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 16 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    const result = push.subscribe(body.subscription);
+    return json(res, result.error ? 400 : 200, result);
+  }
+  // The shared skill library (TF-096 part 8): bots suggest, the operator approves.
+  // The bots' browser (TF-096 part 8): watch from the phone, teach a task at the PC.
+  if (url.pathname === '/api/browser' && req.method === 'GET') return json(res, 200, await botBrowser.status());
+  if (url.pathname === '/api/browser/start' && req.method === 'POST') { const r = await botBrowser.start(); return json(res, r.error ? 500 : 200, r); }
+  if (url.pathname === '/api/browser/shot' && req.method === 'GET') {
+    try { const shot = await botBrowser.screenshot(); res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'no-store' }); return res.end(shot.image); }
+    catch (error) { return json(res, 503, { error: error.message }); }
+  }
+  if (url.pathname === '/api/browser/teach/start' && req.method === 'POST') {
+    try { const r = await botBrowser.teachStart(); return json(res, r.error ? 409 : 200, r); } catch (error) { return json(res, 503, { error: error.message }); }
+  }
+  if (url.pathname === '/api/browser/teach/stop' && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 16 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    if (body.save) {
+      // Check the name before stopping so a typo does not throw the recording away.
+      const preview = checkSkill(body);
+      if (preview.error) return json(res, 400, preview);
+    }
+    const stopped = botBrowser.teachStop();
+    if (stopped.error) return json(res, 409, stopped);
+    if (!body.save) return json(res, 200, { ok: true, steps: stopped.steps.length });
+    if (stopped.steps.length < 2) return json(res, 400, { error: 'Nothing was recorded. Teach it again and click through the task in the bots\' browser.' });
+    const made = suggestSkill({ name: body.name, description: body.description, body: stopped.body, by: 'Noam (taught in the browser)' });
+    return json(res, made.error ? 400 : 200, made.error ? { ...made, draft: stopped.body } : { ...made, steps: stopped.steps.length });
+  }
+  // How the agents are doing, day by day (TF-096 goal item 5).
+  if (url.pathname === '/api/agent-health' && req.method === 'GET') return json(res, 200, agentHealthReport());
+  if (url.pathname === '/api/skills' && req.method === 'GET') return json(res, 200, { skills: listSkills() });
+  if ((url.pathname === '/api/skills/approve' || url.pathname === '/api/skills/reject') && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 8 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    const result = url.pathname.endsWith('approve') ? approveSkill(body.name) : rejectSkill(body.name);
+    return json(res, result.error ? 400 : 200, result);
+  }
+  if (url.pathname === '/api/search' && req.method === 'GET') {
+    const q = String(url.searchParams.get('q') || '').slice(0, 200);
+    return json(res, 200, { hits: q.trim() ? bots.search(q) : [] });
+  }
+  if (url.pathname === '/api/bot' && req.method === 'GET') {
+    let view = null;
+    try { view = bots.view(url.searchParams.get('id')); } catch { view = null; }
+    if (view && view.bot.helpers?.length) {
+      const { panes } = await currentPanes();
+      view.bot.helpers = view.bot.helpers.map((h) => { const p = panes.find((x) => x.id === h.paneId); return { ...h, state: !p ? 'closed' : p.turn === 'waiting' ? 'needs-you' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null }; });
+    }
+    if (view && view.bot.provider !== 'codex') {
+      const raw = bots.read(view.bot.id);
+      if (raw?.sessions?.claude?.started) view.asks = asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id));
+    }
+    return json(res, view ? 200 : 404, view || { error: 'That bot no longer exists.' });
+  }
+  // A bot's memory card: entries it proposed wait here for the operator.
+  if (url.pathname === '/api/bot/memory' && req.method === 'GET') {
+    try { return json(res, 200, { entries: bots.memory(url.searchParams.get('id')).entries().filter((e) => e.status !== 'forgotten') }); }
+    catch { return json(res, 404, { error: 'That bot no longer exists.' }); }
+  }
+  if (url.pathname === '/api/bot/memory' && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 64 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    let result;
+    try {
+      const memory = bots.memory(body.id);
+      result = body.action === 'approve' ? memory.approve(body.entryId, body.text)
+        : body.action === 'forget' ? memory.forget(body.entryId)
+          : body.action === 'add' ? memory.add({ text: body.text, kind: body.kind })
+            : { error: 'Unknown memory action.' };
+    } catch (error) { result = { error: error.message || 'That did not work.' }; }
+    return json(res, result.error ? 400 : 200, result);
+  }
+  if (['/api/bots', '/api/bot/send', '/api/bot/update', '/api/bot/delete', '/api/bot/retry', '/api/bot/profile/accept', '/api/bot/profile/dismiss'].includes(url.pathname) && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 64 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    let result;
+    try {
+      result = url.pathname === '/api/bots' ? bots.create(body)
+        : url.pathname === '/api/bot/send' ? bots.send(body.id, body.text, { images: body.images })
+          : url.pathname === '/api/bot/update' ? bots.update(body.id, body)
+            : url.pathname === '/api/bot/retry' ? bots.retry(body.id)
+              : url.pathname === '/api/bot/profile/accept' ? bots.acceptProfile(body.id, body)
+                : url.pathname === '/api/bot/profile/dismiss' ? bots.dismissProfile(body.id)
+            : bots.remove(body.id);
+    } catch (error) { result = { error: error.message || 'That did not work.' }; }
     return json(res, result.error ? 400 : 200, result);
   }
 
@@ -359,6 +550,7 @@ const handle = async (req, res) => {
       desk: Boolean(deskRoot(pane)),
       answerReceipt: ask ? choiceReceipts.get(pane.id, ask.id) : null,
       questionResults: questionResults(pane),
+      asks: asksForTranscript(adapterFor(pane)?.transcriptPath(pane)),
       ...readFeed(pane, { limit }),
     });
   }
@@ -581,8 +773,18 @@ const handle = async (req, res) => {
   return json(res, 404, { error: 'not found' });
 };
 
+// Requests still being answered. A restart waits for these (event streams are
+// long-lived and are told to reconnect instead), so a deploy never cuts a reply.
+let inFlight = 0;
+const streams = new Set();
+let stopping = false;
+
 // One bad request must never take the bridge down for everyone.
 const server = http.createServer((req, res) => {
+  const stream = req.url?.startsWith('/api/session-events');
+  if (stream) { streams.add(res); res.on('close', () => streams.delete(res)); }
+  else { inFlight++; res.on('close', () => { inFlight--; }); }
+  if (stopping) res.setHeader('connection', 'close');
   handle(req, res).catch((error) => {
     console.error('bridge request failed:', error?.message || error);
     if (!res.headersSent) json(res, 500, { error: 'Something went wrong on your machine.' });
@@ -595,6 +797,36 @@ const server = http.createServer((req, res) => {
 // fleet shows nothing as live for the first few seconds after you open it.
 setInterval(() => { liveness().catch(() => {}); }, 3000).unref?.();
 liveness().catch(() => {});
+
+/**
+ * A restart (deploy, or the memory guard below) is invisible to the phone: stop
+ * taking new connections, tell open event streams to reconnect in a second, let
+ * every in-flight reply finish (up to 10 s), then exit. systemd starts the new
+ * bridge and the phone reconnects on its own.
+ */
+async function shutdownGracefully(reason, { exitCode = 0, graceMs = 10000 } = {}) {
+  if (stopping) return;
+  stopping = true;
+  console.log(`[bridge] stopping (${reason}); ${inFlight} request(s) in flight, ${streams.size} stream(s) open`);
+  server.close();
+  for (const res of streams) { try { res.write('retry: 1000\n\n'); res.end(); } catch { /* already gone */ } }
+  const deadline = Date.now() + graceMs;
+  while (inFlight > 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+  server.closeIdleConnections?.();
+  process.exit(exitCode);
+}
+process.on('SIGTERM', () => { shutdownGracefully('SIGTERM'); });
+process.on('SIGINT', () => { shutdownGracefully('SIGINT'); });
+
+// Memory guard: a bridge past the limit twice in a row restarts itself through the
+// same gentle path (systemd brings it straight back). Default 1.5 GB.
+const MEMORY_LIMIT_MB = Number(process.env.TC_MEMORY_LIMIT_MB) || 1536;
+let overLimit = 0;
+setInterval(() => {
+  const mb = process.memoryUsage().rss / 1048576;
+  overLimit = mb > MEMORY_LIMIT_MB ? overLimit + 1 : 0;
+  if (overLimit >= 2) shutdownGracefully(`memory ${Math.round(mb)} MB over ${MEMORY_LIMIT_MB} MB`, { exitCode: 75 });
+}, 30000).unref?.();
 
 server.listen(PORT, HOST, () => {
   console.log(`TermControl bridge on http://${HOST}:${PORT}`);
