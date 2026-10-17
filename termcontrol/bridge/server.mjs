@@ -379,10 +379,12 @@ const handle = async (req, res) => {
   if (url.pathname === '/api/push/latest' && req.method === 'GET') return json(res, 200, { note: push.latest() });
   if (url.pathname === '/api/presence' && req.method === 'POST') {
     push.seen();
+    let state = {};
+    try { state = await readJson(req, 2048); } catch { state = {}; }
     // Which browsers run the current page (no content): explains a phone that never signs up.
     const ua = String(req.headers['user-agent'] || '').replace(/[^\w ./;()-]/g, '').slice(0, 120);
     if (!globalThis.__presenceSeen) globalThis.__presenceSeen = new Map();
-    if (Date.now() - (globalThis.__presenceSeen.get(ua) || 0) > 60_000) { globalThis.__presenceSeen.set(ua, Date.now()); console.error(`[push] page open: ${ua}`); }
+    if (Date.now() - (globalThis.__presenceSeen.get(ua) || 0) > 60_000) { globalThis.__presenceSeen.set(ua, Date.now()); console.error(`[push] page open: ${ua} | notifications supported: ${state.push ?? '?'}, permission: ${state.permission ?? '?'}, signed up: ${state.signedUp ?? '?'}, home screen app: ${state.homeScreen ?? '?'}`); }
     return json(res, 200, { ok: true });
   }
   if (url.pathname === '/api/push/report' && req.method === 'POST') {

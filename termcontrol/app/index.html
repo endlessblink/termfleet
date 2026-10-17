@@ -1198,7 +1198,7 @@ document.addEventListener('keydown',event=>{
 // A restart of the bridge (a deploy) briefly answers with an error page through
 // the tunnel, and a browser event stream that gets one never retries on its own.
 // Reopen it, and refresh what is on screen once it is back (2026-10-16).
-let sessionEvents=null,streamBackoff=1000,otherView=null;
+let sessionEvents=null,streamBackoff=1000,otherView=null,pushSignedUp=false;
 const liveRefresh=()=>{if(otherView)return;fleet(Boolean(focusedPane));};
 function openSessionEvents(){
   if(typeof EventSource!=='function')return;
@@ -2393,13 +2393,13 @@ async function openBot(id){
 
 // TF-096 part 7: phone notifications. While the app is visible it says so (no
 // notification then, like Grok Bot); one tap turns notifications on for this phone.
-const presence=()=>{if(document.visibilityState==='visible')fetch('/api/presence',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).catch(()=>{});};
-presence();setInterval(presence,30000);document.addEventListener('visibilitychange',presence);
+const presence=()=>{if(document.visibilityState==='visible')fetch('/api/presence',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({push:pushSupported(),permission:('Notification' in window)?Notification.permission:'none',signedUp:pushSignedUp,homeScreen:matchMedia('(display-mode: standalone)').matches})}).catch(()=>{});};
+setTimeout(presence,0);setInterval(presence,30000);document.addEventListener('visibilitychange',presence);
 const pushSupported=()=>'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 // Phone notifications (TF-096 part 7). Each step reports a failure to the bridge so a
 // sign-up that silently fails can be explained; a phone that already allowed
 // notifications signs itself up when the app opens.
-let pushSignedUp=false;
+
 function reportPush(step,error){try{fetch('/api/push/report',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({step,error:String(error?.message || error || ''),standalone:matchMedia('(display-mode: standalone)').matches,ua:navigator.userAgent.slice(0,160)})});}catch{}}
 async function enableNotifications({quiet=false}={}){
   let step='support';
@@ -2421,6 +2421,12 @@ async function enableNotifications({quiet=false}={}){
     if(!r.ok)throw new Error((await r.json()).error);
     pushSignedUp=true;
   }catch(e){if(!quiet || step!=='support')reportPush(step,e);throw e;}
+}
+// Not asked yet on this phone: ask on the first tap anywhere (browsers show the
+// allow prompt only after a tap), so notifications do not depend on finding a link.
+if(pushSupported() && Notification.permission==='default'){
+  const askOnce=()=>{document.removeEventListener('pointerup',askOnce,true);reportPush('first-tap','');enableNotifications().then(()=>{reportPush('on','');note(ui('Phone notifications are on.','התראות בטלפון הופעלו.'));fleet(Boolean(focusedPane));}).catch(()=>{});};
+  document.addEventListener('pointerup',askOnce,true);
 }
 // Already allowed on this phone: sign up again quietly (a sign-up can be dropped).
 if(pushSupported() && Notification.permission==='granted')setTimeout(()=>enableNotifications({quiet:true}).catch(()=>{}),3000);
