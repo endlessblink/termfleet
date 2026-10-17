@@ -81,6 +81,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- You wake up by yourself on schedules (`termfleet-team routine add --time 09:00 --days weekdays --message "<what to do>"`), when a terminal agent you started finishes, and when new code lands in a folder you watch (`termfleet-team watch add <folder>`). Messages starting with [Event] come from these, not from Noam.',
     '- Skills: Noam\'s shared skill library holds tested ways of doing recurring jobs; when he says "Use the <name> skill", follow it. `termfleet-skill list` shows them. When a process worked and will recur, offer to save it: `termfleet-skill save <name-with-dashes> --description "<when to use it>" --body "<the steps, what to check, what needs Noam\'s approval>"`. It is only a suggestion until he approves it.',
     '- The bots\' browser: a Chrome window on Noam\'s PC that only bots use, with its own sign-ins. Use the browser tools for web tasks that need clicking or signing in (plain reading can use web search). If the browser tools cannot connect, run `termfleet-browser start` once. Noam can watch it from his phone and take over at the PC. Never type passwords, codes or card numbers: ask Noam to do that part at the PC. Before anything that pays, sends, posts or deletes, ask him first.',
+    '- You only act when a message or an event arrives; nothing runs between them. So never say you will check or do something later unless you set up the wake-up first: `termfleet-team follow <who>` wakes you when that agent finishes, `termfleet-team routine add` wakes you at a time. Otherwise do it now, or say plainly that it is waiting for Noam. Do not end with "Next I\'m doing" unless a wake-up is set.',
     card ? `\n${card}` : '',
     handover ? `\nYou are continuing after a fresh start (your previous conversation filled up). Pick up exactly here:\n${handover}` : '',
   ].filter((l) => l !== '').join('\n');
@@ -138,6 +139,7 @@ export function activityLine(name, input = {}) {
   if (/termfleet-team\s+(read|wait)/.test(cmd)) return 'Reading a terminal agent';
   if (/termfleet-team\s+list/.test(cmd)) return 'Checking who is working';
   if (/termfleet-team\s+routine/.test(cmd)) return 'Setting a schedule';
+  if (/termfleet-team\s+follow/.test(cmd)) return 'Setting a reminder to check back';
   if (/termfleet-skill\s+save/.test(cmd)) return 'Saving a skill for Noam to approve';
   if (/termfleet-browser\s+start/.test(cmd)) return 'Opening the bots\' browser';
   if (String(name).startsWith('mcp__browser__')) return 'Using the browser';

@@ -35,11 +35,13 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
       const state = stateOf(pane);
       const label = h.task || h.paneId;
       if (before.state === 'working' && state === 'idle') {
-        bots.wake(b.id, `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words.`);
+        bots.wake(b.id, h.followed
+          ? `The terminal agent you are following ("${label}") has finished its turn. Read its result (termfleet-team read ${h.paneId}), do what you told Noam you would do next, and tell him in plain words.`
+          : `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words.`);
       }
       const waitingSince = state === 'waiting' ? (before.waitingSince ?? now) : null;
       let expired = state === 'waiting' ? Boolean(before.expired) : false;
-      if (state === 'waiting' && !expired && now - waitingSince >= APPROVAL_EXPIRES_MS) {
+      if (state === 'waiting' && !expired && !h.followed && now - waitingSince >= APPROVAL_EXPIRES_MS) {
         const ask = await readAsk(pane);
         if (ask && ask.kind !== 'question') {
           const result = await answer(pane, ask);

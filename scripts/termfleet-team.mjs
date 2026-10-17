@@ -16,6 +16,7 @@
 //                          --message T [--for <who>]   a scheduled message (default: you)
 //   termfleet-team routine list [--for <who>] | routine remove <id>
 //   termfleet-team watch add|remove|list <folder>   (inside a bot) new code there wakes it
+//   termfleet-team follow <who> [--why T]  (inside a bot) wake me when that agent finishes its turn
 //
 // <who> is a teammate's name, a terminal id, a unique part of one, or a project name.
 // Add --json for machine-readable output; --file F reads the text from a file.
@@ -174,6 +175,16 @@ async function main(argv) {
       }
     } catch { /* the helper still started; only the record is missing */ }
     process.exit(run.status ?? 1);
+  }
+
+  if (command === 'follow') {
+    // A bot that says it will check back must be woken: following an agent wakes the
+    // bot when that agent next finishes (any agent, not only ones it started).
+    if (!botFolder()) fail('Following works inside a bot.');
+    const { pane } = await target(positional[0], null);
+    const why = String(flags.why || pane.title || pane.project || '').slice(0, 300);
+    recordHelper({ paneId: pane.id, provider: pane.provider || null, task: why, cwd: pane.cwd || null, followed: true });
+    return out(`Following ${pane.profile?.name || pane.project} (${pane.id}): you will be woken when it finishes its turn.`);
   }
 
   if (command === 'routine') return routine(positional, flags, { selfId, json });

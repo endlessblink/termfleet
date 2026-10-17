@@ -84,3 +84,17 @@ test('a bot\'s own schedule sends to the bot when due', async () => {
   assert.deepEqual(sent, [[`bot:${bot.id}`, 'Give me the morning summary']]);
   assert.ok(bots);
 });
+
+test('a bot that follows an agent it did not start is woken when it finishes, and never refuses that agent\'s approvals', async () => {
+  const { bots, bot, woke } = setup();
+  fs.writeFileSync(path.join(bots.folder(bot.id), 'helpers.json'), JSON.stringify([{ paneId: 'terminal-n', task: 'paper bot fix', followed: true }]));
+  const seen = new Map();
+  const answered = [];
+  const tick = (now, turn) => checkBotEvents({ bots, seen, now, panes: [{ id: 'terminal-n', turn }], readAsk: async () => ({ kind: 'approval', title: 'Run it?' }), answer: async () => { answered.push(1); return { ok: true }; } });
+  await tick(0, 'waiting');
+  await tick(APPROVAL_EXPIRES_MS * 3, 'waiting');
+  assert.equal(answered.length, 0, 'Noam\'s own agent is never auto-denied');
+  await tick(APPROVAL_EXPIRES_MS * 3 + 1, 'working');
+  await tick(APPROVAL_EXPIRES_MS * 3 + 2, 'idle');
+  assert.match(woke.at(-1), /you are following \("paper bot fix"\) has finished its turn.*do what you told Noam you would do next/);
+});

@@ -1198,17 +1198,18 @@ document.addEventListener('keydown',event=>{
 // A restart of the bridge (a deploy) briefly answers with an error page through
 // the tunnel, and a browser event stream that gets one never retries on its own.
 // Reopen it, and refresh what is on screen once it is back (2026-10-16).
-let sessionEvents=null,streamBackoff=1000;
+let sessionEvents=null,streamBackoff=1000,otherView=null;
+const liveRefresh=()=>{if(otherView)return;fleet(Boolean(focusedPane));};
 function openSessionEvents(){
   if(typeof EventSource!=='function')return;
   const stream=sessionEvents=new EventSource('/api/session-events');
   let dropped=false;
-  stream.onmessage=()=>fleet(Boolean(focusedPane));
-  stream.onopen=()=>{streamBackoff=1000;if(dropped){dropped=false;fleet(Boolean(focusedPane));}};
+  stream.onmessage=liveRefresh;
+  stream.onopen=()=>{streamBackoff=1000;if(dropped){dropped=false;liveRefresh();}};
   stream.onerror=()=>{dropped=true;if(stream.readyState!==EventSource.CLOSED)return;setTimeout(()=>{if(sessionEvents===stream)openSessionEvents();},streamBackoff);streamBackoff=Math.min(streamBackoff*2,15000);};
 }
 openSessionEvents();
-const refreshFleet=()=>{if(document.visibilityState!=='hidden')fleet(Boolean(focusedPane));};
+const refreshFleet=()=>{if(document.visibilityState!=='hidden')liveRefresh();};
 window.addEventListener('online',refreshFleet);window.addEventListener('pageshow',refreshFleet);document.addEventListener('visibilitychange',refreshFleet);
 const recordVisit=id=>fetch('/api/visit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id}),signal:AbortSignal.timeout(6000)}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error);visitNotice=null;return result;}).catch(()=>{visitNotice=id;const status=document.getElementById('chat-status');if(status && location.hash==='#'+id)status.textContent=ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.');});
 const projectLabel=name=>name==='freelance-desk'?'Freelance Desk':String(name || 'Agent');
@@ -1748,7 +1749,7 @@ async function fleet(background=false) {
   const request=++fleetRequest;
   const mine=background?view:++view;
   if(!background){
-  rememberCurrentChat();saveChatView=null;clearChatGesture();chatOrder=[];
+  rememberCurrentChat();saveChatView=null;clearChatGesture();chatOrder=[];otherView=null;
   focusedPane=null;
   const cached=sideContent.querySelector('.fleet-content');if(cached)main.replaceChildren(cached);
 
@@ -1842,7 +1843,7 @@ async function fleet(background=false) {
   let container=root.querySelector('.fleet-content');if(!container){root.replaceChildren();container=document.createElement('div');container.className='fleet-content';root.append(container);}
   const searchBox=`<input type="search" class="fleet-search" data-key="search" dir="auto" placeholder="${ui('Search bots, chats and terminals','חיפוש בוטים, שיחות ומסופים')}" aria-label="${ui('Search','חיפוש')}" value="${esc(fleetQuery)}"><div class="search-hits" data-key="search-hits"></div>`;
   const botList=botsData?.bots || [],tab=fleetTab(botList.length);
-  if(tab==='health')loadAgentHealth().then(()=>{if(agentHealth && !container.querySelector('.health-page .health-rows'))fleet(Boolean(focusedPane));});
+  if(tab==='health')loadAgentHealth().then(()=>{if(agentHealth && !container.querySelector('.health-page .health-rows'))liveRefresh();});
   const botsNeed=botList.filter(b=>b.state==='needs-you').length,termsNeed=panes.filter(p=>p.turn==='waiting').length;
   const need=n=>n?`<span class="tab-need" aria-label="${ui(`${n} need you`,`${n} דורשים מענה`)}">${n}</span>`:'';
   const tabs=`<div class="fleet-tabs" role="tablist" data-key="tabs"><button type="button" role="tab" data-tab="bots" aria-selected="${tab==='bots'}">${ui('Bots','בוטים')}<span class="tab-count">${botList.filter(b=>!b.hidden).length}</span>${need(botsNeed)}</button><button type="button" role="tab" data-tab="terminals" aria-selected="${tab==='terminals'}">${ui('Terminals','מסופים')}<span class="tab-count">${panes.length}</span>${need(termsNeed)}</button><button type="button" role="tab" data-tab="health" aria-selected="${tab==='health'}">${ui('Health','מצב')}</button></div>`;
@@ -1942,7 +1943,7 @@ function scheduleDialog(paneId,draft){
 
 // One inbox: every agent's open question in one list, answered in place.
 async function openInbox(){
-  rememberCurrentChat();saveChatView=null;clearChatGesture();
+  rememberCurrentChat();saveChatView=null;clearChatGesture();otherView='inbox';
   document.querySelector('.composer')?.releaseDraft?.();document.querySelector('.composer')?.remove();document.querySelector('.askbox')?.remove();
   const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
   focusedPane=null;const mine=++view;
@@ -2234,7 +2235,7 @@ async function botMemoryDialog(id,name){
 }
 
 async function openBot(id){
-  rememberCurrentChat();saveChatView=null;clearChatGesture();
+  rememberCurrentChat();saveChatView=null;clearChatGesture();otherView='bot';
   document.querySelector('.composer')?.releaseDraft?.();document.querySelector('.composer')?.remove();document.querySelector('.askbox')?.remove();document.querySelector('.room-dialog')?.remove();
   const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
   sideContent.querySelectorAll('.pane').forEach(el=>el.classList.remove('selected'));
@@ -2494,7 +2495,7 @@ function roomMessageHtml(message,members){
 }
 
 async function openRoom(id){
-  rememberCurrentChat();saveChatView=null;clearChatGesture();
+  rememberCurrentChat();saveChatView=null;clearChatGesture();otherView='room';
   document.querySelector('.composer')?.releaseDraft?.();document.querySelector('.composer')?.remove();document.querySelector('.askbox')?.remove();document.querySelector('.room-dialog')?.remove();
   const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
   sideContent.querySelectorAll('.pane').forEach(el=>el.classList.remove('selected'));
@@ -2577,6 +2578,7 @@ function card(p) {
 }
 
 async function chat(id,{motion=null,initialFeed=null}={}) {
+  otherView=null;
   rememberCurrentChat();saveChatView=null;clearChatGesture(Boolean(motion && chatGesture===motion));
   document.querySelector('.composer')?.releaseDraft?.();
   document.querySelector('.composer')?.remove();
