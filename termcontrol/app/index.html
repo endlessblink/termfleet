@@ -2407,7 +2407,13 @@ async function enableNotifications({quiet=false}={}){
     if(!pushSupported())throw new Error(ui('This browser cannot show notifications. On iPhone, add TermControl to the home screen (Share, then Add to Home Screen), open it from there, and tap this again.','הדפדפן הזה לא יכול להציג התראות. באייפון, הוסיפו את TermControl למסך הבית (שיתוף ← הוספה למסך הבית), פתחו משם והקישו שוב.'));
     step='permission';
     const permission=quiet?Notification.permission:await Notification.requestPermission();
-    if(permission!=='granted')throw new Error(ui('Notifications are blocked for this site in the phone settings.','ההתראות חסומות לאתר הזה בהגדרות הטלפון.'));
+    // Chrome on Android can hide the question without asking (it stays "default"):
+    // then say where to switch it on, instead of claiming it was blocked.
+    const where=matchMedia('(display-mode: standalone)').matches
+      ?ui('Long-press the TermControl icon on your home screen, open App info, then Notifications, and switch them on.','לחצו לחיצה ארוכה על סמל TermControl במסך הבית, פתחו "פרטי האפליקציה", ואז "התראות", והפעילו.')
+      :ui('In Chrome open Settings, Site settings, Notifications, and allow this site.','בכרום פתחו הגדרות, הגדרות אתר, התראות, ואפשרו את האתר הזה.');
+    if(permission==='default')throw new Error(ui('Your phone hid the allow question. ','הטלפון הסתיר את שאלת האישור. ')+where);
+    if(permission!=='granted')throw new Error(ui('Notifications are turned off for this app. ','ההתראות כבויות לאפליקציה הזו. ')+where);
     step='worker';
     const reg=await navigator.serviceWorker.register('/sw.js');
     await navigator.serviceWorker.ready;
