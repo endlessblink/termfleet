@@ -182,6 +182,19 @@ export function ledgerText(asks, { newest = null, maxChars = 6000 } = {}) {
 
 export const CLAIMS_DONE = /\b(done|fixed|finished|completed?|works now|is live|all set|ready for you|shipped|resolved)\b|(?:^|\s)(סיימתי|תוקן|מוכן|עובד עכשיו|הושלם)(?:\s|$|[.!,])/i;
 
+// A next step the agent says it will take (English or Hebrew), unless it is plainly
+// waiting for Noam or has a wake-up set (then stopping is honest).
+const PROMISE = /(next,? i'?m (doing|going to)[^.\n]*|next,? i'?ll [^.\n]*|i'?ll (now|next|then)? ?(do|check|run|fix|look|start|build|test|verify|add|write|update|finish|try|retry|deploy|commit|push|watch|investigate|continue)\b[^.\n]*|i will (now |next |then )?(do|check|run|fix|look|start|build|test|verify|add|write|update|finish|try|continue)\b[^.\n]*|\bnext( step)?:[^\n]*|הצעד הבא[^.\n]*|אני (הולך|אמשיך|אבדוק|אתקן|אריץ)[^.\n]*)/i;
+const HONEST_WAIT = /waiting (for|on) (noam|you|your)|once you|until you|as soon as you|nothing (until|for now|more)|when you (tap|reply|answer|approve|confirm|send|run)|after you (tap|reply|answer|approve|confirm)|if you (want|approve|say)|your (ok|okay|approval|go)|\?\s*$|background (job|task|check|watcher)|will (wake|notify|ping) me|wakes? me|woken|(routine|schedule|follow) (is )?(set|added)|termfleet-team (follow|routine)|ממתין ל|מחכה ל|כשתאשר|אחרי שתאשר/i;
+export function promisedStep(text) {
+  const t = String(text || '');
+  if (!t.trim() || HONEST_WAIT.test(t)) return null;
+  // Only the closing part counts: an agent that did the step earlier in the reply is fine.
+  const tail = t.slice(-600);
+  const m = PROMISE.exec(tail);
+  return m ? m[0].trim() : null;
+}
+
 function lastAssistantText(lines) {
   for (let i = lines.length - 1; i >= 0; i--) {
     let o;
@@ -227,6 +240,10 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
   if (/^Stop$/i.test(event) || event === 'stop') {
     if (payload.stop_hook_active || payload.stopHookActive) return null;   // reminder mode: once per finish
     const last = String(payload.last_assistant_message || '') || lastAssistantText(lines);
+    // Noam 2026-10-17: "they say that they will do something and just never do it".
+    // Nothing runs after an agent stops, so a promised next step must happen now.
+    const promise = promisedStep(last);
+    if (promise) return { decision: 'block', reason: `You ended by promising "${clip(promise, 140)}", but nothing runs after you stop, so it would never happen. Do it now, in this turn. If it really has to wait, end with "Waiting for Noam: <what you need>", or set a wake-up first (a schedule, termfleet-team follow, or a background job that notifies you) and say so.` };
     if (!CLAIMS_DONE.test(last)) return null;
     const unmarked = asks.filter((a) => a.status === 'open');
     if (!unmarked.length) return null;

@@ -100,3 +100,26 @@ test('request numbers stay the same as a long record keeps growing, and marks fi
   fs.writeFileSync(file, user('rewritten') + '\n');
   assert.deepEqual(asksForFile(file, { cacheDir }).map((a) => a.text), ['rewritten'], 'a shorter record is read again from the start');
 });
+
+test('an agent that ends by promising a next step is told to do it now (once); honest waits pass', async () => {
+  const { hook, promisedStep } = await import('../../scripts/termfleet-asks.mjs');
+  const stop = (msg, active = false) => hook({ hook_event_name: 'Stop', last_assistant_message: msg, stop_hook_active: active }, { readLines: () => [] });
+  for (const msg of [
+    'The fix is live.\n\nNext I\'m doing: checking the helper\'s result once it finishes.',
+    'Tests pass. I\'ll now run the phone check.',
+    'Saved the page. Next step: deploy it to the server',
+    'עדכנתי את הקובץ. אני אבדוק את התוצאה בהמשך',
+  ]) {
+    const r = stop(msg);
+    assert.equal(r?.decision, 'block', msg);
+    assert.match(r.reason, /Do it now/);
+  }
+  assert.equal(stop('Next I\'m doing: the deploy.', true), null, 'only once per finish, never a loop');
+  for (const msg of [
+    'All three fixes are in and tested.',
+    'Waiting for Noam: tap "Turn on phone notifications" once.',
+    'Next I\'m doing: the phone check, once you tap the link.',
+    'Should I deploy it now?',
+    'A background watcher will notify me when it finishes; next I\'m doing the review then.',
+  ]) assert.equal(promisedStep(msg), null, msg);
+});
