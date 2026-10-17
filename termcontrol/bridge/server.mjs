@@ -381,7 +381,8 @@ const handle = async (req, res) => {
   if (url.pathname === '/api/push/report' && req.method === 'POST') {
     let body = {};
     try { body = await readJson(req, 4 * 1024); } catch { /* ignore a bad report */ }
-    const line = `[push] phone sign-up failed at "${String(body.step || '?').slice(0, 20)}": ${String(body.error || '').slice(0, 200)} (home screen app: ${Boolean(body.standalone)}; ${String(body.ua || '').slice(0, 160)})`;
+    const step = String(body.step || "?").slice(0, 20);
+    const line = `[push] phone ${step === "tapped" ? "tapped Turn on notifications" : step === "on" ? "signed up for notifications" : `sign-up failed at "${step}": ${String(body.error || "").slice(0, 200)}`} (home screen app: ${Boolean(body.standalone)}; ${String(body.ua || '').slice(0, 160)})`;
     console.error(line);
     push.noteProblem?.(line);
     return json(res, 200, { ok: true });
