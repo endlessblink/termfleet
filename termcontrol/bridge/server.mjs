@@ -377,7 +377,14 @@ const handle = async (req, res) => {
   // Phone notifications (TF-096 part 7).
   if (url.pathname === '/api/push/key' && req.method === 'GET') return json(res, 200, { publicKey: push.keys().publicKey });
   if (url.pathname === '/api/push/latest' && req.method === 'GET') return json(res, 200, { note: push.latest() });
-  if (url.pathname === '/api/presence' && req.method === 'POST') { push.seen(); return json(res, 200, { ok: true }); }
+  if (url.pathname === '/api/presence' && req.method === 'POST') {
+    push.seen();
+    // Which browsers run the current page (no content): explains a phone that never signs up.
+    const ua = String(req.headers['user-agent'] || '').replace(/[^\w ./;()-]/g, '').slice(0, 120);
+    if (!globalThis.__presenceSeen) globalThis.__presenceSeen = new Map();
+    if (Date.now() - (globalThis.__presenceSeen.get(ua) || 0) > 60_000) { globalThis.__presenceSeen.set(ua, Date.now()); console.error(`[push] page open: ${ua}`); }
+    return json(res, 200, { ok: true });
+  }
   if (url.pathname === '/api/push/report' && req.method === 'POST') {
     let body = {};
     try { body = await readJson(req, 4 * 1024); } catch { /* ignore a bad report */ }
