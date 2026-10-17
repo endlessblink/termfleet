@@ -5,11 +5,12 @@
 //   termfleet-browser start    open it if it is not open yet
 //   termfleet-browser status   is it open, and which pages
 //   termfleet-browser mcp      the browser tools for a bot brain (opens the browser on first use)
-import { realpathSync } from 'node:fs';
+import fs, { realpathSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { BotBrowser } from '../termcontrol/bridge/bot-browser.mjs';
-import { PLAYWRIGHT_MCP } from '../termcontrol/bridge/bots.mjs';
+import { PLAYWRIGHT_MCP, BOTS_HOME } from '../termcontrol/bridge/bots.mjs';
 
 /**
  * `termfleet-browser mcp`: the browser tools a bot brain gets. It passes MCP messages
@@ -17,7 +18,10 @@ import { PLAYWRIGHT_MCP } from '../termcontrol/bridge/bots.mjs';
  * tool is actually called it opens the bots' browser if it is not open yet.
  */
 export function mcpProxy({ input = process.stdin, output = process.stdout, browser = new BotBrowser(), launch = spawn, server = PLAYWRIGHT_MCP } = {}) {
-  const child = launch(server.command, server.args, { stdio: ['pipe', 'pipe', 'inherit'] });
+  // Its cache must be writable inside Codex's sandbox: keep it in the bots' own folder.
+  const cache = path.join(BOTS_HOME(), '.playwright');
+  try { fs.mkdirSync(cache, { recursive: true }); } catch { /* the tools say so if it is missing */ }
+  const child = launch(server.command, server.args, { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: cache, XDG_CACHE_HOME: cache } });
   child.stdout.pipe(output);
   let ready = null, buffer = '', chain = Promise.resolve();
   const forward = (line) => { chain = chain.then(async () => {

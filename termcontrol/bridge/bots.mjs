@@ -95,7 +95,12 @@ const CLAUDE_DENY = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'mcp__browser
 // Playwright MCP over its local debugging port. Kept here (not in bot-browser.mjs) so
 // this module has no import cycle.
 export const BOT_BROWSER_PORT = Number(process.env.TC_BOT_BROWSER_PORT || 9333);
-export const PLAYWRIGHT_MCP = { command: 'npx', args: ['-y', '@playwright/mcp@latest', '--cdp-endpoint', `http://127.0.0.1:${BOT_BROWSER_PORT}`] };
+// Installed once on the PC: npx cannot run inside Codex's sandbox (it writes the npm
+// cache and reaches the registry), so bots start this copy; npx only if it is missing.
+export const PLAYWRIGHT_MCP_CLI = process.env.TC_PLAYWRIGHT_MCP_CLI || path.join(os.homedir(), '.local', 'share', 'termfleet', 'playwright-mcp', 'node_modules', '@playwright', 'mcp', 'cli.js');
+export const PLAYWRIGHT_MCP = fs.existsSync(PLAYWRIGHT_MCP_CLI)
+  ? { command: process.execPath, args: [PLAYWRIGHT_MCP_CLI, '--cdp-endpoint', `http://127.0.0.1:${BOT_BROWSER_PORT}`] }
+  : { command: 'npx', args: ['-y', '@playwright/mcp@latest', '--cdp-endpoint', `http://127.0.0.1:${BOT_BROWSER_PORT}`] };
 // Bots get it through `termfleet-browser mcp`, which opens the bots' browser the
 // first time a browser tool is used (a bot never has to remember to start it).
 export const BROWSER_MCP = { command: process.execPath, args: [fileURLToPath(new URL('../../scripts/termfleet-browser.mjs', import.meta.url)), 'mcp'] };
