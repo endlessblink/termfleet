@@ -26,6 +26,19 @@ const repoRoot = path.resolve(here, '..', '..');
 const defaultDir = () => path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'bots');
 
 export const PROVIDERS = ['claude', 'codex'];
+
+// Which model a bot thinks with is a per-bot choice (TF-096, Noam 2026-10-19: "need a
+// way to change the bots model after it was started"). Empty = the plan's own default.
+const CLAUDE_MODELS = [
+  { id: 'fable', label: 'Fable' }, { id: 'opus', label: 'Opus' }, { id: 'sonnet', label: 'Sonnet' }, { id: 'haiku', label: 'Haiku' },
+];
+export function modelChoices(provider, { home = os.homedir() } = {}) {
+  if (provider === 'claude') return CLAUDE_MODELS;
+  try {
+    const cache = JSON.parse(fs.readFileSync(path.join(home, '.codex', 'models_cache.json'), 'utf8'));
+    return (cache.models || []).filter((m) => m.visibility === 'list' && m.slug).map((m) => ({ id: m.slug, label: m.display_name || m.slug }));
+  } catch { return []; }
+}
 /** Every bot works in its own folder side by side here (Noam: "each agent next to the other, under Termfleet"). */
 export const BOTS_HOME = () => process.env.TC_BOTS_HOME || path.join(os.homedir(), 'TermFleet', 'bots');
 export const LIMITS = { name: 40, job: 80, rules: 4000, message: 20000 };
@@ -119,8 +132,8 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
       '-c', `mcp_servers.browser.command=${JSON.stringify(BROWSER_MCP.command)}`, '-c', `mcp_servers.browser.args=${JSON.stringify(BROWSER_MCP.args)}`, '-c', 'mcp_servers.browser.disabled_tools=["browser_run_code_unsafe"]',
       '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"', '-c', 'mcp_servers.node_repl.enabled=false', '-c', 'plugins."unified-computer-use@openai-bundled".enabled=false'];
     const args = first
-      ? ['exec', '--json', '--skip-git-repo-check', '-C', bot.cwd, '-s', 'workspace-write', ...config, prompt]
-      : ['exec', 'resume', bot.sessions.codex, '--json', '--skip-git-repo-check', ...config, prompt];
+      ? ['exec', '--json', '--skip-git-repo-check', '-C', bot.cwd, '-s', 'workspace-write', ...(bot.model ? ['-m', bot.model] : []), ...config, prompt]
+      : ['exec', 'resume', bot.sessions.codex, '--json', '--skip-git-repo-check', ...(bot.model ? ['-m', bot.model] : []), ...config, prompt];
     return { bin, args };
   }
   const bin = bins.claude || 'claude';
@@ -129,6 +142,7 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
     '--append-system-prompt', brainBrief(bot, extras),
     '--add-dir', uploadDir(),   // pictures Noam attaches
     '--permission-mode', 'dontAsk',
+    ...(bot.model ? ['--model', bot.model] : []),
     '--mcp-config', JSON.stringify({ mcpServers: { browser: BROWSER_MCP } }),
     '--allowedTools', ...CLAUDE_TOOLS,
     '--disallowedTools', ...CLAUDE_DENY,
@@ -321,6 +335,7 @@ const clock = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit'
 
 export class Bots {
   constructor({ dir = defaultDir(), run = runBrain, bins = { claude: findBinary('claude'), codex: findBinary('codex') }, now = () => Date.now(), fill = defaultFill, checks = { home: process.env.TC_BOT_CHECK_HOME || undefined }, notify = () => {} } = {}) {
+    this.codexHome = process.env.TC_CODEX_HOME || os.homedir();
     this.notify = notify;   // phone notification for a reply or a "needs you" (part 7)
     this.fill = fill;
     this.checks = checks;   // where to look for logins and the terminal service (tests point these elsewhere)
@@ -381,7 +396,7 @@ export class Bots {
       proposedProfile: bot.proposedProfile || null,
       helpers: this.helpers(id),
       mainResetsAt: (bot.active && bot.active !== bot.provider) ? (this.health()[bot.provider]?.limitedUntil || null) : null,
-      id: bot.id, name: bot.name, job: bot.job, provider: bot.provider, fallback: bot.fallback || null, active: bot.active || bot.provider, cwd: bot.cwd, createdAt: bot.createdAt,
+      id: bot.id, name: bot.name, job: bot.job, provider: bot.provider, model: bot.model || null, fallback: bot.fallback || null, active: bot.active || bot.provider, cwd: bot.cwd, createdAt: bot.createdAt,
       state: working ? 'working' : bot.blocked ? 'needs-you' : last?.role === 'error' ? 'failed' : 'idle',
       blocked: bot.blocked ? { ask: bot.blocked.ask, at: bot.blocked.at } : null,
       waitingForReset: bot.retry ? bot.retry.at : null,
@@ -434,7 +449,12 @@ export class Bots {
     if ('notify' in patch) next.notify = Boolean(patch.notify);
     if ('hidden' in patch) next.hidden = Boolean(patch.hidden);
     if ('rules' in patch) next.rules = clean(patch.rules, LIMITS.rules);
-    if ('provider' in patch && PROVIDERS.includes(patch.provider)) { next.provider = patch.provider; if (!next.active || next.active === bot.provider) next.active = patch.provider; }
+    if ('provider' in patch && PROVIDERS.includes(patch.provider)) { next.provider = patch.provider; if (!next.active || next.active === bot.provider) next.active = patch.provider; if (patch.provider !== bot.provider) next.model = null; }
+    if ('model' in patch) {
+      const wanted = String(patch.model || '').trim();
+      if (wanted && !modelChoices(next.provider, { home: this.codexHome }).some((m) => m.id === wanted)) return { error: 'That model is not available for this plan.' };
+      next.model = wanted || null;
+    }
     if ('fallback' in patch) next.fallback = PROVIDERS.includes(patch.fallback) && patch.fallback !== next.provider ? patch.fallback : null;
     this.write(next);
     return { ok: true, bot: this.summary(id) };
@@ -754,7 +774,8 @@ export class Bots {
     let bot = this.read(id);
     if (!bot) return { error: 'That bot no longer exists.' };
     const extras = { card: this.memory(id).card(), handover: bot.handover || '' };
-    const runner = { ...bot, provider: bot.active || bot.provider };
+    // The chosen model belongs to the main plan; on the backup plan it uses that plan's default.
+    const runner = { ...bot, provider: bot.active || bot.provider, model: (bot.active || bot.provider) === bot.provider ? (bot.model || null) : null };
     return this.run(runner, text, {
         bins: this.bins,
         extras,

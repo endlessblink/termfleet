@@ -297,3 +297,28 @@ test('a brain that goes silent is stopped and reported, not waited on', async ()
   assert.match(r.error, /went quiet for too long/);
   assert.ok(Date.now() - t0 < 5000);
 });
+
+test('a started bot can be moved to another model; it is checked, kept with its plan, and used on the next turn only on that plan', () => {
+  const calls = [];
+  const bots = new Bots({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'tf-model-')), run: async (bot, text) => { calls.push({ provider: bot.provider, model: bot.model }); return { text: 'ok' }; }, fill: () => null, checks: { home: os.homedir() } });
+  bots.codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tf-codexhome-'));
+  fs.mkdirSync(path.join(bots.codexHome, '.codex'));
+  fs.writeFileSync(path.join(bots.codexHome, '.codex', 'models_cache.json'), JSON.stringify({ models: [{ slug: 'gpt-x', display_name: 'GPT X', visibility: 'list' }, { slug: 'secret', visibility: 'hide' }] }));
+  const { bot } = bots.create({ name: 'Quill', cwd: os.tmpdir() });
+  assert.equal(bots.update(bot.id, { model: 'opus' }).bot.model, 'opus');
+  assert.match(bots.update(bot.id, { model: 'gpt-x' }).error, /not available for this plan/);
+  assert.equal(bots.update(bot.id, { model: '' }).bot.model, null, 'empty = the plan\'s default');
+  bots.update(bot.id, { model: 'sonnet' });
+  // Changing the plan drops a model that belongs to the old one.
+  assert.equal(bots.update(bot.id, { provider: 'codex' }).bot.model, null);
+  assert.equal(bots.update(bot.id, { model: 'gpt-x' }).bot.model, 'gpt-x');
+  assert.match(bots.update(bot.id, { model: 'secret' }).error, /not available/);
+  // The command carries the model for each plan.
+  const claude = brainCommand({ id: 'b', name: 'Q', provider: 'claude', model: 'opus', cwd: '/tmp', sessions: { claude: { id: 'abc', started: true } } }, 'hi');
+  assert.deepEqual(claude.args.slice(claude.args.indexOf('--model'), claude.args.indexOf('--model') + 2), ['--model', 'opus']);
+  const codexFirst = brainCommand({ id: 'b', name: 'Q', provider: 'codex', model: 'gpt-x', cwd: '/tmp', sessions: {} }, 'hi');
+  assert.deepEqual(codexFirst.args.slice(codexFirst.args.indexOf('-m'), codexFirst.args.indexOf('-m') + 2), ['-m', 'gpt-x']);
+  const codexResume = brainCommand({ id: 'b', name: 'Q', provider: 'codex', model: 'gpt-x', cwd: '/tmp', sessions: { codex: 't1' } }, 'hi');
+  assert.ok(codexResume.args.includes('resume') && codexResume.args.includes('gpt-x'), 'a resumed Codex chat switches model too');
+  assert.ok(!brainCommand({ id: 'b', name: 'Q', provider: 'claude', cwd: '/tmp', sessions: {} }, 'hi').args.includes('--model'), 'no model chosen = today\'s behaviour');
+});

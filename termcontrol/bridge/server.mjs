@@ -37,7 +37,7 @@ import { createSendOnce } from './send-once.mjs';
 import { contextFill } from './context-fill.mjs';
 import { Routines, describeDays } from './routines.mjs';
 import { profiles, rulesMessage } from './profiles.mjs';
-import { Bots, PROVIDERS as BOT_PROVIDERS } from './bots.mjs';
+import { Bots, PROVIDERS as BOT_PROVIDERS, modelChoices } from './bots.mjs';
 import { listSkills, approveSkill, rejectSkill, suggestSkill, checkSkill } from './skills.mjs';
 import { BotBrowser } from './bot-browser.mjs';
 import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
@@ -372,7 +372,7 @@ const handle = async (req, res) => {
 
   // Bots (TF-096). Same sign-in gate as every route below it.
   if (url.pathname === '/api/bots' && req.method === 'GET') {
-    return json(res, 200, { bots: bots.list(), providers: BOT_PROVIDERS, home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
+    return json(res, 200, { bots: bots.list(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
   }
   // Phone notifications (TF-096 part 7).
   if (url.pathname === '/api/push/key' && req.method === 'GET') return json(res, 200, { publicKey: push.keys().publicKey });
