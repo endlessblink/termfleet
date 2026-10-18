@@ -78,7 +78,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- Do light work yourself: read files, search, check status, answer questions.',
     '- Real changes, builds, tests and long jobs go to terminal agents, which you direct with the termfleet-team command:',
     '  `termfleet-team list` (who is working on what), `termfleet-team read <who>` (their latest messages),',
-    '  `termfleet-team send <who> "<task>"` (hand work over), `termfleet-team ask <who> "<question>"` (wait for the answer),',
+    '  `termfleet-team send <who> "<task>"` (hand work over), `termfleet-team ask <who> "<question>"` (wait up to 2 minutes for the answer; if it is not ready you are woken when it finishes, so then just tell Noam it is in progress and stop),',
     '  `termfleet-team start --provider claude|codex --cwd <folder> --task "<task>"` (open a new terminal agent for a job),',
     '  `termfleet-team routine add --time 09:00 --days weekdays --message "<text>"` (a scheduled message).',
     '- Say which terminal agent you handed work to, and check its result before telling Noam it is done.',
@@ -154,7 +154,9 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
 export function activityLine(name, input = {}) {
   const cmd = String(input.command || '');
   if (/termfleet-team\s+start/.test(cmd)) return 'Starting a terminal agent';
-  if (/termfleet-team\s+(send|ask)/.test(cmd)) return 'Handing work to a terminal agent';
+  if (/termfleet-team\s+ask/.test(cmd)) return 'Waiting for a terminal agent\'s answer';
+  if (/termfleet-team\s+wait/.test(cmd)) return 'Waiting for a terminal agent to finish';
+  if (/termfleet-team\s+send/.test(cmd)) return 'Handing work to a terminal agent';
   if (/termfleet-team\s+(read|wait)/.test(cmd)) return 'Reading a terminal agent';
   if (/termfleet-team\s+list/.test(cmd)) return 'Checking who is working';
   if (/termfleet-team\s+routine/.test(cmd)) return 'Setting a schedule';
@@ -406,6 +408,7 @@ export class Bots {
             : (bot.active && bot.active !== bot.provider) ? { level: 'warn', text: `On its backup plan` }
               : working ? { level: 'busy', text: 'Working' } : { level: 'ok', text: 'Ready' },
       activity: working?.activity || null,
+      activitySince: working ? (working.activityAt || working.startedAt || null) : null,
       queued: (this.queues.get(id) || []).length,
       lastAt: last?.at || bot.createdAt,
       last: last ? { role: last.role, text: String(last.text || '').slice(0, 160) } : null,
@@ -783,7 +786,7 @@ export class Bots {
         onEvent: (ev) => {
           if (ev.activity) {
             const current = this.running.get(id);
-            if (current && current.activity !== ev.activity) { current.activity = ev.activity; this.append(id, { role: 'activity', text: ev.activity }); }
+            if (current && current.activity !== ev.activity) { current.activity = ev.activity; current.activityAt = this.now(); this.append(id, { role: 'activity', text: ev.activity }); }
           }
           if (ev.session) {
             bot = this.read(id) || bot;

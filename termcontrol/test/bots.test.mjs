@@ -322,3 +322,18 @@ test('a started bot can be moved to another model; it is checked, kept with its 
   assert.ok(codexResume.args.includes('resume') && codexResume.args.includes('gpt-x'), 'a resumed Codex chat switches model too');
   assert.ok(!brainCommand({ id: 'b', name: 'Q', provider: 'claude', cwd: '/tmp', sessions: {} }, 'hi').args.includes('--model'), 'no model chosen = today\'s behaviour');
 });
+
+test('a bot waiting on a terminal agent says so (not a bare "Checking something") and is told it waits at most 2 minutes', () => {
+  assert.equal(activityLine('Bash', { command: 'termfleet-team ask paper-bot "status?"' }), 'Waiting for a terminal agent\'s answer');
+  assert.equal(activityLine('Bash', { command: 'termfleet-team wait paper-bot' }), 'Waiting for a terminal agent to finish');
+  assert.equal(activityLine('Bash', { command: 'termfleet-team send paper-bot "go"' }), 'Handing work to a terminal agent');
+  assert.match(brainBrief({ id: 'b', name: 'Q', job: 'x', rules: '' }, {}), /wait up to 2 minutes[^`]*woken when it finishes/);
+});
+
+test('the bot summary says when the current step started', () => {
+  const bots = new Bots({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'tf-since-')), run: () => new Promise(() => {}), fill: () => null, checks: { home: os.homedir() } });
+  const { bot } = bots.create({ name: 'Quill', cwd: os.tmpdir() });
+  assert.equal(bots.summary(bot.id).activitySince, null, 'idle bot: nothing running');
+  bots.running.set(bot.id, { activity: 'Checking something', startedAt: 1000, activityAt: 5000 });
+  assert.equal(bots.summary(bot.id).activitySince, 5000);
+});

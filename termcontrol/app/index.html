@@ -807,7 +807,27 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 .health-card{display:grid;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);text-align:start;color:inherit;font:inherit;cursor:pointer;width:100%}.health-card h3{margin:0;font-size:15px;font-weight:500}.health-rows{display:grid;gap:8px}.health-row{display:grid;grid-template-columns:1fr auto 4.5em;gap:10px;align-items:baseline;font-size:14px}.health-was{color:var(--muted);font-size:12.5px;text-align:end}.health-row .bars{grid-column:1/-1;display:flex;align-items:flex-end;gap:2px;height:22px}.health-row .bars i{flex:1;background:var(--line);border-radius:2px;min-height:2px}.health-row .bars i.today{background:var(--accent)}.health-row b{font-weight:500}.health-note{font-size:12.5px;color:var(--muted);margin:0}.health-better{color:#3fb27f}.health-worse{color:#e5484d}
 .bot-more{position:relative;display:inline-block;margin-top:8px}.bot-more>summary{list-style:none;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border:1px solid var(--line);border-radius:12px;font-size:14px;cursor:pointer;color:var(--text)}.bot-more>summary::-webkit-details-marker{display:none}.bot-more>summary::after{content:"▾";font-size:11px;color:var(--muted)}.bot-more[open]>.bot-actions{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 8px);z-index:30;display:grid;gap:2px;min-width:240px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.35)}.bot-more .bot-actions button{width:100%;min-height:44px;justify-content:flex-start;text-align:start;border:0;border-radius:10px;padding:0 12px;background:transparent}.bot-more .bot-actions button:hover{background:var(--line)}.bot-more .bot-delete{color:#e5484d}.routinesline .bot-schedule{display:none}
 .bot-composer{flex-wrap:wrap}.bot-composer .bot-pics{flex-basis:100%;order:-1}.bot-composer .stack{flex-direction:row;flex-wrap:wrap;align-items:center;gap:2px}.bot-composer .stack textarea{order:0;flex:1 1 100%}.bot-composer .bot-attach{order:1}.bot-composer .bot-mic{order:2}.bot-composer .stack .send{order:3;margin-inline-start:auto;position:static}.bot-composer .bot-attach,.bot-composer .bot-mic{flex:none;display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:12px;background:transparent;color:var(--muted);cursor:pointer}.bot-composer .bot-attach svg,.bot-composer .bot-mic svg{width:20px;height:20px}.bot-composer .bot-mic.rec{color:#e5484d;background:color-mix(in srgb,#e5484d 14%,transparent)}.bot-composer .bot-mic.busy{opacity:.5}.bot-pics{display:flex;gap:8px;overflow-x:auto;padding:4px 4px 8px}.bot-pics[hidden]{display:none}.bot-pic{position:relative;flex:none;width:64px;height:64px;border-radius:12px;overflow:hidden;border:1px solid var(--line)}.bot-pic img{width:100%;height:100%;object-fit:cover}.bot-pic button{position:absolute;top:3px;right:3px;width:22px;height:22px;border:0;border-radius:8px;background:rgba(0,0,0,.6);color:#fff;font-size:14px;line-height:1;cursor:pointer}
-.model-field{margin-top:18px}.model-field select{width:100%;min-height:48px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--text);font:inherit;font-size:16px}.model-field[hidden]{display:none}
+.room-field[hidden]{display:none}.model-field{margin-top:18px}.model-field select{width:100%;min-height:48px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--text);font:inherit;font-size:16px}.model-field[hidden]{display:none}
+/* Message menu (2026-10-19): a small popover under the dots; rows are big, rounded and spaced. */
+body main .msg>.message-menu[open]{position:relative;width:44px!important;height:44px!important;padding:0!important;grid-row:1!important}
+body main .msg.assistant>.message-menu[open]{grid-column:2!important}
+body main .msg.user>.message-menu[open]{grid-column:1!important}
+:root:dir(rtl) body main .msg.assistant>.message-menu[open]{grid-column:1!important}
+:root:dir(rtl) body main .msg.user>.message-menu[open]{grid-column:2!important}
+body main .msg>.message-menu[open]>summary{position:static!important;background:var(--line);color:var(--text)}
+body main .msg>.message-menu[open]>.message-menu-panel{position:absolute;z-index:40;top:48px;inset-inline-end:0;width:min(264px,78vw);display:grid;gap:2px;padding:6px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 14px 36px rgba(0,0,0,.4)}
+body main .msg.user>.message-menu[open]>.message-menu-panel{inset-inline-end:auto;inset-inline-start:0}
+body main .message-menu-panel>button,body main .message-menu-panel .message-details>summary{display:flex;align-items:center;gap:12px;width:100%;min-height:46px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:var(--text);font:15px var(--ui);text-align:start;cursor:pointer;list-style:none}
+body main .message-menu-panel>button:hover,body main .message-menu-panel .message-details>summary:hover{background:var(--line)}
+body main .message-menu .message-menu-panel>button{padding:0 12px;min-height:46px;margin:0}body main .message-menu-panel .message-details>summary::before{content:"";width:20px;flex:none}
+body main .message-menu-panel .message-details>summary::-webkit-details-marker{display:none}
+body main .message-menu-panel .menu-ic{display:inline-grid;place-items:center;width:20px;font-size:17px;color:var(--muted)}
+body main .message-menu-panel svg{width:20px;height:20px;color:var(--muted);flex:none}
+body main .message-menu-panel .message-details{margin:0}
+body main .message-menu-panel .message-details[open]>summary{background:var(--line)}
+body main .message-menu-panel .message-details>pre{margin:6px 4px 4px;padding:10px;border-radius:10px;background:var(--bg);font-size:13px;white-space:pre-wrap;max-height:200px;overflow:auto}
+body main .message-menu-panel .message-provenance{margin:2px 12px 6px;padding-top:6px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:var(--muted)}
 .mem-list{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px}.mem-row{display:grid;gap:6px;padding:10px;border:1px solid var(--line);border-radius:12px;font-size:14px;line-height:1.45}.mem-row .ask-status{justify-self:start;font-size:11.5px;border-radius:8px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
 .bot-health{flex:none;width:9px;height:9px;border-radius:50%;background:var(--idle);align-self:center}.bot-health-ok{background:var(--working)}.bot-health-busy{background:var(--working);animation:busy-fade 1.6s infinite}.bot-health-warn{background:var(--waiting)}.bot-health-bad{background:var(--accent)}.bot-needs{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:10px}.bot-needs p{margin:0;line-height:1.5}.bot-needs button{justify-self:start;min-height:40px;padding:0 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
 .bot-handoff{display:block;margin:4px 4px 4px 0;padding:8px 12px;border:1px dashed var(--line);border-radius:12px;color:var(--text);text-decoration:none;font-size:14px;line-height:1.45}.bot-handoff b{font-weight:500}.helpers-chip{margin-top:4px;font-size:13px}.helpers-chip summary{cursor:pointer;color:var(--muted);list-style:none}.helpers-chip summary::-webkit-details-marker{display:none}.helpers-chip ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}.helpers-chip a{color:var(--text)}.helper-state{font-size:11.5px;color:var(--muted);margin-inline-start:6px}.bot-pending{opacity:.75}.bot-pending .pending-delivery{color:var(--muted);font-size:12.5px;margin:2px 6px}.bot-failed-send .pending-delivery{color:var(--accent)}.bot-failed-send button{margin-inline-start:8px;border:1px solid var(--line);border-radius:14px;background:transparent;color:var(--text);font:inherit;font-size:12.5px;padding:2px 10px;cursor:pointer}.hidden-bots summary{color:var(--muted);font-size:13px;padding:6px 8px;cursor:pointer;list-style:none}.fleet-search{width:100%;box-sizing:border-box;margin:0 0 20px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit}.search-hits{margin:0 0 14px;display:grid;gap:6px}.search-hit{display:block;text-align:start;width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:13.5px;cursor:pointer}.search-hit small{display:block;color:var(--muted)}.search-miss{display:none!important}
@@ -1549,13 +1569,31 @@ function messageHtml(kind, text, who, when='', extra='', delivery='', details=''
     ${extra.includes('pendingmsg') && when?`<div class="pending-delivery" role="status" dir="auto">${esc(when)}</div>`:''}
     ${delivery?`<details class="delivery-details" data-detail-key="delivery:${esc(source)}"><summary dir="auto">${esc(confirmed?ui('Confirmed by the agent','אושר אצל הסוכן'):awaiting?ui('Awaiting agent confirmation','ממתין לאישור הסוכן'):delivery)}</summary><p dir="auto">${esc(delivery)}</p></details>`:''}
     <details class="message-menu" data-detail-key="message:${esc(kind+':'+source)}"><summary aria-label="${ui('Message actions and source details','פעולות ופרטי מקור ההודעה')}" title="${ui('Message menu','תפריט ההודעה')}">⋯</summary><div class="message-menu-panel">
-      <p class="message-provenance"><bdi dir="auto">${esc(who)}</bdi>${when?` · <bdi dir="auto">${esc(when)}</bdi>`:''}</p>
+      ${kind!=='user'?`<button type="button" class="reply-message"><span class="menu-ic" aria-hidden="true">↩</span>${ui('Reply','תגובה')}</button>`:''}
       <button type="button" class="copy-message" aria-label="${ui('Copy message','העתקת הודעה')}">${icon('copy')}${ui('Copy message','העתקת הודעה')}</button><span class="copy-status" role="status" aria-live="polite"></span>
       ${kind==='assistant'?`<button type="button" class="speak-message">${icon('speaker')}${ui('Read aloud','הקראה בקול')}</button>`:''}
       <details class="message-details"><summary>${ui('Source text','טקסט המקור')}</summary><pre dir="auto">${esc(source)}</pre></details>
       ${details?`<details class="message-details" data-detail-key="source:${esc(details)}"><summary>${ui('Original details','הפרטים המקוריים')}</summary><pre dir="auto">${esc(details)}</pre><button type="button" class="copy-message" data-copy-source="${esc(details)}">${ui('Copy original details','העתקת הפרטים המקוריים')}</button></details>`:''}
+      <p class="message-provenance"><bdi dir="auto">${esc(who)}</bdi>${when?` · <bdi dir="auto">${esc(when)}</bdi>`:''}</p>
     </div></details></article>`;
 }
+// Reply (TF-096, Noam 2026-10-19: "need to be able to reply"): a short quote of the
+// message goes into the open message box, so the answer says what it answers.
+main.addEventListener('click',event=>{
+  const button=event.target.closest('.reply-message'); if(!button) return;
+  event.stopPropagation();
+  const msg=button.closest('.msg'),menu=button.closest('.message-menu');
+  const source=msg.querySelector('[data-copy-text]')?.dataset.copyText || '';
+  const flat=String(readableText(source) || source).replace(/\s+/g,' ').trim();
+  const quote='> '+(flat.length>220?flat.slice(0,217).trimEnd()+'…':flat);
+  const box=document.querySelector('.composer textarea');
+  if(menu)menu.open=false;
+  if(!box)return note(ui('Open the message box first.','פתחו קודם את תיבת ההודעה.'),true);
+  const rest=box.value.replace(/^\s+/,'');
+  box.value=quote+'\n\n'+rest;
+  box.dispatchEvent(new Event('input',{bubbles:true}));
+  box.focus();box.selectionStart=box.selectionEnd=quote.length+2;
+});
 main.addEventListener('click',async event=>{
   const button=event.target.closest('.copy-message'); if(!button) return;
   event.stopPropagation(); const msg=button.closest('.msg'), text=button.dataset.copySource ?? msg.querySelector('[data-copy-text]').dataset.copyText;
@@ -2024,6 +2062,8 @@ function asksHtml(asks){
 
 // TF-096 bots: managers that run outside the terminals (like Grok Bot's bots) and
 // direct terminal agents. Listed first, above rooms and terminals.
+// "for 4 min" once a step has run for a minute or more.
+const stepFor=since=>{const m=since?Math.floor((Date.now()-Number(since))/60000):0;return m>=1?` · ${ui(`${m} min`,`${m} דק׳`)}`:'';};
 function botAvatar(bot,size=40,head=false){return `<span class="bot-avatar${head?' head':''}" aria-hidden="true">${blobSvg({id:'bot:'+bot.id,project:bot.name},size)}</span>`;}
 // The Bots tab (TF-096): bots are the main screen of the Agents view, like Grok
 // Bot's home: one chat-style row per bot, actions on top, terminals on their own tab.
@@ -2032,7 +2072,7 @@ function botsHomeHtml(data){
   const row=b=>{
     const line=b.state==='needs-you'?`<span class="bot-failed" dir="auto">${ui('Needs you: ','נדרש מענה: ')}${esc(b.blocked?.ask || '')}</span>`
       :b.waitingForReset?`<span>${ui('Waiting for a plan to reset','ממתין לאיפוס של תוכנית')}</span>`
-      :b.state==='working'?`<span>${esc(b.activity || ui('Working','עובד'))}</span><span class="room-busy" aria-hidden="true"><i></i><i></i><i></i></span>`
+      :b.state==='working'?`<span>${esc((b.activity || ui('Working','עובד'))+stepFor(b.activitySince))}</span><span class="room-busy" aria-hidden="true"><i></i><i></i><i></i></span>`
       :b.state==='failed'?`<span class="bot-failed">${ui('Something went wrong — open to see','משהו השתבש — פתחו לפרטים')}</span>`
       :b.memoryPending?`<span>${ui(`${b.memoryPending} memories to review`,`${b.memoryPending} זיכרונות לבדיקה`)}</span>`
       :`<span dir="auto">${esc(b.last?.text || b.job || ui('Ready','מוכן'))}</span>`;
@@ -2080,11 +2120,11 @@ function fleetTab(botCount=0){let picked=null;try{picked=localStorage.getItem('t
 // Which models each plan offers (for the settings dialog and the bot header).
 let botModels=null;
 const loadBotModels=async()=>{if(botModels)return botModels;try{const r=await fetch('/api/bots',{signal:AbortSignal.timeout(8000)});botModels=(await r.json()).models || {};}catch{botModels=null;}return botModels;};
-function botDialog(existing,data){
+function botDialog(existing,data,{only=null}={}){
   document.querySelector('.room-dialog')?.remove();
   const dialog=document.createElement('dialog');dialog.className='room-dialog';
   const providers=(data?.providers || ['claude','codex']);
-  dialog.innerHTML=`<form><h2>${existing?ui('Name, job and rules','שם, תפקיד וכללים'):ui('New bot','בוט חדש')}</h2>
+  dialog.innerHTML=`<form><h2>${only==='model'?ui('Model and plan','מודל ותוכנית'):existing?ui('Name, job and rules','שם, תפקיד וכללים'):ui('New bot','בוט חדש')}</h2>
     <label class="room-field"><span>${ui('Name','שם')}</span><input name="name" dir="auto" maxlength="40" required placeholder="${ui('e.g. Quill','למשל: קוויל')}"></label>
     ${existing?`<label class="room-field"><span>${ui('Job, in a few words','תפקיד, בכמה מילים')}</span><input name="job" dir="auto" maxlength="80"></label>
     <label class="room-field"><span>${ui('Standing rules','כללים קבועים')}</span><textarea name="rules" rows="3" dir="auto" maxlength="4000"></textarea></label>`:`<p class="rooms-empty">${ui('Just give it a name and start talking. From your first chat the bot suggests its own job and rules, and you approve them.','רק תנו שם והתחילו לדבר. מהשיחה הראשונה הבוט יציע את התפקיד והכללים שלו, ואתם תאשרו.')}</p>`}
@@ -2096,6 +2136,8 @@ function botDialog(existing,data){
     <div class="room-actions"><button type="button" class="room-cancel">${ui('Cancel','ביטול')}</button><button type="submit" class="room-create">${existing?ui('Save','שמירה'):ui('Create bot','יצירת בוט')}</button></div></form>`;
   document.body.append(dialog);
   const form=dialog.querySelector('form'),error=dialog.querySelector('.room-error');
+  // "Model and plan" shows only the plan, model and backup; name, job and rules stay as they are.
+  if(only==='model')form.querySelectorAll('.room-field:not(.model-field)').forEach(el=>{el.hidden=true;});
   // Radio cards: the backup can never be the same as the main plan.
   const pick=(name,value)=>{const box=[...form.querySelectorAll(`input[name=${name}]`)].find(i=>i.value===value);if(box)box.checked=true;};
   const value=name=>form.querySelector(`input[name=${name}]:checked`)?.value || '';
@@ -2350,11 +2392,12 @@ async function openBot(id){
       :brainName(bot.provider)+(bot.model?` · ${((botModels)?.[bot.provider] || []).find(m=>m.id===bot.model)?.label || bot.model}`:'')+(bot.fallback?ui(` (backup: ${brainName(bot.fallback)})`,` (גיבוי: ${brainName(bot.fallback)})`):'');
     sub.textContent=[bot.job,plan].filter(Boolean).join(' · ');
     if(!chatStatus.querySelector('.bot-actions')){
-      chatStatus.innerHTML=`<details class="bot-more"><summary>${ui('Bot options','אפשרויות הבוט')}</summary><span class="bot-actions"><button type="button" class="bot-memory">${ui('Memory','זיכרון')}<span class="bot-memory-count"></span></button><button type="button" class="bot-browser">${ui('Browser','דפדפן')}</button><button type="button" class="bot-edit">${ui('Name, job and rules','שם, תפקיד וכללים')}</button><button type="button" class="bot-notify"></button><button type="button" class="bot-pin"></button><button type="button" class="bot-hide"></button><button type="button" class="bot-schedule-menu">${ui('Add a schedule','הוספת תזמון')}</button><button type="button" class="bot-delete">${ui('Delete bot','מחיקת הבוט')}</button></span></details>`;
+      chatStatus.innerHTML=`<details class="bot-more"><summary>${ui('Bot options','אפשרויות הבוט')}</summary><span class="bot-actions"><button type="button" class="bot-memory">${ui('Memory','זיכרון')}<span class="bot-memory-count"></span></button><button type="button" class="bot-browser">${ui('Browser','דפדפן')}</button><button type="button" class="bot-model">${ui('Model and plan','מודל ותוכנית')}</button><button type="button" class="bot-edit">${ui('Name, job and rules','שם, תפקיד וכללים')}</button><button type="button" class="bot-notify"></button><button type="button" class="bot-pin"></button><button type="button" class="bot-hide"></button><button type="button" class="bot-schedule-menu">${ui('Add a schedule','הוספת תזמון')}</button><button type="button" class="bot-delete">${ui('Delete bot','מחיקת הבוט')}</button></span></details>`;
       const more=chatStatus.querySelector('.bot-more');more.addEventListener('click',e=>{if(e.target.closest('.bot-actions button') && !e.target.closest('.bot-delete'))more.open=false;});
       document.addEventListener('pointerdown',e=>{if(more.isConnected && more.open && !more.contains(e.target))more.open=false;});
       chatStatus.querySelector('.bot-schedule-menu').onclick=()=>document.querySelector('.bot-schedule')?.click();
       chatStatus.querySelector('.bot-edit').onclick=()=>botDialog(current,null);
+      chatStatus.querySelector('.bot-model').onclick=()=>botDialog(current,null,{only:'model'});
       const flip=async(key)=>{try{const r=await fetch('/api/bot/update',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,[key]:!current[key]}),signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error((await r.json()).error);}catch(e){note(e.message || ui('That did not work.','זה לא הצליח.'),true);}render();};
       chatStatus.querySelector('.bot-pin').onclick=()=>flip('pinned');
       chatStatus.querySelector('.bot-notify').onclick=()=>flip('notify');
@@ -2385,8 +2428,9 @@ async function openBot(id){
       if(m.role==='error')return `<div class="bot-error" role="alert" dir="auto">${esc(ui('The bot could not answer: ','הבוט לא הצליח לענות: ')+m.text)}</div>`;
       if(m.role==='needs-you')return `<div class="bot-needs" role="alert"><p dir="auto">${esc(m.text)}</p>${bot.blocked && m.at>=bot.blocked.at?`<button type="button" class="bot-retry">${ui('Retry','לנסות שוב')}</button>`:''}</div>`;
       return `<div class="bot-note" dir="auto">${esc(m.text)}</div>`;
-    }).join('')+(bot.proposedProfile?`<div class="bot-suggest" role="status"><p>${esc(ui(`${bot.name} suggests its job and rules, from your chat:`,`${bot.name} מציע תפקיד וכללים, מתוך השיחה:`))}</p><p dir="auto"><b>${esc(ui('Job: ','תפקיד: '))}</b>${esc(bot.proposedProfile.job)}</p>${bot.proposedProfile.rules?`<p dir="auto" style="white-space:pre-line"><b>${esc(ui('Rules: ','כללים: '))}</b>${esc(bot.proposedProfile.rules)}</p>`:''}<span class="bot-actions"><button type="button" class="primary" data-profile="accept">${ui('Use these','להשתמש בהם')}</button><button type="button" data-profile="edit">${ui('Edit','עריכה')}</button><button type="button" data-profile="dismiss">${ui('Not now','לא עכשיו')}</button></span></div>`:'')+pendingSends.map((e,i)=>`<div class="${e.state==='failed'?'bot-failed-send':'bot-pending'}" data-pending="${i}">${messageHtml('user',e.text,ui('You','אתה'),'',' mine')}<div class="pending-delivery" role="status" dir="auto">${e.state==='failed'?`${esc(ui('Not sent','לא נשלח')+(e.error?` (${e.error})`:''))}<button type="button" data-resend>${ui('Resend','שליחה חוזרת')}</button><button type="button" data-discard>${ui('Discard','ביטול')}</button>`:esc(ui('Sending…','שולח…'))}</div></div>`).join('')+(bot.state==='working'?`<div class="busyline" role="status"><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${esc(bot.activity || ui('Thinking','חושב'))}</span></div>`:'');
-    if(html!==signature){signature=html;main.innerHTML=`<div class="bot-feed">${html}</div>`;if(following)main.scrollTop=main.scrollHeight;
+    }).join('')+(bot.proposedProfile?`<div class="bot-suggest" role="status"><p>${esc(ui(`${bot.name} suggests its job and rules, from your chat:`,`${bot.name} מציע תפקיד וכללים, מתוך השיחה:`))}</p><p dir="auto"><b>${esc(ui('Job: ','תפקיד: '))}</b>${esc(bot.proposedProfile.job)}</p>${bot.proposedProfile.rules?`<p dir="auto" style="white-space:pre-line"><b>${esc(ui('Rules: ','כללים: '))}</b>${esc(bot.proposedProfile.rules)}</p>`:''}<span class="bot-actions"><button type="button" class="primary" data-profile="accept">${ui('Use these','להשתמש בהם')}</button><button type="button" data-profile="edit">${ui('Edit','עריכה')}</button><button type="button" data-profile="dismiss">${ui('Not now','לא עכשיו')}</button></span></div>`:'')+pendingSends.map((e,i)=>`<div class="${e.state==='failed'?'bot-failed-send':'bot-pending'}" data-pending="${i}">${messageHtml('user',e.text,ui('You','אתה'),'',' mine')}<div class="pending-delivery" role="status" dir="auto">${e.state==='failed'?`${esc(ui('Not sent','לא נשלח')+(e.error?` (${e.error})`:''))}<button type="button" data-resend>${ui('Resend','שליחה חוזרת')}</button><button type="button" data-discard>${ui('Discard','ביטול')}</button>`:esc(ui('Sending…','שולח…'))}</div></div>`).join('')+(bot.state==='working'?`<div class="busyline" role="status"><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${esc(bot.activity || ui('Thinking','חושב'))}${stepFor(bot.activitySince)}</span></div>`:'');
+    // Never redraw under an open message menu: it would close it (Noam: "keeps closing by itself").
+    if(html!==signature && !main.querySelector('.message-menu[open]')){signature=html;main.innerHTML=`<div class="bot-feed">${html}</div>`;if(following)main.scrollTop=main.scrollHeight;
       main.querySelectorAll('[data-pending]').forEach(el=>{const entry=pendingSends[Number(el.dataset.pending)];const resend=el.querySelector('[data-resend]'),discard=el.querySelector('[data-discard]');if(resend)resend.onclick=()=>deliver(entry);if(discard)discard.onclick=()=>{pendingSends.splice(pendingSends.indexOf(entry),1);render();};});
       const scheduleButton=routinesLine.querySelector('.bot-schedule');if(scheduleButton)scheduleButton.onclick=()=>scheduleDialog('bot:'+id,'');
       main.querySelectorAll('[data-profile]').forEach(b=>{b.onclick=async()=>{
@@ -2569,7 +2613,7 @@ async function openRoom(id){
     const waiting=members.filter(m=>m.waiting);
     const html=(room.messages.length?room.messages.map(m=>roomMessageHtml(m,members)).join(''):`<div class="empty">${ui('Nobody has written here yet. Mention an agent with @, or write to everyone.','עוד לא נכתב כאן דבר. פנו לסוכן עם @, או כתבו לכולם.')}</div>`)
       +(waiting.length?`<div class="room-working" role="status"><span class="room-busy"><i></i><i></i><i></i></span>${esc(waiting.map(m=>'@'+m.handle).join(', '))} ${ui('working on it','עובדים על זה')}</div>`:'');
-    if(html!==signature){signature=html;main.innerHTML=`<div class="room-feed">${html}</div>`;if(following)main.scrollTop=main.scrollHeight;}
+    if(html!==signature && !main.querySelector('.message-menu[open]')){signature=html;main.innerHTML=`<div class="room-feed">${html}</div>`;if(following)main.scrollTop=main.scrollHeight;}
   };
   await render();
   if(mine===view)timer=setInterval(render,3000);

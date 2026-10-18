@@ -147,7 +147,15 @@ async function main(argv) {
     if (sent.error) fail(sent.message || sent.error);
     recordInBot({ role: 'handoff', pane: pane.id, to: pane.profile?.name || pane.project, text: text.trim().slice(0, 600) });
     if (command === 'send') return out(json ? JSON.stringify({ ok: true, id: pane.id, delivered: sent.delivered }) : `Sent to ${pane.project} (${pane.id})${sent.delivered ? '' : ' — not yet visible on its screen; check with read'}.`);
-    const result = await waitForReply(pane.id, { since, timeoutMs: (Number(flags.timeout) || 600) * 1000 });
+    // A bot that waits silently looks stuck (paper-bot_dev sat 10 minutes on "Checking
+    // something"): inside a bot, wait at most 2 minutes, then follow the agent instead.
+    const inBot = Boolean(botFolder());
+    const limit = Number(flags.timeout) || (inBot ? 120 : 600);
+    const result = await waitForReply(pane.id, { since, timeoutMs: limit * 1000 });
+    if (inBot && result.error && /time/i.test(`${result.error} ${result.note || ''}`)) {
+      recordHelper({ paneId: pane.id, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
+      return out(`${pane.profile?.name || pane.project} is still working after ${Math.round(limit / 60)} minutes. You are now following it and will be woken when it finishes its turn. Tell Noam in one plain sentence that it is in progress, then end your turn.`);
+    }
     if (json) return out(JSON.stringify(result.error ? result : { state: result.state, reply: result.reply, note: result.note || null }, null, 2));
     if (result.error) fail(result.note || result.error, 2);
     if (result.note) out(result.note);
@@ -156,7 +164,13 @@ async function main(argv) {
 
   if (command === 'wait') {
     const { pane } = await target(positional[0], null);
-    const result = await waitForReply(pane.id, { since: 0, timeoutMs: (Number(flags.timeout) || 600) * 1000 });
+    const inBotWait = Boolean(botFolder());
+    const waitLimit = Number(flags.timeout) || (inBotWait ? 120 : 600);
+    const result = await waitForReply(pane.id, { since: 0, timeoutMs: waitLimit * 1000 });
+    if (inBotWait && result.error && /time/i.test(`${result.error} ${result.note || ''}`)) {
+      recordHelper({ paneId: pane.id, provider: pane.provider || null, task: pane.title || pane.project || '', cwd: pane.cwd || null, followed: true });
+      return out(`${pane.profile?.name || pane.project} is still working after ${Math.round(waitLimit / 60)} minutes. You are now following it and will be woken when it finishes. Tell Noam it is in progress, then end your turn.`);
+    }
     if (json) return out(JSON.stringify(result, null, 2));
     if (result.error) fail(result.note || result.error, 2);
     return out(result.reply ? result.reply.text : `${pane.project} is ${result.state}.`);
