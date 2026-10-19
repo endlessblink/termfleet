@@ -28,3 +28,25 @@ self.addEventListener('notificationclick', (event) => {
     await self.clients.openWindow(url);
   })());
 });
+
+// Share to TermControl (TF-096, Noam 2026-10-19: "maybe add TermFleet as a Share option?").
+// Android's Share sheet posts the picture to /share. The worker keeps it in a local
+// cache (never sent anywhere) and opens the app, which asks which chat gets it.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'POST' || url.pathname !== '/share' || url.origin !== self.location.origin) return;
+  event.respondWith((async () => {
+    let kept = 0;
+    try {
+      const form = await event.request.formData();
+      const cache = await caches.open('share-inbox');
+      for (const file of form.getAll('image')) {
+        if (!file || typeof file === 'string' || !String(file.type).startsWith('image/')) continue;
+        await cache.put(new Request(`/shared/${Date.now()}-${kept++}`), new Response(file, { headers: { 'content-type': file.type, 'x-file-name': encodeURIComponent(file.name || 'shared picture') } }));
+      }
+    } catch { kept = 0; }
+    return Response.redirect(`/?share=${kept}`, 303);
+  })());
+});

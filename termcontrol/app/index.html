@@ -828,6 +828,7 @@ body main .message-menu-panel .message-details[open]>summary{background:var(--li
 body main .message-menu-panel .message-details>pre{margin:6px 4px 4px;padding:10px;border-radius:10px;background:var(--bg);font-size:13px;white-space:pre-wrap;max-height:200px;overflow:auto}
 body main .message-menu-panel .message-provenance{margin:2px 12px 6px;padding-top:6px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
 body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:var(--muted)}
+.share-thumbs{display:flex;gap:8px;overflow-x:auto;margin:4px 0 14px}.share-thumbs img{height:84px;width:auto;max-width:140px;object-fit:cover;border-radius:12px;border:1px solid var(--line)}.share-list{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;max-height:50vh;overflow:auto}.share-list:focus,.share-list:focus-visible{outline:none!important;box-shadow:none!important}.share-row{box-sizing:border-box;width:100%;min-width:0;display:flex;align-items:center;gap:12px;min-height:52px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;text-align:start;cursor:pointer}.share-row:hover,.share-row:focus-visible{background:var(--line)}.share-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}.share-sub{flex:none;font-size:12.5px;color:var(--muted);max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sendstate .sendstate-action{margin-inline-start:12px;padding:6px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font:inherit;cursor:pointer}
 .mem-list{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px}.mem-row{display:grid;gap:6px;padding:10px;border:1px solid var(--line);border-radius:12px;font-size:14px;line-height:1.45}.mem-row .ask-status{justify-self:start;font-size:11.5px;border-radius:8px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
 .bot-health{flex:none;width:9px;height:9px;border-radius:50%;background:var(--idle);align-self:center}.bot-health-ok{background:var(--working)}.bot-health-busy{background:var(--working);animation:busy-fade 1.6s infinite}.bot-health-warn{background:var(--waiting)}.bot-health-bad{background:var(--accent)}.bot-needs{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:10px}.bot-needs p{margin:0;line-height:1.5}.bot-needs button{justify-self:start;min-height:40px;padding:0 16px;border-radius:12px;border:0;background:var(--accent);color:#fff;font:inherit;cursor:pointer}
 .bot-handoff{display:block;margin:4px 4px 4px 0;padding:8px 12px;border:1px dashed var(--line);border-radius:12px;color:var(--text);text-decoration:none;font-size:14px;line-height:1.45}.bot-handoff b{font-weight:500}.helpers-chip{margin-top:4px;font-size:13px}.helpers-chip summary{cursor:pointer;color:var(--muted);list-style:none}.helpers-chip summary::-webkit-details-marker{display:none}.helpers-chip ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}.helpers-chip a{color:var(--text)}.helper-state{font-size:11.5px;color:var(--muted);margin-inline-start:6px}.bot-pending{opacity:.75}.bot-pending .pending-delivery{color:var(--muted);font-size:12.5px;margin:2px 6px}.bot-failed-send .pending-delivery{color:var(--accent)}.bot-failed-send button{margin-inline-start:8px;border:1px solid var(--line);border-radius:14px;background:transparent;color:var(--text);font:inherit;font-size:12.5px;padding:2px 10px;cursor:pointer}.hidden-bots summary{color:var(--muted);font-size:13px;padding:6px 8px;cursor:pointer;list-style:none}.fleet-search{width:100%;box-sizing:border-box;margin:0 0 20px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit}.search-hits{margin:0 0 14px;display:grid;gap:6px}.search-hit{display:block;text-align:start;width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:13.5px;cursor:pointer}.search-hit small{display:block;color:var(--muted)}.search-miss{display:none!important}
@@ -2336,6 +2337,7 @@ async function openBot(id){
   const drawPics=()=>{picsBox.hidden=!pics.length;picsBox.innerHTML=pics.map((p,i)=>`<span class="bot-pic"><img src="${p.url}" alt=""><button type="button" data-drop="${i}" aria-label="${ui('Remove picture','הסרת תמונה')}">×</button></span>`).join('');picsBox.querySelectorAll('[data-drop]').forEach(b=>{b.onclick=()=>{const [gone]=pics.splice(Number(b.dataset.drop),1);URL.revokeObjectURL(gone.url);drawPics();grow();};});};
   const addPics=list=>{for(const f of list){if(!f.type.startsWith('image/'))continue;if(pics.length>=10){note(ui('Up to 10 pictures at a time.','עד 10 תמונות בכל פעם.'),true);break;}pics.push({blob:f,name:f.name || 'picture',url:URL.createObjectURL(f)});}drawPics();grow();};
   bar.querySelector('.bot-attach').onclick=()=>filesInput.click();
+  if(sharedForNextChat.length)addPics(sharedForNextChat.splice(0));
   // Paste picture: phone keyboards often send no paste event for a picture, so read it
   // from the clipboard on tap (same as the terminal chats' menu).
   bar.querySelector('.bot-paste').onclick=async()=>{
@@ -2343,13 +2345,13 @@ async function openBot(id){
       if(!navigator.clipboard?.read)throw Object.assign(new Error('unsupported'),{name:'NotSupportedError'});
       for(const item of await navigator.clipboard.read()){
         const type=item.types.find(t=>t.startsWith('image/'));
-        if(type){const blob=await item.getType(type);addPics([new File([blob],'pasted image.'+(type.split('/')[1] || 'png'),{type})]);return;}
+        if(type){const blob=await item.getType(type);reportPush('paste-picture','');addPics([new File([blob],'pasted image.'+(type.split('/')[1] || 'png'),{type})]);return;}
       }
-      note(ui('No picture on the clipboard. Copy a picture first, then tap again.','אין תמונה בלוח. העתיקו תמונה והקישו שוב.'),true);
+      offerGallery(filesInput,ui('No picture on the clipboard. Pick the screenshot from your gallery.','אין תמונה בלוח. בחרו את צילום המסך מהגלריה.'),'none');
     }catch(e){
-      note(e.name==='NotAllowedError'
-        ?ui('Allow paste when your phone asks, then tap again. Or use the paperclip.','אשרו הדבקה כשהטלפון שואל והקישו שוב. או השתמשו בהדק.')
-        :ui('This browser cannot paste pictures here. Use the paperclip instead.','הדפדפן לא יכול להדביק תמונות כאן. השתמשו בהדק.'),true);
+      offerGallery(filesInput,e.name==='NotAllowedError'
+        ?ui('The phone would not let the app read the clipboard. Pick the picture from your gallery.','הטלפון לא אפשר לקרוא את הלוח. בחרו את התמונה מהגלריה.')
+        :ui('This browser cannot paste pictures here. Pick the picture from your gallery.','הדפדפן לא יכול להדביק תמונות כאן. בחרו את התמונה מהגלריה.'),'refused-'+(e.name || 'error'));
     }
   };
   filesInput.onchange=()=>{addPics([...(filesInput.files || [])]);filesInput.value='';};
@@ -2459,6 +2461,62 @@ async function openBot(id){
   await render();
   if(mine===view)timer=setInterval(render,2000);
 }
+
+// No picture on the clipboard (a screenshot is in the gallery, not on the clipboard) or
+// the phone refused to hand it over: open the picture chooser instead of a dead end.
+// If the tap's permission has already run out, offer a one-tap button instead.
+function offerGallery(input,text,why){
+  reportPush('paste-'+why,'');
+  const el=note(text);
+  if(navigator.userActivation?.isActive!==false){setTimeout(()=>el.remove(),6000);input.click();return;}
+  const b=document.createElement('button');b.type='button';b.className='sendstate-action';b.textContent=ui('Choose from gallery','בחירה מהגלריה');
+  b.onclick=()=>{el.remove();input.click();};el.append(b);setTimeout(()=>el.remove(),12000);
+}
+// Share to TermControl: pictures shared from the phone's Share sheet wait in a local
+// cache (see sw.js); this asks which chat gets them and opens it with the picture attached.
+let sharedForNextChat=[];
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+async function readSharedInbox(){
+  try{
+    const cache=await caches.open('share-inbox'),files=[];
+    for(const request of await cache.keys()){const res=await cache.match(request);if(!res)continue;const blob=await res.blob();files.push(new File([blob],decodeURIComponent(res.headers.get('x-file-name') || 'shared picture'),{type:blob.type || res.headers.get('content-type') || 'image/png'}));}
+    return files;
+  }catch{return [];}
+}
+async function clearSharedInbox(){try{const cache=await caches.open('share-inbox');for(const request of await cache.keys())await cache.delete(request);}catch{}}
+async function checkShared(){
+  if(!('caches' in window))return;
+  const params=new URLSearchParams(location.search);
+  const files=await readSharedInbox();
+  if(params.has('share'))history.replaceState(history.state,'',location.pathname+location.hash);
+  if(!files.length){if(params.get('share')==='0')note(ui('No picture came through the Share. Try sharing it again.','לא התקבלה תמונה מהשיתוף. נסו לשתף שוב.'),true);return;}
+  shareDialog(files);
+}
+async function shareDialog(files){
+  document.querySelector('.room-dialog')?.remove();
+  let bots=[],panes=[];
+  try{bots=((await (await fetch('/api/bots',{signal:AbortSignal.timeout(8000)})).json()).bots || []).filter(b=>!b.hidden);}catch{}
+  try{panes=((await (await fetch('/api/panes',{signal:AbortSignal.timeout(8000)})).json()).panes || []).filter(p=>p.alive!==false).sort((a,b)=>Number(b.lastUsedAt || b.updatedAt || 0)-Number(a.lastUsedAt || a.updatedAt || 0)).slice(0,12);}catch{}
+  const dialog=document.createElement('dialog');dialog.className='room-dialog share-dialog';
+  const urls=files.map(f=>URL.createObjectURL(f));
+  const botRow=b=>`<button type="button" class="share-row" data-kind="bot" data-id="${esc(b.id)}">${botAvatar(b,36)}<span class="share-name" dir="auto">${esc(b.name)}</span><span class="share-sub">${ui('Bot','בוט')}</span></button>`;
+  const paneRow=p=>{const name=p.title || projectLabel(p.project),where=projectLabel(p.project);return `<button type="button" class="share-row" data-kind="pane" data-id="${esc(p.id)}"><span class="share-name" dir="auto">${esc(name)}</span>${where!==name?`<span class="share-sub" dir="auto">${esc(where)}</span>`:''}</button>`;};
+  dialog.innerHTML=`<form method="dialog"><h2>${ui('Send this picture to…','לשלוח את התמונה אל…')}</h2>
+    <div class="share-thumbs">${urls.map(u=>`<img src="${u}" alt="">`).join('')}</div>
+    <div class="share-list">${bots.map(botRow).join('')}${panes.map(paneRow).join('') || (bots.length?'':`<p class="rooms-empty">${ui('No chats are open right now.','אין צ׳אטים פתוחים כרגע.')}</p>`)}</div>
+    <div class="room-actions"><button type="button" class="room-cancel">${ui('Cancel','ביטול')}</button></div></form>`;
+  document.body.append(dialog);
+  const done=()=>{urls.forEach(u=>URL.revokeObjectURL(u));dialog.close();dialog.remove();};
+  dialog.querySelector('.room-cancel').onclick=async()=>{done();await clearSharedInbox();};
+  dialog.querySelectorAll('.share-row').forEach(row=>{row.onclick=async()=>{
+    sharedForNextChat=files;done();await clearSharedInbox();
+    const id=row.dataset.id;
+    if(row.dataset.kind==='bot'){history.pushState({bot:id},'','#bot:'+id);openBot(id);}
+    else{history.pushState({pane:id,openedFromAgents:true},'','#'+id);chat(id);}
+  };});
+  dialog.showModal();
+}
+setTimeout(checkShared,700);window.addEventListener('pageshow',e=>{if(e.persisted)checkShared();});
 
 // TF-096 part 7: phone notifications. While the app is visible it says so (no
 // notification then, like Grok Bot); one tap turns notifications on for this phone.
@@ -3265,7 +3323,8 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
   bar.querySelector('.attach').onclick = () => file.click();
 
   // Paste picture (Noam 2026-10-19): phone keyboards often send no paste event for a
-  // picture, so read it from the clipboard when the button is tapped.
+  // picture, so read it from the clipboard when the button is tapped. A screenshot is
+  // usually in the gallery, not on the clipboard: then the picture chooser opens.
   bar.querySelector('.paste-image').onclick = async () => {
     const menu = bar.querySelector('.composer-menu');
     try {
@@ -3273,13 +3332,13 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
       const items = await navigator.clipboard.read();
       for (const item of items) {
         const type = item.types.find((t) => t.startsWith('image/'));
-        if (type) { const blob = await item.getType(type); if (menu) menu.open = false; return showImage(blob, 'pasted image').catch(() => { clearImage(); note(ui('That picture could not be read.', 'לא ניתן לקרוא את התמונה.'), true); }); }
+        if (type) { const blob = await item.getType(type); if (menu) menu.open = false; reportPush('paste-picture', ''); return showImage(blob, 'pasted image').catch(() => { clearImage(); note(ui('That picture could not be read.', 'לא ניתן לקרוא את התמונה.'), true); }); }
       }
-      note(ui('No picture on the clipboard. Copy a picture first, then tap again.', 'אין תמונה בלוח. העתיקו תמונה והקישו שוב.'), true);
+      offerGallery(file, ui('No picture on the clipboard. Pick the screenshot from your gallery.', 'אין תמונה בלוח. בחרו את צילום המסך מהגלריה.'), 'none');
     } catch (e) {
-      note(e.name === 'NotAllowedError'
-        ? ui('Allow paste when your phone asks, then tap again. Or use Attach an image.', 'אשרו הדבקה כשהטלפון שואל והקישו שוב. או השתמשו בצירוף תמונה.')
-        : ui('This browser cannot paste pictures here. Use Attach an image instead.', 'הדפדפן לא יכול להדביק תמונות כאן. השתמשו בצירוף תמונה.'), true);
+      offerGallery(file, e.name === 'NotAllowedError'
+        ? ui('The phone would not let the app read the clipboard. Pick the picture from your gallery.', 'הטלפון לא אפשר לקרוא את הלוח. בחרו את התמונה מהגלריה.')
+        : ui('This browser cannot paste pictures here. Pick the picture from your gallery.', 'הדפדפן לא יכול להדביק תמונות כאן. בחרו את התמונה מהגלריה.'), 'refused-' + (e.name || 'error'));
     }
   };
 
@@ -3395,6 +3454,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
   box.value=draftMemory.text || '';
   box.setSelectionRange(draftMemory.start ?? box.value.length,draftMemory.end ?? box.value.length);
   if(draftMemory.image)showImage(draftMemory.image.blob,draftMemory.image.label);
+  if(sharedForNextChat.length){const [first,...rest]=sharedForNextChat.splice(0);showImage(first,first.name || 'shared picture').catch(()=>{});if(rest.length)note(ui('Only the first picture can go to a terminal agent chat.','רק התמונה הראשונה יכולה להישלח לצ׳אט של סוכן מסוף.'),true);}
   sync();
   box.addEventListener('input', () => {
     sync();

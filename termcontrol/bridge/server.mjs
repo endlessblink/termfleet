@@ -309,6 +309,12 @@ const handle = async (req, res) => {
   if (!url) return json(res, 400, { error: 'Bad request.' });
   if (crossSiteWrite(req)) return json(res, 403, { error: 'Cross-site request refused.' });
 
+  // Share target without an active worker (first use): drop the upload, open the app.
+  if (url.pathname === '/share' && req.method === 'POST') {
+    req.resume();
+    req.on('end', () => { res.writeHead(303, { location: '/?share=0', 'cache-control': 'no-store' }); res.end(); });
+    return;
+  }
   if (req.method === 'GET' && PUBLIC_APP_FILES.has(url.pathname)) return serveStatic(res, url.pathname.slice(5));
   // The notification worker must load before sign-in checks (it holds no data).
   if (url.pathname === '/sw.js') return serveStatic(res, 'sw.js');
@@ -391,7 +397,7 @@ const handle = async (req, res) => {
     let body = {};
     try { body = await readJson(req, 4 * 1024); } catch { /* ignore a bad report */ }
     const step = String(body.step || "?").slice(0, 20);
-    const line = `[push] phone ${step === "tapped" ? "tapped Turn on notifications" : step === "on" ? "signed up for notifications" : `sign-up failed at "${step}": ${String(body.error || "").slice(0, 200)}`} (home screen app: ${Boolean(body.standalone)}; ${String(body.ua || '').slice(0, 160)})`;
+    const line = `[push] phone ${step.startsWith("paste-") ? `pressed Paste picture: ${step.slice(6)}` : step === "tapped" ? "tapped Turn on notifications" : step === "on" ? "signed up for notifications" : `sign-up failed at "${step}": ${String(body.error || "").slice(0, 200)}`} (home screen app: ${Boolean(body.standalone)}; ${String(body.ua || '').slice(0, 160)})`;
     console.error(line);
     push.noteProblem?.(line);
     return json(res, 200, { ok: true });

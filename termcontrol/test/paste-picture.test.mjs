@@ -45,18 +45,20 @@ test('Paste picture brings the copied picture into the message, exactly like Att
   } finally { await browser.close(); }
 });
 
-test('Paste picture says plainly when there is no picture or the phone refuses', async () => {
+test('Paste picture opens the gallery chooser when there is no picture or the phone refuses', async () => {
   const browser = await chromium.launch();
   try {
-    let page = await fixture(browser, 'text');
-    await openMenu(page); await page.locator('.paste-image').click();
-    await page.locator('.sendstate').filter({ hasText: /No picture/ }).waitFor({ timeout: 5000 });
-    await page.close();
-    page = await fixture(browser, 'denied');
-    await openMenu(page); await page.locator('.paste-image').click();
-    await page.locator('.sendstate').filter({ hasText: /Allow paste|Attach an image/ }).waitFor({ timeout: 5000 });
-    assert.equal(await page.locator('.attached').isHidden(), true);
-    await page.close();
+    // A screenshot lives in the gallery, not on the clipboard: the picture chooser opens.
+    for (const [mode, words] of [['text', /No picture/], ['denied', /would not let the app read the clipboard/]]) {
+      const page = await fixture(browser, mode);
+      await openMenu(page);
+      const chooser = page.waitForEvent('filechooser', { timeout: 5000 });
+      await page.locator('.paste-image').click();
+      await chooser;
+      await page.locator('.sendstate').filter({ hasText: words }).waitFor({ timeout: 5000 });
+      assert.equal(await page.locator('.attached').isHidden(), true);
+      await page.close();
+    }
   } finally { await browser.close(); }
 });
 
@@ -83,10 +85,13 @@ test('bot chats: the Paste picture button adds the copied picture as a tile, and
       });
       await page.goto('https://termcontrol.test/#bot:abcdef012345');
       await page.locator('.bot-composer .bot-paste').waitFor({ timeout: 10000 });
-      await page.locator('.bot-composer .bot-paste').click();
+      if (expectTile) await page.locator('.bot-composer .bot-paste').click();
       if (expectTile) await page.locator('.bot-pics .bot-pic').waitFor({ timeout: 6000 });
       else {
-        await page.locator('.sendstate').filter({ hasText: mode === 'text' ? /No picture/ : /Allow paste|paperclip/ }).waitFor({ timeout: 5000 });
+        const chooser = page.waitForEvent('filechooser', { timeout: 5000 });
+        await page.locator('.bot-composer .bot-paste').click();
+        await chooser;
+        await page.locator('.sendstate').filter({ hasText: mode === 'text' ? /No picture/ : /would not let the app read the clipboard/ }).waitFor({ timeout: 5000 });
         assert.equal(await page.locator('.bot-pics .bot-pic').count(), 0);
       }
       await page.close();
