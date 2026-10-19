@@ -337,3 +337,10 @@ test('the bot summary says when the current step started', () => {
   bots.running.set(bot.id, { activity: 'Checking something', startedAt: 1000, activityAt: 5000 });
   assert.equal(bots.summary(bot.id).activitySince, 5000);
 });
+
+test('bots can read web pages through the plugin\'s read-only fetch and search, but never its code-running tool', () => {
+  const { args } = brainCommand({ id: 'b', name: 'Q', provider: 'claude', cwd: '/tmp', sessions: {} }, 'hi');
+  const allowed = args.slice(args.indexOf('--allowedTools') + 1, args.indexOf('--disallowedTools'));
+  for (const tool of ['WebFetch', 'WebSearch', 'mcp__plugin_context-mode_context-mode__ctx_fetch_and_index', 'mcp__plugin_context-mode_context-mode__ctx_search']) assert.ok(allowed.includes(tool), tool);
+  assert.ok(!allowed.some((t) => /ctx_execute|ctx_batch_execute/.test(t)), 'no arbitrary code through the plugin');
+});

@@ -100,7 +100,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
   ].filter((l) => l !== '').join('\n');
 }
 
-const CLAUDE_TOOLS = ['Read', 'Grep', 'Glob', 'Bash(termfleet-team:*)', 'Bash(termfleet-memory:*)', 'Bash(termfleet-asks:*)', 'Bash(termfleet-skill:*)', 'Bash(termfleet-browser:*)', 'mcp__browser', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(ls:*)', 'WebSearch', 'WebFetch'];
+const CLAUDE_TOOLS = ['Read', 'Grep', 'Glob', 'Bash(termfleet-team:*)', 'Bash(termfleet-memory:*)', 'Bash(termfleet-asks:*)', 'Bash(termfleet-skill:*)', 'Bash(termfleet-browser:*)', 'mcp__browser', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(ls:*)', 'WebSearch', 'WebFetch', 'mcp__plugin_context-mode_context-mode__ctx_fetch_and_index', 'mcp__plugin_context-mode_context-mode__ctx_search'];
 const CLAUDE_DENY = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'mcp__browser__browser_run_code_unsafe'];
 
 /** The command that runs one bot turn. */
