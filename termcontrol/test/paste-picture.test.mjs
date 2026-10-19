@@ -172,3 +172,49 @@ test('terminal chat: text on the clipboard is pasted even with a picture; a pict
     await page.close();
   } finally { await browser.close(); }
 });
+
+// The TermFleet desktop app's engine (WebKitGTK) fires the paste event for a copied picture
+// with NO data in it; the clipboard API, asked from inside that event, still has the picture.
+async function engineFixture(browser, { chat, clipboardTypes }) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  await page.addInitScript((types) => {
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const read = async () => [{ types, getType: async (t) => new Blob([t === 'image/png' ? png : 'words'], { type: t }) }];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read, writeText: async () => {} } });
+  }, clipboardTypes);
+  const bot = { id: 'abcdef012345', name: 'Quill', job: '', provider: 'claude', fallback: 'codex', active: 'claude', state: 'idle', health: { level: 'ok', text: 'Ready' }, messages: [], helpers: [], memoryPending: 0, notify: true, pinned: false, hidden: false };
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
+    if (url.pathname === '/api/panes') return route.fulfill({ json: { daemon: true, panes: [pane('a')], view: 'manual' } });
+    if (url.pathname === '/api/feed') return route.fulfill({ json: { pane: pane('a'), events: [], reachedStart: true, producing: false } });
+    if (url.pathname === '/api/bots') return route.fulfill({ json: { bots: chat === 'bot' ? [bot] : [], providers: ['claude', 'codex'], models: {} } });
+    if (url.pathname === '/api/bot') return route.fulfill({ json: { bot, messages: [], asks: null } });
+    return route.fulfill({ json: {} });
+  });
+  if (chat === 'bot') { await page.goto('https://termcontrol.test/#bot:abcdef012345'); await page.locator('.bot-composer textarea').waitFor({ timeout: 10000 }); }
+  else { await page.goto('https://termcontrol.test/'); await page.locator('.pane[data-id="a"]').click(); await page.locator('.composer textarea').waitFor(); }
+  return page;
+}
+const emptyPaste = (page, selector) => page.evaluate((selector) => {
+  document.querySelector(selector).dispatchEvent(new ClipboardEvent('paste', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true }));
+}, selector);
+
+test('desktop engine: an EMPTY paste event still brings a copied picture in (bot chat and terminal chat), but never when the clipboard also has text', async () => {
+  const browser = await chromium.launch();
+  try {
+    let page = await engineFixture(browser, { chat: 'bot', clipboardTypes: ['image/png'] });
+    await emptyPaste(page, '.bot-composer textarea');
+    await page.locator('.bot-pic').waitFor({ timeout: 5000 });
+    await page.close();
+    page = await engineFixture(browser, { chat: 'bot', clipboardTypes: ['text/plain', 'image/png'] });
+    await emptyPaste(page, '.bot-composer textarea');
+    await page.waitForTimeout(500);
+    assert.equal(await page.locator('.bot-pic').count(), 0, 'text on the clipboard wins');
+    await page.close();
+    page = await engineFixture(browser, { chat: 'terminal', clipboardTypes: ['image/png'] });
+    await emptyPaste(page, '.composer textarea');
+    await page.locator('.attached .name').filter({ hasText: 'pasted image' }).waitFor({ timeout: 8000 });
+    await page.close();
+  } finally { await browser.close(); }
+});

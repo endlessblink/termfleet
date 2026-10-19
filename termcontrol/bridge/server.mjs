@@ -434,6 +434,11 @@ const handle = async (req, res) => {
     const made = suggestSkill({ name: body.name, description: body.description, body: stopped.body, by: 'Noam (taught in the browser)' });
     return json(res, made.error ? 400 : 200, made.error ? { ...made, draft: stopped.body } : { ...made, steps: stopped.steps.length });
   }
+  // Which version of the page the bridge serves now; the page reloads itself when it changes.
+  if (url.pathname === '/api/app-version' && req.method === 'GET') {
+    const stamp = (f) => { try { const st = fs.statSync(path.join(appDir, f)); return `${Math.round(st.mtimeMs)}-${st.size}`; } catch { return '0'; } };
+    return json(res, 200, { v: `${stamp('index.html')}.${stamp('sw.js')}` });
+  }
   // How the agents are doing, day by day (TF-096 goal item 5).
   if (url.pathname === '/api/agent-health' && req.method === 'GET') return json(res, 200, agentHealthReport());
   if (url.pathname === '/api/skills' && req.method === 'GET') return json(res, 200, { skills: listSkills() });

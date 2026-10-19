@@ -1227,7 +1227,7 @@ function openSessionEvents(){
   const stream=sessionEvents=new EventSource('/api/session-events');
   let dropped=false;
   stream.onmessage=liveRefresh;
-  stream.onopen=()=>{streamBackoff=1000;if(dropped){dropped=false;liveRefresh();}};
+  stream.onopen=()=>{streamBackoff=1000;if(dropped){dropped=false;liveRefresh();checkAppVersion();}};
   stream.onerror=()=>{dropped=true;if(stream.readyState!==EventSource.CLOSED)return;setTimeout(()=>{if(sessionEvents===stream)openSessionEvents();},streamBackoff);streamBackoff=Math.min(streamBackoff*2,15000);};
 }
 openSessionEvents();
@@ -2355,7 +2355,7 @@ async function openBot(id){
     }
   };
   filesInput.onchange=()=>{addPics([...(filesInput.files || [])]);filesInput.value='';};
-  field.addEventListener('paste',e=>{if(clipboardHasText(e.clipboardData))return;const imgs=[...(e.clipboardData?.items || [])].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);if(imgs.length){e.preventDefault();addPics(imgs);}});
+  field.addEventListener('paste',e=>{if(clipboardHasText(e.clipboardData))return;const imgs=[...(e.clipboardData?.items || [])].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);if(imgs.length){e.preventDefault();addPics(imgs);return;}if(pasteEventIsEmpty(e.clipboardData))readClipboardPicture().then(f=>{if(f)addPics([f]);});});
   // Voice typing: same engine as Freelance Desk (Hebrew, English and mixed).
   const micButton=bar.querySelector('.bot-mic');let rec=null,micStream=null;
   micButton.onclick=async()=>{
@@ -2465,6 +2465,20 @@ async function openBot(id){
 // Text always wins on paste (Noam 2026-10-19: "cant paste text here"): copying from a web
 // page or a chat app puts text AND a small picture on the clipboard, and grabbing the
 // picture dropped the text.
+// WebKitGTK (the TermFleet desktop app's engine) fires the paste event for a copied
+// picture with NO data in it. Asking the clipboard directly from inside that event works.
+const pasteEventIsEmpty=cd=>!cd || (![...(cd.types || [])].length && !(cd.files && cd.files.length));
+async function readClipboardPicture(){
+  try{
+    if(!navigator.clipboard?.read)return null;
+    for(const item of await navigator.clipboard.read()){
+      if(item.types.includes('text/plain'))return null;   // text wins
+      const type=item.types.find(t=>t.startsWith('image/'));
+      if(type){const blob=await item.getType(type);return new File([blob],'pasted image.'+(type.split('/')[1] || 'png'),{type});}
+    }
+  }catch{}
+  return null;
+}
 const clipboardHasText=cd=>{try{return Boolean(cd && [...(cd.types || [])].includes('text/plain') && cd.getData('text/plain').length);}catch{return false;}};
 // No picture on the clipboard (a screenshot is in the gallery, not on the clipboard) or
 // the phone refused to hand it over: open the picture chooser instead of a dead end.
@@ -2476,6 +2490,27 @@ function offerGallery(input,text,why){
   const b=document.createElement('button');b.type='button';b.className='sendstate-action';b.textContent=ui('Choose from gallery','בחירה מהגלריה');
   b.onclick=()=>{el.remove();input.click();};el.append(b);setTimeout(()=>el.remove(),12000);
 }
+// Keep the page current (Noam 2026-10-19: "still cant ctrl+v" after a fix): a page held
+// open in the desktop app or on a phone never reloads by itself, so every fix "never
+// shipped". Ask the bridge which version is current; reload when it changed and
+// nothing is being typed, otherwise offer a Reload button.
+let appVersion=null;
+async function checkAppVersion(){
+  try{
+    const r=await fetch('/api/app-version',{cache:'no-store',signal:AbortSignal.timeout(6000)});if(!r.ok)return;
+    const {v}=await r.json();
+    if(appVersion===null){appVersion=v;return;}
+    if(v===appVersion)return;
+    const typing=[...document.querySelectorAll('textarea,input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=search])')].some(el=>el.value && el.offsetParent!==null);
+    const busy=typing || document.querySelector('dialog[open], .bot-pics .bot-pic, .attached:not([hidden]), .composer[data-sending="true"]');
+    if(!busy){location.reload();return;}
+    if(document.querySelector('.update-ready'))return;
+    const el=document.createElement('div');el.className='sendstate update-ready';el.textContent=ui('A new version is ready. ','גרסה חדשה מוכנה. ');
+    const b=document.createElement('button');b.type='button';b.className='sendstate-action';b.textContent=ui('Reload','רענון');b.onclick=()=>location.reload();el.append(b);document.body.append(el);
+  }catch{}
+}
+checkAppVersion();setInterval(checkAppVersion,120000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkAppVersion();});
 // Share to TermControl: pictures shared from the phone's Share sheet wait in a local
 // cache (see sw.js); this asks which chat gets them and opens it with the picture attached.
 let sharedForNextChat=[];
@@ -3443,7 +3478,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
   box.addEventListener('paste', (e) => {
     if (clipboardHasText(e.clipboardData)) return;   // text wins; only a picture-only clipboard becomes a picture
     const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
-    if (!item) return;
+    if (!item) { if (pasteEventIsEmpty(e.clipboardData)) readClipboardPicture().then((f) => { if (f) showImage(f, 'pasted image').catch(() => { clearImage(); note('That image could not be read.', true); }); }); return; }
     const blob = item.getAsFile();
     if (blob) { e.preventDefault(); showImage(blob, 'pasted image').catch(() => { clearImage(); note('That image could not be read.', true); }); }
   });
