@@ -2355,7 +2355,7 @@ async function openBot(id){
     }
   };
   filesInput.onchange=()=>{addPics([...(filesInput.files || [])]);filesInput.value='';};
-  field.addEventListener('paste',e=>{const imgs=[...(e.clipboardData?.items || [])].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);if(imgs.length){e.preventDefault();addPics(imgs);}});
+  field.addEventListener('paste',e=>{if(clipboardHasText(e.clipboardData))return;const imgs=[...(e.clipboardData?.items || [])].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);if(imgs.length){e.preventDefault();addPics(imgs);}});
   // Voice typing: same engine as Freelance Desk (Hebrew, English and mixed).
   const micButton=bar.querySelector('.bot-mic');let rec=null,micStream=null;
   micButton.onclick=async()=>{
@@ -2462,6 +2462,10 @@ async function openBot(id){
   if(mine===view)timer=setInterval(render,2000);
 }
 
+// Text always wins on paste (Noam 2026-10-19: "cant paste text here"): copying from a web
+// page or a chat app puts text AND a small picture on the clipboard, and grabbing the
+// picture dropped the text.
+const clipboardHasText=cd=>{try{return Boolean(cd && [...(cd.types || [])].includes('text/plain') && cd.getData('text/plain').length);}catch{return false;}};
 // No picture on the clipboard (a screenshot is in the gallery, not on the clipboard) or
 // the phone refused to hand it over: open the picture chooser instead of a dead end.
 // If the tap's permission has already run out, offer a one-tap button instead.
@@ -3437,6 +3441,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
 
   // Pasting a screenshot straight into the box.
   box.addEventListener('paste', (e) => {
+    if (clipboardHasText(e.clipboardData)) return;   // text wins; only a picture-only clipboard becomes a picture
     const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
     if (!item) return;
     const blob = item.getAsFile();

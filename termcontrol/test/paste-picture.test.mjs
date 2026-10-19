@@ -98,3 +98,77 @@ test('bot chats: the Paste picture button adds the copied picture as a tile, and
     }
   } finally { await browser.close(); }
 });
+
+// Noam 2026-10-19: "cant paste text here". Copying from a web page or a chat app puts
+// text AND a small picture on the clipboard; the picture handler used to swallow the text.
+const MIXED = 'שורה ראשונה בעברית with English words\nשורה שנייה: https://example.com/path?x=1\n\n- נקודה אחת\n- point two\nסוף.';
+const pasteEvent = (page, selector, { withText, withPicture }) => page.evaluate(({ selector, withText, withPicture, text }) => {
+  const dt = new DataTransfer();
+  if (withText) dt.setData('text/plain', text);
+  if (withPicture) dt.items.add(new File([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0))], 'shot.png', { type: 'image/png' }));
+  const event = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+  document.querySelector(selector).dispatchEvent(event);
+  return event.defaultPrevented;
+}, { selector, withText, withPicture, text: MIXED });
+
+async function botFixture(browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const bot = { id: 'abcdef012345', name: 'Quill', job: '', provider: 'claude', fallback: 'codex', active: 'claude', state: 'idle', health: { level: 'ok', text: 'Ready' }, messages: [], helpers: [], memoryPending: 0, notify: true, pinned: false, hidden: false };
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
+    if (url.pathname === '/api/panes') return route.fulfill({ json: { daemon: true, panes: [], view: 'manual' } });
+    if (url.pathname === '/api/bots') return route.fulfill({ json: { bots: [bot], providers: ['claude', 'codex'], models: {} } });
+    if (url.pathname === '/api/bot') return route.fulfill({ json: { bot, messages: [], asks: null } });
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('https://termcontrol.test/#bot:abcdef012345');
+  await page.locator('.bot-composer textarea').waitFor({ timeout: 10000 });
+  return page;
+}
+
+test('bot chat: text on the clipboard is always pasted (even with a picture); a picture-only clipboard still becomes a picture', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await botFixture(browser);
+    assert.equal(await pasteEvent(page, '.bot-composer textarea', { withText: true, withPicture: true }), false, 'the browser is left to paste the text');
+    assert.equal(await page.locator('.bot-pic').count(), 0);
+    assert.equal(await pasteEvent(page, '.bot-composer textarea', { withText: true, withPicture: false }), false);
+    assert.equal(await pasteEvent(page, '.bot-composer textarea', { withText: false, withPicture: true }), true, 'picture only: taken as a picture');
+    await page.locator('.bot-pic').waitFor({ timeout: 5000 });
+    await page.close();
+  } finally { await browser.close(); }
+});
+
+test('bot chat: a long multi-line Hebrew + English text really lands in the box (real clipboard, real Ctrl+V)', async () => {
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'] });
+    await context.close();
+    const page = await botFixture(browser);
+    const big = Array.from({ length: 40 }, (_, i) => `${i}. ${MIXED}`).join('\n\n');
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'https://termcontrol.test' }).catch(() => {});
+    await page.evaluate(async (text) => {
+      const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }), 'image/png': new Blob([png], { type: 'image/png' }) })]);
+    }, big);
+    await page.locator('.bot-composer textarea').click();
+    await page.keyboard.press('Control+V');
+    await page.waitForFunction((n) => document.querySelector('.bot-composer textarea').value.length === n, big.length, { timeout: 5000 });
+    assert.equal(await page.inputValue('.bot-composer textarea'), big);
+    assert.equal(await page.locator('.bot-pic').count(), 0);
+    await page.close();
+  } finally { await browser.close(); }
+});
+
+test('terminal chat: text on the clipboard is pasted even with a picture; a picture-only clipboard still attaches', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await fixture(browser, 'text');
+    assert.equal(await pasteEvent(page, '.composer textarea', { withText: true, withPicture: true }), false);
+    assert.equal(await page.locator('.attached').isHidden(), true);
+    assert.equal(await pasteEvent(page, '.composer textarea', { withText: false, withPicture: true }), true);
+    await page.locator('.attached .name').filter({ hasText: 'pasted image' }).waitFor({ timeout: 8000 });
+    await page.close();
+  } finally { await browser.close(); }
+});
