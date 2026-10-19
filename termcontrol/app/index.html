@@ -3015,6 +3015,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
     <details class="composer-menu"><summary aria-label="${ui('Attachments, voice and views','צירוף תמונה, קול ותצוגות')}" title="${ui('Composer tools','כלי ההודעה')}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14 M5 12h14"/></svg></summary><div class="composer-menu-panel">
       <div class="modeswitch" role="group" aria-label="${ui('What to show','תצוגה')}"><button type="button" data-mode="chat">${ui('Chat','שיחה')}</button>${hasDesk?`<button type="button" data-mode="today">${ui('Today','היום')}</button>`:''}<button type="button" data-mode="screen">${ui('Screen','מסך')}</button></div>
       <button type="button" class="attach" aria-label="${ui('Attach an image','צירוף תמונה')}">${icon('attach')}${ui('Attach an image','צירוף תמונה')}</button><input type="file" accept="image/*" aria-hidden="true">
+      <button type="button" class="paste-image">${icon('copy')}${ui('Paste picture','הדבקת תמונה')}</button>
       <button type="button" class="mic" aria-label="${ui('Dictate a message','הקלדה בקול')}">${icon('mic')}${ui('Dictate a message','הקלדה בקול')}</button>
       <button type="button" class="schedule-message">${icon('clock')}${ui('Schedule a message','תזמון הודעה')}</button>
       <button type="button" class="edit-profile">${icon('person')}${ui('Name, job and rules','שם, תפקיד וכללים')}</button>
@@ -3246,6 +3247,25 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
   });
 
   bar.querySelector('.attach').onclick = () => file.click();
+
+  // Paste picture (Noam 2026-10-19): phone keyboards often send no paste event for a
+  // picture, so read it from the clipboard when the button is tapped.
+  bar.querySelector('.paste-image').onclick = async () => {
+    const menu = bar.querySelector('.composer-menu');
+    try {
+      if (!navigator.clipboard?.read) throw Object.assign(new Error('unsupported'), { name: 'NotSupportedError' });
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find((t) => t.startsWith('image/'));
+        if (type) { const blob = await item.getType(type); if (menu) menu.open = false; return showImage(blob, 'pasted image').catch(() => { clearImage(); note(ui('That picture could not be read.', 'לא ניתן לקרוא את התמונה.'), true); }); }
+      }
+      note(ui('No picture on the clipboard. Copy a picture first, then tap again.', 'אין תמונה בלוח. העתיקו תמונה והקישו שוב.'), true);
+    } catch (e) {
+      note(e.name === 'NotAllowedError'
+        ? ui('Allow paste when your phone asks, then tap again. Or use Attach an image.', 'אשרו הדבקה כשהטלפון שואל והקישו שוב. או השתמשו בצירוף תמונה.')
+        : ui('This browser cannot paste pictures here. Use Attach an image instead.', 'הדפדפן לא יכול להדביק תמונות כאן. השתמשו בצירוף תמונה.'), true);
+    }
+  };
 
   // Dictation: tap to talk, tap again to stop. The words land in the box so you
   // can read and fix them before sending. Hebrew and English are detected.
