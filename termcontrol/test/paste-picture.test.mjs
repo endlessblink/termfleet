@@ -59,3 +59,37 @@ test('Paste picture says plainly when there is no picture or the phone refuses',
     await page.close();
   } finally { await browser.close(); }
 });
+
+test('bot chats: the Paste picture button adds the copied picture as a tile, and explains a refusal', async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const [mode, expectTile] of [['picture', true], ['text', false], ['denied', false]]) {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+      await page.addInitScript((m) => {
+        const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6lLQAAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
+        const read = m === 'picture' ? async () => [{ types: ['image/png'], getType: async () => new Blob([png], { type: 'image/png' }) }]
+          : m === 'text' ? async () => [{ types: ['text/plain'], getType: async () => new Blob(['words'], { type: 'text/plain' }) }]
+            : async () => { throw Object.assign(new Error('denied'), { name: 'NotAllowedError' }); };
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read, writeText: async () => {} } });
+      }, mode);
+      const bot = { id: 'abcdef012345', name: 'Quill', job: '', provider: 'claude', fallback: 'codex', active: 'claude', state: 'idle', health: { level: 'ok', text: 'Ready' }, messages: [], helpers: [], memoryPending: 0, notify: true, pinned: false, hidden: false };
+      await page.route('**/*', async (route) => {
+        const url = new URL(route.request().url());
+        if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
+        if (url.pathname === '/api/panes') return route.fulfill({ json: { daemon: true, panes: [], view: 'manual' } });
+        if (url.pathname === '/api/bots') return route.fulfill({ json: { bots: [bot], providers: ['claude', 'codex'], models: {} } });
+        if (url.pathname === '/api/bot') return route.fulfill({ json: { bot, messages: [], asks: null } });
+        return route.fulfill({ json: {} });
+      });
+      await page.goto('https://termcontrol.test/#bot:abcdef012345');
+      await page.locator('.bot-composer .bot-paste').waitFor({ timeout: 10000 });
+      await page.locator('.bot-composer .bot-paste').click();
+      if (expectTile) await page.locator('.bot-pics .bot-pic').waitFor({ timeout: 6000 });
+      else {
+        await page.locator('.sendstate').filter({ hasText: mode === 'text' ? /No picture/ : /Allow paste|paperclip/ }).waitFor({ timeout: 5000 });
+        assert.equal(await page.locator('.bot-pics .bot-pic').count(), 0);
+      }
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
