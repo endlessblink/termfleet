@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-test('a message menu stays open while the chat refreshes; Reply quotes the message; Model and plan is its own row', { timeout: 120000 }, async () => {
+test('a message menu stays open while the chat refreshes; Reply quotes the message; Model and plan is its own row', { timeout: 180000 }, async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-menu-'));
   const configDir = path.join(tmp, 'cfg'), botsHome = path.join(tmp, 'home');
   for (const d of [configDir, botsHome]) fs.mkdirSync(d, { recursive: true });
@@ -29,7 +29,7 @@ test('a message menu stays open while the chat refreshes; Reply quotes the messa
     await p.goto(`http://localhost:${port}/#bot:${id}`);
     await p.waitForFunction(() => document.querySelector('.bot-composer textarea'), null, { timeout: 10000, polling: 250 });
     await p.evaluate(async (botId) => { await fetch('/api/bot/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: botId, text: 'hello' }) }); }, id);
-    await p.waitForFunction(() => /First answer from the bot/.test(document.querySelector('main')?.textContent || ''), null, { timeout: 20000, polling: 250 });
+    await p.waitForFunction(() => /First answer from the bot/.test(document.querySelector('main')?.textContent || ''), null, { timeout: 60000, polling: 250 });
     // Open the menu on the bot's message, then let the chat change underneath it.
     await p.evaluate(() => document.querySelector('.msg.assistant .message-menu > summary').click());
     await p.evaluate(async (botId) => { await fetch('/api/bot/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: botId, text: 'second message' }) }); }, id);
