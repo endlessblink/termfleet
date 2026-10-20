@@ -6,6 +6,16 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { requestDaemon, defaultDaemonSocket } from '../termfleetctl.mjs';
+
+/** Is that terminal still running in the daemon? null when the daemon cannot be asked. */
+async function stillRunning(paneId) {
+  try {
+    const res = await requestDaemon({ type: 'listSessions' }, defaultDaemonSocket());
+    if (res?.ok !== true) return null;
+    return (res.value?.sessions || []).some((s) => s.id === paneId && s.lastExit == null);
+  } catch { return null; }
+}
 
 export function closeRequestsDir(env = process.env) {
   return join(env.XDG_DATA_HOME || join(env.HOME || homedir(), '.local', 'share'), 'terminal-workspace', 'close-requests');
@@ -19,7 +29,7 @@ const REASONS = {
   'close-failed': 'TermFleet could not close it. Check the PC.',
 };
 
-export async function requestClose(paneId, { by = 'unknown', timeoutMs = 10_000, dir = closeRequestsDir(), pause = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now } = {}) {
+export async function requestClose(paneId, { by = 'unknown', timeoutMs = 10_000, dir = closeRequestsDir(), pause = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, running = stillRunning } = {}) {
   if (typeof paneId !== 'string' || !paneId.startsWith('terminal-')) return { ok: false, error: 'That is not a terminal.' };
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const requestId = randomUUID();
@@ -33,6 +43,11 @@ export async function requestClose(paneId, { by = 'unknown', timeoutMs = 10_000,
     let result;
     try { result = JSON.parse(readFileSync(resultPath, 'utf8')); } catch { continue; } // still being written
     rmSync(resultPath, { force: true });
+    // The app says it has no such card while the terminal plainly runs: an app from before
+    // the 2026-10-20 close fix, which matched the wrong id. Say what helps.
+    if (!result.ok && result.reason === 'not-found' && await running(paneId)) {
+      return { ok: false, reason: 'app-outdated', error: 'TermFleet on the PC needs one relaunch before it can close terminals. Nothing was closed; the terminal keeps running.' };
+    }
     return result.ok ? { ok: true, title: result.title || null } : { ok: false, reason: result.reason, error: REASONS[result.reason] || 'TermFleet did not close it.' };
   }
   // Not picked up: take the request back so it can never fire later by surprise.

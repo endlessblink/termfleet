@@ -65,6 +65,28 @@ test('bots are told to close a finished terminal they started, in the brief and 
   assert.match(events, /has finished\. Read its result[^`]*Then close it \(termfleet-team close \$\{h\.paneId\}\) unless you are sending it more work now/);
 });
 
+test('only unsaved work the agent made itself blocks its close, not a stranger\'s files in the same folder', async () => {
+  // Noam 2026-10-21: another agent's unsaved installer files blocked closing every terminal in termfleet.
+  const { shellWriteTargets, changedByAgent, filesTheAgentChanged } = await import('../../scripts/lib/team-close.mjs');
+  assert.deepEqual(shellWriteTargets('npm test 2>&1 | tail -5'), []);
+  assert.deepEqual(shellWriteTargets('git diff scripts/install-release.sh > /tmp/x.diff'), ['/tmp/x.diff']);
+  assert.deepEqual(shellWriteTargets("sed -i 's/a/b/' src/app.js"), ['src/app.js']);
+  assert.deepEqual(shellWriteTargets('cp a.txt docs/b.txt && echo hi >> notes.md'), ['notes.md', 'docs/b.txt']);
+  const record = [
+    { message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: '/repo/src/mine.js' } }] } },
+    { message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'cat scripts/install-release.sh; npm test 2>&1 | tail' } }] } },
+    { message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: "sed -i 's/x/y/' docs/also-mine.md" } }] } },
+  ].map((e) => JSON.stringify({ ...e, message: { ...e.message, content: e.message.content } }).replace('"content"', '"type":"assistant","content"')).join('\n');
+  const changes = filesTheAgentChanged({ provider: 'claude', sessionId: 's' }, { transcriptOf: () => '/x.jsonl', read: () => record.replaceAll('"type":"assistant",', '') + '\n' + record });
+  assert.equal(changedByAgent('src/mine.js', '/repo', changes), true);
+  assert.equal(changedByAgent('docs/also-mine.md', '/repo', changes), true);
+  assert.equal(changedByAgent('scripts/install-release.sh', '/repo', changes), false, 'only read, never written');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-fair-'));
+  const run = (args) => args[0] === 'status' ? { status: 0, stdout: ' M src/mine.js\n M scripts/install-release.sh\n' } : { status: 0, stdout: dir + '\n' };
+  assert.deepEqual(unsavedWork(dir, 0, run, { paths: new Set([path.join(dir, 'src/mine.js')]), commands: [] }), ['src/mine.js']);
+  assert.deepEqual(unsavedWork(dir, 0, run, null), ['src/mine.js', 'scripts/install-release.sh'], 'no record (plain shell): the time rule still applies');
+});
+
 test('a busy plain shell is seen as working: the close looks twice before deciding', async () => {
   // One look from a fresh command never sees output move (live 2026-10-20: a shell printing every second read idle).
   let looks = 0;

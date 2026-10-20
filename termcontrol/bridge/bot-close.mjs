@@ -59,15 +59,17 @@ export async function removeBot({ bot, plan, bots, routines, requestClose, confi
 
 /** Close what Noam ticked. Each item gets a plain result; nothing else is touched. */
 export async function closeBotItems({ botId, ids, plan, bots, routines, requestClose }) {
-  const wanted = new Set(ids), results = [];
-  for (const item of plan.items.filter((i) => wanted.has(i.id))) {
+  const wanted = new Set(ids);
+  // All at once: closing three terminals one after another made Noam wait up to 30 s
+  // on "Closing what it runs…" (2026-10-21).
+  const results = await Promise.all(plan.items.filter((i) => wanted.has(i.id)).map(async (item) => {
     let r;
     if (item.kind === 'turn') r = bots.stop(botId);
     else if (item.kind === 'terminal') r = await requestClose(item.id.slice('terminal:'.length), { by: `phone:close-bot:${botId}` });
     else if (item.kind === 'routine') r = routines.setEnabled(item.id.slice('routine:'.length), false);
     else if (item.kind === 'watch') { bots.setWatch(botId, { path: item.id.slice('watch:'.length), paused: true, head: bots.watches(botId).find((w) => w.path === item.id.slice(6))?.head }); r = { ok: true }; }
-    results.push({ id: item.id, label: item.label, ok: Boolean(r?.ok), ...(r?.ok ? {} : { error: r?.error || 'Not closed.' }) });
-  }
+    return { id: item.id, label: item.label, ok: Boolean(r?.ok), ...(r?.ok ? {} : { error: r?.error || 'Not closed.' }) };
+  }));
   const done = results.filter((r) => r.ok).map((r) => r.label);
   if (done.length) bots.append(botId, { role: 'note', text: `Noam closed: ${done.join('; ')}. The chat and memory are kept; a new message starts it again.` });
   return { ok: results.every((r) => r.ok), results };
