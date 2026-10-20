@@ -37,6 +37,20 @@ export function pendingAsk(pane, {
   if (pane.provider === 'claude') {
     const question = questionFromTranscript(pane, screen);
     if (question) return question;
+    // Claude's own record says a permission prompt is on screen. The hooks can
+    // miss it (a queued message rewrote the record as "working"), and then the
+    // phone said "Needs you" with nothing to answer (2026-10-20).
+    const vendor = pane.vendorStatus;
+    if (vendor?.status === 'waiting' && /permission/i.test(vendor.waitingFor || '')) {
+      const tool = pendingToolFromTranscript(pane);
+      // Hook prompts offer only Yes / No; "don't ask again" would press No there.
+      return permissionAsk(pane, {
+        options: [{ key: 'yes', label: 'Yes, proceed' }, { key: 'no', label: 'No, tell the agent what to do differently' }],
+        title: !tool ? 'This agent is asking permission to continue.' : tool.name === 'Bash' ? 'Allow this command?' : `Allow ${tool.name}?`,
+        ...(tool?.detail ? { detail: tool.detail } : {}),
+        ...(vendor.at ? { sourceId: `vendor:${vendor.at}` } : {}),
+      });
+    }
   }
   if (pane.provider === 'opencode') {
     // OpenCode's status plugin publishes `turn: "waiting"` only for a permission
@@ -71,12 +85,12 @@ function askId(pane, ask) {
 function permissionAsk(pane, details) {
   const ask = {
     kind: 'permission',
-    ...details,
     options: [
       { key: 'yes', label: 'Yes, proceed' },
       { key: 'yesAlways', label: "Yes, and don't ask again" },
       { key: 'no', label: 'No, tell the agent what to do differently' },
     ],
+    ...details,
   };
   return { ...ask, id: askId(pane, ask) };
 }
@@ -112,6 +126,36 @@ export function screenPermissionAsk(pane, screen) {
     ],
   };
   return { ...ask, id: askId(pane, ask) };
+}
+
+function pendingToolFromTranscript(pane) {
+  const file = claudeTranscript(pane.cwd, pane.sessionId);
+  return file ? pendingToolFromRecords(tailLines(file, 256 * 1024)) : null;
+}
+
+/** The newest tool call with no result yet: what a permission prompt is asking about. */
+export function pendingToolFromRecords(lines) {
+  const answered = new Set();
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let o;
+    try { o = JSON.parse(lines[i]); } catch { continue; }
+    const msg = o.message;
+    if (!msg || o.isSidechain) continue;
+    const blocks = Array.isArray(msg.content) ? msg.content : [];
+    if (msg.role === 'user') {
+      for (const b of blocks) if (b.type === 'tool_result' && b.tool_use_id) answered.add(b.tool_use_id);
+      continue;
+    }
+    if (msg.role !== 'assistant') continue;
+    for (const b of [...blocks].reverse()) {
+      if (b.type !== 'tool_use') continue;
+      if (answered.has(b.id)) return null;
+      const input = b.input || {};
+      const detail = input.description || input.command || input.file_path || input.url || '';
+      return { name: String(b.name || 'this tool'), detail: String(detail).replace(/\s+/g, ' ').trim().slice(0, 200) };
+    }
+  }
+  return null;
 }
 
 function questionFromTranscript(pane, screen = '') {

@@ -134,7 +134,7 @@ export function agentsByPane({ procRoot = '/proc', claudeSessions = path.join(pr
       const recordFile = path.join(claudeSessions, `${pid}.json`);
       const record = readJson(recordFile);
       sessionId = record?.sessionId || null;
-      if (['idle', 'busy', 'waiting'].includes(record?.status)) vendorStatus = { status: record.status, at: Number(record.statusUpdatedAt) || null };
+      if (['idle', 'busy', 'waiting'].includes(record?.status)) vendorStatus = { status: record.status, at: Number(record.statusUpdatedAt) || null, ...(record.status === 'waiting' && record.waitingFor ? { waitingFor: String(record.waitingFor) } : {}) };
       try { freshness = Math.max(Number(record?.statusUpdatedAt) || 0, fs.statSync(recordFile).mtimeMs); } catch { freshness = Number(record?.statusUpdatedAt) || 0; }
     }
     const previous = byPane.get(paneId);
