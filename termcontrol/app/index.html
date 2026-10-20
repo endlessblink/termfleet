@@ -2457,7 +2457,7 @@ async function openBot(id){
   // with a remove button until it is sent (TF-096: "add multiple images to bots").
   const pics=[],picsBox=bar.querySelector('.bot-pics'),filesInput=bar.querySelector('.bot-files');
   const drawPics=()=>{picsBox.hidden=!pics.length;picsBox.innerHTML=pics.map((p,i)=>`<span class="bot-pic"><img src="${p.url}" alt=""><button type="button" data-drop="${i}" aria-label="${ui('Remove picture','הסרת תמונה')}">×</button></span>`).join('');picsBox.querySelectorAll('[data-drop]').forEach(b=>{b.onclick=()=>{const [gone]=pics.splice(Number(b.dataset.drop),1);URL.revokeObjectURL(gone.url);drawPics();grow();};});};
-  const addPics=list=>{for(const f of list){if(!f.type.startsWith('image/'))continue;if(pics.length>=10){note(ui('Up to 10 pictures at a time.','עד 10 תמונות בכל פעם.'),true);break;}pics.push({blob:f,name:f.name || 'picture',url:URL.createObjectURL(f)});}drawPics();grow();};
+  const addPics=list=>{for(let f of list){if(f.type && !f.type.startsWith('image/')){reportPush('attach-skipped',f.type);note(ui('That file is not a picture.','הקובץ הזה אינו תמונה.'),true);continue;}if(!f.type){const ext=(/\.(\w+)$/.exec(f.name || '')?.[1] || '').toLowerCase();f=new File([f],f.name || 'picture.jpg',{type:{png:'image/png',webp:'image/webp',gif:'image/gif',heic:'image/heic'}[ext] || 'image/jpeg'});}if(pics.length>=10){note(ui('Up to 10 pictures at a time.','עד 10 תמונות בכל פעם.'),true);break;}pics.push({blob:f,name:f.name || 'picture',url:URL.createObjectURL(f)});}drawPics();grow();};
   bar.querySelector('.bot-attach').onclick=()=>filesInput.click();
   if(sharedForNextChat.length)addPics(sharedForNextChat.splice(0));
   // Paste picture: phone keyboards often send no paste event for a picture, so read it
@@ -2508,9 +2508,9 @@ async function openBot(id){
     if(pics.length){
       send.disabled=true;
       try{
-        for(const [i,p] of pics.entries()){note(ui(`Sending picture ${i+1} of ${pics.length}…`,`שולח תמונה ${i+1} מתוך ${pics.length}…`));const form=new FormData();form.append('file',p.blob,p.name);images.push((await upload(form)).path);}
+        for(const [i,p] of pics.entries()){const label=ui(`Sending picture ${i+1} of ${pics.length}…`,`שולח תמונה ${i+1} מתוך ${pics.length}…`);note(label);const blob=await shrinkPicture(p.blob).catch(()=>p.blob);const form=new FormData();form.append('file',blob,blob===p.blob?p.name:p.name.replace(/\.[^.]*$/,'')+'.jpg');images.push((await upload(form,pct=>{const el=document.querySelector('.sendstate');if(el && !el.classList.contains('err'))el.firstChild.textContent=`${label} ${pct}%`;})).path);}
         document.querySelector('.sendstate')?.remove();
-      }catch(e){send.disabled=false;return note(e.message || ui('A picture could not be sent. It is still here.','לא ניתן לשלוח תמונה. היא עדיין כאן.'),true);}
+      }catch(e){send.disabled=false;reportPush('attach-failed',e);return note(e.message || ui('A picture could not be sent. It is still here.','לא ניתן לשלוח תמונה. היא עדיין כאן.'),true);}
       pics.splice(0).forEach(p=>URL.revokeObjectURL(p.url));drawPics();
     }
     field.value='';try{sessionStorage.removeItem(draftKey);}catch{}following=true;grow();
@@ -2617,6 +2617,11 @@ function offerGallery(input,text,why){
 // open in the desktop app or on a phone never reloads by itself, so every fix "never
 // shipped". Ask the bridge which version is current; reload when it changed and
 // nothing is being typed, otherwise offer a Reload button.
+// A picture chooser on a phone backgrounds the page; coming back must not reload it and
+// lose the picture just chosen (Noam 2026-10-20: "if I attach a picture manually I can't send").
+let pickingSince=0;
+document.addEventListener('click',e=>{if(e.target?.matches?.('input[type=file]'))pickingSince=Date.now();},true);
+document.addEventListener('change',e=>{if(e.target?.matches?.('input[type=file]'))pickingSince=0;},true);
 let appVersion=null;
 async function checkAppVersion(){
   try{
@@ -2625,7 +2630,7 @@ async function checkAppVersion(){
     if(appVersion===null){appVersion=v;return;}
     if(v===appVersion)return;
     const typing=[...document.querySelectorAll('textarea,input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=search])')].some(el=>el.value && el.offsetParent!==null);
-    const busy=typing || document.querySelector('dialog[open], .bot-pics .bot-pic, .attached:not([hidden]), .composer[data-sending="true"]');
+    const busy=typing || Date.now()-pickingSince<180000 || document.querySelector('dialog[open], .bot-pics .bot-pic, .attached:not([hidden]), .composer[data-sending="true"]');
     if(!busy){location.reload();return;}
     if(document.querySelector('.update-ready'))return;
     const el=document.createElement('div');el.className='sendstate update-ready';el.textContent=ui('A new version is ready. ','גרסה חדשה מוכנה. ');
@@ -3416,21 +3421,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
     sync();
   };
 
-  async function shrink(blob, max = 1600) {
-    if (!/^image\//.test(blob.type) || blob.size < 400 * 1024) return blob;
-    const bitmap = await createImageBitmap(blob);
-    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-    if (scale === 1 && blob.size < 2 * 1024 * 1024) { bitmap.close?.(); return blob; }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close?.();
-
-    const smaller = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
-    return smaller && smaller.size < blob.size ? smaller : blob;
-  }
+  const shrink = shrinkPicture;
   const clearImage = () => {
     if (preview.src) URL.revokeObjectURL(preview.src);
     image = null;
@@ -3734,6 +3725,22 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
 }
 
 /** Upload with real progress, so a slow connection looks slow rather than stuck. */
+// Phone photos are huge; sending one raw over mobile data is what makes an upload look
+// stuck. Shrink it first; the caller falls back to the original if it cannot be decoded.
+async function shrinkPicture(blob, max = 1600) {
+  if (!/^image\//.test(blob.type) || blob.size < 400 * 1024) return blob;
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+  if (scale === 1 && blob.size < 2 * 1024 * 1024) { bitmap.close?.(); return blob; }
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  const smaller = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+  return smaller && smaller.size < blob.size ? smaller : blob;
+}
+
 function upload(form, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();

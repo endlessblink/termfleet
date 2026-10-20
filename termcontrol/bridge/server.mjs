@@ -398,7 +398,7 @@ const handle = async (req, res) => {
     let body = {};
     try { body = await readJson(req, 4 * 1024); } catch { /* ignore a bad report */ }
     const step = String(body.step || "?").slice(0, 20);
-    const line = `[push] phone ${step.startsWith("paste-") ? `pressed Paste picture: ${step.slice(6)}` : step === "tapped" ? "tapped Turn on notifications" : step === "on" ? "signed up for notifications" : `sign-up failed at "${step}": ${String(body.error || "").slice(0, 200)}`} (home screen app: ${Boolean(body.standalone)}; ${String(body.ua || '').slice(0, 160)})`;
+    const line = `[push] phone ${step.startsWith("attach-") ? `picture ${step.slice(7)}: ${String(body.error || "").slice(0, 200)}` : step.startsWith("paste-") ? `pressed Paste picture: ${step.slice(6)}` : step === "tapped" ? "tapped Turn on notifications" : step === "on" ? "signed up for notifications" : `sign-up failed at "${step}": ${String(body.error || "").slice(0, 200)}`} (home screen app: ${Boolean(body.standalone)}; ${String(body.ua || '').slice(0, 160)})`;
     console.error(line);
     push.noteProblem?.(line);
     return json(res, 200, { ok: true });
@@ -854,6 +854,12 @@ setInterval(() => {
   overLimit = mb > MEMORY_LIMIT_MB ? overLimit + 1 : 0;
   if (overLimit >= 2) shutdownGracefully(`memory ${Math.round(mb)} MB over ${MEMORY_LIMIT_MB} MB`, { exitCode: 75 });
 }, 30000).unref?.();
+
+// The phone reaches us through a tunnel that keeps idle connections for about 90 s. Node
+// closes them after 5 s, so a request sent after a slow photo upload went down a closed
+// connection and was reset ("I can't send the message", Noam 2026-10-20). Outlast the tunnel.
+server.keepAliveTimeout = 120_000;
+server.headersTimeout = 125_000;
 
 server.listen(PORT, HOST, () => {
   console.log(`TermControl bridge on http://${HOST}:${PORT}`);
