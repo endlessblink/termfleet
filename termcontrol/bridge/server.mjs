@@ -24,7 +24,7 @@ import { requestDaemon, defaultDaemonSocket } from '../../scripts/termfleetctl.m
 import { pendingAsk, screenPermissionAsk, matchesAsk, questionResults } from './asks.mjs';
 import { deskRoot, readDesk } from './desk.mjs';
 import { ChoiceReceipts } from './choice-receipts.mjs';
-import { visibleScreenOf } from './screen.mjs';
+import { visibleScreenOf, liveScreenOf } from './screen.mjs';
 import { readSessionStatus, subscribeSessionEventHeads, applyVendorStatus, stalledFor } from './session-status.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
@@ -703,10 +703,28 @@ const handle = async (req, res) => {
         const visible = fresh ? visibleScreenOf(fresh.id) : null;
         const freshScreen = fresh ? visible ?? await screenOf(fresh.id) : '';
         const freshAsk = fresh && (pendingAsk(fresh, { screen: freshScreen }) || screenPermissionAsk(fresh, freshScreen));
+        // A typed answer whose question is gone (answered at the PC, or withdrawn) still
+        // reaches the agent, as a normal message. If another question is open instead, it
+        // is refused and the page keeps the draft.
+        if (fresh && !freshAsk && typeof payload.answer === 'string') {
+          const result = await sendOnce(`answer-${payload.askId}`, payload.answer, () => sendToPane(fresh, payload.answer));
+          return json(res, result.error && !result.busy ? 400 : 200, { ...result, sentAsMessage: true });
+        }
+        if (fresh && freshAsk && freshAsk.id !== payload.askId && typeof payload.answer === 'string') {
+          return json(res, 409, { error: 'A different question is open in that terminal now. Your draft is kept; answer the new question first.', notSent: true });
+        }
         if (!fresh || !freshAsk || freshAsk.id !== payload.askId || (payload.choice && payload.choice !== 'submit-multi' && !matchesAsk(freshAsk, payload.askId, payload.choice)) || (typeof payload.answer==='string' && (freshAsk.kind!=='question' || freshAsk.stage==='review'))) {
           return json(res, 409, { error: 'That question or permission request is no longer active. Refresh and check the terminal again.' });
         }
         const adapter = adapterFor(fresh);
+        // The screen a typed answer is checked against: the desktop's copy while it shows
+        // the question, else the live terminal drawn here (the desktop stops updating cards
+        // that are off screen, and sometimes writes no terminal text at all).
+        const questionScreenFn = async (options) => {
+          const desk = visibleScreenOf(fresh.id, options);
+          if (desk && showsQuestion(desk)) return desk;
+          return (await liveScreenOf(fresh.id)) ?? desk ?? '';
+        };
         // TermFleet stops refreshing the visible text of a terminal scrolled off the
         // desktop map while still stamping it as observed. When that copy lacks the
         // question, accept the daemon's live bottom rows only if they show this exact
@@ -715,14 +733,14 @@ const handle = async (req, res) => {
         const showsQuestion = (text) => squash(text).includes(squash(freshAsk.title));
         let questionScreen = visible;
         if (freshAsk.kind === 'question' && !showsQuestion(visible)) {
-          const live = await screenOf(fresh.id);
+          const live = await liveScreenOf(fresh.id) ?? await screenOf(fresh.id);
           if (showsQuestion(live) && /❯\s*1\.|Enter to select|Esc to cancel/.test(live)) questionScreen = live;
         }
         if (freshAsk.kind === 'question' && freshAsk.multiSelect && freshAsk.stage !== 'review' && fresh.provider === 'claude') {
           // Pick-several: ticks and typed text change the open form without answering it,
           // so they skip the one-answer receipt; only Submit is recorded as the answer.
           if (questionScreen===null || !showsQuestion(questionScreen)) return json(res,409,{error:'This question is not visible in TermFleet right now. Check the terminal before answering.',notSent:true});
-          const screenFn = (options) => visibleScreenOf(fresh.id,options) || '';
+          const screenFn = questionScreenFn;
           if (payload.choice === 'submit-multi') {
             const result = await choiceReceipts.send(fresh.id, freshAsk.id, 'submit', () => submitMultiChoice(fresh, freshAsk, { screen: screenFn }));
             return json(res, result.error ? 400 : 200, result);
@@ -734,7 +752,7 @@ const handle = async (req, res) => {
         }
         if (freshAsk.kind === 'question' && (questionScreen===null || freshAsk.multiSelect || !showsQuestion(questionScreen))) return json(res,409,{error:'This question needs a fresh visible single-answer field in TermFleet. Check the terminal before answering.',notSent:true});
         const result = await choiceReceipts.send(fresh.id, freshAsk.id, answer, () => typeof payload.answer==='string'
-          ? sendCustomAnswer(fresh, freshAsk, payload.answer, {screen:(options) => visibleScreenOf(fresh.id,options) || ''})
+          ? sendCustomAnswer(fresh, freshAsk, payload.answer, {screen:questionScreenFn})
           : freshAsk.screenChoice ? answerScreenChoice(fresh, freshAsk, payload.choice)
           : answerPrompt(fresh, payload.choice, adapter?.approval, freshAsk.stage==='review'?'question-submit':freshAsk.kind));
         return json(res, result.error ? 400 : 200, result);

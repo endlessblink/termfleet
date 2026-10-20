@@ -37,7 +37,7 @@ export class ChoiceReceipts {
     const at = Date.now(); this.records[key] = { state:'dispatching', at, answerHash:digest(answer) };
     try { this.save(); } catch { delete this.records[key]; return { error:'Could not reserve this answer. Nothing was sent.' }; }
     let result;
-    try { result = await dispatch(); } catch { result = { error:'Delivery is unconfirmed. Check the terminal.', uncertain:true }; }
+    try { result = await dispatch(); } catch (error) { console.error('[bridge] answer delivery failed:', error?.message || error); result ={ error:'Delivery is unconfirmed. Check the terminal.', uncertain:true }; }
     this.records[key] = { state:result.ok?'sent':result.notSent?'not-sent':'uncertain', at, answerHash:digest(answer) };
     try { this.save(); } catch { return { error:'Delivery is unconfirmed. Check the terminal before trying again.', uncertain:true }; }
     return result.ok ? { ...result, delivery:'terminal', sentAt:result.sentAt || at } : result;

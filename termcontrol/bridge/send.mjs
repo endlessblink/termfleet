@@ -310,7 +310,9 @@ export async function sendCustomAnswer(pane, question, text, {
   if (!answer.trim() || answer.length > MAX_MESSAGE_CHARS || /[\x00-\x08\x0b-\x1f\x7f]/.test(answer)) return {error:'Use plain text (no control characters).',notSent:true};
   if (pane.provider !== 'claude') return {error:'This question needs the terminal’s own text field. Open Screen to answer.',notSent:true};
   if (question.multiSelect) return typeMultiCustomAnswer(pane, question, answer, { screen, write, pause, record });
-  const sameQuestion = value => String(value).replace(/\s+/g,' ').includes(question.title.replace(/\s+/g,' '));
+  // Wrapped lines and the form's box borders must not hide the question (2026-10-20).
+  const squash = value => String(value || '').replace(/[\u2500-\u257f\s]+/g,'');
+  const sameQuestion = value => squash(value).includes(squash(question.title));
   const inEditor = value => sameQuestion(value) && /Type something\.|Type your answer|Enter your answer/i.test(value) && !/\d+\.\s*(?:Type something|Other)|Chat about this/i.test(value);
   let snapshot = await screen();
   if (!sameQuestion(snapshot)) return {error:'That question is no longer on screen. Refresh before answering.',notSent:true};
@@ -324,8 +326,8 @@ export async function sendCustomAnswer(pane, question, text, {
     if (!inEditor(snapshot)) return {error:'Could not confirm the custom-answer field. Your text was not sent. Check Screen.',notSent:true};
   }
   const typedAt=Date.now(); await write(`\u001b[200~${answer}\u001b[201~`);
-  for(let i=0;i<24;i++){await pause(150);snapshot=await screen({after:typedAt});if(sameQuestion(snapshot) && String(snapshot).replace(/\s+/g,' ').includes(answer.replace(/\s+/g,' ')))break;}
-  if (!sameQuestion(snapshot) || !String(snapshot).replace(/\s+/g,' ').includes(answer.replace(/\s+/g,' '))) return {error:'Your text is not confirmed in the answer field. Check Screen before retrying.',uncertain:true};
+  for(let i=0;i<24;i++){await pause(150);snapshot=await screen({after:typedAt});if(sameQuestion(snapshot) && squash(snapshot).includes(squash(answer)))break;}
+  if (!sameQuestion(snapshot) || !squash(snapshot).includes(squash(answer))) return {error:'Your text is not confirmed in the answer field. Check Screen before retrying.',uncertain:true};
   await write('\r');
   record({pane:pane.id,project:pane.project,askId:question.id,customAnswer:true,bytes:answer.length,ok:true});
   return {ok:true,sentAt:Date.now()};

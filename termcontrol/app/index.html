@@ -3675,10 +3675,11 @@ function mountAsk(id, ask, onDone, receipt=null) {
       if(answer && !box.querySelector('.multi-custom'))box.querySelector('.multi-hint')?.insertAdjacentHTML('afterend',`<p class="multi-custom" dir="auto">${ui('Your own answer','התשובה שלך')}: <bdi>${esc(ask.customText)}</bdi></p>`);
       return;
     }
-    result.textContent=ui('Sent to the terminal. Awaiting the agent’s answer record.','נשלח למסוף. ממתין לרישום התשובה אצל הסוכן.');
+    result.textContent=response.sentAsMessage?ui('That question had already closed, so your answer went to the terminal as a normal message.','השאלה כבר נסגרה, אז התשובה שלך נשלחה למסוף כהודעה רגילה.'):ui('Sent to the terminal. Awaiting the agent’s answer record.','נשלח למסוף. ממתין לרישום התשובה אצל הסוכן.');
+    if(response.sentAsMessage){try{sessionStorage.removeItem(customKey);}catch{}}
     const option=ask.options.find(item=>item.key===choice);const value=choice==='submit-multi'?[...ask.options.filter(item=>box.querySelector(`[data-choice="${item.key}"]`)?.getAttribute('aria-pressed')==='true').map(item=>item.label),...(ask.customText?[ask.customText]:[])].join(', '):choice?option?.label || choice:answer;
     if(history.state?.answerEditor===ask.id){const next={...history.state};delete next.answerEditor;history.replaceState(next,'',location.hash);}
-    onDone?.({askId:ask.id,sourceId:ask.sourceId,answer:value,completeRequest:ask.stage==='review',delivery:'terminal',text:`${ask.kind==='permission'?'Permission answer':'Question answer'}: ${value}`,at:response.sentAt || Date.now()});
+    onDone?.({askId:ask.id,sourceId:ask.sourceId,answer:value,completeRequest:ask.stage==='review',delivery:'terminal',text:response.sentAsMessage?value:`${ask.kind==='permission'?'Permission answer':'Question answer'}: ${value}`,at:response.sentAt || Date.now()});
   };
   box.querySelectorAll('[data-choice]').forEach(button=>{button.onclick=()=>submit(button.dataset.choice);});
   box.querySelector('[data-submit-multi]')?.addEventListener('click',()=>submit('submit-multi'));
