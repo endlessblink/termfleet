@@ -1088,6 +1088,34 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 <aside id="fleet-side" aria-label="Agents"><div class="side-heading">TermControl <span class="side-count"></span></div><div class="side-content"></div></aside>
 <aside id="side-asks" hidden aria-label="Your requests"></aside>
 <div class="blank-pane"><div><h2>TermControl</h2><p>Select an agent to open the conversation.</p></div></div>
+<style>
+/* Close a terminal (Noam 2026-10-20: "צריך להיות מסוגל להרוג טרמינל מהתצוגה הזו בפלאפון ובמחשב"). */
+.pane-more{display:none;flex:none;align-items:center;justify-content:center;width:24px;height:20px;border-radius:6px;color:var(--muted);font-size:15px;line-height:1}
+@media (hover:hover) and (pointer:fine){.pane:hover .pane-more,.pane:focus-visible .pane-more{display:inline-flex}.pane-more:hover{background:var(--control);color:var(--text)}}
+.pane-menu{position:fixed;z-index:60;min-width:200px;max-width:calc(100vw - 24px);padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.pane-menu button{display:flex;width:100%;min-height:44px;align-items:center;padding:0 12px;border:0;border-radius:8px;background:none;color:var(--text);font:inherit;text-align:start;cursor:pointer}
+.pane-menu button:hover,.pane-menu button:focus-visible{background:var(--control)}
+.pane-menu .danger{color:#e5484d}
+.close-sheet{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
+.close-sheet .sheet{width:min(380px,100%);box-sizing:border-box;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);display:grid;gap:10px}
+.close-sheet h2{margin:0;font-size:17px;font-weight:500;overflow-wrap:anywhere}
+.close-sheet p{margin:0;color:var(--muted);line-height:1.5}
+.close-sheet .sheet-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:6px}
+.close-sheet .sheet-actions button{min-height:44px;padding:0 18px;border-radius:12px;border:1px solid var(--line);background:none;color:var(--text);font:inherit;cursor:pointer}
+.close-sheet .sheet-actions .danger{border-color:#b3261e;background:#b3261e;color:#fff}
+.close-sheet .sheet-actions button:disabled{opacity:.55;cursor:default}
+.close-sheet .sheet-result:empty{display:none}
+.close-terminal-head{margin-inline-start:8px;padding:0 8px;min-height:24px;border:1px solid var(--line);border-radius:8px;background:none;color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
+.close-terminal-head:hover{color:var(--text)}
+.close-sheet .bot-close-warning{padding:10px 12px;border:1px solid #b3261e;border-radius:10px;color:var(--text);background:rgba(179,38,30,.12)}
+.close-sheet .bot-close-list{display:grid;gap:4px;max-height:min(52vh,420px);overflow:auto;margin:0;padding:0;list-style:none}
+.close-sheet .bot-close-list label{display:grid;grid-template-columns:22px minmax(0,1fr);gap:4px 10px;align-items:start;padding:10px 8px;border-radius:10px;cursor:pointer}
+.close-sheet .bot-close-list label:hover{background:var(--control)}
+.close-sheet .bot-close-list input{width:18px;height:18px;margin:2px 0 0;accent-color:#b3261e}
+.close-sheet .bot-close-list b{font-weight:500;overflow-wrap:anywhere}
+.close-sheet .bot-close-list small{grid-column:2;color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
+.close-sheet .bot-close-list .loses{color:#e5484d}
+</style>
 <header role="banner">
   <nav id="nav" aria-label="Back"></nav>
   <div style="min-width:0">
@@ -3035,8 +3063,111 @@ function card(p) {
   const active=['working','producing','needs-you'].includes(state) || stalled;
   const unread=hasNewAnswer(p,active);
   const memory=p.contextPercent>=60?`<span class="memfill${p.contextPercent>=80?' high':''}">${ui(`memory ${p.contextPercent}%`,`זיכרון ${p.contextPercent}%`)}</span>`:'';
-  return `<button type="button" class="pane ${p.turn || 'idle'}${stalled?' stalled':''}${unread?' unread':''}" data-id="${esc(p.id)}" data-key="pane:${esc(p.id)}" data-state="${stalled?'stalled':state}" aria-label="${esc(headline)}, ${esc(projectName)}, ${esc(p.provider)}, ${label}${unread?', '+ui('new answer','תשובה חדשה'):''}">${avatar(p)}<span class="pane-copy"><span class="row1"><span class="project" dir="auto">${esc(headline)}</span><span class="when">${at?shortWhen(at):''}</span>${unread?`<span class="unread-dot" title="${ui('New answer','תשובה חדשה')}"></span>`:''}</span><span class="row2"><span class="state-dot" aria-hidden="true"></span>${active?`<span class="state">${label}</span>`:detail?'':`<span class="provider">${esc(p.provider)}</span>`}${detail?`<span class="task" dir="auto">${esc(detail)}</span>`:''}${memory}</span></span></button>`;
+  return `<button type="button" class="pane ${p.turn || 'idle'}${stalled?' stalled':''}${unread?' unread':''}" data-id="${esc(p.id)}" data-key="pane:${esc(p.id)}" data-state="${stalled?'stalled':state}" aria-label="${esc(headline)}, ${esc(projectName)}, ${esc(p.provider)}, ${label}${unread?', '+ui('new answer','תשובה חדשה'):''}">${avatar(p)}<span class="pane-copy"><span class="row1"><span class="project" dir="auto">${esc(headline)}</span><span class="when">${at?shortWhen(at):''}</span><span class="pane-more" aria-hidden="true" title="${ui('More','עוד')}">⋯</span>${unread?`<span class="unread-dot" title="${ui('New answer','תשובה חדשה')}"></span>`:''}</span><span class="row2"><span class="state-dot" aria-hidden="true"></span>${active?`<span class="state">${label}</span>`:detail?'':`<span class="provider">${esc(p.provider)}</span>`}${detail?`<span class="task" dir="auto">${esc(detail)}</span>`:''}${memory}</span></span></button>`;
 }
+
+// Closing a terminal: right-click or the ⋯ mark on a row (computer), a long press (phone),
+// or the button in an open terminal's header. Always asks first; never one tap.
+function closePaneMenu(){document.querySelector('.pane-menu')?.remove();}
+function openPaneMenu(row,x,y){
+  closePaneMenu();
+  const id=row.dataset.id,name=row.querySelector('.project')?.textContent || ui('this terminal','המסוף הזה');
+  const menu=document.createElement('div');menu.className='pane-menu';menu.setAttribute('role','menu');
+  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button><button type="button" role="menuitem" class="danger" data-close>${ui('Close terminal…','סגירת המסוף…')}</button>`;
+  document.body.append(menu);
+  const r=menu.getBoundingClientRect();
+  menu.style.left=Math.max(12,Math.min(x,innerWidth-r.width-12))+'px';menu.style.top=Math.max(12,Math.min(y,innerHeight-r.height-12))+'px';
+  menu.querySelector('[data-open]').onclick=()=>{closePaneMenu();row.click();};
+  menu.querySelector('[data-close]').onclick=()=>{closePaneMenu();confirmClose(id,name,row);};
+  menu.querySelector('button').focus();
+}
+function confirmClose(id,name,returnFocus){
+  document.querySelector('.close-sheet')?.remove();
+  const wrap=document.createElement('div');wrap.className='close-sheet';
+  wrap.innerHTML=`<div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="close-sheet-title" aria-describedby="close-sheet-text"><h2 id="close-sheet-title" dir="auto">${esc(ui(`Close ${name}?`,`לסגור את ${name}?`))}</h2><p id="close-sheet-text">${ui('Its work stops.','העבודה שלו תיעצר.')}</p><p class="sheet-result" role="status" aria-live="polite"></p><div class="sheet-actions"><button type="button" data-cancel>${ui('Cancel','ביטול')}</button><button type="button" class="danger" data-confirm>${ui('Close','סגירה')}</button></div></div>`;
+  document.body.append(wrap);
+  const done=()=>{wrap.remove();returnFocus?.focus?.();};
+  const cancel=wrap.querySelector('[data-cancel]'),go=wrap.querySelector('[data-confirm]'),out=wrap.querySelector('.sheet-result');
+  cancel.onclick=done;wrap.onclick=e=>{if(e.target===wrap && !go.disabled)done();};
+  wrap.onkeydown=e=>{if(e.key==='Escape' && !go.disabled){e.preventDefault();done();}};
+  cancel.focus();
+  go.onclick=async()=>{
+    go.disabled=cancel.disabled=true;out.textContent=ui('Closing…','סוגר…');
+    let r;try{const sent=await fetch('/api/close',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id}),signal:AbortSignal.timeout(15000)});r=await sent.json();}
+    catch{r={error:ui('No answer from the PC. Check TermFleet before trying again.','אין תשובה מהמחשב. בדקו ב-TermFleet לפני ניסיון נוסף.'),uncertain:true};}
+    if(r.ok){
+      wrap.remove();
+      document.querySelectorAll(`.pane[data-id="${CSS.escape(id)}"]`).forEach(el=>el.remove());
+      note(ui(`Closed ${name}.`,`${name} נסגר.`));
+      if(focusedPane===id){history.pushState({},'',location.pathname);fleet();}else fleet(Boolean(focusedPane));
+      return;
+    }
+    out.textContent=r.error || ui('It was not closed.','לא נסגר.');
+    cancel.disabled=false;go.disabled=Boolean(r.uncertain);
+  };
+}
+function openRowMenu(row,x,y){if(row.matches('.bot-row'))openBotMenu(row,x,y);else openPaneMenu(row,x,y);}
+function openBotMenu(row,x,y){
+  closePaneMenu();
+  const id=row.dataset.bot,name=row.querySelector('.room-name')?.textContent || ui('this bot','הבוט הזה');
+  const menu=document.createElement('div');menu.className='pane-menu';menu.setAttribute('role','menu');
+  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button><button type="button" role="menuitem" class="danger" data-close>${ui('Close this bot…','סגירת הבוט…')}</button>`;
+  document.body.append(menu);
+  const r=menu.getBoundingClientRect();
+  menu.style.left=Math.max(12,Math.min(x,innerWidth-r.width-12))+'px';menu.style.top=Math.max(12,Math.min(y,innerHeight-r.height-12))+'px';
+  menu.querySelector('[data-open]').onclick=()=>{closePaneMenu();row.click();};
+  menu.querySelector('[data-close]').onclick=()=>{closePaneMenu();confirmBotClose(id,name,row);};
+  menu.querySelector('button').focus();
+}
+async function confirmBotClose(id,name,returnFocus){
+  document.querySelector('.close-sheet')?.remove();
+  const wrap=document.createElement('div');wrap.className='close-sheet';
+  wrap.innerHTML=`<div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="close-sheet-title"><h2 id="close-sheet-title" dir="auto">${esc(ui(`Close ${name}?`,`לסגור את ${name}?`))}</h2><p>${ui('Checking what it is running…','בודק מה הוא מריץ…')}</p></div>`;
+  document.body.append(wrap);
+  const done=()=>{wrap.remove();returnFocus?.focus?.();};
+  wrap.onclick=e=>{if(e.target===wrap && !wrap.dataset.busy)done();};
+  wrap.onkeydown=e=>{if(e.key==='Escape' && !wrap.dataset.busy){e.preventDefault();done();}};
+  let plan;try{const r=await fetch(`/api/bot-close?bot=${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(10000)});plan=await r.json();}catch{plan={error:ui('Could not check what it is running.','לא ניתן לבדוק מה הוא מריץ.')}}
+  if(!wrap.isConnected)return;
+  const items=plan.items || [];
+  const list=items.map(i=>`<li><label><input type="checkbox" value="${esc(i.id)}"${i.checked?' checked':''}><b dir="auto">${esc(i.label)}</b><small dir="auto">${esc(i.now || '')}</small>${i.loses?`<small class="loses" dir="auto">${esc(i.loses)}</small>`:i.note?`<small dir="auto">${esc(i.note)}</small>`:''}</label></li>`).join('');
+  wrap.querySelector('.sheet').innerHTML=`<h2 id="close-sheet-title" dir="auto">${esc(ui(`Close ${name}?`,`לסגור את ${name}?`))}</h2>${plan.warning?`<p class="bot-close-warning" role="alert" dir="auto">${esc(plan.warning)}</p>`:''}${plan.error?`<p role="alert">${esc(plan.error)}</p>`:items.length?`<p>${ui('Tick what to close. Its chat and memory are kept, and a new message starts it again.','סמנו מה לסגור. השיחה והזיכרון נשמרים, והודעה חדשה מפעילה אותו שוב.')}</p><ul class="bot-close-list">${list}</ul>`:`<p>${ui('Nothing is running for it right now. Its chat and memory are kept.','שום דבר לא רץ עבורו כרגע. השיחה והזיכרון נשמרים.')}</p>`}<p class="sheet-result" role="status" aria-live="polite"></p><div class="sheet-actions"><button type="button" data-cancel>${items.length?ui('Cancel','ביטול'):ui('OK','אישור')}</button>${items.length?`<button type="button" class="danger" data-confirm>${ui('Close selected','סגירת המסומנים')}</button>`:''}</div>`;
+  const cancel=wrap.querySelector('[data-cancel]'),go=wrap.querySelector('[data-confirm]'),out=wrap.querySelector('.sheet-result');
+  cancel.onclick=done;cancel.focus();
+  if(!go)return;
+  const sync=()=>{go.disabled=!wrap.querySelector('.bot-close-list input:checked');};
+  wrap.querySelectorAll('.bot-close-list input').forEach(b=>b.onchange=sync);sync();
+  go.onclick=async()=>{
+    const ids=[...wrap.querySelectorAll('.bot-close-list input:checked')].map(b=>b.value);
+    wrap.dataset.busy='1';go.disabled=cancel.disabled=true;out.textContent=ui('Closing…','סוגר…');
+    let r;try{const sent=await fetch('/api/bot-close',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bot:id,items:ids}),signal:AbortSignal.timeout(30000)});r=await sent.json();}
+    catch{r={error:ui('No answer from the PC. Check before trying again.','אין תשובה מהמחשב. בדקו לפני ניסיון נוסף.')}}
+    delete wrap.dataset.busy;
+    if(r.ok){done();note(ui(`Closed what you picked for ${name}.`,`נסגר מה שבחרתם עבור ${name}.`));fleet(Boolean(focusedPane));return;}
+    const failed=(r.results || []).filter(x=>!x.ok);
+    out.textContent=r.error || failed.map(x=>`${x.label}: ${x.error}`).join(' · ') || ui('Some items were not closed.','חלק מהפריטים לא נסגרו.');
+    cancel.disabled=false;
+  };
+}
+let pressTimer=null,pressAt=null,swallowClick=false;
+document.addEventListener('contextmenu',e=>{const row=e.target.closest?.('.pane[data-id],.bot-row[data-bot]');if(!row)return;e.preventDefault();clearTimeout(pressTimer);const r=row.getBoundingClientRect();openRowMenu(row,e.clientX || r.left+16,e.clientY || r.bottom);});
+document.addEventListener('pointerdown',e=>{
+  if(!e.target.closest?.('.pane-menu'))closePaneMenu();
+  const row=e.target.closest?.('.pane[data-id],.bot-row[data-bot]');if(!row || e.pointerType==='mouse')return;
+  pressAt={x:e.clientX,y:e.clientY};clearTimeout(pressTimer);
+  pressTimer=setTimeout(()=>{swallowClick=true;navigator.vibrate?.(15);openRowMenu(row,pressAt.x,pressAt.y);},550);
+});
+document.addEventListener('pointermove',e=>{if(pressAt && Math.hypot(e.clientX-pressAt.x,e.clientY-pressAt.y)>10)clearTimeout(pressTimer);});
+for(const type of ['pointerup','pointercancel','scroll'])document.addEventListener(type,()=>clearTimeout(pressTimer),true);
+document.addEventListener('click',e=>{
+  if(swallowClick && e.target.closest?.('.pane[data-id],.bot-row[data-bot]')){e.preventDefault();e.stopPropagation();swallowClick=false;return;}
+  swallowClick=false;
+  const more=e.target.closest?.('.pane-more');
+  if(more){e.preventDefault();e.stopPropagation();const row=more.closest('.pane[data-id]'),r=more.getBoundingClientRect();openPaneMenu(row,r.left,r.bottom+4);return;}
+  const head=e.target.closest?.('[data-close-pane]');
+  if(head){e.preventDefault();e.stopPropagation();confirmClose(head.dataset.closePane,head.dataset.closeName,head);}
+},true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape' && document.querySelector('.pane-menu')){closePaneMenu();}});
 
 async function chat(id,{motion=null,initialFeed=null}={}) {
   otherView=null;
@@ -3114,6 +3245,7 @@ async function chat(id,{motion=null,initialFeed=null}={}) {
           ? '<span class="headlive"><span class="dot producing" aria-hidden="true"></span>live</span>'
           : '<span class="headlive quiet"><span class="dot idle" aria-hidden="true"></span>quiet</span>');
     sub.innerHTML = esc(`${named.job?named.job+' · ':''}${named.projectName} · ${d.pane.provider}`)
+      + `<button type="button" class="close-terminal-head" data-close-pane="${esc(id)}" data-close-name="${esc(named.headline)}">${ui('Close terminal','סגירת מסוף')}</button>`
       + (d.producing && d.lastLine ? `<span class="headtail">${esc(d.lastLine)}</span>` : '');
     chatStatus.innerHTML = statusHtml(d.pane)+(visitNotice===id?`<span role="status">${ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.')}</span>`:'')+asksHtml(d.asks,Boolean(d.producing),d.pane?.sessionAuthority && d.pane.sessionViewV2?.now && !d.pane.sessionViewV2.now.stale?d.pane.sessionViewV2.now.label:'');
     const preservedAsk=document.querySelector('.askbox');

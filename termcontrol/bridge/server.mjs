@@ -16,6 +16,7 @@ import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
+import { botClosePlan, closeBotItems } from './bot-close.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, moveInOrder } from './prefs.mjs';
 import { liveness, lastLine, screenOf } from './liveness.mjs';
@@ -630,6 +631,20 @@ const handle = async (req, res) => {
 
   // Close a terminal card (Noam 2026-10-20), after he confirmed it in the page. The
   // TermFleet app closes it exactly as the card's X does; nothing here kills a process.
+  // "Close this bot": what it is running, then close only what Noam ticked.
+  if (url.pathname === '/api/bot-close' && (req.method === 'GET' || req.method === 'POST')) {
+    const botId = req.method === 'GET' ? url.searchParams.get('bot') : null;
+    let body = {};
+    if (req.method === 'POST') { try { body = await readJson(req, 16 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); } }
+    const id = botId || body.bot;
+    const bot = bots.list().find((b) => b.id === id);
+    if (!bot) return json(res, 404, { error: 'That bot no longer exists.' });
+    const plan = botClosePlan({ bot, panes: (await currentPanes()).panes, routines: routines.forPane(`bot:${bot.id}`), watches: bots.watches(bot.id) });
+    if (req.method === 'GET') return json(res, 200, plan);
+    const result = await closeBotItems({ botId: bot.id, ids: Array.isArray(body.items) ? body.items.map(String) : [], plan, bots, routines, requestClose });
+    return json(res, 200, result);
+  }
+
   if (url.pathname === '/api/close' && req.method === 'POST') {
     let body;
     try { body = await readJson(req, 4 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }

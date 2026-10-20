@@ -85,6 +85,17 @@ export class Routines {
     return { ok: true, routine };
   }
 
+  /** Pause or resume a schedule; it is kept either way (Noam's "close this bot" pauses them). */
+  setEnabled(id, enabled) {
+    this.load();
+    const routine = this.data.routines.find((r) => r.id === id);
+    if (!routine) return { error: 'That schedule no longer exists.' };
+    routine.enabled = Boolean(enabled);
+    if (routine.enabled) routine.nextRunAt = nextRunAt(routine.days, routine.time, this.now());
+    this.save();
+    return { ok: true };
+  }
+
   remove(id) {
     this.load();
     const before = this.data.routines.length;
