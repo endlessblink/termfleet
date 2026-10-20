@@ -881,6 +881,10 @@ async function shutdownGracefully(reason, { exitCode = 0, graceMs = 10000 } = {}
   if (stopping) return;
   stopping = true;
   console.log(`[bridge] stopping (${reason}); ${inFlight} request(s) in flight, ${streams.size} stream(s) open`);
+  // Bot replies finish first (the phone keeps working meanwhile); new ones wait for the new bridge.
+  if (bots.running.size) console.log(`[bridge] waiting for ${bots.running.size} bot repl${bots.running.size === 1 ? 'y' : 'ies'} to finish`);
+  const { unfinished } = await bots.closeDown({ maxMs: Number(process.env.TC_RESTART_WAIT_MS) || 5 * 60 * 1000 });
+  if (unfinished.length) console.log(`[bridge] ${unfinished.length} bot reply still running; it is re-run after the restart`);
   server.close();
   for (const res of streams) { try { res.write('retry: 1000\n\n'); res.end(); } catch { /* already gone */ } }
   const deadline = Date.now() + graceMs;

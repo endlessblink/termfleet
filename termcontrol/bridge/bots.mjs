@@ -268,18 +268,18 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (error) { resolve({ error: String(error.message || error) }); return; }
-    let buffer = '', stderr = '', finalText = '', error = null, lastText = '', limit = null, completed = false, stopped = false;
+    let buffer = '', stderr = '', finalText = '', error = null, lastText = '', limit = null, completed = false, stopped = false, ownKill = false;
     // Noam closing the bot stops this reply the way the timeout does: a polite SIGTERM.
     onStart?.(() => { stopped = true; child.kill('SIGTERM'); });
     // The last run's raw output, so a failure can be explained afterwards (capped).
     let log = null, logged = 0;
     if (logPath) { try { log = fs.openSync(logPath, 'w'); } catch { log = null; } }
     const keep = (prefix, chunk) => { if (log === null || logged > 2_000_000) return; const t = `${prefix}${chunk}`; logged += t.length; try { fs.writeSync(log, t); } catch { /* best effort */ } };
-    const timer = setTimeout(() => { error = 'The bot took too long and was stopped.'; child.kill('SIGTERM'); }, timeoutMs);
+    const timer = setTimeout(() => { ownKill = true; error = 'The bot took too long and was stopped.'; child.kill('SIGTERM'); }, timeoutMs);
     // A brain that says nothing for a long time is stuck (a prompt nobody can answer,
     // a hung command): stop it and say so, instead of waiting out the full limit.
     let lastOutput = Date.now();
-    const idle = setInterval(() => { if (Date.now() - lastOutput > idleMs) { error = 'The bot went quiet for too long (it may have been stuck on something) and was stopped.'; child.kill('SIGTERM'); } }, Math.min(30_000, idleMs));
+    const idle = setInterval(() => { if (Date.now() - lastOutput > idleMs) { ownKill = true; error = 'The bot went quiet for too long (it may have been stuck on something) and was stopped.'; child.kill('SIGTERM'); } }, Math.min(30_000, idleMs));
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
       lastOutput = Date.now();
@@ -290,7 +290,7 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
         const line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1);
         const ev = parseBrainLine(bot.provider, line);
         if (!ev) continue;
-        if (ev.limit) { limit = limit || ev.limit; if (!ev.final) child.kill('SIGTERM'); }
+        if (ev.limit) { limit = limit || ev.limit; if (!ev.final) { ownKill = true; child.kill('SIGTERM'); } }
         if (ev.text) { lastText = ev.text; if (ev.final) finalText = ev.text; }
         if (ev.completed) completed = true;
         if (ev.error) error = ev.error;
@@ -300,7 +300,7 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (c) => { keep('[stderr] ', c); stderr = (stderr + c).slice(-4000); });
     child.on('error', (e) => { error = String(e.message || e); });
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer);
       clearInterval(idle);
       keep('', `\n[exit ${code}]\n`);
@@ -308,6 +308,8 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
       if (!limit && isLimitText(stderr)) limit = { text: stderr.trim().split('\n').pop().slice(0, 300), resetsAt: resetTime(stderr) };
       if (stopped) { resolve({ stopped: true, error: 'Stopped by Noam.', code }); return; }
       if (limit) { resolve({ limit, error: 'usage limit', code }); return; }
+      // Killed from outside (a service restart, a stray kill): the turn is re-run, not reported as an error.
+      if (!ownKill && !completed && (code === 143 || code === 137 || signal === 'SIGTERM' || signal === 'SIGKILL')) { resolve({ killed: true, error: `The brain stopped (exit ${code ?? signal}).`, code }); return; }
       // Codex says what it is about to do before doing it; that opening line is not
       // the answer. Without a completed turn the run stopped partway: say so.
       const unfinished = bot.provider === 'codex' && !completed;
@@ -356,6 +358,8 @@ export class Bots {
     this.now = now;
     this.running = new Map();   // id -> { activity, startedAt }
     this.queues = new Map();    // id -> [text]
+    this.closing = false;       // the service is restarting: finish running replies, start no new ones
+    this.resumed = new Set();   // bots whose interrupted turn is being re-run (only once)
   }
 
   folder(id) {
@@ -698,6 +702,7 @@ export class Bots {
 
   async drain(id) {
     while ((this.queues.get(id) || []).length) {
+      if (this.closing) { this.saveQueue(id); return; }
       const texts = this.queues.get(id).splice(0);
       // Messages that arrived while the bot was busy go in together, oldest first.
       const text = texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n');
@@ -720,10 +725,17 @@ export class Bots {
           }
         }
         const marked = this.read(id);
-        marked.inflight = { text, at: this.now() };
+        marked.inflight = { text, at: this.now(), ...(this.resumed.delete(id) ? { resumed: true } : {}) };
         this.write(marked);
       }
       let result = await this.turn(id, text);
+      // Killed from outside: during a restart keep the turn for after it; otherwise re-run it once now.
+      if (result?.killed && this.closing) { this.running.delete(id); this.saveQueue(id); return; }
+      if (result?.killed && !this.read(id)?.inflight?.resumed) {
+        this.append(id, { role: 'system', text: 'The reply was cut off, so it is starting again.' });
+        result = await this.turn(id, `(You were cut off while working on this; check what already happened before redoing anything.)\n\n${text}`);
+        if (result?.killed && this.closing) { this.running.delete(id); this.saveQueue(id); return; }
+      }
       // Out of credits: move to the next plan that is free, at most once per plan.
       for (let tries = 0; result?.limit && tries < PROVIDERS.length; tries++) {
         const bot = this.read(id);
@@ -833,18 +845,47 @@ export class Bots {
     let resumed = 0;
     for (const { id } of this.list()) {
       const bot = this.read(id);
-      if (!bot?.inflight || this.running.has(id)) continue;
-      const { text } = bot.inflight;
-      delete bot.inflight;
+      if ((!bot?.inflight && !bot?.queued?.length) || this.running.has(id)) continue;
+      const { inflight, queued = [] } = bot;
+      delete bot.inflight; delete bot.queued;
       this.write(bot);
-      this.append(id, { role: 'system', text: `${bot.name} was cut off by a restart and is picking up where it was.` });
       const queue = this.queues.get(id) || [];
-      queue.unshift(`(You were cut off by a restart while working on this; check what already happened before redoing anything.)\n\n${text}`);
+      queue.unshift(...queued);
+      if (inflight?.resumed) {
+        this.append(id, { role: 'error', text: `${bot.name} was cut off twice by restarts and could not finish. Ask again when you are ready.` });
+      } else if (inflight) {
+        this.append(id, { role: 'system', text: `${bot.name} was cut off by a restart and is picking up where it was.` });
+        queue.unshift(`(You were cut off by a restart while working on this; check what already happened before redoing anything.)\n\n${inflight.text}`);
+        this.resumed.add(id);
+      }
       this.queues.set(id, queue);
+      if (!queue.length) continue;
       this.drain(id);
       resumed++;
     }
     return resumed;
+  }
+
+  /** Messages that arrived during a restart wait in bot.json and are answered after it. */
+  saveQueue(id) {
+    const waiting = (this.queues.get(id) || []).splice(0);
+    if (!waiting.length) return;
+    const bot = this.read(id);
+    if (!bot) return;
+    bot.queued = [...(bot.queued || []), ...waiting].slice(-20);
+    this.write(bot);
+  }
+
+  /**
+   * A restart: start no new replies, let the running ones finish (up to maxMs), save what waits.
+   * A reply still running at the end keeps its inflight note, so it is re-run after the restart.
+   */
+  async closeDown({ maxMs = 5 * 60 * 1000, pause = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+    this.closing = true;
+    const deadline = this.now() + maxMs;
+    while (this.running.size && this.now() < deadline) await pause(500);
+    for (const id of this.queues.keys()) this.saveQueue(id);
+    return { unfinished: [...this.running.keys()] };
   }
 
   /** One brain turn on whichever plan the bot is on now. */
