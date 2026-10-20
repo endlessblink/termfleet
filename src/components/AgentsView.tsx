@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { OPEN_BOT_EVENT, takePendingBot } from "../lib/botsDirectory";
 // The agent list and chat, built into TermFleet. It is the same page the phone
 // uses, so both always look and behave alike. It signs itself in (this machine
@@ -20,6 +21,19 @@ export function AgentsView() {
     };
     window.addEventListener(OPEN_BOT_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_BOT_EVENT, onOpen);
+  }, []);
+  // Ctrl+V is claimed at window level for whichever terminal last held the keyboard
+  // (gtk_keys.rs). Leaving a terminal for this view never released it, so every paste
+  // here went into that hidden terminal instead of the chat box ("cant paste anything",
+  // text and pictures alike). Release the claim on arrival and whenever the chat page
+  // takes the keyboard (the window blurs when the iframe gets focus).
+  useEffect(() => {
+    const release = () => {
+      invoke("set_focused_terminal", { id: null }).catch(() => {});
+    };
+    release();
+    window.addEventListener("blur", release);
+    return () => window.removeEventListener("blur", release);
   }, []);
   return (
     <section className="agents-view" aria-label="Agents" style={{ width: "100%", height: "100%", background: "var(--surface-raised)" }}>
