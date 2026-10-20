@@ -40,14 +40,24 @@ const RANK = { waiting: 0, working: 1, idle: 2 };
  * Group terminals the way the desktop does — by project — while making sure a
  * project with something waiting cannot hide below the fold.
  */
-export function byProject(panes) {
+const PROJECT_MARKERS = ['.git', 'package.json', 'pyproject.toml', 'Cargo.toml', 'go.mod'];
+export function hasProjectMarker(dir) {
+  return PROJECT_MARKERS.some((name) => { try { fs.statSync(path.join(dir, name)); return true; } catch { return false; } });
+}
+
+export function byProject(panes, { groupRoots = new Map(), isProject = hasProjectMarker } = {}) {
   const groups = new Map();
   for (const pane of panes) {
-    const key = pane.mapGroupId ? `map:${pane.mapGroupId}` : `pane:${pane.id}`;
+    // A terminal opened in one project can move on to another project folder
+    // (2026-10-20: health-app showed under claude-and-conquer). It then gets
+    // its own heading; a plain subfolder such as an output folder stays put.
+    const root = pane.mapGroupId ? groupRoots.get(pane.mapGroupId) : null;
+    const moved = Boolean(root && pane.cwd && path.resolve(pane.cwd) !== path.resolve(root) && isProject(pane.cwd));
+    const key = moved ? `folder:${path.resolve(pane.cwd)}` : pane.mapGroupId ? `map:${pane.mapGroupId}` : `pane:${pane.id}`;
     if (!groups.has(key)) groups.set(key, {
       id: key,
-      mapGroupId: pane.mapGroupId || null,
-      project: pane.mapGroupName || pane.project || 'Other',
+      mapGroupId: moved ? null : pane.mapGroupId || null,
+      project: (moved ? pane.project : pane.mapGroupName) || pane.project || 'Other',
       emoji: pane.emoji || null,
       panes: [],
     });

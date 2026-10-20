@@ -5,8 +5,10 @@ import path from 'node:path';
  * TF-096 part 7: things that wake a bot without Noam writing (Grok Bot's event
  * triggers). Checked every 30 seconds by the bridge:
  *  - a terminal agent the bot started has finished;
- *  - one of them has waited 10 minutes on an approval: it is denied, as Grok Bot
- *    does for unattended runs (questions are never answered automatically);
+ *  - one of them is waiting on a prompt (an approval or a question): the prompt
+ *    is posted in the bot's chat with its own choices for Noam to tap, and the
+ *    bot is told. Nothing is ever answered for him (Noam 2026-10-20: his answer
+ *    goes to the terminal "as if I pressed it at the PC");
  *  - new code landed in a folder the bot watches.
  */
 
@@ -22,11 +24,19 @@ export function gitHead(dir) {
   } catch { return null; }
 }
 
-export const APPROVAL_EXPIRES_MS = 10 * 60 * 1000;
-
 const stateOf = (pane) => (!pane ? 'closed' : pane.turn === 'waiting' ? 'waiting' : (pane.producing || pane.turn === 'working') ? 'working' : 'idle');
 
-export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, answer, head = gitHead }) {
+/** The prompt as the bot chat shows it: the same choices the terminal offers. */
+export function terminalAskMessage(paneId, label, ask) {
+  return {
+    role: 'terminal-ask', pane: paneId, label, askId: ask.id, kind: ask.kind,
+    text: String(ask.title || 'The terminal agent is asking you something.').slice(0, 300),
+    ...(ask.detail ? { detail: String(ask.detail).slice(0, 400) } : {}),
+    options: ask.multiSelect ? [] : (ask.options || []).map((o) => ({ key: o.key, label: o.label })),
+  };
+}
+
+export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, head = gitHead }) {
   for (const b of bots.list()) {
     for (const h of b.helpers || []) {
       const pane = panes.find((p) => p.id === h.paneId);
@@ -39,20 +49,17 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
           ? `The terminal agent you are following ("${label}") has finished its turn. Read its result (termfleet-team read ${h.paneId}), do what you told Noam you would do next, and tell him in plain words.`
           : `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words.`);
       }
-      const waitingSince = state === 'waiting' ? (before.waitingSince ?? now) : null;
-      let expired = state === 'waiting' ? Boolean(before.expired) : false;
-      if (state === 'waiting' && !expired && !h.followed && now - waitingSince >= APPROVAL_EXPIRES_MS) {
+      let posted = state === 'waiting' ? before.posted || null : null;
+      if (state === 'waiting') {
         const ask = await readAsk(pane);
-        if (ask && ask.kind !== 'question') {
-          const result = await answer(pane, ask);
-          expired = true;
-          bots.wake(b.id, result?.ok
-            ? `Your terminal agent for "${label}" waited 10 minutes for an approval nobody gave ("${String(ask.title || '').slice(0, 120)}"), so it was denied. Find another way, or ask Noam if it is really needed.`
-            : `Your terminal agent for "${label}" has waited 10 minutes for an approval and it could not be answered automatically. Ask Noam.`);
+        if (ask?.id && ask.id !== posted) {
+          posted = ask.id;
+          bots.append(b.id, terminalAskMessage(h.paneId, label, ask));
+          bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are already shown to Noam in this chat; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
         }
       }
       if (state === 'closed') seen.delete(key);
-      else seen.set(key, { state, waitingSince, expired });
+      else seen.set(key, { state, posted });
     }
     for (const w of bots.watches(b.id)) {
       const current = head(w.path);

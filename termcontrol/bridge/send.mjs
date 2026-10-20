@@ -259,6 +259,47 @@ export async function answerPrompt(pane, choice, approval, kind) {
   }
 }
 
+/**
+ * Press the digit of a numbered prompt read off the screen, as at the PC. Some
+ * menus act on the digit; others only move their cursor to it. Enter is sent
+ * only when this same prompt is still open with the cursor on that choice, so it
+ * can never land on a different prompt.
+ */
+export async function answerScreenChoice(pane, prompt, choice, {
+  screen = async () => (await import('./liveness.mjs')).screenOf(pane.id),
+  write = (data) => ask({ type: 'writeSession', id: pane.id, data }),
+  pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  live = liveSessionIds,
+  record = audit,
+} = {}) {
+  const option = prompt.options.find((o) => o.key === String(choice));
+  if (!option) return { error: 'Unknown choice.', notSent: true };
+  if (!(await live()).has(pane.id)) return { error: 'That terminal is not running any more.', notSent: true };
+  // Only the menu at the bottom of the screen counts: the same prompt can still be
+  // in the text above after it was answered and the program moved on.
+  const { screenPromptAsk } = await import('./asks.mjs');
+  const open = (value) => screenPromptAsk(pane, value)?.id === prompt.id;
+  const onChoice = (value) => {
+    const lines = String(value || '').split('\n');
+    const end = lines.findLastIndex((line) => /Esc to cancel/i.test(line));
+    return lines.slice(Math.max(0, end - 12), end).some((line) => new RegExp(`^\\s*[❯›>]\\s*${option.key}\\.`).test(line.replace(/[│┃]/g, ' ')));
+  };
+  const done = () => { record({ pane: pane.id, project: pane.project, askId: prompt.id, choice: option.key, ok: true }); return { ok: true, sentAt: Date.now() }; };
+  try {
+    await write(option.key);
+    let snapshot = '';
+    for (let n = 0; n < 14; n++) { await pause(150); snapshot = await screen(); if (!open(snapshot)) return done(); if (onChoice(snapshot) && n >= 2) break; }
+    if (!open(snapshot)) return done();
+    if (!onChoice(snapshot)) return { error: 'The terminal did not take the choice. Check it before trying again.', uncertain: true };
+    await write('\r');
+    for (let n = 0; n < 14; n++) { await pause(150); snapshot = await screen(); if (!open(snapshot)) return done(); }
+    return { error: 'The prompt is still open in the terminal. Check it before trying again.', uncertain: true };
+  } catch (error) {
+    record({ pane: pane.id, project: pane.project, askId: prompt.id, choice: option.key, ok: false, error: String(error.message || error) });
+    return { error: String(error.message || error), uncertain: true };
+  }
+}
+
 export async function sendCustomAnswer(pane, question, text, {
   screen = async options => visibleScreenOf(pane.id, options) || '',
   write = data => ask({type:'writeSession',id:pane.id,data}),

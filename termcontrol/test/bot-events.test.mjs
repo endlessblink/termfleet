@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkBotEvents, APPROVAL_EXPIRES_MS, gitHead } from '../bridge/bot-events.mjs';
+import { checkBotEvents, gitHead } from '../bridge/bot-events.mjs';
 import { Bots } from '../bridge/bots.mjs';
 import { Routines } from '../bridge/routines.mjs';
 
@@ -28,24 +28,22 @@ test('a bot wakes when a terminal agent it started finishes', async () => {
   assert.match(woke[0], /terminal agent you started for "run phone tests" has finished/);
 });
 
-test('an approval nobody answers for 10 minutes is denied and the bot is told; questions are never auto-answered', async () => {
-  const { bots, woke } = setup();
+// Noam 2026-10-20: a prompt in a terminal a bot runs is shown to him in the bot's chat
+// with the terminal's own choices; it is never answered for him, not even after a wait.
+test('a prompt in a bot\'s terminal is posted once in its chat with its choices, the bot is told, nothing is answered', async () => {
+  const { bots, bot, woke } = setup();
   const seen = new Map();
-  const answered = [];
-  const run = (now, kind) => checkBotEvents({ bots, seen, now, panes: [{ id: 'terminal-h', turn: 'waiting' }], readAsk: async () => ({ kind, title: 'Run npm publish?' }), answer: async (pane, ask) => { answered.push(ask.kind); return { ok: true }; } });
-  await run(0, 'approval');
-  await run(APPROVAL_EXPIRES_MS - 1, 'approval');
-  assert.equal(answered.length, 0, 'not before 10 minutes');
-  await run(APPROVAL_EXPIRES_MS + 1, 'approval');
-  assert.deepEqual(answered, ['approval']);
-  assert.match(woke.at(-1), /waited 10 minutes for an approval nobody gave \("Run npm publish\?"\), so it was denied/);
-  await run(APPROVAL_EXPIRES_MS * 2, 'approval');
-  assert.equal(answered.length, 1, 'denied once');
-  const other = setup();
-  const seen2 = new Map();
-  const asked = [];
-  for (const now of [0, APPROVAL_EXPIRES_MS + 5]) await checkBotEvents({ bots: other.bots, seen: seen2, now, panes: [{ id: 'terminal-h', turn: 'waiting' }], readAsk: async () => ({ kind: 'question' }), answer: async () => { asked.push(1); return { ok: true }; } });
-  assert.equal(asked.length, 0);
+  const ask = { id: 'ask-1', kind: 'permission', title: 'Do you want to proceed?', detail: 'This starts an export/render. Noam must approve it.', options: [{ key: '1', label: 'Yes' }, { key: '2', label: 'No' }] };
+  const run = (now, a = ask) => checkBotEvents({ bots, seen, now, panes: [{ id: 'terminal-h', turn: 'waiting' }], readAsk: async () => a });
+  await run(0);
+  await run(60 * 60 * 1000);
+  const posted = bots.messages(bot.id).filter((m) => m.role === 'terminal-ask');
+  assert.equal(posted.length, 1, 'posted once while the same prompt waits');
+  assert.deepEqual({ pane: posted[0].pane, askId: posted[0].askId, text: posted[0].text, detail: posted[0].detail, options: posted[0].options },
+    { pane: 'terminal-h', askId: 'ask-1', text: 'Do you want to proceed?', detail: 'This starts an export/render. Noam must approve it.', options: ask.options });
+  assert.match(woke.at(-1), /waiting for Noam: "Do you want to proceed\?".*Never answer it yourself/);
+  await run(2, { ...ask, id: 'ask-2', title: 'Allow the next step?' });
+  assert.equal(bots.messages(bot.id).filter((m) => m.role === 'terminal-ask').length, 2, 'a new prompt is posted again');
 });
 
 test('new code in a watched folder wakes the bot once per change', async () => {
@@ -92,9 +90,9 @@ test('a bot that follows an agent it did not start is woken when it finishes, an
   const answered = [];
   const tick = (now, turn) => checkBotEvents({ bots, seen, now, panes: [{ id: 'terminal-n', turn }], readAsk: async () => ({ kind: 'approval', title: 'Run it?' }), answer: async () => { answered.push(1); return { ok: true }; } });
   await tick(0, 'waiting');
-  await tick(APPROVAL_EXPIRES_MS * 3, 'waiting');
+  await tick(30 * 60 * 1000, 'waiting');
   assert.equal(answered.length, 0, 'Noam\'s own agent is never auto-denied');
-  await tick(APPROVAL_EXPIRES_MS * 3 + 1, 'working');
-  await tick(APPROVAL_EXPIRES_MS * 3 + 2, 'idle');
+  await tick(30 * 60 * 1000 + 1, 'working');
+  await tick(30 * 60 * 1000 + 2, 'idle');
   assert.match(woke.at(-1), /you are following \("paper bot fix"\) has finished its turn.*do what you told Noam you would do next/);
 });

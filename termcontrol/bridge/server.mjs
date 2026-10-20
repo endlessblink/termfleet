@@ -14,7 +14,7 @@ import { transcriptPath as codexTranscript } from './adapters/codex.mjs';
 import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
-import { sendToPane, answerPrompt, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice } from './send.mjs';
+import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice } from './send.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, moveInOrder } from './prefs.mjs';
 import { liveness, lastLine, screenOf } from './liveness.mjs';
@@ -217,7 +217,6 @@ async function botEvents() {
   await checkBotEvents({
     bots, panes: (await currentPanes()).panes, seen: helperSeen,
     readAsk: async (pane) => { const screen = visibleScreenOf(pane.id) ?? await screenOf(pane.id); return pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen); },
-    answer: (pane, ask) => answerPrompt(pane, 'no', adapterFor(pane)?.approval, ask.kind),
   });
 }
 setInterval(() => { botEvents().catch((error) => console.error('[bot events]', error.message)); }, 30_000).unref?.();
@@ -346,7 +345,7 @@ const handle = async (req, res) => {
       view: inventory.view,
       inventoryVersion: inventory.inventoryVersion,
       panes,
-      groups: byProject(panes),
+      groups: byProject(panes, { groupRoots: new Map((readWorkspace()?.groups || []).filter((g) => g?.id && g.projectRoot).map((g) => [g.id, g.projectRoot])) }),
     });
   }
 
@@ -689,6 +688,7 @@ const handle = async (req, res) => {
         if (freshAsk.kind === 'question' && (questionScreen===null || freshAsk.multiSelect || !showsQuestion(questionScreen))) return json(res,409,{error:'This question needs a fresh visible single-answer field in TermFleet. Check the terminal before answering.',notSent:true});
         const result = await choiceReceipts.send(fresh.id, freshAsk.id, answer, () => typeof payload.answer==='string'
           ? sendCustomAnswer(fresh, freshAsk, payload.answer, {screen:(options) => visibleScreenOf(fresh.id,options) || ''})
+          : freshAsk.screenChoice ? answerScreenChoice(fresh, freshAsk, payload.choice)
           : answerPrompt(fresh, payload.choice, adapter?.approval, freshAsk.stage==='review'?'question-submit':freshAsk.kind));
         return json(res, result.error ? 400 : 200, result);
       }

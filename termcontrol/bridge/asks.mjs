@@ -42,6 +42,8 @@ export function pendingAsk(pane, {
     // phone said "Needs you" with nothing to answer (2026-10-20).
     const vendor = pane.vendorStatus;
     if (vendor?.status === 'waiting' && /permission/i.test(vendor.waitingFor || '')) {
+      const shown = screenPromptAsk(pane, screen);
+      if (shown) return shown;
       const tool = pendingToolFromTranscript(pane);
       // Hook prompts offer only Yes / No; "don't ask again" would press No there.
       return permissionAsk(pane, {
@@ -112,7 +114,7 @@ export function matchesAsk(ask, id, choice) {
 export function screenPermissionAsk(pane, screen) {
   const text = String(screen || '');
   const match = text.match(/Allow the (.+?) server to run tool ["']([^"']+)["']\?/i);
-  if (!match || !/\b(?:1\.\s*)?Allow\b/i.test(text) || !/\bCancel\b/i.test(text)) return null;
+  if (!match || !/\b(?:1\.\s*)?Allow\b/i.test(text) || !/\bCancel\b/i.test(text)) return screenPromptAsk(pane, text);
   const ask = {
     kind: 'permission',
     title: `Allow ${match[2]}?`,
@@ -124,6 +126,46 @@ export function screenPermissionAsk(pane, screen) {
       { key: '3', label: 'Always allow' },
       { key: '4', label: 'Cancel' },
     ],
+  };
+  return { ...ask, id: askId(pane, ask) };
+}
+
+/**
+ * Any numbered prompt drawn at the bottom of the terminal, such as a hook asking
+ * "Do you want to proceed? 1. Yes 2. No" with its reason above it (Noam
+ * 2026-10-20: the phone said "Needs you" but showed nothing to approve). The
+ * buttons are exactly the numbered choices on screen, and an answer is that
+ * digit, as if pressed at the PC. Only the last open menu counts, and only
+ * when the terminal's own "Esc to cancel" footer is below it.
+ */
+export function screenPromptAsk(pane, screen) {
+  const lines = String(screen || '').split('\n').map((line) => line.replace(/[│┃]/g, ' ').replace(/\s+$/, ''));
+  // The footer must be the last thing on screen: anything printed below it means
+  // the menu was answered and the program moved on.
+  let end = lines.length - 1;
+  while (end >= 0 && !lines[end].trim()) end--;
+  if (end < 0 || !/Esc to cancel/i.test(lines[end])) return null;
+  const OPTION = /^\s*(?:[❯›>]\s*)?([1-9])\.\s+(\S.*)$/;
+  let i = end - 1;
+  while (i >= 0 && !lines[i].trim()) i--;
+  const options = [];
+  while (i >= 0 && OPTION.test(lines[i])) { const [, key, label] = lines[i].match(OPTION); options.unshift({ key, label: label.trim().slice(0, 80) }); i--; }
+  if (options.length < 2 || options.some((o, n) => o.key !== String(n + 1))) return null;
+  while (i >= 0 && !lines[i].trim()) i--;
+  const title = lines[i]?.trim();
+  if (!title || !/\?$/.test(title)) return null;
+  const reason = [];
+  for (let j = i - 1; j >= 0 && reason.length < 4; j--) {
+    const line = lines[j].trim();
+    if (/^[\s─━╌┄╍┈┉═\-]{6,}$/.test(line)) break;
+    // "Hook PreToolUse:Bash requires confirmation…" is plumbing; the hook's own reason below it is the plain part.
+    if (line && !/^Hook \S+ requires confirmation\b/i.test(line)) reason.unshift(line);
+  }
+  const detail = reason.join(' ').replace(/\[settings\]/g, '').replace(/\s*settings\.json to update hooks\s*$/i, '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  const ask = {
+    kind: 'permission', screenChoice: true, title: title.slice(0, 200), ...(detail ? { detail } : {}),
+    sourceId: `prompt:${title}:${options.map((o) => o.label).join('|')}:${detail}`,
+    options,
   };
   return { ...ask, id: askId(pane, ask) };
 }

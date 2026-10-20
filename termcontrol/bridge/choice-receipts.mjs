@@ -16,14 +16,19 @@ export class ChoiceReceipts {
     catch (error) { if (error.code !== 'ENOENT') this.unavailable = true; }
   }
   key(pane, askId) { return JSON.stringify([pane, askId]); }
-  get(pane, askId) { return this.records[this.key(pane, askId)] || null; }
+  get(pane, askId) {
+    const record = this.records[this.key(pane, askId)] || null;
+    // A prompt read off the screen is marked sent only once it was seen to close,
+    // so the same prompt showing again is a new one (a hook asking twice).
+    return record && record.state === 'sent' && String(askId).includes('prompt:') ? null : record;
+  }
   save() {
     fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
     const temp = `${this.file}.tmp`; fs.writeFileSync(temp, JSON.stringify(this.records), { mode: 0o600 }); fs.renameSync(temp, this.file);
   }
   async send(pane, askId, answer, dispatch) {
     if (this.unavailable) return { error: 'Answer history cannot be read. Check the terminal before sending.' };
-    const key = this.key(pane, askId), old = this.records[key];
+    const key = this.key(pane, askId), old = this.get(pane, askId);
     if (old && old.state !== 'not-sent') {
       if (old.answerHash !== digest(answer)) return { error: 'An answer was already sent for this question. Check the terminal.' };
       return old.state === 'sent' ? { ok: true, duplicate: true, sentAt: old.at, delivery: 'terminal' }
