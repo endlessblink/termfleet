@@ -35,6 +35,15 @@ try {
     const state = await p.evaluate((bid) => ({ marked: document.querySelectorAll('.bot-row.open-chat').length, right: Boolean(document.querySelector(`.bot-row.open-chat[data-bot="${bid}"]`)) }), id);
     assert.deepEqual(state, { marked: 1, right: true });
   }
+  // Opening a second chat moves the outline: never two at once.
+  const other = await p.evaluate(async () => { const r = await fetch('/api/bots', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Second' }) }); return (await r.json()).bot.id; });
+  await p.goto(base + '/');
+  await p.waitForFunction((bid) => document.querySelector(`.bot-row[data-bot="${bid}"]`), other, { timeout: 15000, polling: 250 });
+  await p.click(`.bot-row[data-bot="${id}"]`);
+  await p.waitForFunction((bid) => document.querySelector(`.bot-row.open-chat[data-bot="${bid}"]`), id, { timeout: 8000, polling: 200 });
+  await p.click(`.bot-row[data-bot="${other}"]`);
+  await p.waitForFunction((bid) => document.querySelector(`.bot-row.open-chat[data-bot="${bid}"]`), other, { timeout: 8000, polling: 200 });
+  assert.equal(await p.evaluate(() => document.querySelectorAll('.bot-row.open-chat').length), 1);
   assert.deepEqual(errors, []);
 } finally { await browser.close(); child.kill('SIGKILL'); fs.rmSync(tmp, { recursive: true, force: true }); }
 });

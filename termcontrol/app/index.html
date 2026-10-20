@@ -2080,6 +2080,17 @@ const railShort=(t,max)=>{const s=railClean(t);return s.length>max?s.slice(0,max
 const railLive=t=>railShort(t,60);
 const railNote=n=>{const s=String(n||'').replace(/\s*(?:\d?>&?\d*\s*)?\|.*$/,'').replace(/\s*\d>&\d.*$/,'').trim();return !s || /[\/|;`$<>&]/.test(s)?'':railShort(s,48);};
 let railScrollTop=null;
+// Pinned beside the message box, bottom aligned with it. The desktop app can show less of this page than
+// the window it believes it has, so anchoring to the window's right edge clipped the panel (Noam 2026-10-20).
+function placeRail(){
+  const rail=document.querySelector('.asks-rail'),box=document.querySelector('.bot-composer textarea,.composer textarea')?.closest('.bot-composer,.composer');
+  if(!rail || !box || getComputedStyle(rail).display==='none')return;
+  const r=box.getBoundingClientRect(),width=rail.offsetWidth || 230;
+  rail.style.insetInlineEnd='auto';rail.style.insetBlockStart='auto';
+  rail.style.left=Math.max(8,Math.min(r.right+12,innerWidth-width-12))+'px';
+  rail.style.insetBlockEnd=Math.max(8,innerHeight-r.bottom)+'px';
+}
+window.addEventListener('resize',()=>placeRail());
 document.addEventListener('scroll',event=>{const ul=event.target;if(ul?.matches?.('.asks-rail ul'))railScrollTop=ul.scrollHeight-ul.scrollTop-ul.clientHeight<8?null:ul.scrollTop;},true);
 function asksHtml(asks,working,live){
   if(!asks || !asks.length)return '';
@@ -2092,12 +2103,12 @@ function asksHtml(asks,working,live){
   const openNums=asks.filter(a=>a.status==='open').map(a=>a.n),current=working&&openNums.length?Math.max(...openNums):null;
   const railWord=a=>a.status==='open'?(a.n===current?ui('In work','בעבודה'):ui('Waiting','ממתין')):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Partly done','בוצע חלקית'):label[a.status] || a.status;
   const liveText=railLive(live);
-  const railRows=asks.slice().sort((x,y)=>x.n-y.n).map(a=>{const cur=a.status==='open'&&a.n===current,title=railShort(a.text,60),main=cur&&liveText?liveText:title,sub=cur?(liveText?`${railWord(a)} · ${railShort(a.text,34)}`:railWord(a)):a.status==='done'||a.status==='partial'?[railWord(a),railNote(a.note)].filter(Boolean).join(' · '):railWord(a);return `<li class="rail-${cur?'working':esc(a.status)}"><span class="rail-what" dir="auto">${cur&&liveText?'<i class="rail-dot" aria-hidden="true"></i>':''}${esc(main)}</span><span class="rail-sub" dir="auto">${esc(sub)}</span></li>`;}).join('');
+  const railRows=asks.slice().sort((x,y)=>x.n-y.n).map(a=>{const cur=a.status==='open'&&a.n===current,title=railShort(a.text,60),main=cur&&liveText?liveText:title,sub=cur?(liveText?`${railWord(a)} · ${railShort(a.text,34)}`:railWord(a)):a.status==='partial'?(railNote(a.note) || ui('Not finished','לא הסתיים')):a.status==='done'?[railWord(a),railNote(a.note)].filter(Boolean).join(' · '):railWord(a);return `<li class="rail-${cur?'working':esc(a.status)}"><span class="rail-what" dir="auto">${cur&&liveText?'<i class="rail-dot" aria-hidden="true"></i>':''}${esc(main)}</span><span class="rail-sub" dir="auto">${esc(sub)}</span></li>`;}).join('');
   const openCount=asks.filter(a=>a.status==='open' || a.status==='partial').length;
   let folded=false;try{folded=localStorage.getItem('termcontrol-asks-rail')==='folded';}catch{}
   document.body.classList.toggle('asks-folded',folded);
   const rail=`<aside class="asks-rail${folded?' folded':''}" aria-label="${esc(ui('Your requests','הבקשות שלך'))}"><button type="button" class="rail-toggle" aria-expanded="${folded?'false':'true'}"><span>${esc(openCount?ui(`${openCount} open · ${done} done`,`${openCount} פתוחות · ${done} בוצעו`):ui(`All ${asks.length} done`,`כל ${asks.length} בוצעו`))}</span><span aria-hidden="true">${folded?'▸':'▾'}</span></button><ul${folded?' hidden':''}>${railRows}</ul></aside>`;
-  requestAnimationFrame(()=>{const ul=document.querySelector('.asks-rail ul');if(ul)ul.scrollTop=railScrollTop===null?ul.scrollHeight:railScrollTop;});
+  requestAnimationFrame(()=>{placeRail();const ul=document.querySelector('.asks-rail ul');if(ul)ul.scrollTop=railScrollTop===null?ul.scrollHeight:railScrollTop;});
   return rail+`<details class="asks-chip"${isOpen?' open':''}><summary>${esc(head)} ▾</summary><ol>${asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(a.text.length>240?a.text.slice(0,239)+'…':a.text)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol></details>`;
 }
 
@@ -2326,7 +2337,7 @@ async function botMemoryDialog(id,name){
 }
 
 async function openBot(id){
-  loadBotModels();
+  loadBotModels();paintOpenBot();
   rememberCurrentChat();saveChatView=null;clearChatGesture();otherView='bot';
   document.querySelector('.composer')?.releaseDraft?.();document.querySelector('.composer')?.remove();document.querySelector('.askbox')?.remove();document.querySelector('.room-dialog')?.remove();
   const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);

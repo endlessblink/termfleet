@@ -42,13 +42,15 @@ try {
   assert.equal(await p.evaluate(() => document.querySelector('.rail-toggle span').textContent), '3 open \u00b7 1 done');
   assert.equal(await p.evaluate(() => document.querySelector('.asks-rail').textContent.includes('/home/') || document.querySelector('.asks-rail').textContent.includes('tail -1') || document.querySelector('.asks-rail').textContent.includes('[Noam')), false);
   assert.equal(wide.chipHidden, true);
-  assert.deepEqual(wide.rows, ['✓ Done|Fix the login page', 'Partly done|Add a dark theme', 'Waiting|Make exports faster', 'Waiting|Widen the approval to local edits']);
+  assert.deepEqual(wide.rows, ['✓ Done|Fix the login page', 'phone not checked|Add a dark theme', 'Waiting|Make exports faster', 'Waiting|Widen the approval to local edits']);
   if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-wide.png' });
   assert.ok((await p.evaluate(() => document.querySelector('.asks-rail').getBoundingClientRect().width)) <= 240);
   // The panel sits at the bottom of the right side, just above the message box, and grows upward.
   const place = await p.evaluate(() => { const r = document.querySelector('.asks-rail').getBoundingClientRect(), c = document.querySelector('.bot-composer').getBoundingClientRect(); return { railBottom: Math.round(r.bottom), composerTop: Math.round(c.top), railTop: Math.round(r.top), viewport: innerHeight }; });
-  assert.ok(place.railBottom <= place.composerTop + 4 && place.railBottom >= place.composerTop - 60, JSON.stringify(place));
+  assert.ok(place.railBottom >= place.composerTop && place.railBottom <= place.viewport, JSON.stringify(place)); // beside the message box, bottom-aligned with it
   assert.ok(place.railTop > 100, JSON.stringify(place));
+  const beside = await p.evaluate(() => { const r = document.querySelector('.asks-rail').getBoundingClientRect(), c = document.querySelector('.bot-composer').getBoundingClientRect(); return { gap: Math.round(r.left - c.right), inside: r.right <= innerWidth }; });
+  assert.ok(beside.gap >= 0 && beside.gap <= 40 && beside.inside, JSON.stringify(beside));
   // Live: a request moving to done shows up by itself, without a reload (the page redraws every few seconds).
   await p.evaluate(() => { window.__same = 1; });
   asks = asks.map((a) => (a.n === 3 ? { ...a, status: 'done' } : a));

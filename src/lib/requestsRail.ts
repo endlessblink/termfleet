@@ -87,7 +87,7 @@ export function railRows(asks: RailAsk[], working: boolean, live = ""): RailRow[
       return {
         n: a.n, word, tone, text: title, note,
         main: liveText || title,
-        sub: liveText ? `${word} \u00b7 ${shorten(a.text, 34)}` : [word, note].filter(Boolean).join(" \u00b7 "),
+        sub: liveText ? `${word} \u00b7 ${shorten(a.text, 34)}` : tone === "partial" ? note || "Not finished" : [word, note].filter(Boolean).join(" \u00b7 "),
       };
     });
 }
