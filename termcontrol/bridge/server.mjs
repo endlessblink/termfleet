@@ -15,6 +15,7 @@ import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice } from './send.mjs';
+import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, moveInOrder } from './prefs.mjs';
 import { liveness, lastLine, screenOf } from './liveness.mjs';
@@ -627,6 +628,17 @@ const handle = async (req, res) => {
     });
   }
 
+  // Close a terminal card (Noam 2026-10-20), after he confirmed it in the page. The
+  // TermFleet app closes it exactly as the card's X does; nothing here kills a process.
+  if (url.pathname === '/api/close' && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 4 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    const { panes } = await currentPanes();
+    if (!panes.some((p) => p.id === body.pane)) return json(res, 404, { error: 'That terminal is no longer open.' });
+    const result = await requestClose(body.pane, { by: `phone:${currentUser(req).id}` });
+    return json(res, result.ok ? 200 : result.uncertain ? 202 : 409, result);
+  }
+
   if (url.pathname === '/api/send' && req.method === 'POST') {
     let raw = '';
     req.on('data', (c) => { raw += c; if (raw.length > 12 * 1024 * 1024) req.destroy(); });
@@ -858,9 +870,9 @@ setInterval(() => {
 }, 30000).unref?.();
 
 // Dock icon counts (Noam 2026-10-20): bots unread in orange, terminals waiting for him in
-// blue. Off until Noam picks a quieter look ("a bit overpowering"): TC_DOCK_ICON=1 turns it
-// on. Live service only: tests and copies set TC_CONFIG_DIR and never touch the launcher.
-if (!process.env.TC_CONFIG_DIR && process.env.TC_DOCK_ICON === '1') {
+// blue, as two small dots (Noam's pick). TC_NO_DOCK_ICON=1 turns it off. Live service only:
+// tests and copies set TC_CONFIG_DIR and never touch the launcher.
+if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_DOCK_ICON !== '1') {
   const updateDock = createDockIcon();
   let dockBusy = false;
   const dockTick = async () => {

@@ -55,7 +55,7 @@ test('a reinstall that resets the launcher is corrected on the next check', asyn
 
 test('tests and copies of the service never touch the real launcher', () => {
   const src = fs.readFileSync(new URL('../bridge/server.mjs', import.meta.url), 'utf8');
-  assert.match(src, /if \(!process\.env\.TC_CONFIG_DIR && process\.env\.TC_DOCK_ICON === '1'\)/);
+  assert.match(src, /if \(!process\.env\.TC_CONFIG_DIR && process\.env\.TC_NO_DOCK_ICON !== '1'\)/);
 });
 
 // Noam: "also here I need to see the notifications per platform" (the Bots and Terminals tabs).
@@ -91,4 +91,13 @@ test('opening a bot chat clears its count on the dock within one check', async (
   assert.equal(unread(), 0);
   await s.update(unread(), 0);
   assert.equal(s.refreshes.at(-1), 'termfleet', 'back to the plain icon, no badge left behind');
+});
+
+// Noam picked "Two small dots": small, on the right edge, the blue one moves up when alone.
+test('the dots are small and sit on the right edge', () => {
+  const both = dockIconSvg(base, 3, 2);
+  assert.equal((both.match(/<circle cx="86" cy="\d+" r="15"/g) || []).length, 2);
+  assert.match(both, /cy="17" r="15" fill="#d97757"/);
+  assert.match(both, /cy="50" r="15" fill="#5aa9e6"/);
+  assert.match(dockIconSvg(base, 0, 2), /cy="17" r="15" fill="#5aa9e6"/);
 });

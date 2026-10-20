@@ -69,7 +69,8 @@ launcher_resolved="$(readlink -f "$DESKTOP_LAUNCHER")"
 [[ -f "$DESKTOP_ENTRY" ]] || fail "TermFleet desktop entry is missing"
 grep -qx "Exec=$DESKTOP_LAUNCHER --dock" "$DESKTOP_ENTRY" ||
   fail "TermFleet desktop entry does not launch the installed desktop command"
-grep -qx "Icon=termfleet" "$DESKTOP_ENTRY" ||
+# The dock icon may carry the unread/waiting dots (termcontrol/bridge/dock-icon.mjs).
+grep -qxE "Icon=(termfleet|${XDG_DATA_HOME:-$HOME/.local/share}/termfleet/dock-icon/termfleet-b[0-9]+-t[0-9]+\.svg)" "$DESKTOP_ENTRY" ||
   fail "TermFleet desktop entry does not use the branded icon"
 grep -qx "StartupWMClass=Termfleet" "$DESKTOP_ENTRY" ||
   fail "TermFleet desktop entry window identity cannot match the packaged app"

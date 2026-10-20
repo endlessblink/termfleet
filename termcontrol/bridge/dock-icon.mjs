@@ -15,16 +15,20 @@ export const TERMINAL_COLOUR = '#5aa9e6';
 
 const label = (n) => (n > 99 ? '99+' : String(n));
 
-/** The plain icon with up to two round badges drawn on its right side. */
+/**
+ * The plain icon with two small dots on its right edge (Noam picked "Two small dots" after
+ * the first, bigger badges were "a bit overpowering"): bots unread in orange on top,
+ * terminals waiting in blue below it (or on top when there are no bot messages).
+ */
 export function dockIconSvg(baseSvg, bots, terminals) {
-  const badge = (n, cy, fill) => {
+  const dot = (n, cy, fill) => {
     if (!n) return '';
-    const text = label(n), r = text.length > 2 ? 27 : 24, size = text.length > 2 ? 22 : text.length > 1 ? 28 : 32;
-    return `<circle cx="74" cy="${cy}" r="${r}" fill="${fill}" stroke="#141312" stroke-width="3"/><text x="74" y="${(cy + size * 0.36).toFixed(1)}" font-size="${size}" fill="#141312">${text}</text>`;
+    const text = label(n), size = text.length > 2 ? 13 : text.length > 1 ? 17 : 20;
+    return `<circle cx="86" cy="${cy}" r="15" fill="${fill}" stroke="#141312" stroke-width="3"/><text x="86" y="${(cy + size * 0.36).toFixed(1)}" font-size="${size}" fill="#141312">${text}</text>`;
   };
-  const marks = badge(bots, 26, BOT_COLOUR) + badge(terminals, 74, TERMINAL_COLOUR);
+  const marks = dot(bots, 17, BOT_COLOUR) + dot(terminals, bots ? 50 : 17, TERMINAL_COLOUR);
   if (!marks) return baseSvg;
-  return baseSvg.replace(/<\/svg>\s*$/, `<g font-family="Rubik,'Noto Sans',sans-serif" font-weight="700" text-anchor="middle">${marks}</g></svg>\n`);
+  return baseSvg.replace(/<\/svg>\s*$/, `<g font-family="Rubik,'Noto Sans',sans-serif" font-weight="500" text-anchor="middle">${marks}</g></svg>\n`);
 }
 
 /** Points the launcher's Icon= line at `icon` (a theme name or a file path). */
