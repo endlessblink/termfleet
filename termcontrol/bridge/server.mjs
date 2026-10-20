@@ -48,7 +48,7 @@ import { Push } from './push.mjs';
 import { createDockIcon } from './dock-icon.mjs';
 import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest } from '../../scripts/termfleet-asks.mjs';
-import { createAsksSidecarWriter } from './asks-sidecar.mjs';
+import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
@@ -897,6 +897,19 @@ const notifyWaiting = !process.env.TC_CONFIG_DIR && process.env.TC_NO_WAITING_NO
   ? createWaitingNotifier({ file: path.join(os.homedir(), '.config', 'termcontrol', 'waiting-seen.json'), push: (note) => push.notify(note) })
   : null;
 let waitingBusy = false;
+// The desktop app's side list reads the same list from its status folder (Noam: "this must be
+// reachable on the computer too"), written only when it changes.
+let waitingWritten = '';
+function writeWaitingSidecar(items) {
+  const body = JSON.stringify({ items: items.map(({ key, kind, source, who, what, todo, go }) => ({ key, kind, source, who, what, todo, go })) });
+  if (body === waitingWritten) return;
+  try {
+    const file = path.join(defaultAsksDir(), 'waiting-for-you.json'), tmp = `${file}.${process.pid}.tmp`;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(tmp, body, { mode: 0o600 }); fs.renameSync(tmp, file);
+    waitingWritten = body;
+  } catch (error) { console.error('[waiting sidecar]', error.message); }
+}
 async function refreshWaiting() {
   if (waitingBusy) return waitingNow;
   waitingBusy = true;
@@ -909,7 +922,7 @@ async function refreshWaiting() {
       return raw?.sessions?.claude?.started ? asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id)) : null;
     };
     waitingNow = collectWaiting({ panes, bots: bots.list(), asksOf });
-    if (notifyWaiting) await notifyWaiting(waitingNow);
+    if (notifyWaiting) { await notifyWaiting(waitingNow); writeWaitingSidecar(waitingNow); }
   } catch (error) { console.error('[waiting]', error.message); } finally { waitingBusy = false; }
   return waitingNow;
 }
