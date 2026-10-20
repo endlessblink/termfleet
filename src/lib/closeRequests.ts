@@ -15,10 +15,30 @@ export interface CloseRequest {
   createdAt: number;
 }
 
+interface LayoutLike {
+  type?: string;
+  id?: string;
+  children?: LayoutLike[];
+}
+
 interface TabLike {
   id: string;
   title?: string;
   terminals: { id: string }[];
+  splitLayout?: LayoutLike;
+}
+
+/**
+ * The terminal ids a card owns, as the daemon names them. The app stores the full
+ * "terminal-<tab>-<pane>" id; a helper card that was never shown has no terminals
+ * entry yet, so its layout says which terminal it holds.
+ */
+function cardTerminalIds(tab: TabLike): string[] {
+  const full = (id: string) => (id.startsWith("terminal-") ? id : `terminal-${tab.id}-${id}`);
+  if (tab.terminals.length) return tab.terminals.map((terminal) => full(terminal.id));
+  const leaves = (node?: LayoutLike): string[] =>
+    node?.type === "terminal" && node.id ? [node.id] : node?.type === "split" ? (node.children || []).flatMap(leaves) : [];
+  return leaves(tab.splitLayout).map(full);
 }
 
 export type ClosePlan =
@@ -39,9 +59,9 @@ export function planCloseRequest(raw: string, tabs: TabLike[], now: number): Clo
   }
   if (now - v.createdAt > CLOSE_REQUEST_MAX_AGE_MS) return { ok: false, requestId, reason: "expired" };
   const paneId = v.paneId;
-  const tab = tabs.find((candidate) => candidate.terminals.some((terminal) => `terminal-${candidate.id}-${terminal.id}` === paneId));
+  const tab = tabs.find((candidate) => cardTerminalIds(candidate).includes(paneId));
   if (!tab) return { ok: false, requestId, reason: "not-found" };
-  if (tab.terminals.length !== 1) return { ok: false, requestId, reason: "several-terminals" };
+  if (cardTerminalIds(tab).length !== 1) return { ok: false, requestId, reason: "several-terminals" };
   return {
     ok: true,
     tabId: tab.id,

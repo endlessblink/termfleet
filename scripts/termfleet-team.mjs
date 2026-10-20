@@ -209,10 +209,10 @@ async function main(argv) {
     if (!dir) fail('Only a bot can close terminals this way, and only ones it started. Noam closes the others.');
     let owned = [];
     try { owned = JSON.parse(readFileSync(join(dir, 'helpers.json'), 'utf8')).filter((h) => h?.paneId && !h.followed); } catch { owned = []; }
-    const { closeOwnTerminal } = await import('./lib/team-close.mjs');
+    const { closeOwnTerminal, panesAfterTwoLooks } = await import('./lib/team-close.mjs');
     const { requestClose } = await import('./lib/close-request.mjs');
     const r = await closeOwnTerminal({
-      query: positional.join(' '), panes: await fleetPanes(), owned, resolvePane, stateOf,
+      query: positional.join(' '), panes: await panesAfterTwoLooks(fleetPanes), owned, resolvePane, stateOf,
       request: requestClose, record: (entry) => recordInBot(entry), by: `bot:${process.env.TERMFLEET_BOT_NAME || process.env.TERMFLEET_BOT_ID}`,
     });
     if (json) return out(JSON.stringify(r));

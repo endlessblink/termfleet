@@ -20,6 +20,16 @@ export function unsavedWork(cwd, since, run = (args) => spawnSync('git', ['-C', 
 }
 
 /**
+ * "Is it printing?" needs two looks: one look from a fresh command never sees output move,
+ * so a busy plain shell read as idle (live check 2026-10-20). Look, wait, look again.
+ */
+export async function panesAfterTwoLooks(look, pause = (ms) => new Promise((r) => setTimeout(r, ms))) {
+  await look();
+  await pause(2500);
+  return look();
+}
+
+/**
  * Decide and do. `owned` lists the terminals this caller started: [{ paneId, task, at }].
  * Returns { ok, text } for the caller to print; never closes on a refusal.
  */

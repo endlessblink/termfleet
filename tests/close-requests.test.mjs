@@ -23,6 +23,18 @@ test('what cannot be closed cleanly is refused, with the reason', () => {
   assert.equal(planCloseRequest(req({ requestId: '../../x' }), tabs, 2000).requestId, null, 'a request id never becomes a path');
 });
 
+test('the ids the app really stores: full terminal ids, and a helper card not shown yet', () => {
+  // Live 2026-10-20: every close came back "no longer has that terminal".
+  const live = [
+    { id: 'tab-c', title: 'Shown card', terminals: [{ id: 'terminal-tab-c-p4' }] },
+    { id: 'tab-d', title: 'Helper not shown yet', terminals: [], splitLayout: { id: 'p5', type: 'terminal' } },
+    { id: 'tab-e', title: 'Split, not shown', terminals: [], splitLayout: { type: 'split', children: [{ id: 'p6', type: 'terminal' }, { id: 'p7', type: 'terminal' }] } },
+  ];
+  assert.equal(planCloseRequest(req({ paneId: 'terminal-tab-c-p4' }), live, 2000).tabId, 'tab-c');
+  assert.equal(planCloseRequest(req({ paneId: 'terminal-tab-d-p5' }), live, 2000).tabId, 'tab-d');
+  assert.equal(planCloseRequest(req({ paneId: 'terminal-tab-e-p6' }), live, 2000).reason, 'several-terminals');
+});
+
 test('the app starts the close loop and closes through closeTerminalSession, the card X path', () => {
   const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /startCloseRequestLoop\(\);/);

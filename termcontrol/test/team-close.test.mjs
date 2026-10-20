@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { closeOwnTerminal, unsavedWork } from '../../scripts/lib/team-close.mjs';
+import { closeOwnTerminal, unsavedWork, panesAfterTwoLooks } from '../../scripts/lib/team-close.mjs';
 import { resolvePane, stateOf } from '../bridge/orchestrate.mjs';
 import { Bots } from '../bridge/bots.mjs';
 
@@ -55,4 +55,16 @@ test('bots are told to close their finished terminals', () => {
   const src = fs.readFileSync(new URL('../bridge/bots.mjs', import.meta.url), 'utf8');
   assert.match(src, /termfleet-team close <who>/);
   assert.ok(bots);
+});
+
+test('a busy plain shell is seen as working: the close looks twice before deciding', async () => {
+  // One look from a fresh command never sees output move (live 2026-10-20: a shell printing every second read idle).
+  let looks = 0;
+  const look = async () => [{ id: 'terminal-t-p', alive: true, turn: 'idle', producing: ++looks > 1, cwd: null }];
+  const panes = await panesAfterTwoLooks(look, async () => {});
+  assert.equal(looks, 2);
+  const r = await closeOwnTerminal({ query: 'terminal-t-p', panes, owned: [{ paneId: 'terminal-t-p', task: 'busy', at: 0 }], resolvePane, stateOf,
+    request: async () => { throw new Error('must not close'); }, record: () => {}, unsaved: () => [] });
+  assert.equal(r.ok, false);
+  assert.match(r.text, /still working/);
 });
