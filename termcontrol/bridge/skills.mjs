@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * One shared skill library for every agent and bot (TF-096 part 8, grill decision
@@ -12,6 +13,9 @@ const home = os.homedir();
 export const PATHS = {
   library: () => process.env.TC_SKILLS_LIBRARY || path.join(home, '.local', 'share', 'termfleet', 'skills'),
   suggested: () => process.env.TC_SKILLS_SUGGESTED || path.join(home, '.local', 'share', 'termfleet', 'skills-suggested'),
+  // Skills that ship with TermFleet (e.g. grill-me), so every bot has them without
+  // a terminal. A library skill of the same name wins.
+  builtin: () => process.env.TC_SKILLS_BUILTIN || fileURLToPath(new URL('../skills', import.meta.url)),
   providers: () => (process.env.TC_SKILLS_PROVIDERS ? process.env.TC_SKILLS_PROVIDERS.split(':') : [path.join(home, '.claude', 'skills'), path.join(home, '.codex', 'skills'), path.join(home, '.config', 'opencode', 'skills')]),
 };
 
@@ -38,7 +42,36 @@ function read(dir, status) {
 }
 
 export function listSkills() {
-  return [...read(PATHS.suggested(), 'suggested'), ...read(PATHS.library(), 'approved')];
+  const library = read(PATHS.library(), 'approved');
+  const builtIn = read(PATHS.builtin(), 'approved').filter((k) => !library.some((l) => l.name === k.name)).map((k) => ({ ...k, builtIn: true }));
+  return [...read(PATHS.suggested(), 'suggested'), ...[...library, ...builtIn].sort((a, b) => a.name.localeCompare(b.name))];
+}
+
+/** The full instructions of an approved skill (library first, then built-in). */
+export function skillText(name) {
+  const n = String(name || '').toLowerCase();
+  if (!NAME.test(n)) return null;
+  for (const dir of [PATHS.library(), PATHS.builtin()]) {
+    try { return fs.readFileSync(path.join(dir, n, 'SKILL.md'), 'utf8').replace(/^---[\s\S]*?---\n/, '').trim(); } catch { /* next */ }
+  }
+  return null;
+}
+
+/**
+ * A chat message that starts a skill ("/grill-me my plan" or the picker's
+ * "Use the grill-me skill: my plan") reaches the bot with that skill's full
+ * instructions, so any bot (Claude, Codex, OpenCode) can run it. Anything else,
+ * or an unknown name, returns null and the message goes as typed.
+ */
+export function skillPrompt(text) {
+  const m = /^\s*\/([a-z0-9][a-z0-9-]{1,48})(?:\s+([\s\S]*))?$/i.exec(String(text || ''))
+    || /^\s*Use the ([a-z0-9][a-z0-9-]{1,48}) skill:?(?:\s+([\s\S]*))?$/i.exec(String(text || ''));
+  if (!m) return null;
+  const name = m[1].toLowerCase();
+  const body = skillText(name);
+  if (!body) return null;
+  const rest = (m[2] || '').trim();
+  return `Noam started the "${name}" skill in this chat. Follow these instructions from now until it is finished:\n\n${body}\n\n---\n${rest ? `What Noam wrote with it:\n${rest}` : 'Noam wrote nothing else with it yet.'}`;
 }
 
 /** Name and description checks, usable before there is a body (teach-a-task). */

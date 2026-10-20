@@ -9,6 +9,8 @@ import { contextFill } from './context-fill.mjs';
 import { claudeTranscript } from './paths.mjs';
 import { asksForFile } from '../../scripts/termfleet-asks.mjs';
 import { uploadDir } from './uploads.mjs';
+import { skillPrompt } from './skills.mjs';
+import { parseQuestion, QUESTION_RULE } from './bot-questions.mjs';
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 
 /**
@@ -88,13 +90,14 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- Never say "done" without proof (what ran and what it showed). If you did less than asked, say so in your first sentence.',
     '- Never spend money, post publicly, send messages to people, or delete things without Noam\'s explicit yes.',
     '- Write to Noam in short, plain, everyday sentences: no code, file paths or jargon unless he asks.',
+    QUESTION_RULE,
     '',
     'Your memory:',
     '- `termfleet-memory search "<words>"` finds anything said in your past conversations with Noam, word for word. Use it before guessing what was decided.',
     '- `termfleet-memory propose "<one or two sentences>" --kind preference|decision|fact|lesson` suggests something to remember; it counts only after Noam approves it.',
     '- `termfleet-asks done|partial|dropped <n> "<proof or note>"` marks his numbered requests.',
     '- You wake up by yourself on schedules (`termfleet-team routine add --time 09:00 --days weekdays --message "<what to do>"`), when a terminal agent you started finishes, and when new code lands in a folder you watch (`termfleet-team watch add <folder>`). Messages starting with [Event] come from these, not from Noam.',
-    '- Skills: Noam\'s shared skill library holds tested ways of doing recurring jobs; when he says "Use the <name> skill", follow it. `termfleet-skill list` shows them. When a process worked and will recur, offer to save it: `termfleet-skill save <name-with-dashes> --description "<when to use it>" --body "<the steps, what to check, what needs Noam\'s approval>"`. It is only a suggestion until he approves it.',
+    '- Skills: Noam\'s shared skill library holds tested ways of doing recurring jobs; when he says "Use the <name> skill" or types /<name>, follow it. `termfleet-skill list` shows them. When a process worked and will recur, offer to save it: `termfleet-skill save <name-with-dashes> --description "<when to use it>" --body "<the steps, what to check, what needs Noam\'s approval>"`. It is only a suggestion until he approves it.',
     '- The bots\' browser: a Chrome window on Noam\'s PC that only bots use, with its own sign-ins. Use the browser tools for web tasks that need clicking or signing in (plain reading can use web search). If the browser tools cannot connect, run `termfleet-browser start` once. Noam can watch it from his phone and take over at the PC. Never type passwords, codes or card numbers: ask Noam to do that part at the PC. Before anything that pays, sends, posts or deletes, ask him first.',
     '- You only act when a message or an event arrives; nothing runs between them. So never say you will check or do something later unless you set up the wake-up first: `termfleet-team follow <who>` wakes you when that agent finishes, `termfleet-team routine add` wakes you at a time. Otherwise do it now, or say plainly that it is waiting for Noam. Do not end with "Next I\'m doing" unless a wake-up is set.',
     card ? `\n${card}` : '',
@@ -635,7 +638,8 @@ export class Bots {
     const body = clean(text, LIMITS.message) || (pictures.length ? (pictures.length === 1 ? 'Here is a picture.' : 'Here are some pictures.') : '');
     if (!body) return { error: 'Nothing to send.' };
     const msg = this.append(id, { role: 'operator', text: body, ...(pictures.length ? { images: pictures.length } : {}) });
-    const forBrain = pictures.length ? `${body}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : body;
+    const asked = skillPrompt(body) || body;   // "/grill-me" etc. carry the skill's steps
+    const forBrain = pictures.length ? `${asked}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : asked;
     const queue = this.queues.get(id) || [];
     queue.push(forBrain);
     this.queues.set(id, queue);
@@ -698,9 +702,11 @@ export class Bots {
         delete bot.handover;   // the new conversation has it now
         this.write(bot);
       }
-      if (bot) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: result.text || 'Done, with nothing to add.' });
+      // A [question] block becomes a card the chat can answer with one tap.
+      const asked = result.error ? null : parseQuestion(result.text || '');
+      if (bot) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}) });
       if (bot && bot.notify !== false) {
-        try { this.notify({ title: result.error ? `${bot.name} could not answer` : bot.name, body: String(result.error || result.text || '').replace(/\s+/g, ' ').slice(0, 200), url: `/#bot:${id}` }); } catch { /* never block a bot on a notification */ }
+        try { this.notify({ title: result.error ? `${bot.name} could not answer` : bot.name, body: String(result.error || (asked?.question ? asked.question.text : result.text) || '').replace(/\s+/g, ' ').slice(0, 200), url: `/#bot:${id}` }); } catch { /* never block a bot on a notification */ }
       }
       this.running.delete(id);
     }
