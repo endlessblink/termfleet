@@ -170,7 +170,10 @@ function applyLines(state, lines) {
  */
 export function asksForFile(file, { cacheDir = join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'termfleet', 'asks') } = {}) {
   const size = statSync(file).size;
-  const cacheFile = join(cacheDir, `${createHash('sha1').update(file).digest('hex')}.json`);
+  // The format version is in the name: an older copy still running (a forgotten test
+  // bridge, 2026-10-20) used to overwrite this file with its own format, so each side
+  // threw the other's away and re-read every record whole every few seconds.
+  const cacheFile = join(cacheDir, `${createHash('sha1').update(file).digest('hex')}.v3.json`);
   let state = { offset: 0, asks: [], marks: [] };
   try {
     const saved = JSON.parse(readFileSync(cacheFile, 'utf8'));

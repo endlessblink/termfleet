@@ -231,7 +231,10 @@ setInterval(() => { try { bots.retryDue(); } catch (error) { console.error('[bot
  * done / partial / open. Read from the conversation record (the last 8 MB).
  */
 function asksForTranscript(file) {
-  if (!file) return null;
+  // Only chat logs (.jsonl). An OpenCode pane's record is OpenCode's whole database
+  // (GBs of binary); reading it every 4 s froze the bridge, so the phone app sat on
+  // its splash screen (Noam 2026-10-20 "termcontrol לא עולה לי בסלולרי").
+  if (!file || !String(file).endsWith('.jsonl')) return null;
   try {
     const asks = asksForFile(file).filter((a) => isRealRequest(a.text));
     return asks.length ? asks.slice(-30).map((a) => ({ n: a.n, text: a.text.slice(0, 600), status: a.status, note: String(a.note || '').slice(0, 200) })) : null;
