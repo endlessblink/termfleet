@@ -558,7 +558,7 @@ main{max-width:none;padding:0 0 12px}body.chat main{padding:20px 20px 16px;max-w
 .attention-panel{margin:0 0 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}.attention-panel summary{min-height:44px;padding:0 2px;font-size:12px;font-weight:500;color:var(--waiting)}.attention-count{height:18px;min-width:18px;font-size:10px;padding:0 5px;background:var(--waiting);color:#141312}.attention-list{border:0;max-height:176px}.attention-item{height:44px;padding:0 2px;gap:8px;border-color:var(--line)}.attention-project{font-size:12px;font-weight:500}.attention-reason{font-size:12px;line-height:14px;margin:0}.attention-review{min-height:44px;height:44px;min-width:62px;padding:0 8px;font-size:12px;font-weight:500;border:0;border-radius:8px;background:transparent;color:var(--waiting)}.attention-review:hover{background:var(--surface-2)}
 main .msg.user .bubble{background:var(--user);border-radius:18px;padding:12px 16px}main .msg{margin-bottom:24px}main .who{font-weight:500}main .rich a,main .agenda-row time{color:var(--text)}main .agenda-content::before{background:var(--muted)}main .snapshot-warning{color:var(--text);background:var(--surface-2)}main .askbox{border:1px solid var(--waiting);background:var(--surface);border-radius:14px}main .askheading h3,main .asktoggle,main .typeinstead{color:var(--waiting)}main .opts button:first-child{border-color:var(--control)}main .custom-actions{background:var(--surface)}main .custom-actions button[type=submit]{background:var(--waiting)}.screen{background:var(--deep)}.cmdlist .cmd{color:var(--text)}
 .composer{position:relative;max-width:720px;width:calc(100% - 24px);margin:6px auto calc(12px + env(safe-area-inset-bottom));padding:8px 8px 8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:26px;gap:6px;align-items:flex-end}.composer textarea{background:transparent;border:0;border-radius:0;padding:9px 4px;min-height:44px;color:var(--text);font-size:16px}.composer textarea:focus{box-shadow:none}.composer .attach{border:0;background:transparent;border-radius:50%;width:44px;color:var(--muted)}.composer button.send{height:44px;width:44px;min-width:44px;display:grid;place-items:center;padding:0;border-radius:50%;color:var(--bg);background:var(--text)}.composer .mic{border:0;background:transparent;border-radius:50%;width:44px;height:44px;flex:none;color:var(--muted);display:grid;place-items:center;padding:0}.composer .mic.rec{color:var(--waiting);animation:mic-pulse 1.1s ease-in-out infinite}.composer .mic.busy{opacity:.5;animation:mic-pulse 1.4s ease-in-out infinite}@keyframes mic-pulse{50%{transform:scale(.82)}}@media(prefers-reduced-motion:reduce){.composer .mic{animation:none!important}}.composer .toolrow{margin:0;min-height:44px}.modeswitch{border:0;background:transparent;padding:0;gap:0;border-radius:12px;flex-wrap:nowrap}.modeswitch button{color:var(--muted);min-width:44px;min-height:44px;padding:0 10px;font-weight:500}.modeswitch button[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}.composer.question-open{border-color:var(--line);padding:4px 10px;border-radius:20px}.composer.question-open .pending-answer{padding:0;font-size:13px}.composer .terminal-tools{margin:0}.sendstate{max-width:696px;margin-inline:auto;bottom:142px;background:var(--surface-2);color:var(--text)}.sendstate.err{background:var(--surface-2);color:var(--text);border-color:var(--waiting)}.sendstate .acts button.go,.prompt button.yes{background:var(--text);color:var(--bg)}.dot.producing{background:var(--working);box-shadow:none}.headlive{font-weight:400}.chatstatus:empty{display:none}
-#fleet-side,.blank-pane{display:none}.empty{color:var(--muted)}.side-heading{height:56px;padding:0 16px;display:flex;align-items:center;font-size:15px;border-bottom:1px solid var(--line)}.side-count{margin-inline-start:auto;color:var(--muted);font-size:12px}.side-content{min-height:0;overflow:auto;padding:0 12px 16px}.side-content .fleet-content{padding:0}.blank-pane>div{margin:auto;text-align:center}.blank-pane h2{font-size:21px;font-weight:500}.blank-pane p{color:var(--muted);font-size:14px}
+#fleet-side,.blank-pane{display:none}.empty{color:var(--muted)}.side-heading{height:56px;padding:0 16px;display:flex;align-items:center;font-size:15px;border-bottom:1px solid var(--line)}.side-count{margin-inline-start:auto;color:var(--muted);font-size:12px}.side-content{min-height:0;overflow:auto;padding:0 12px 16px}body.chat .side-content{flex:1 1 auto}.side-content .fleet-content{padding:0}.blank-pane>div{margin:auto;text-align:center}.blank-pane h2{font-size:21px;font-weight:500}.blank-pane p{color:var(--muted);font-size:14px}
 @media(min-width:1000px){body{display:grid;grid-template-columns:360px minmax(0,1fr);grid-template-rows:56px minmax(0,1fr) auto}body>header{grid-column:1;grid-row:1;min-width:0}main{grid-column:1;grid-row:2;min-width:0;margin:0;width:100%;height:100%}.blank-pane{display:flex;grid-column:2;grid-row:1/-1;background:var(--deep);border-inline-start:1px solid var(--line)}body.chat>header{grid-column:2}body.chat main{grid-column:2;grid-row:2;width:100%;margin:0 auto;height:100%;max-width:760px}body.chat #fleet-side{display:flex;flex-direction:column;grid-column:1;grid-row:1/-1;border-inline-end:1px solid var(--line);min-height:0}body.chat .blank-pane{display:none}body.chat .composer{grid-column:2;grid-row:3}.sendstate{left:384px;right:24px}}
 @media(max-width:360px){main .fleet-content{padding-inline:8px}.fleetbar{gap:6px}.fleetbar label{gap:2px}.fleetbar select{font-size:12px}.pane{gap:6px}.pane-meta{max-width:74px}.pane .project{font-size:12px}body.chat main{padding-inline:14px}.composer{width:calc(100% - 16px);padding-inline:6px}.modeswitch button{padding-inline:7px}}
 @media(prefers-reduced-motion:reduce){.dot{animation:none!important;transition:none!important}}
@@ -572,7 +572,7 @@ main .msg.user .bubble{background:var(--user);border-radius:18px;padding:12px 16
 .pane-meta{max-width:96px}
 .head-avatar{display:inline-block;vertical-align:middle;margin-inline-end:10px;line-height:0}
 /* Calmer top: no hairlines, no live/quiet pill or live tail; the character already shows the state. */
-header{min-height:76px;padding-block:16px}@media(min-width:1000px){body{grid-template-rows:84px minmax(0,1fr) auto}.side-heading{height:84px}}
+header{min-height:76px;padding-block:16px}@media(min-width:1000px){body{grid-template-rows:minmax(84px,auto) minmax(0,1fr) auto}.side-heading{height:84px}}
 header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,.headtail{display:none}header h1{display:flex;align-items:center}header .sub{margin-top:2px}
 @media(max-width:360px){.pane,.pane.waiting,.pane.idle{gap:8px;padding:8px 6px}.avatar-slot,.avatar-slot svg.creature{width:44px;height:44px}}
 
@@ -648,6 +648,13 @@ body.chat #main.chat-swipe-active{will-change:transform;background:var(--bg);box
 .chat-preview-heading{display:flex;align-items:center;gap:10px;padding:4px 0 18px;border-bottom:1px solid var(--line);margin-bottom:18px}
 .chat-preview-heading strong{display:block;font-size:16px;overflow-wrap:anywhere}.chat-preview-heading small{color:var(--muted);font-size:12px}
 .chat-preview-caption{margin:0 0 14px;color:var(--accent);font-size:12px}.chat-preview-body{opacity:.85}.chat-preview-body .bubble{overflow-wrap:anywhere}
+main .bubble,main .rich{max-width:100%;min-width:0;box-sizing:border-box}
+main .rich *{max-width:100%;box-sizing:border-box}
+main .rich pre{overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+main .rich code{overflow-wrap:anywhere;word-break:break-word}
+main .rich img,main .rich video{max-width:100%;height:auto}
+main .rich ol[dir=ltr]>li[dir=rtl],main .rich ul[dir=ltr]>li[dir=rtl]{margin-right:24px}
+main .rich ol[dir=rtl]>li[dir=ltr],main .rich ul[dir=rtl]>li[dir=ltr]{margin-left:24px}
 .chat-navigation-preview.reduced{height:auto!important;max-height:160px;box-shadow:0 8px 24px #0002;border:1px solid var(--line);border-radius:12px;will-change:auto}
 .chat-navigation-preview.reduced .chat-preview-heading{margin:0;padding:0;border:0}.chat-navigation-preview.reduced .chat-preview-body{display:none}
 /* Physical page motion: the destination uses the same message geometry as #main. */
@@ -797,20 +804,33 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 .pane.unread .project{font-weight:500;color:var(--text)}.unread-dot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--accent);margin-inline-start:6px;align-self:center}
 .msg.handoff{margin-inline-end:8%}.msg.handoff>.bubble{border:1px solid var(--line);border-radius:16px;padding:10px 14px;background:transparent}.handoff-from{font-size:12.5px;color:var(--muted);margin:0 2px 4px}
 .bots-panel{border-color:var(--line)}.bot-row .room-last{display:flex;gap:6px;align-items:center}.bot-avatar{flex:none;display:grid;place-items:center;width:40px;height:40px}.bot-avatar svg{width:40px;height:40px}.bot-avatar.head{display:inline-grid;width:30px;height:30px;margin-inline-end:8px;vertical-align:middle}.bot-avatar.head svg{width:30px;height:30px}.bot-failed{color:var(--danger,#d66)}.bot-feed{display:flex;flex-direction:column;gap:4px;padding-bottom:16px}.bot-activity{color:var(--muted);font-size:13px;margin:2px 4px}.bot-activity::before{content:"↳ "}.bot-note{color:var(--muted);font-size:13px;text-align:center;margin:8px 0}.bot-error{color:var(--danger,#d66);font-size:14px;margin:6px 4px}.bot-actions{display:flex;gap:8px;flex-wrap:wrap}.bot-actions button{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer}
-.asks-rail{display:none}
-@media(min-width:900px){
-  .asks-rail{display:block;position:fixed;inset-block-end:112px;inset-inline-end:16px;width:230px;max-height:calc(100vh - 200px);overflow:hidden;box-sizing:border-box;padding:6px 10px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg));font-size:13px;line-height:1.4;z-index:3}
-  .asks-rail .rail-toggle{display:flex;justify-content:space-between;gap:8px;width:100%;padding:6px 0;border:0;background:none;color:var(--muted);font:inherit;font-weight:500;cursor:pointer;text-align:start}
-  .asks-rail:not(.folded) .rail-toggle{border-bottom:1px solid var(--line)}
-  .asks-rail ul{list-style:none;margin:0;padding:0;display:grid;max-height:300px;overflow-y:auto;overscroll-behavior:contain}
-  .asks-rail .rail-what{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg,inherit)}.asks-rail .rail-working .rail-what{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.asks-rail .rail-dot{display:inline-block;width:7px;height:7px;margin-inline-end:6px;border-radius:50%;background:var(--waiting);animation:busy-fade 1.2s ease-in-out infinite}.asks-rail .rail-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .asks-rail li{display:grid;gap:2px;padding:8px 0;border-bottom:1px solid var(--line)}.asks-rail li:last-child{border-bottom:0}
-  .asks-rail .rail-st{font-size:12px;color:var(--muted)}
-  .asks-rail .rail-working .rail-st{color:var(--waiting)}.asks-rail .rail-done .rail-st{color:var(--working)}.asks-rail .rail-partial .rail-st{color:var(--waiting)}
-  .asks-rail .ask-note{display:block;color:var(--muted);font-size:12px}
-  @media(min-width:1250px){body.chat main{margin-inline-end:262px}body.chat.asks-folded main{margin-inline-end:0}}
+/* Your requests, in the sidebar under the bots (like the Desk app). Wide windows only; a phone keeps the chip. */
+#side-asks{display:none}
+@media(min-width:1000px){
+  body.chat #side-asks:not([hidden]){display:flex;flex-direction:column;flex:0 1 auto;max-height:50%;min-height:0;margin:0 12px 12px;border-top:1px solid var(--line)}
+  #side-asks summary{display:flex;align-items:center;gap:8px;padding:14px 4px 10px;color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;list-style:none;user-select:none}
+  #side-asks summary::-webkit-details-marker{display:none}
+  #side-asks summary::after{content:'';width:6px;height:6px;margin-inline-start:auto;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:rotate(45deg) translate(-2px,-2px);transition:transform .2s cubic-bezier(.22,1,.36,1)}
+  #side-asks details:not([open]) summary::after{transform:rotate(-45deg)}
+  #side-asks summary:hover{color:var(--text)}
+  #side-asks summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+  #side-asks .asks-title{color:var(--text)}
+  #side-asks ul{list-style:none;margin:0;padding:0 2px 4px;overflow-y:auto;overscroll-behavior:contain;max-height:calc(50vh - 64px)}
+  #side-asks li{display:grid;gap:3px;padding:10px 8px;border-radius:10px;font-size:13.5px;line-height:1.4}
+  #side-asks li+li{margin-top:2px}
+  #side-asks .st{font-size:12px;font-weight:500;color:var(--muted)}
+  #side-asks .rail-what{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:start;unicode-bidi:plaintext}
+  #side-asks .rail-note{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:start;unicode-bidi:plaintext}
+  #side-asks .rail-working{background:var(--surface,#1c1c1a)}
+  #side-asks .rail-working .st{color:var(--accent);display:flex;align-items:center;gap:6px}
+  #side-asks .rail-working .st::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;animation:busy-fade 1.6s ease-in-out infinite}
+  #side-asks .rail-working .rail-what{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  #side-asks .rail-partial .st{color:var(--waiting)}
+  #side-asks .rail-done .rail-what,#side-asks .rail-answered .rail-what{color:var(--muted)}
+  #side-asks .rail-done .st{color:var(--working)}
   .asks-chip{display:none}
 }
+@media(prefers-reduced-motion:reduce){#side-asks .rail-working .st::before{animation:none}}
 .asks-chip{margin-top:4px;font-size:13px}.asks-chip summary{cursor:pointer;color:var(--muted);list-style:none}.asks-chip summary::-webkit-details-marker{display:none}.asks-chip ol{margin:6px 0 0;padding-inline-start:22px;display:grid;gap:6px;max-height:40vh;overflow:auto}.asks-chip li{line-height:1.45}.asks-chip .ask-status{font-size:11.5px;border-radius:8px;padding:1px 6px;margin-inline-end:6px;border:1px solid var(--line)}.asks-chip .ask-done{color:var(--working)}.asks-chip .ask-partial{color:var(--waiting)}.asks-chip .ask-open{color:var(--accent)}.asks-chip .ask-note{display:block;color:var(--muted);font-size:12px}
 .skill-picker{display:grid;gap:2px;max-height:220px;overflow:auto;margin:0 0 6px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg))}.bot-composer .skill-picker{position:absolute;left:12px;right:12px;bottom:calc(100% + 4px);margin:0;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.25)}.skill-picker[hidden]{display:none}.skill-picker button{display:grid;gap:2px;text-align:start;padding:8px 10px;border:0;border-radius:9px;background:none;color:inherit;font:inherit;cursor:pointer}.skill-picker button:hover,.skill-picker button:focus-visible{background:var(--line)}.skill-picker b{font-weight:500;font-size:14px}.skill-picker span{font-size:12.5px;color:var(--muted);line-height:1.35}.skill-preview{white-space:pre-wrap;font-size:12.5px;color:var(--muted);margin:4px 0 0;max-height:180px;overflow:auto}
 .browser-dialog{width:min(560px,calc(100vw - 32px))}.browser-shot{display:block;width:100%;border:1px solid var(--line);border-radius:12px;background:#fff;min-height:120px;object-fit:contain}.browser-page{font-size:13px;color:var(--muted);margin:6px 0 10px;overflow-wrap:anywhere}.teach-live{display:flex;align-items:center;gap:8px;font-size:14px;margin:8px 0}.teach-live::before{content:'';width:9px;height:9px;border-radius:50%;background:#e5484d;animation:teachPulse 1.4s ease-in-out infinite}@keyframes teachPulse{50%{opacity:.35}}@media (prefers-reduced-motion:reduce){.teach-live::before{animation:none}}
@@ -995,7 +1015,7 @@ body.chat main .msg:hover .message-menu>summary,body.chat main .msg .message-men
 </style>
 </head>
 <body>
-<aside id="fleet-side" aria-label="Agents"><div class="side-heading">TermControl <span class="side-count"></span></div><div class="side-content"></div></aside>
+<aside id="fleet-side" aria-label="Agents"><div class="side-heading">TermControl <span class="side-count"></span></div><div class="side-content"></div><section id="side-asks" hidden aria-label="Your requests"></section></aside>
 <div class="blank-pane"><div><h2>TermControl</h2><p>Select an agent to open the conversation.</p></div></div>
 <header role="banner">
   <nav id="nav" aria-label="Back"></nav>
@@ -1555,7 +1575,8 @@ function richText(src) {
       const items = [];
       while (i < lines.length && bullet.test(lines[i])) items.push(lines[i++].replace(bullet, ''));
       const tag = ordered ? 'ol' : 'ul';
-      out.push(`<${tag} dir="${dirOf(items[0])}">${items.map((item) => `<li dir="${dirOf(item)}">${inlineRich(item)}</li>`).join('')}</${tag}>`);
+      const plain = (t) => String(t || '').replace(/`[^`]*`/g, ' ');
+      out.push(`<${tag} dir="${dirOf(plain(items.join(' ')))}">${items.map((item) => `<li dir="${dirOf(plain(item))}">${inlineRich(item)}</li>`).join('')}</${tag}>`);
       continue;
     }
     if (!line.trim()) { flush(); i += 1; continue; }
@@ -1803,7 +1824,7 @@ function showReadFailure(error, retry) {
 }
 
 async function fleet(background=false) {
-  if(background && !focusedPane)return;
+  if(background && !focusedPane && otherView!=='bot')return;
   const selected=focusedPane;
   const request=++fleetRequest;
   const mine=background?view:++view;
@@ -1923,7 +1944,7 @@ async function fleet(background=false) {
   const pushButton=container.querySelector('.enable-push');if(pushButton)pushButton.onclick=async()=>{reportPush('tapped','');pushButton.disabled=true;try{await enableNotifications();reportPush('on','');note(ui('Notifications are on for this phone.','ההתראות הופעלו בטלפון הזה.'));pushButton.remove();}catch(e){note(e.message || ui('Could not turn notifications on.','לא ניתן להפעיל התראות.'),true);pushButton.disabled=false;}};
   container.querySelectorAll('details[data-group]').forEach(el=>{el.querySelector('summary').onclick=()=>sessionStorage.setItem(`termcontrol-group:${el.dataset.group}`,el.open?'closed':'open');});
   const attentionDetails=container.querySelector('.attention-panel');attentionDetails?.querySelector('summary')?.addEventListener('click',()=>sessionStorage.setItem('termcontrol-attention-open',attentionDetails.open?'closed':'open'),{once:true});
-  if(background){if(!chatOrder.length){freezeChatOrder(focusedPane,container);paintChatNavigation();}return;}
+  if(background){paintOpenBot();if(otherView==='bot')return;if(!chatOrder.length){freezeChatOrder(focusedPane,container);paintChatNavigation();}return;}
   restoreFleetReturn();
   clearInterval(fleetTimer);fleetTimer=setInterval(()=>fleet(Boolean(focusedPane)),15000);paintOpenBot();
 }
@@ -2070,7 +2091,8 @@ async function openInbox(){
 // Shared rooms: the operator and several agents in one conversation.
 // TF-096 part 2: the operator's requests in his own words, each with its status.
 // The chat header is redrawn on every refresh, so the list remembers whether it was open.
-document.addEventListener('click',event=>{const b=event.target?.closest?.('.rail-toggle');if(!b)return;const rail=b.closest('.asks-rail'),folded=!rail.classList.contains('folded');rail.classList.toggle('folded',folded);rail.querySelector('ul').hidden=folded;b.setAttribute('aria-expanded',String(!folded));b.lastElementChild.textContent=folded?'▸':'▾';document.body.classList.toggle('asks-folded',folded);try{localStorage.setItem('termcontrol-asks-rail',folded?'folded':'open');}catch{}});
+document.addEventListener('toggle',event=>{const d=event.target;if(d?.parentElement?.id==='side-asks' && d.tagName==='DETAILS'){try{localStorage.setItem('termcontrol-asks-rail',d.open?'open':'folded');}catch{}}},true);
+document.addEventListener('click',event=>{const b=event.target?.closest?.('.rail-toggle-retired');if(!b)return;const rail=b.closest('.asks-rail'),folded=!rail.classList.contains('folded');rail.classList.toggle('folded',folded);rail.querySelector('ul').hidden=folded;b.setAttribute('aria-expanded',String(!folded));b.lastElementChild.textContent=folded?'▸':'▾';document.body.classList.toggle('asks-folded',folded);try{localStorage.setItem('termcontrol-asks-rail',folded?'folded':'open');}catch{}});
 document.addEventListener('toggle',event=>{if(event.target?.classList?.contains('asks-chip')){try{sessionStorage.setItem('termcontrol-asks-open',event.target.open?'open':'closed');}catch{}}},true);
 // The list is redrawn every few seconds: remember whether he scrolled up (null = stay at the newest).
 // A request as a short plain line: no attachment notes, file paths, relay wrappers or shell
@@ -2079,21 +2101,31 @@ const railClean=t=>{let s=String(t||'');const q=/words?:\s*["“](.+?)["”]\s*(
 const railShort=(t,max)=>{const s=railClean(t);return s.length>max?s.slice(0,max).replace(/\s+\S*$/,'')+'…':s;};
 const railLive=t=>railShort(t,60);
 const railNote=n=>{const s=String(n||'').replace(/\s*(?:\d?>&?\d*\s*)?\|.*$/,'').replace(/\s*\d>&\d.*$/,'').trim();return !s || /[\/|;`$<>&]/.test(s)?'':railShort(s,48);};
-let railScrollTop=null;
-// Pinned beside the message box, bottom aligned with it. The desktop app can show less of this page than
-// the window it believes it has, so anchoring to the window's right edge clipped the panel (Noam 2026-10-20).
-function placeRail(){
-  const rail=document.querySelector('.asks-rail'),box=document.querySelector('.bot-composer textarea,.composer textarea')?.closest('.bot-composer,.composer');
-  if(!rail || !box || getComputedStyle(rail).display==='none')return;
-  const r=box.getBoundingClientRect(),width=rail.offsetWidth || 230;
-  rail.style.insetInlineEnd='auto';rail.style.insetBlockStart='auto';
-  rail.style.left=Math.max(8,Math.min(r.right+12,innerWidth-width-12))+'px';
-  rail.style.insetBlockEnd=Math.max(8,innerHeight-r.bottom)+'px';
+// The sidebar list under the bots: the request being worked on first, then the newest. Redrawn only when it changes,
+// so folding and scrolling stay put.
+function clearSideAsks(){const el=document.getElementById('side-asks');if(el){el.hidden=true;el.replaceChildren();delete el.dataset.html;}}
+function paintSideAsks(asks,current,liveText){
+  const el=document.getElementById('side-asks');if(!el)return;
+  const state=a=>a.n===current?'working':a.status==='open'?'answered':a.status;
+  const inWork=current===null?0:1,unfinished=asks.filter(a=>a.status==='partial').length,done=asks.filter(a=>a.status==='done').length,answered=asks.filter(a=>state(a)==='answered').length;
+  const word=a=>a.n===current?ui('In work','בעבודה'):a.status==='open'?ui('Answered','נענה'):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Not finished','לא הסתיים'):ui('Dropped','בוטל');
+  const rows=asks.slice().sort((x,y)=>(Number(y.n===current)-Number(x.n===current)) || y.n-x.n).map(a=>{
+    const cur=a.n===current,title=railShort(a.text,80),what=cur&&liveText?liveText:title,note=cur&&liveText?railShort(a.text,60):(a.status==='partial' || a.status==='done')?railNote(a.note):'';
+    return `<li class="rail-${esc(state(a))}"><span class="st">${esc(word(a))}</span><span class="rail-what" dir="auto" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="auto">${esc(note)}</span>`:''}</li>`;
+  }).join('');
+  let folded=false;try{folded=localStorage.getItem('termcontrol-asks-rail')==='folded';}catch{}
+  const counts=[inWork?ui('1 in work','1 בעבודה'):'',unfinished?ui(`${unfinished} not finished`,`${unfinished} לא הסתיימו`):'',answered?ui(`${answered} answered`,`${answered} נענו`):'',done?ui(`${done} done`,`${done} בוצעו`):''].filter(Boolean).join(' · ');
+  const html=`<details${folded?'':' open'}><summary><span><span class="asks-title">${esc(ui('Your requests','הבקשות שלך'))}</span> · ${esc(counts)}</span></summary><ul>${rows}</ul></details>`;
+  el.hidden=false;
+  if(el.dataset.html===html)return;
+  const ul=el.querySelector('ul'),top=ul?ul.scrollTop:0,d=el.querySelector('details'),open=d?d.open:!folded;
+  el.innerHTML=html;el.dataset.html=html;
+  const fresh=el.querySelector('details');if(fresh)fresh.open=open;
+  const nu=el.querySelector('ul');if(nu)nu.scrollTop=top<8?0:top;
 }
-window.addEventListener('resize',()=>placeRail());
-document.addEventListener('scroll',event=>{const ul=event.target;if(ul?.matches?.('.asks-rail ul'))railScrollTop=ul.scrollHeight-ul.scrollTop-ul.clientHeight<8?null:ul.scrollTop;},true);
+let live0='';
 function asksHtml(asks,working,live){
-  if(!asks || !asks.length)return '';
+  if(!asks || !asks.length){clearSideAsks();return '';}
   const done=asks.filter(a=>a.status==='done').length,partial=asks.filter(a=>a.status==='partial').length,open=asks.filter(a=>a.status==='open').length;
   const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
   const head=ui(`Your requests: ${done} of ${asks.length} done`,`הבקשות שלך: ${done} מתוך ${asks.length} בוצעו`)+(partial?ui(`, ${partial} partial`,`, ${partial} חלקיות`):'')+(open?ui(`, ${open} open`,`, ${open} פתוחות`):'');
@@ -2101,15 +2133,8 @@ function asksHtml(asks,working,live){
   // Side panel for wide windows (like the Desk app's "change you asked for" box): newest open
   // request = in work, older open ones = waiting, then the finished ones, newest first.
   const openNums=asks.filter(a=>a.status==='open').map(a=>a.n),current=working&&openNums.length?Math.max(...openNums):null;
-  const railWord=a=>a.status==='open'?(a.n===current?ui('In work','בעבודה'):ui('Waiting','ממתין')):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Partly done','בוצע חלקית'):label[a.status] || a.status;
-  const liveText=railLive(live);
-  const railRows=asks.slice().sort((x,y)=>x.n-y.n).map(a=>{const cur=a.status==='open'&&a.n===current,title=railShort(a.text,60),main=cur&&liveText?liveText:title,sub=cur?(liveText?`${railWord(a)} · ${railShort(a.text,34)}`:railWord(a)):a.status==='partial'?(railNote(a.note) || ui('Not finished','לא הסתיים')):a.status==='done'?[railWord(a),railNote(a.note)].filter(Boolean).join(' · '):railWord(a);return `<li class="rail-${cur?'working':esc(a.status)}"><span class="rail-what" dir="auto">${cur&&liveText?'<i class="rail-dot" aria-hidden="true"></i>':''}${esc(main)}</span><span class="rail-sub" dir="auto">${esc(sub)}</span></li>`;}).join('');
-  const openCount=asks.filter(a=>a.status==='open' || a.status==='partial').length;
-  let folded=false;try{folded=localStorage.getItem('termcontrol-asks-rail')==='folded';}catch{}
-  document.body.classList.toggle('asks-folded',folded);
-  const rail=`<aside class="asks-rail${folded?' folded':''}" aria-label="${esc(ui('Your requests','הבקשות שלך'))}"><button type="button" class="rail-toggle" aria-expanded="${folded?'false':'true'}"><span>${esc(openCount?ui(`${openCount} open · ${done} done`,`${openCount} פתוחות · ${done} בוצעו`):ui(`All ${asks.length} done`,`כל ${asks.length} בוצעו`))}</span><span aria-hidden="true">${folded?'▸':'▾'}</span></button><ul${folded?' hidden':''}>${railRows}</ul></aside>`;
-  requestAnimationFrame(()=>{placeRail();const ul=document.querySelector('.asks-rail ul');if(ul)ul.scrollTop=railScrollTop===null?ul.scrollHeight:railScrollTop;});
-  return rail+`<details class="asks-chip"${isOpen?' open':''}><summary>${esc(head)} ▾</summary><ol>${asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(a.text.length>240?a.text.slice(0,239)+'…':a.text)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol></details>`;
+  live0=String(live||'');paintSideAsks(asks,current,railLive(live));
+  return `<details class="asks-chip"${isOpen?' open':''}><summary>${esc(head)} ▾</summary><ol>${asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(a.text.length>240?a.text.slice(0,239)+'…':a.text)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol></details>`;
 }
 
 // TF-096 bots: managers that run outside the terminals (like Grok Bot's bots) and
@@ -2337,13 +2362,15 @@ async function botMemoryDialog(id,name){
 }
 
 async function openBot(id){
-  loadBotModels();paintOpenBot();
+  loadBotModels();paintOpenBot();clearSideAsks();
   rememberCurrentChat();saveChatView=null;clearChatGesture();otherView='bot';
   document.querySelector('.composer')?.releaseDraft?.();document.querySelector('.composer')?.remove();document.querySelector('.askbox')?.remove();document.querySelector('.room-dialog')?.remove();
   const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
   sideContent.querySelectorAll('.pane').forEach(el=>el.classList.remove('selected'));
   focusedPane=null;const mine=++view;
   clearInterval(timer);clearInterval(fleetTimer);releaseChatScroll?.();releaseChatWake?.();
+  // the bot list keeps up while this chat is open: a bot made meanwhile shows up by itself
+  fleetTimer=setInterval(()=>{if(otherView==='bot')fleet(true);},15000);setTimeout(()=>{if(otherView==='bot')fleet(true);},0);
   document.body.classList.add('chat');
   nav.innerHTML=`<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
   nav.querySelector('.back').onclick=()=>{history.pushState({},'',location.pathname);fleet();};
@@ -2486,8 +2513,8 @@ async function openBot(id){
     const helpersMarkup=helpers.length?`<details class="helpers-chip"><summary>${esc(ui(`Terminal agents it started: ${helpers.length}${active?` (${active} working)`:''}`,`סוכני מסוף שהפעיל: ${helpers.length}${active?` (${active} עובדים)`:''}`))} ▾</summary><ul>${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul></details>`:'';
     let schedules=[];try{const r=await fetch(`/api/routines?pane=${encodeURIComponent('bot:'+id)}`,{signal:AbortSignal.timeout(6000)});if(r.ok)schedules=(await r.json()).routines || [];}catch{}
     const schedulesMarkup=`<span class="routinesline">${schedules.map(r=>`<span class="routine-pill">${icon('clock')}<span dir="auto">${esc(r.label)} ${esc(r.time)} · ${esc(r.text.length>40?r.text.slice(0,38)+'…':r.text)}</span></span>`).join('')}<button type="button" class="bot-schedule routine-pill">${icon('clock')}${ui('Schedule','תזמון')}</button></span>`;
-    const lastTalk=data.messages.filter(m=>m.role==='activity' || m.role==='operator').pop(),busyHelper=helpers.filter(h=>h.state==='working').pop(),helperLive=busyHelper?`${busyHelper.title || ui('Terminal agent','סוכן מסוף')}: ${busyHelper.live || shortTask(busyHelper.task) || ui('working','עובד')}`:'',botLive=bot.state==='working'?(helperLive || (lastTalk?.role==='activity'?String(lastTalk.text).split(':')[0]:'')):'';
-    const asksMarkup=asksHtml(data.asks,bot.state==='working',botLive)+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
+    const lastTalk=data.messages.filter(m=>m.role==='activity' || m.role==='operator').pop(),busyHelper=helpers.filter(h=>h.state==='working').pop(),helperLive=busyHelper?`${busyHelper.title || ui('Terminal agent','סוכן מסוף')}: ${busyHelper.live || shortTask(busyHelper.task) || ui('working','עובד')}`:'',botLive=helperLive || (bot.state==='working' && lastTalk?.role==='activity'?String(lastTalk.text).split(':')[0]:'');
+    const asksMarkup=asksHtml(data.asks,bot.state==='working' || Boolean(busyHelper),botLive)+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
     const html=data.messages.map(m=>{
       const when=m.at?ago(m.at):'';
       if(m.role==='operator')return messageHtml('user',m.images?`${m.text}\n📷 ${ui(m.images===1?'1 picture':`${m.images} pictures`,m.images===1?'תמונה אחת':`${m.images} תמונות`)}`:m.text,ui('You','אתה'),when);

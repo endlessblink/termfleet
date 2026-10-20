@@ -162,20 +162,25 @@ export function asksForFile(file, { cacheDir = join(process.env.XDG_CACHE_HOME |
 
 const clip = (s, n) => { const t = String(s).replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
+// Wake-ups and restart notices land in the conversation as "user" lines but are not requests from Noam.
+// Kept in the record (so numbers never shift); left out of everything he or the agent is shown.
+export const isRealRequest = (text) => !/^\s*(?:\[Event, not from|\(You were cut off by a restart|\[System notice)/i.test(String(text || ''));
+
 export function summaryLine(asks) {
   const count = (s) => asks.filter((a) => a.status === s).length;
   return `${count('done')}/${asks.length} done${count('partial') ? `, ${count('partial')} partial` : ''}${count('dropped') ? `, ${count('dropped')} dropped` : ''}${count('open') ? `, ${count('open')} open` : ''}`;
 }
 
 /** What the agent is shown: every unfinished request verbatim, finished ones counted. */
-export function ledgerText(asks, { newest = null, maxChars = 6000 } = {}) {
+export function ledgerText(allAsks, { newest = null, maxChars = 6000 } = {}) {
+  const asks = allAsks.filter((a) => isRealRequest(a.text));
   if (!asks.length) return '';
   const unfinished = asks.filter((a) => a.status === 'open' || a.status === 'partial');
-  const lines = [`Noam's requests in this conversation, in his own words (${summaryLine(asks)}). Keep them; do not replace them with your own summary.`];
-  for (const a of unfinished.slice(-15)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 120)}` : ''}] "${clip(a.text, 500)}"`);
+  const lines = [`Noam's requests, his words (${summaryLine(asks)}):`];
+  for (const a of unfinished.slice(-15)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 80)}` : ''}] "${clip(a.text, 200)}"`);
   if (unfinished.length > 15) lines.push(`(${unfinished.length - 15} older unfinished requests not shown)`);
-  if (newest) lines.push('', `#${newest.n} is new. If it is a new or unclear request, first read it back as a short numbered list in his words (mark implied parts), ask at most 2 questions about real gaps, then build.`);
-  lines.push('When a request is finished, mark it: termfleet-asks done <n> "<proof: what ran and what it showed>"; or partial <n> "<what is missing>"; or dropped <n> "<why, who decided>". Never call something done without proof; if you did less than asked, say so in your first sentence.');
+  if (newest) lines.push(`#${newest.n} is new. If it is a new or unclear request, first read it back in his words; ask at most 2 questions about real gaps.`);
+  lines.push('Mark finished ones: termfleet-asks done|partial|dropped <n> "<proof or note>".');
   const text = lines.join('\n');
   return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
 }
@@ -243,12 +248,12 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
     // Noam 2026-10-17: "they say that they will do something and just never do it".
     // Nothing runs after an agent stops, so a promised next step must happen now.
     const promise = promisedStep(last);
-    if (promise) return { decision: 'block', reason: `You ended by promising "${clip(promise, 140)}", but nothing runs after you stop, so it would never happen. Do it now, in this turn. If it really has to wait, end with "Waiting for Noam: <what you need>", or set a wake-up first (a schedule, termfleet-team follow, or a background job that notifies you) and say so.` };
+    if (promise) return { decision: 'block', reason: `You promised "${clip(promise, 80)}" but nothing runs after you stop. Do it now, or end with "Waiting for Noam: <what>" / set a wake-up.` };
     if (!CLAIMS_DONE.test(last)) return null;
     const unmarked = asks.filter((a) => a.status === 'open');
     if (!unmarked.length) return null;
-    const list = unmarked.slice(-6).map((a) => `#${a.n} "${clip(a.text, 160)}"`).join('; ');
-    return { decision: 'block', reason: `Before you say it is done: mark Noam's open requests with termfleet-asks — done <n> "<proof: what ran and what it showed>", partial <n> "<what is missing>", or dropped <n> "<why, who decided>". If anything is partial or not done, say so in your first sentence. Open: ${list}` };
+    const list = unmarked.slice(-3).map((a) => `#${a.n} "${clip(a.text, 60)}"`).join('; ');
+    return { decision: 'block', reason: `Mark open requests first (termfleet-asks done|partial|dropped <n> "<proof>"); if anything is not done, say so in your first sentence. Open: ${list}` };
   }
   return null;
 }

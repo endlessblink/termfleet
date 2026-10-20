@@ -43,11 +43,11 @@ import { BotBrowser } from './bot-browser.mjs';
 import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
 import { checkBotEvents } from './bot-events.mjs';
 import { Push } from './push.mjs';
-import { asksForFile } from '../../scripts/termfleet-asks.mjs';
+import { asksForFile, isRealRequest } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter } from './asks-sidecar.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const appDir = path.join(here, '..', 'app');
+const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
 const customAnswersVerified = process.env.TC_VERIFIED_CUSTOM_ANSWERS === '1';
@@ -230,7 +230,7 @@ setInterval(() => { try { bots.retryDue(); } catch (error) { console.error('[bot
 function asksForTranscript(file) {
   if (!file) return null;
   try {
-    const asks = asksForFile(file);
+    const asks = asksForFile(file).filter((a) => isRealRequest(a.text));
     return asks.length ? asks.slice(-30).map((a) => ({ n: a.n, text: a.text.slice(0, 600), status: a.status, note: String(a.note || '').slice(0, 200) })) : null;
   } catch { return null; }
 }
