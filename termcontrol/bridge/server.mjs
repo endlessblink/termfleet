@@ -44,6 +44,7 @@ import { report as agentHealthReport } from '../../scripts/termfleet-agent-healt
 import { checkBotEvents } from './bot-events.mjs';
 import { Push } from './push.mjs';
 import { asksForFile } from '../../scripts/termfleet-asks.mjs';
+import { createAsksSidecarWriter } from './asks-sidecar.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..', 'app');
@@ -817,6 +818,11 @@ const server = http.createServer((req, res) => {
 // them continuously rather than only when the phone asks. Without this the
 // fleet shows nothing as live for the first few seconds after you open it.
 setInterval(() => { liveness().catch(() => {}); }, 3000).unref?.();
+// Requests per terminal for the desktop app's side panel (see asks-sidecar.mjs).
+const writeAsksSidecars = createAsksSidecarWriter({ asksOf: (pane) => asksForTranscript(adapterFor(pane)?.transcriptPath(pane)) });
+setInterval(async () => {
+  try { writeAsksSidecars((await currentPanes()).panes); } catch (error) { console.error('[asks sidecar]', error.message); }
+}, 4000).unref?.();
 liveness().catch(() => {});
 
 /**

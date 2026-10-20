@@ -42,6 +42,10 @@ try {
   assert.deepEqual(wide.rows, ['✓ Done|Fix the login page', 'Partly done|Add a dark theme', 'Waiting|Make exports faster', 'Waiting|Widen the approval to local edits']);
   if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-wide.png' });
   assert.ok((await p.evaluate(() => document.querySelector('.asks-rail').getBoundingClientRect().width)) <= 240);
+  // The panel sits at the bottom of the right side, just above the message box, and grows upward.
+  const place = await p.evaluate(() => { const r = document.querySelector('.asks-rail').getBoundingClientRect(), c = document.querySelector('.bot-composer').getBoundingClientRect(); return { railBottom: Math.round(r.bottom), composerTop: Math.round(c.top), railTop: Math.round(r.top), viewport: innerHeight }; });
+  assert.ok(place.railBottom <= place.composerTop + 4 && place.railBottom >= place.composerTop - 60, JSON.stringify(place));
+  assert.ok(place.railTop > 100, JSON.stringify(place));
   // Live: a request moving to done shows up by itself, without a reload (the page redraws every few seconds).
   await p.evaluate(() => { window.__same = 1; });
   asks = asks.map((a) => (a.n === 3 ? { ...a, status: 'done' } : a));

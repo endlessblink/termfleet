@@ -1,6 +1,7 @@
 import {ptySessionEnvelope} from "../lib/sessionProcessEvents";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { RequestsRail } from "./RequestsRail";
 import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -2748,3 +2749,4 @@ export function TerminalComponent({
     </div>
   );
 }
+      <RequestsRail sessionId={attachToPtyId ?? runtimeSessionId} />
