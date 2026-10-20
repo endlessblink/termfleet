@@ -6,6 +6,9 @@ import { OPEN_BOT_EVENT, takePendingBot } from "../lib/botsDirectory";
 // only) and needs no address to type.
 const AGENTS_URL = "http://127.0.0.1:7810/embed";
 
+// After this long without the page, offer to open it again (it keeps loading meanwhile).
+const SLOW_LOAD_MS = 45_000;
+
 // TF-096: the side list's Bots section opens a bot's chat here.
 function agentsUrl(bot: string | null) {
   return bot ? `${AGENTS_URL}#bot:${bot}` : AGENTS_URL;
@@ -35,13 +38,38 @@ export function AgentsView() {
     window.addEventListener("blur", release);
     return () => window.removeEventListener("blur", release);
   }, []);
+  // Right after a restart the page can take a minute or more to arrive, and the empty
+  // frame painted plain white (Noam 2026-10-20, a blank Agents view). Keep the frame
+  // hidden behind a short note until it has loaded. A slow load is never restarted on
+  // its own; after a while a Try again button opens the page afresh.
+  const [attempt, setAttempt] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (loaded) return;
+    setSlow(false);
+    const timer = window.setTimeout(() => setSlow(true), SLOW_LOAD_MS);
+    return () => window.clearTimeout(timer);
+  }, [loaded, attempt]);
   return (
-    <section className="agents-view" aria-label="Agents" style={{ width: "100%", height: "100%", background: "var(--surface-raised)" }}>
+    <section className="agents-view" aria-label="Agents" style={{ position: "relative", width: "100%", height: "100%", background: "var(--surface-raised)" }}>
       <h1 className="sr-only">Agents</h1>
+      {!loaded && (
+        <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", justifyItems: "center", gap: 12, color: "var(--text-muted, #a8a29e)", font: "400 14px var(--font-ui)" }}>
+          {slow ? "The agents are taking long to open." : "Opening the agents…"}
+          {slow && (
+            <button type="button" onClick={() => setAttempt((n) => n + 1)} style={{ font: "500 13px var(--font-ui)", padding: "6px 14px", borderRadius: 6, border: "1px solid currentColor", background: "transparent", color: "inherit", cursor: "pointer" }}>
+              Try again
+            </button>
+          )}
+        </div>
+      )}
       <iframe
+        key={attempt}
         title="Agents"
         src={src}
-        style={{ width: "100%", height: "100%", border: 0, display: "block", background: "transparent" }}
+        onLoad={() => setLoaded(true)}
+        style={{ width: "100%", height: "100%", border: 0, display: "block", background: "transparent", visibility: loaded ? "visible" : "hidden" }}
         allow="clipboard-read; clipboard-write; microphone"
       />
     </section>
