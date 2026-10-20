@@ -1,4 +1,4 @@
-// Noam 2026-10-20: the requests list lives in the sidebar under the conversations, like the Desk app; the chat stays where it was.
+// Noam 2026-10-20: the requests list is a small strip bottom-right beside the message box; the chat stays where it was.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 const repo = path.resolve('.');
-test('the requests list sits in the sidebar under the bots (like the Desk), never touches the chat, and follows the work live', { timeout: 90000 }, async () => {
+test('the requests list is a small strip bottom-right beside the message box, never touches the chat, and follows the work live', { timeout: 90000 }, async () => {
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-rail-'));
 const configDir = path.join(tmp, 'cfg'), botsHome = path.join(tmp, 'home');
 for (const d of [configDir, botsHome]) fs.mkdirSync(d, { recursive: true });
@@ -41,14 +41,19 @@ try {
   const geo = () => p.evaluate(() => { const rect = (q) => { const r = document.querySelector(q)?.getBoundingClientRect(); return r ? { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom) } : null; }; return { asks: rect('#side-asks'), side: rect('#fleet-side'), list: rect('#fleet-side .side-content'), main: rect('main'), composer: rect('.bot-composer'), vw: innerWidth, vh: innerHeight }; });
   const g0 = await geo();
   // In the sidebar, below the bots list, filling to the bottom, in its own scroll; the right-hand panel is gone; the chat uses the whole width.
-  assert.ok(g0.asks.r <= g0.side.r && g0.asks.l >= g0.side.l && g0.asks.b <= g0.vh, JSON.stringify(g0));
-  assert.ok(g0.asks.t >= g0.list.t, JSON.stringify(g0));
+  // Noam 2026-10-20 (second thought): not in the sidebar (it took the bots' room) but a small strip in the free space
+  // right of the chat, bottom-aligned with the message box, never over the chat.
+  assert.ok(g0.asks.l >= g0.composer.r + 8 && g0.asks.r <= g0.vw && Math.abs(g0.asks.b - g0.composer.b) <= 2, JSON.stringify(g0));
+  assert.ok(g0.asks.l >= g0.side.r && g0.asks.r - g0.asks.l <= 300, JSON.stringify(g0));
+  assert.equal(await p.evaluate(() => Boolean(document.querySelector('#fleet-side #side-asks'))), false);
   assert.equal(await p.evaluate(() => document.querySelectorAll('.asks-rail').length), 0);
   assert.ok(Math.abs((g0.main.l + g0.main.r) / 2 - (g0.side.r + g0.vw) / 2) <= 2, 'the chat stays centred in the area right of the sidebar: nothing is reserved on the right ' + JSON.stringify(g0));
   const text = await p.evaluate(() => document.querySelector('#side-asks').innerText);
-  assert.match(text, /Your requests · 1 not finished · 2 answered · 1 done/);
+  // the counts: what needs him leads, the finished count is at the end and never cut
+  const head = await p.evaluate(() => [...document.querySelectorAll('#side-asks summary > span')].map((x) => [x.textContent, x.scrollWidth <= x.clientWidth + 1]));
+  assert.deepEqual(head, [['Requests', true], ['· 1 not finished', true], ['3 done', true]]);
   assert.doesNotMatch(text, /\/home\/|tail -1|\[Noam/);
-  const rows = () => p.evaluate(() => [...document.querySelectorAll('#side-asks li')].map((li) => li.querySelector('.st').textContent + '|' + li.querySelector('.rail-what').textContent));
+  const rows = () => p.evaluate(() => [...document.querySelectorAll('#side-asks li:not(.rail-more)')].map((li) => li.querySelector('.st').textContent + '|' + li.querySelector('.rail-what').textContent));
   assert.deepEqual(await rows(), ['Not finished|Add a dark theme', 'Answered|Widen the approval to local edits', 'Answered|Make exports faster', '✓ Done|Fix the login page']);
   if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-wide.png' });
   // Noam 2026-10-20: never 'Waiting' on a request the bot already moved past.
@@ -71,10 +76,14 @@ try {
   live = null;
   // Many requests: its own scroll, newest/working on top, the list never grows past its share of the sidebar.
   asks = [...asks, ...Array.from({ length: 20 }, (_, k) => k + 5).map((n) => ({ n, text: `Request number ${n}`, status: n === 24 ? 'open' : 'done', note: '' }))];
-  await p.waitForFunction(() => document.querySelectorAll('#side-asks li').length === 24, null, { timeout: 12000, polling: 500 });
+  await p.waitForFunction(() => document.querySelectorAll('#side-asks li:not(.rail-more)').length === 24, null, { timeout: 12000, polling: 500 });
   await wait(600);
   const order = await rows();
   assert.ok(order.findIndex((r) => r.endsWith('Request number 24')) < order.findIndex((r) => r.startsWith('✓ Done')), 'an unfinished request stays above the done ones ' + JSON.stringify(order));
+  // only the latest three done ones show until he asks for the rest
+  const shown = await p.evaluate(() => ({ done: [...document.querySelectorAll('#side-asks li.rail-done')].filter((li) => li.offsetParent).length, more: document.querySelector('#side-asks .rail-more button')?.textContent }));
+  assert.deepEqual(shown, { done: 3, more: '+18 earlier done' });
+  await p.click('#side-asks .rail-more button');
   const many = await p.evaluate(() => { const ul = document.querySelector('#side-asks ul'), s = document.querySelector('#side-asks').getBoundingClientRect(); return { scrolls: ul.scrollHeight > ul.clientHeight, top: ul.scrollTop, first: ul.querySelector('li').textContent, share: s.height / innerHeight, dbg: [ul.scrollHeight, ul.clientHeight, Math.round(s.height), Math.round(s.top), innerHeight, document.querySelector('#fleet-side').getBoundingClientRect().height] }; });
   assert.deepEqual({ scrolls: many.scrolls, top: many.top }, { scrolls: true, top: 0 }, JSON.stringify(many));
   assert.match(many.first, /Add a dark theme/);
