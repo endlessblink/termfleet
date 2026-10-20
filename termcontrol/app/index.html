@@ -2445,6 +2445,7 @@ async function openBot(id){
   const showPicker=async()=>{
     const m=/^\/(\S*)$/.exec(field.value);if(!m){picker.hidden=true;return;}
     if(!skillList){try{const r=await fetch('/api/skills',{signal:AbortSignal.timeout(8000)});skillList=(await r.json()).skills.filter(k=>k.status==='approved');}catch{skillList=[];}}
+    if(field.value!==m[0]){picker.hidden=!/^\/(\S*)$/.test(field.value);if(picker.hidden)return;return showPicker();}   // typed on (or sent) while the list loaded
     const q=m[1].toLowerCase(),hits=skillList.filter(k=>k.name.includes(q) || k.description.toLowerCase().includes(q)).slice(0,30);
     picker.innerHTML=hits.length?hits.map(k=>`<button type="button" role="option" data-name="${esc(k.name)}"><b>${esc(k.name)}</b><span>${esc(k.description)}</span></button>`).join(''):`<p class="rooms-empty">${ui('No skill matches.','אין סקיל מתאים.')}</p>`;
     picker.hidden=false;
@@ -2523,7 +2524,7 @@ async function openBot(id){
       }catch(e){send.disabled=false;reportPush('attach-failed',e);return note(e.message || ui('A picture could not be sent. It is still here.','לא ניתן לשלוח תמונה. היא עדיין כאן.'),true);}
       pics.splice(0).forEach(p=>URL.revokeObjectURL(p.url));drawPics();
     }
-    field.value='';try{sessionStorage.removeItem(draftKey);}catch{}following=true;grow();
+    field.value='';try{sessionStorage.removeItem(draftKey);}catch{}following=true;picker.hidden=true;grow();
     const entry={text,images,state:'sending'};pendingSends.push(entry);
     await deliver(entry);
   };

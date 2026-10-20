@@ -7,7 +7,7 @@ Interview Noam relentlessly about every part of his plan until you both understa
 
 How to run it in this chat:
 - Ask exactly ONE question per message, always in English, as a question card (the [question] block from your rules), then stop and wait for his answer. Never put a second question in the same message, and never answer for him.
-- Number them ("Question 1: ..."). Before the card, one short line on why you recommend the answer you marked "(recommended)". Give 2 to 4 short answers.
+- Number them inside the card ("Question 1: ..."). Before the card, one short line on why you recommend the answer you marked "(recommended)". Give 2 to 4 short answers.
 - If he has not said what the plan is yet, your first question is which plan or idea to grill.
 - If a question can be answered by looking (files, status, a quick search), look instead of asking.
 - Keep the questions and the summary in English, in short, plain, everyday words, even when he answers in Hebrew.

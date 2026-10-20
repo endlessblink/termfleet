@@ -49,3 +49,9 @@ test('the page draws the card and sends a tap as Noam\'s answer', () => {
   assert.match(page, /\.bot-question:not\(\.answered\) \[data-answer\]/);
   assert.match(page, /Write my own answer/);
 });
+
+test('the skills list closes when the message is sent, even if it was still loading', () => {
+  const page = fs.readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
+  assert.match(page, /if\(field\.value!==m\[0\]\)\{picker\.hidden=/);
+  assert.match(page, /following=true;picker\.hidden=true;grow\(\);/);
+});
