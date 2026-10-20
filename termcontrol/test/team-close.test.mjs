@@ -57,6 +57,14 @@ test('bots are told to close their finished terminals', () => {
   assert.ok(bots);
 });
 
+test('bots are told to close a finished terminal they started, in the brief and in the finished wake-up', () => {
+  // Noam 2026-10-20: 24 terminals open, 23 idle.
+  const brief = fs.readFileSync(new URL('../bridge/bots.mjs', import.meta.url), 'utf8');
+  assert.match(brief, /Always close a terminal you started once its work is done/);
+  const events = fs.readFileSync(new URL('../bridge/bot-events.mjs', import.meta.url), 'utf8');
+  assert.match(events, /has finished\. Read its result[^`]*Then close it \(termfleet-team close \$\{h\.paneId\}\) unless you are sending it more work now/);
+});
+
 test('a busy plain shell is seen as working: the close looks twice before deciding', async () => {
   // One look from a fresh command never sees output move (live 2026-10-20: a shell printing every second read idle).
   let looks = 0;

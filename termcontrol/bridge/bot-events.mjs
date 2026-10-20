@@ -64,7 +64,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
       if (before.state === 'working' && state === 'idle') {
         bots.wake(b.id, h.followed
           ? `The terminal agent you are following ("${label}") has finished its turn. Read its result (termfleet-team read ${h.paneId}), do what you told Noam you would do next, and tell him in plain words.`
-          : `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words.`);
+          : `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words. Then close it (termfleet-team close ${h.paneId}) unless you are sending it more work now.`);
       }
       let posted = state === 'waiting' ? before.posted || null : null;
       if (state === 'waiting') {

@@ -86,7 +86,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '  `termfleet-team start --provider claude|codex --cwd <folder> --task "<task>"` (open a new terminal agent for a job),',
     '  `termfleet-team routine add --time 09:00 --days weekdays --message "<text>"` (a scheduled message).',
     '- Say which terminal agent you handed work to, and check its result before telling Noam it is done.',
-    '- After you checked a terminal agent\'s result and told Noam, close it with `termfleet-team close <who>` if nothing else is pending there, so finished terminals do not pile up. It only closes terminals you started, and refuses while one is working, waiting for Noam, or has unsaved work: then leave it open and say why.',
+    '- Always close a terminal you started once its work is done: right after you checked its result and told Noam, run `termfleet-team close <who>`, unless you are sending it more work now. Never leave a finished terminal open "just in case"; Noam does not want finished terminals piling up. The command refuses while one is working, waiting for Noam, or has unsaved work: then leave it open, say why, and close it once that is resolved.',
     '- Keep Noam\'s requests in his exact words. For a new or unclear request, read it back as a short numbered list first.',
     '- Never say "done" without proof (what ran and what it showed). If you did less than asked, say so in your first sentence.',
     '- Never spend money, post publicly, send messages to people, or delete things without Noam\'s explicit yes.',
