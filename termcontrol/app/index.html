@@ -1027,6 +1027,52 @@ body.chat main .msg:hover .message-menu>summary,body.chat main .msg .message-men
   body.chat main .msg.user{margin-left:2%}
   .composer textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
+/* Slim bot chat header (Noam 2026-10-20, option B + menu): one 56px line in bot chats only. */
+body.bot-view header{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:4px!important;min-height:56px!important;height:56px;padding:0 4px!important;background:var(--bg)!important;border-bottom:1px solid var(--line);position:relative!important}
+body.bot-view header::after{display:none!important}
+body.bot-view header #nav{position:static!important;inset:auto!important;display:flex!important;flex:none;pointer-events:auto!important}
+body.bot-view header #nav .back{position:static!important;width:44px;height:44px}
+body.bot-view header>#nav+div{flex:1 1 auto!important;min-width:0!important;width:auto!important;text-align:start!important}
+body.bot-view header h1{display:flex!important;flex-direction:row!important;align-items:center!important;gap:10px!important;font-size:16px!important;line-height:1.2!important;text-align:start!important;margin:0;white-space:nowrap!important;overflow:hidden!important}
+body.bot-view header .bot-avatar.head{flex:none;width:30px;height:30px;margin:0!important}
+body.bot-view header .bot-avatar.head svg{width:30px;height:30px}
+.bot-names{display:grid;grid-template-columns:minmax(0,1fr);min-width:0}
+.bot-names bdi{font-weight:500;overflow:hidden;text-overflow:ellipsis}
+.bot-names .bot-brain{font-size:12.5px;font-weight:400;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.bot-names .bot-brain:empty{display:none}
+body.bot-view header .sub,body.bot-view header .chatstatus,body.bot-view header .routinesline,body.bot-view header>.theme-toggle{display:none!important}
+.bot-head-actions{display:contents}
+body:not(.bot-view) .bot-head-actions{display:none}
+.bot-asks-chip{flex:none;display:flex;align-items:center;gap:6px;height:32px;min-width:44px;padding:0 11px;border:0;border-radius:16px;background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;font-variant-numeric:tabular-nums;cursor:pointer;position:relative}
+.bot-asks-chip::before{content:"";position:absolute;inset:-6px 0}
+.bot-asks-chip i{display:none;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.bot-asks-chip.waiting i{display:block}
+.bot-menu-button{flex:none;width:44px;height:44px;display:grid;place-items:center;border:0;background:none;color:var(--muted);cursor:pointer;border-radius:12px}
+.bot-menu-button svg{width:22px;height:22px;fill:currentColor}
+.bot-asks-chip:focus-visible,.bot-menu-button:focus-visible,.menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bot-progress{position:absolute;inset-inline:0;bottom:-1px;height:2px;background:var(--line);pointer-events:none}
+.bot-progress>span{display:block;height:100%;background:var(--working);transform-origin:left;transform:scaleX(0);transition:transform .4s cubic-bezier(.16,1,.3,1)}
+.bot-menu-sheet{position:fixed;inset:auto 0 0 0;margin:0;width:100%;max-width:100%;max-height:min(80dvh,640px);overflow:auto;border:0;border-top:1px solid var(--line);border-radius:22px 22px 0 0;background:var(--surface);color:var(--text);padding:10px 8px calc(14px + env(safe-area-inset-bottom));display:grid;gap:2px;align-content:start}
+.bot-menu-sheet::backdrop{background:rgba(0,0,0,.5)}
+.bot-menu-sheet[open]{animation:sheet-up .26s cubic-bezier(.16,1,.3,1)}
+@keyframes sheet-up{from{transform:translateY(24px);opacity:.4}}
+@media(prefers-reduced-motion:reduce){.bot-menu-sheet[open]{animation:none}.bot-progress>span{transition:none}}
+.sheet-grab{width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 8px}
+.menu-item{display:flex;align-items:center;gap:14px;min-height:50px;padding:0 12px;border:0;border-radius:12px;background:none;color:var(--text);font:inherit;font-size:15.5px;text-align:start;cursor:pointer;width:100%}
+.menu-item:hover{background:var(--surface-2)}
+.menu-item svg{flex:none;width:21px;height:21px;fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.menu-label{flex:1;min-width:0}
+.menu-value{flex:none;max-width:55%;color:var(--muted);font-size:13.5px;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu-item.big .menu-value{color:var(--text)}
+.menu-item.danger,.menu-item.danger svg{color:var(--danger,#d66);stroke:var(--danger,#d66)}
+.menu-sep{height:1px;background:var(--line);margin:4px 12px}
+.menu-back{color:var(--muted)}
+.sheet-title{font-size:16px;font-weight:500;margin:4px 12px 8px}
+.sheet-list{margin:0;padding:0 12px 8px 34px;display:grid;gap:10px;line-height:1.45;font-size:14.5px}
+ul.sheet-list{list-style:none;padding-inline-start:12px}
+.sheet-list li{display:block}.sheet-list .ask-status{margin-inline-end:6px}.sheet-list .ask-note{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.sheet-list a{color:var(--text)}
+@media(min-width:1000px){.bot-menu-sheet{inset:64px 16px auto auto;width:360px;border:1px solid var(--line);border-radius:16px;padding:8px}.bot-menu-sheet .sheet-grab{display:none}.bot-menu-sheet::backdrop{background:rgba(0,0,0,.5)}}
 </style>
 </head>
 <body>
@@ -1076,6 +1122,7 @@ function hasNewAnswer(p,active){
   return looked>0 && Number(p.lastActiveAt || 0)>looked+5000;
 }
 function rememberCurrentChat(){
+  document.body.classList.remove('bot-view');document.querySelector('.bot-head-actions')?.remove();document.querySelector('.bot-menu-sheet')?.remove();
   if(!focusedPane)return;markSeen(focusedPane);document.querySelector('.composer')?.saveDraft?.();saveChatView?.();
   // Capture once when leaving; never serialize the conversation on drag frames.
   const snapshot=main.cloneNode(true);snapshot.querySelectorAll('.askbox,.copy-fallback').forEach(el=>el.remove());
@@ -2174,9 +2221,12 @@ function paintSideAsks(asks,current,liveText){
 }
 let live0='';
 const notHisWords=/^\s*(?:\(\d+\)\s*)?(?:\[Event, not from|\(You were cut off by a restart|\[System notice)/i;
-function asksHtml(asks,working,live,scheduled=[]){
+function visibleAsks(asks,scheduled=[]){
   const sched=new Set(scheduled.map(t=>String(t||'').replace(/\s+/g,' ').trim()).filter(Boolean));
-  asks=(asks || []).filter(a=>!notHisWords.test(a.text) && !sched.has(String(a.text||'').replace(/\s+/g,' ').trim()));
+  return (asks || []).filter(a=>!notHisWords.test(a.text) && !sched.has(String(a.text||'').replace(/\s+/g,' ').trim()));
+}
+function asksHtml(asks,working,live,scheduled=[]){
+  asks=visibleAsks(asks,scheduled);
   if(!asks || !asks.length){clearSideAsks();return '';}
   const done=asks.filter(a=>a.status==='done').length,partial=asks.filter(a=>a.status==='partial').length,open=asks.filter(a=>a.status==='open').length;
   const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
@@ -2187,6 +2237,67 @@ function asksHtml(asks,working,live,scheduled=[]){
   const openNums=asks.filter(a=>a.status==='open').map(a=>a.n),current=working&&openNums.length?Math.max(...openNums):null;
   live0=String(live||'');paintSideAsks(asks,current,railLive(live));
   return `<details class="asks-chip"${isOpen?' open':''}><summary>${esc(head)} ▾</summary><ol>${asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(a.text.length>240?a.text.slice(0,239)+'…':a.text)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol></details>`;
+}
+
+// Slim bot header (option B): "25/30" opens the requests; the line under the bar fills as they get done.
+function asksSummary(asks){
+  const done=asks.filter(a=>a.status==='done').length,partial=asks.filter(a=>a.status==='partial').length,open=asks.filter(a=>a.status==='open').length;
+  return {done,partial,open,total:asks.length,text:ui(`${done} of ${asks.length} done`,`${done} מתוך ${asks.length} בוצעו`)+(partial?ui(`, ${partial} partial`,`, ${partial} חלקיות`):'')+(open?ui(`, ${open} open`,`, ${open} פתוחות`):'')};
+}
+function paintBotHead(state){
+  const box=document.querySelector('.bot-head-actions');if(!box)return;
+  const chip=box.querySelector('.bot-asks-chip'),bar=box.querySelector('.bot-progress'),sum=asksSummary(state.asks);
+  chip.hidden=bar.hidden=!sum.total;if(!sum.total)return;
+  chip.querySelector('span').textContent=`${sum.done}/${sum.total}`;chip.classList.toggle('waiting',Boolean(sum.open || sum.partial));
+  chip.setAttribute('aria-label',ui(`Your requests: ${sum.text}`,`הבקשות שלך: ${sum.text}`));
+  bar.firstElementChild.style.transform=`scaleX(${(sum.done/sum.total).toFixed(3)})`;
+}
+const menuIcons={asks:'M5 12l4 4L19 6',agents:'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h4',model:'M12 9a3 3 0 100 6 3 3 0 000-6z M12 3v3 M12 18v3 M3 12h3 M18 12h3',memory:'M6 4h12v16l-6-4-6 4z',schedule:'M12 4a8 8 0 100 16 8 8 0 000-16z M12 8v4l3 2',edit:'M4 20h4L19 9l-4-4L4 16z',theme:'M12 8a4 4 0 100 8 4 4 0 000-8z M12 3v2 M12 19v2 M3 12h2 M19 12h2',browser:'M4 5h16v14H4z M4 9h16',notify:'M6 16V11a6 6 0 0112 0v5l2 2H4z M10 20h4',pin:'M9 4h6l-1 6 3 3H7l3-3z M12 13v7',hide:'M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z M4 4l16 16',del:'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13'};
+function menuIcon(name){return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${menuIcons[name]}"/></svg>`;}
+// The bot menu: a sheet from the bottom (thumb reach) on a phone, a small panel on a wide window.
+// Items in the approved mockup's order; the remaining existing options follow so nothing is lost.
+function botMenu(id,bot,state,start='menu'){
+  document.querySelector('.bot-menu-sheet')?.remove();
+  const dialog=document.createElement('dialog');dialog.className='bot-menu-sheet';dialog.setAttribute('aria-label',ui('Bot menu','תפריט הבוט'));
+  const close=()=>{dialog.close();dialog.remove();};
+  const press=sel=>{close();document.querySelector(sel)?.click();};
+  const sum=asksSummary(state.asks),helpers=state.helpers || [];
+  const item=(key,label,value='',cls='')=>`<button type="button" class="menu-item ${cls}" data-act="${key}">${menuIcon(key)}<span class="menu-label">${esc(label)}</span>${value?`<span class="menu-value" dir="auto">${esc(value)}</span>`:''}</button>`;
+  const brain=p=>p==='codex'?'Codex':'Claude';
+  const menu=()=>`<div class="sheet-grab" aria-hidden="true"></div>`
+    +(sum.total?item('asks',ui('Your requests','הבקשות שלך'),sum.text,'big'):'')
+    +(helpers.length?item('agents',ui('Terminal agents it started','סוכני מסוף שהפעיל'),String(helpers.length),'big'):'')
+    +((sum.total || helpers.length)?'<div class="menu-sep"></div>':'')
+    +item('model',ui('Model and backup','מודל וגיבוי'),brain(bot?.active || bot?.provider))
+    +item('memory',ui('Memory','זיכרון'),bot?.memoryPending?ui(`${bot.memoryPending} to review`,`${bot.memoryPending} לבדיקה`):'')
+    +item('schedule',ui('Schedule','תזמון'),state.schedules?.length?String(state.schedules.length):'')
+    +item('edit',ui('Edit bot','עריכת הבוט'))
+    +item('theme',ui('Light or dark','בהיר או כהה'))
+    +'<div class="menu-sep"></div>'
+    +item('browser',ui('Browser','דפדפן'))
+    +item('notify',bot?.notify?ui('Notifications on','התראות פעילות'):ui('Notifications off','התראות כבויות'))
+    +item('pin',bot?.pinned?ui('Unpin','ביטול הצמדה'):ui('Pin','הצמדה'))
+    +item('hide',bot?.hidden?ui('Show in list','הצגה ברשימה'):ui('Hide','הסתרה'))
+    +item('del',ui('Delete bot','מחיקת הבוט'),'','danger');
+  const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
+  const stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),closed:ui('closed','נסגר')};
+  const back=`<button type="button" class="menu-item menu-back" data-act="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="menu-label">${ui('Bot menu','תפריט הבוט')}</span></button>`;
+  const asksList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui(`Your requests: ${sum.text}`,`הבקשות שלך: ${sum.text}`))}</h2><ol class="sheet-list">${state.asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(a.text.length>240?a.text.slice(0,239)+'…':a.text)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol>`;
+  const agentsList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui('Terminal agents it started','סוכני מסוף שהפעיל'))}</h2><ul class="sheet-list">${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul>`;
+  const show=view=>{dialog.innerHTML=view==='asks'?asksList():view==='agents'?agentsList():menu();dialog.querySelector('.menu-item')?.focus();};
+  dialog.addEventListener('click',e=>{
+    if(e.target===dialog)return close();
+    if(e.target.closest('.sheet-list a'))return close();
+    const act=e.target.closest('[data-act]')?.dataset.act;if(!act)return;
+    if(act==='back')return show('menu');
+    if(act==='asks' || act==='agents')return show(act);
+    if(act==='theme')return press('.theme-toggle');
+    if(act==='schedule')return press('.bot-schedule');
+    if(act==='del'){const b=e.target.closest('[data-act]');if(b.dataset.armed!=='true'){b.dataset.armed='true';b.querySelector('.menu-label').textContent=ui('Tap again to delete','הקישו שוב למחיקה');return;}close();const del=document.querySelector('.bot-delete');del?.click();del?.click();return;}
+    press({model:'.bot-model',memory:'.bot-memory',edit:'.bot-edit',browser:'.bot-browser',notify:'.bot-notify',pin:'.bot-pin',hide:'.bot-hide'}[act]);
+  });
+  dialog.addEventListener('close',()=>dialog.remove());
+  document.body.append(dialog);show(start);dialog.showModal();
 }
 
 // TF-096 bots: managers that run outside the terminals (like Grok Bot's bots) and
@@ -2424,7 +2535,15 @@ async function openBot(id){
   clearInterval(timer);clearInterval(fleetTimer);releaseChatScroll?.();releaseChatWake?.();
   // the bot list keeps up while this chat is open: a bot made meanwhile shows up by itself
   fleetTimer=setInterval(()=>{if(otherView==='bot')fleet(true);},15000);setTimeout(()=>{if(otherView==='bot')fleet(true);},0);
-  document.body.classList.add('chat');
+  document.body.classList.add('chat','bot-view');
+  // One slim line (Noam 2026-10-20: "the top part takes far too much space"; picked option B
+  // and the menu): back, icon + name with its brain, a requests button, and one menu.
+  const headActions=document.createElement('div');headActions.className='bot-head-actions';
+  headActions.innerHTML=`<button type="button" class="bot-asks-chip" hidden aria-haspopup="dialog"><i aria-hidden="true"></i><span></span></button><button type="button" class="bot-menu-button" aria-haspopup="dialog" aria-label="${ui('Bot menu','תפריט הבוט')}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="18.5" r="1.4"/></svg></button><span class="bot-progress" hidden aria-hidden="true"><span></span></span>`;
+  document.querySelector('header[role=banner]').append(headActions);
+  const headState={asks:[],helpers:[],schedules:[]};
+  headActions.querySelector('.bot-menu-button').onclick=()=>botMenu(id,current,headState);
+  headActions.querySelector('.bot-asks-chip').onclick=()=>botMenu(id,current,headState,'asks');
   nav.innerHTML=`<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
   nav.querySelector('.back').onclick=()=>{history.pushState({},'',location.pathname);fleet();};
   main.innerHTML='<div class="spin">loading…</div>';chatStatus.innerHTML='';routinesLine.innerHTML='';title.textContent=ui('Bot','בוט');sub.textContent='';
@@ -2536,12 +2655,12 @@ async function openBot(id){
     catch(e){if(mine!==view)return;if(signature && !e.gone){chatStatus.innerHTML=`<span class="connection-note" role="status">${ui('Reconnecting…','מתחבר מחדש…')}</span>`;return;}main.innerHTML=`<div class="empty">${esc(e.message || ui('Could not open the bot.','לא ניתן לפתוח את הבוט.'))}</div>`;bar.remove();return;}
     if(mine!==view)return;
     const bot=data.bot;current=bot;
-    title.innerHTML=`${botAvatar(bot,30,true)}<bdi dir="auto">${esc(bot.name)}</bdi>`;
+    title.innerHTML=`${botAvatar(bot,30,true)}<span class="bot-names"><bdi dir="auto">${esc(bot.name)}</bdi><small class="bot-brain" dir="auto"></small></span>`;
     const brainName=p=>p==='codex'?'Codex':'Claude';
     const plan=bot.active && bot.active!==bot.provider
       ?ui(`on ${brainName(bot.active)} (backup)${bot.mainResetsAt?` until ${brainName(bot.provider)} resets ${new Date(bot.mainResetsAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:''}`,`על ${brainName(bot.active)} (גיבוי)${bot.mainResetsAt?` עד ש-${brainName(bot.provider)} מתאפס ב-${new Date(bot.mainResetsAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:''}`)
       :brainName(bot.provider)+(bot.model?` · ${((botModels)?.[bot.provider] || []).find(m=>m.id===bot.model)?.label || bot.model}`:'')+(bot.fallback?ui(` (backup: ${brainName(bot.fallback)})`,` (גיבוי: ${brainName(bot.fallback)})`):'');
-    sub.textContent=[bot.job,plan].filter(Boolean).join(' · ');
+    sub.textContent=[bot.job,plan].filter(Boolean).join(' · ');const brain=title.querySelector('.bot-brain');if(brain)brain.textContent=plan;
     if(!chatStatus.querySelector('.bot-actions')){
       chatStatus.innerHTML=`<details class="bot-more"><summary>${ui('Bot options','אפשרויות הבוט')}</summary><span class="bot-actions"><button type="button" class="bot-memory">${ui('Memory','זיכרון')}<span class="bot-memory-count"></span></button><button type="button" class="bot-browser">${ui('Browser','דפדפן')}</button><button type="button" class="bot-model">${ui('Model and plan','מודל ותוכנית')}</button><button type="button" class="bot-edit">${ui('Name, job and rules','שם, תפקיד וכללים')}</button><button type="button" class="bot-notify"></button><button type="button" class="bot-pin"></button><button type="button" class="bot-hide"></button><button type="button" class="bot-schedule-menu">${ui('Add a schedule','הוספת תזמון')}</button><button type="button" class="bot-delete">${ui('Delete bot','מחיקת הבוט')}</button></span></details>`;
       const more=chatStatus.querySelector('.bot-more');more.addEventListener('click',e=>{if(e.target.closest('.bot-actions button') && !e.target.closest('.bot-delete'))more.open=false;});
@@ -2570,6 +2689,7 @@ async function openBot(id){
     const schedulesMarkup=`<span class="routinesline">${schedules.map(r=>`<span class="routine-pill">${icon('clock')}<span dir="auto">${esc(r.label)} ${esc(r.time)} · ${esc(r.text.length>40?r.text.slice(0,38)+'…':r.text)}</span></span>`).join('')}<button type="button" class="bot-schedule routine-pill">${icon('clock')}${ui('Schedule','תזמון')}</button></span>`;
     const lastTalk=data.messages.filter(m=>m.role==='activity' || m.role==='operator').pop(),busyHelper=helpers.filter(h=>h.state==='working').pop(),helperLive=busyHelper?`${busyHelper.title || ui('Terminal agent','סוכן מסוף')}: ${busyHelper.live || shortTask(busyHelper.task) || ui('working','עובד')}`:'',botLive=helperLive || (bot.state==='working' && lastTalk?.role==='activity'?String(lastTalk.text).split(':')[0]:'');
     const asksMarkup=asksHtml(data.asks,bot.state==='working' || Boolean(busyHelper),botLive,schedules.map(r=>r.text))+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
+    Object.assign(headState,{asks:visibleAsks(data.asks,schedules.map(r=>r.text)),helpers,schedules});paintBotHead(headState);
     const html=data.messages.map(m=>{
       const when=m.at?ago(m.at):'';
       if(m.role==='operator')return messageHtml('user',m.images?`${m.text}\n📷 ${ui(m.images===1?'1 picture':`${m.images} pictures`,m.images===1?'תמונה אחת':`${m.images} תמונות`)}`:m.text,ui('You','אתה'),when);
