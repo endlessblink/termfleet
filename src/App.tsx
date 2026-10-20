@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { dismissStartupScreen } from "./lib/startupScreen";
 import { startStatusPollLoop } from "./lib/statusPollLoop";
 import { startChildRequestLoop } from "./lib/childRequestLoop";
+import { startCloseRequestLoop } from "./lib/closeRequestLoop";
 import { StatusBar } from "./components/StatusBar";
 import { WorkbenchSidebar } from "./components/WorkbenchSidebar";
 import { WorkspaceSurface } from "./components/WorkspaceSurface";
@@ -19,6 +20,7 @@ import {
 
 startStatusPollLoop();
 startChildRequestLoop();
+startCloseRequestLoop();
 
 function App() {
   useKeybindings();

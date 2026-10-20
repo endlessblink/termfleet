@@ -2746,7 +2746,7 @@ export function TerminalComponent({
           title={nativePane.unavailableReason ?? undefined}
         />
       )}
+      <RequestsRail sessionId={attachToPtyId ?? runtimeSessionId} />
     </div>
   );
 }
-      <RequestsRail sessionId={attachToPtyId ?? runtimeSessionId} />
