@@ -43,7 +43,7 @@ import { Bots, PROVIDERS as BOT_PROVIDERS, modelChoices } from './bots.mjs';
 import { listSkills, approveSkill, rejectSkill, suggestSkill, checkSkill } from './skills.mjs';
 import { BotBrowser } from './bot-browser.mjs';
 import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
-import { checkBotEvents } from './bot-events.mjs';
+import { checkBotEvents, helperState } from './bot-events.mjs';
 import { Push } from './push.mjs';
 import { createDockIcon } from './dock-icon.mjs';
 import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
@@ -386,7 +386,8 @@ const handle = async (req, res) => {
   }
   // Bots (TF-096). Same sign-in gate as every route below it.
   if (url.pathname === '/api/bots' && req.method === 'GET') {
-    return json(res, 200, { bots: bots.list(), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
+    const livePanes = await currentPanes().then((r) => r.panes || []).catch(() => []);
+    return json(res, 200, { bots: bots.list().map((b) => ({ ...b, ...helperState(b, livePanes) })), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
   }
   // Phone notifications (TF-096 part 7).
   if (url.pathname === '/api/push/key' && req.method === 'GET') return json(res, 200, { publicKey: push.keys().publicKey });

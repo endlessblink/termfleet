@@ -26,6 +26,23 @@ export function gitHead(dir) {
 
 const stateOf = (pane) => (!pane ? 'closed' : pane.turn === 'waiting' ? 'waiting' : (pane.producing || pane.turn === 'working') ? 'working' : 'idle');
 
+/**
+ * For the bot's row (Noam 2026-10-20): how many of the terminal agents it handed
+ * work to (or follows) are still busy, and how many are asking Noam something.
+ * Only hand-offs from the last 12 hours count, so a terminal the bot followed
+ * yesterday and Noam now uses for something else does not show as "waiting".
+ */
+export function helperState(bot, panes, now = Date.now()) {
+  const ids = new Set((bot.helpers || []).filter((h) => h?.paneId && now - Number(h.at || 0) < 12 * 3600_000).map((h) => h.paneId));
+  let waitingOn = 0, helpersAsking = 0;
+  for (const id of ids) {
+    const state = stateOf(panes.find((p) => p.id === id));
+    if (state === 'working') waitingOn++;
+    else if (state === 'waiting') helpersAsking++;
+  }
+  return { waitingOn, helpersAsking };
+}
+
 /** The prompt as the bot chat shows it: the same choices the terminal offers. */
 export function terminalAskMessage(paneId, label, ask) {
   return {

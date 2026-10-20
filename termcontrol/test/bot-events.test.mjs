@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkBotEvents, gitHead } from '../bridge/bot-events.mjs';
+import { checkBotEvents, gitHead, helperState } from '../bridge/bot-events.mjs';
 import { Bots } from '../bridge/bots.mjs';
 import { Routines } from '../bridge/routines.mjs';
 
@@ -95,4 +95,25 @@ test('a bot that follows an agent it did not start is woken when it finishes, an
   await tick(30 * 60 * 1000 + 1, 'working');
   await tick(30 * 60 * 1000 + 2, 'idle');
   assert.match(woke.at(-1), /you are following \("paper bot fix"\) has finished its turn.*do what you told Noam you would do next/);
+});
+
+// Noam 2026-10-20: a bot waiting on terminal agents it handed work to shows that
+// on its row, distinct from idle, working and needs-you, and it updates as they finish.
+test('a bot row counts its busy terminal agents, once each, and only recent hand-offs', () => {
+  const now = 1_800_000_000_000, hour = 3600_000;
+  const bot = { helpers: [
+    { paneId: 'a', at: now - hour }, { paneId: 'a', at: now - 10 }, // same terminal twice
+    { paneId: 'b', at: now - 2 * hour },
+    { paneId: 'c', at: now - 5 * hour },
+    { paneId: 'old', at: now - 13 * hour }, // handed off yesterday, Noam now uses it
+    { paneId: 'gone', at: now - 10 },
+  ] };
+  const panes = [
+    { id: 'a', turn: 'working' }, { id: 'b', turn: 'idle', producing: true },
+    { id: 'c', turn: 'waiting' }, { id: 'old', turn: 'working' },
+  ];
+  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 2, helpersAsking: 1 });
+  panes[0].turn = 'idle'; panes[1].producing = false;
+  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 0, helpersAsking: 1 }, 'drops as they finish');
+  assert.deepEqual(helperState({}, panes, now), { waitingOn: 0, helpersAsking: 0 });
 });
