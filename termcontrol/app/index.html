@@ -799,14 +799,15 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 .bots-panel{border-color:var(--line)}.bot-row .room-last{display:flex;gap:6px;align-items:center}.bot-avatar{flex:none;display:grid;place-items:center;width:40px;height:40px}.bot-avatar svg{width:40px;height:40px}.bot-avatar.head{display:inline-grid;width:30px;height:30px;margin-inline-end:8px;vertical-align:middle}.bot-avatar.head svg{width:30px;height:30px}.bot-failed{color:var(--danger,#d66)}.bot-feed{display:flex;flex-direction:column;gap:4px;padding-bottom:16px}.bot-activity{color:var(--muted);font-size:13px;margin:2px 4px}.bot-activity::before{content:"↳ "}.bot-note{color:var(--muted);font-size:13px;text-align:center;margin:8px 0}.bot-error{color:var(--danger,#d66);font-size:14px;margin:6px 4px}.bot-actions{display:flex;gap:8px;flex-wrap:wrap}.bot-actions button{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer}
 .asks-rail{display:none}
 @media(min-width:1400px){
-  .asks-rail{display:block;position:fixed;inset-block-start:76px;inset-inline-end:16px;width:300px;max-height:calc(100vh - 100px);overflow:auto;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg));font-size:14px;line-height:1.45;z-index:3}
-  .asks-rail h2{margin:0 0 8px;padding-bottom:8px;border-bottom:1px solid var(--line);font-size:14px;font-weight:500;color:var(--muted)}
+  .asks-rail{display:block;position:fixed;inset-block-start:76px;inset-inline-end:16px;width:230px;max-height:calc(100vh - 100px);overflow:auto;box-sizing:border-box;padding:6px 10px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg));font-size:13px;line-height:1.4;z-index:3}
+  .asks-rail .rail-toggle{display:flex;justify-content:space-between;gap:8px;width:100%;padding:6px 0;border:0;background:none;color:var(--muted);font:inherit;font-weight:500;cursor:pointer;text-align:start}
+  .asks-rail:not(.folded) .rail-toggle{border-bottom:1px solid var(--line)}
   .asks-rail ul{list-style:none;margin:0;padding:0;display:grid}
-  .asks-rail li{display:grid;gap:2px;padding:8px 0;border-bottom:1px solid var(--line)}.asks-rail li:last-child{border-bottom:0}
-  .asks-rail .rail-st{font-size:13px;color:var(--muted)}
+  .asks-rail li{display:grid;gap:2px;padding:6px 0;border-bottom:1px solid var(--line)}.asks-rail li:last-child{border-bottom:0}
+  .asks-rail .rail-st{font-size:12px;color:var(--muted)}
   .asks-rail .rail-working .rail-st{color:var(--waiting)}.asks-rail .rail-done .rail-st{color:var(--working)}.asks-rail .rail-partial .rail-st{color:var(--waiting)}
   .asks-rail .ask-note{display:block;color:var(--muted);font-size:12px}
-  body.chat main{margin-inline-end:332px}
+  body.chat main{margin-inline-end:262px}body.chat.asks-folded main{margin-inline-end:0}
   .asks-chip{display:none}
 }
 .asks-chip{margin-top:4px;font-size:13px}.asks-chip summary{cursor:pointer;color:var(--muted);list-style:none}.asks-chip summary::-webkit-details-marker{display:none}.asks-chip ol{margin:6px 0 0;padding-inline-start:22px;display:grid;gap:6px;max-height:40vh;overflow:auto}.asks-chip li{line-height:1.45}.asks-chip .ask-status{font-size:11.5px;border-radius:8px;padding:1px 6px;margin-inline-end:6px;border:1px solid var(--line)}.asks-chip .ask-done{color:var(--working)}.asks-chip .ask-partial{color:var(--waiting)}.asks-chip .ask-open{color:var(--accent)}.asks-chip .ask-note{display:block;color:var(--muted);font-size:12px}
@@ -2063,6 +2064,7 @@ async function openInbox(){
 // Shared rooms: the operator and several agents in one conversation.
 // TF-096 part 2: the operator's requests in his own words, each with its status.
 // The chat header is redrawn on every refresh, so the list remembers whether it was open.
+document.addEventListener('click',event=>{const b=event.target?.closest?.('.rail-toggle');if(!b)return;const rail=b.closest('.asks-rail'),folded=!rail.classList.contains('folded');rail.classList.toggle('folded',folded);rail.querySelector('ul').hidden=folded;b.setAttribute('aria-expanded',String(!folded));b.lastElementChild.textContent=folded?'▸':'▾';document.body.classList.toggle('asks-folded',folded);try{localStorage.setItem('termcontrol-asks-rail',folded?'folded':'open');}catch{}});
 document.addEventListener('toggle',event=>{if(event.target?.classList?.contains('asks-chip')){try{sessionStorage.setItem('termcontrol-asks-open',event.target.open?'open':'closed');}catch{}}},true);
 function asksHtml(asks){
   if(!asks || !asks.length)return '';
@@ -2076,7 +2078,9 @@ function asksHtml(asks){
   const openNums=asks.filter(a=>a.status==='open').map(a=>a.n),working=openNums.length?Math.max(...openNums):null;
   const railWord=a=>a.status==='open'?(a.n===working?ui('In work','בעבודה'):ui('Waiting','ממתין')):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Partly done','בוצע חלקית'):label[a.status] || a.status;
   const railRows=asks.slice().sort((x,y)=>rank(x)-rank(y) || y.n-x.n).map(a=>`<li class="rail-${a.status==='open'&&a.n===working?'working':esc(a.status)}"><span class="rail-st">${esc(railWord(a))}</span><span class="rail-what" dir="auto">${esc(a.text.length>140?a.text.slice(0,139)+'…':a.text)}</span>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('');
-  const rail=`<aside class="asks-rail" aria-label="${esc(ui('Your requests','הבקשות שלך'))}"><h2>${esc(ui('Your requests in this chat','הבקשות שלך בשיחה הזו'))}</h2><ul>${railRows}</ul></aside>`;
+  let folded=false;try{folded=localStorage.getItem('termcontrol-asks-rail')==='folded';}catch{}
+  document.body.classList.toggle('asks-folded',folded);
+  const rail=`<aside class="asks-rail${folded?' folded':''}" aria-label="${esc(ui('Your requests','הבקשות שלך'))}"><button type="button" class="rail-toggle" aria-expanded="${folded?'false':'true'}"><span>${esc(ui('Your requests','הבקשות שלך'))} · ${done}/${asks.length}</span><span aria-hidden="true">${folded?'▸':'▾'}</span></button><ul${folded?' hidden':''}>${railRows}</ul></aside>`;
   return rail+`<details class="asks-chip"${isOpen?' open':''}><summary>${esc(head)} ▾</summary><ol>${asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(a.text.length>240?a.text.slice(0,239)+'…':a.text)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol></details>`;
 }
 

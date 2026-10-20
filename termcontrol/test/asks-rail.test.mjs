@@ -41,6 +41,16 @@ try {
   assert.equal(wide.chipHidden, true);
   assert.deepEqual(wide.rows, ['In work|Widen the approval to local edits', 'Waiting|Make exports faster', 'Partly done|Add a dark theme', '✓ Done|Fix the login page']);
   if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-wide.png' });
+  assert.ok((await p.evaluate(() => document.querySelector('.asks-rail').getBoundingClientRect().width)) <= 240);
+  // Folding: one click hides the list, the choice survives a reload.
+  await p.click('.rail-toggle');
+  assert.equal(await p.evaluate(() => document.querySelector('.asks-rail ul').offsetParent === null), true);
+  await p.reload();
+  await p.waitForFunction(() => document.querySelector('.asks-rail'), null, { timeout: 15000, polling: 250 });
+  assert.equal(await p.evaluate(() => document.querySelector('.asks-rail').classList.contains('folded') && document.querySelector('.asks-rail ul').offsetParent === null), true);
+  if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-folded.png' });
+  await p.click('.rail-toggle');
+  assert.equal(await p.evaluate(() => document.querySelector('.asks-rail ul').offsetParent !== null), true);
   await p.setViewportSize({ width: 390, height: 844 });
   await wait(300);
   const narrow = await p.evaluate(() => ({ railHidden: getComputedStyle(document.querySelector('.asks-rail')).display === 'none', chipShown: getComputedStyle(document.querySelector('.asks-chip')).display !== 'none', noSideScroll: document.documentElement.scrollWidth <= innerWidth }));
