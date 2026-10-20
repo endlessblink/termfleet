@@ -455,7 +455,8 @@ const handle = async (req, res) => {
   }
   if (url.pathname === '/api/bot' && req.method === 'GET') {
     let view = null;
-    try { view = bots.view(url.searchParams.get('id')); } catch { view = null; }
+    // read=1: the chat is on screen, so what it shows counts as read (unread badge in the list).
+    try { if (url.searchParams.get('read') === '1') bots.markRead(url.searchParams.get('id')); view = bots.view(url.searchParams.get('id')); } catch { view = null; }
     if (view && view.bot.helpers?.length) {
       const { panes } = await currentPanes();
       view.bot.helpers = view.bot.helpers.map((h) => { const p = panes.find((x) => x.id === h.paneId); return { ...h, state: !p ? 'closed' : p.turn === 'waiting' ? 'needs-you' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null }; });

@@ -45,6 +45,8 @@ export const LIMITS = { name: 40, job: 80, rules: 4000, message: 20000 };
 /** A bot starts a fresh conversation once its working memory is this full (percent). */
 export const FRESH_AT = Number(process.env.TC_BOT_FRESH_AT) || 80;
 const MAX_CHAT_RETURNED = 300;
+/** What counts as a new message for Noam: the bot's replies, failures and questions to him. */
+const UNREAD_ROLES = new Set(['bot', 'error', 'needs-you']);
 
 const clean = (v, max) => String(v ?? '').trim().slice(0, max);
 const newId = () => crypto.randomBytes(6).toString('hex');
@@ -379,6 +381,22 @@ export class Bots {
     return entry;
   }
 
+  // Unread replies (Noam 2026-10-20: "the grey dot next to them doesn't help"): each bot keeps
+  // when its chat was last open, in its own small file so it never races the bot's settings.
+  // A bot that never had one counts as read up to now, so the first launch shows no flood.
+  readAt(id) {
+    const file = path.join(this.folder(id), 'read.json');
+    try { return Number(JSON.parse(fs.readFileSync(file, 'utf8')).at) || 0; } catch { /* first time */ }
+    return this.markRead(id);
+  }
+
+  markRead(id) {
+    if (!this.read(id)) return 0;
+    const at = this.now(), file = path.join(this.folder(id), 'read.json'), tmp = `${file}.${process.pid}.tmp`;
+    try { fs.writeFileSync(tmp, JSON.stringify({ at }), { mode: 0o600 }); fs.renameSync(tmp, file); } catch { /* best effort */ }
+    return at;
+  }
+
   list() {
     let ids = [];
     try { ids = fs.readdirSync(this.dir).filter((d) => /^[0-9a-f]{12}$/.test(d)); } catch { return []; }
@@ -411,6 +429,7 @@ export class Bots {
       activitySince: working ? (working.activityAt || working.startedAt || null) : null,
       queued: (this.queues.get(id) || []).length,
       lastAt: last?.at || bot.createdAt,
+      unread: (() => { const seen = this.readAt(id); return chat.filter((m) => UNREAD_ROLES.has(m.role) && Number(m.at) > seen).length; })(),
       last: last ? { role: last.role, text: String(last.text || '').slice(0, 160) } : null,
     };
   }

@@ -1,6 +1,7 @@
 {
-  "name": "TermControl",
-  "short_name": "TermControl",
+  "id": "/",
+  "name": "TermFleet",
+  "short_name": "TermFleet",
   "description": "Your TermFleet agents, from your phone.",
   "start_url": "/",
   "scope": "/",
@@ -34,6 +35,7 @@
     "params": {
       "title": "title",
       "text": "text",
+      "url": "url",
       "files": [
         {
           "name": "image",

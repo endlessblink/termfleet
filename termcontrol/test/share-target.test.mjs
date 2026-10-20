@@ -95,3 +95,35 @@ test('a shared picture can also go to a terminal agent chat (when one is open)',
     await page.context().close();
   });
 });
+
+// Noam 2026-10-20: "see it as a share option, then ask which agent to send to". A shared
+// link or text goes into the chosen bot's message box, ready to edit and send.
+test('the manifest names the app TermFleet and accepts shared links and text', () => {
+  const manifest = JSON.parse(fs.readFileSync(new URL('../app/manifest.webmanifest', import.meta.url), 'utf8'));
+  assert.equal(manifest.name, 'TermFleet');
+  assert.equal(manifest.share_target.params.text, 'text');
+  assert.equal(manifest.share_target.params.url, 'url');
+  assert.equal(manifest.share_target.params.title, 'title');
+});
+
+test('a shared link asks which bot gets it, then waits in that bot\'s message box', { timeout: 120000 }, async () => {
+  await withApp(async ({ browser, base }) => {
+    const page = await signedIn(browser, base);
+    const botId = await page.evaluate(async () => (await (await fetch('/api/bots', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Link test' }) })).json()).bot.id);
+    await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+    await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000, polling: 250 });
+    await page.evaluate(() => {
+      const form = document.createElement('form'); form.method = 'POST'; form.action = '/share'; form.enctype = 'multipart/form-data';
+      for (const [k, v] of [['title', 'Senior Motion Designer'], ['text', 'Senior Motion Designer'], ['url', 'https://example.test/jobs/42']]) { const i = document.createElement('input'); i.name = k; i.value = v; form.append(i); }
+      document.body.append(form); form.submit();
+    });
+    await page.waitForSelector('.share-dialog .share-words', { timeout: 15000 });
+    assert.equal(await page.locator('.share-dialog .share-words').innerText(), 'Senior Motion Designer\nhttps://example.test/jobs/42');
+    await page.locator(`.share-dialog .share-row[data-id="${botId}"]`).click();
+    await page.waitForFunction(() => document.querySelector('.bot-composer textarea')?.value.includes('https://example.test/jobs/42'), null, { timeout: 10000, polling: 200 });
+    assert.equal(await page.locator('.bot-composer textarea').inputValue(), 'Senior Motion Designer\nhttps://example.test/jobs/42');
+    assert.equal(await page.locator('.bot-composer button.send').isDisabled(), false);
+    await page.waitForFunction(async () => (await (await caches.open('share-inbox')).keys()).length === 0, null, { timeout: 5000, polling: 100 });
+    await page.context().close();
+  });
+});

@@ -46,6 +46,13 @@ self.addEventListener('fetch', (event) => {
         if (!file || typeof file === 'string' || !String(file.type).startsWith('image/')) continue;
         await cache.put(new Request(`/shared/${Date.now()}-${kept++}`), new Response(file, { headers: { 'content-type': file.type, 'x-file-name': encodeURIComponent(file.name || 'shared picture') } }));
       }
+      // Links and text (Noam 2026-10-20: share from another app, then pick the bot).
+      const words = ['title', 'text', 'url'].map((k) => String(form.get(k) || '').trim().slice(0, 20000));
+      if (words.some(Boolean)) {
+        const [title, text, link] = words;
+        await cache.put(new Request('/shared/words'), new Response(JSON.stringify({ title, text, url: link }), { headers: { 'content-type': 'application/json' } }));
+        kept++;
+      }
     } catch { kept = 0; }
     return Response.redirect(`/?share=${kept}`, 303);
   })());
