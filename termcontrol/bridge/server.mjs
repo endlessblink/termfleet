@@ -950,9 +950,9 @@ if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_DOCK_ICON !== '1') {
     if (dockBusy) return;
     dockBusy = true;
     try {
-      const unread = bots.list().filter((b) => !b.hidden).reduce((n, b) => n + (Number(b.unread) || 0), 0) + waitingNow.filter((i) => i.kind === 'try' && i.source === 'bot').length;
+      const unread = bots.list().filter((b) => !b.hidden).reduce((n, b) => n + (Number(b.unread) || 0), 0);   // ready-to-try items wait quietly in the list, no dot (Noam 2026-10-20)
       const { panes } = await currentPanes();
-      await updateDock(unread, panes.filter((p) => p.turn === 'waiting').length);
+      await updateDock(unread, panes.filter((p) => p.attention).length);   // a real question or approval, not a finished turn
     } catch (error) { console.error('[dock]', error.message); } finally { dockBusy = false; }
   };
   setInterval(dockTick, 5000).unref?.();

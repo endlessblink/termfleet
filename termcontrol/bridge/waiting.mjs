@@ -27,29 +27,36 @@ export function plainAsk(text) {
  * @param bots    bot summaries (id, name, hidden, blocked)
  * @param asksOf  ({kind, id}) => that conversation's requests, or null
  */
-export function collectWaiting({ panes = [], bots = [], asksOf = () => null }) {
+// Only what blocks work until Noam acts. Things built and ready to try are NOT listed
+// (Noam 2026-10-20, pointing at the Try rows: "this shouldn't be in the list at all").
+export function collectWaiting({ panes = [], bots = [] }) {
   const items = [];
-  const ready = (who, kind, id, go) => {
-    for (const a of asksOf({ kind, id }) || []) {
-      if (a.status !== 'ready') continue;
-      items.push({ key: `ready:${kind}:${id}:${a.n}`, kind: 'try', source: kind, who, what: plainAsk(a.text), todo: clip(a.note, 120), go, n: a.n });
-    }
-  };
   for (const b of bots) {
     if (b.hidden) continue;
     if (b.blocked?.ask) items.push({ key: `botask:${b.id}:${hash(b.blocked.ask)}`, kind: 'answer', source: 'bot', who: clip(b.name, 40), what: clip(b.blocked.ask, 140), todo: 'Answer it in the chat', go: `#bot:${b.id}` });
-    ready(clip(b.name, 40), 'bot', b.id, `#bot:${b.id}`);
   }
-  for (const p of panes) {
+  // A terminal a bot started is that bot's work: listed once, named by the bot, and opening
+  // the terminal where the prompt is on screen (Noam: "duplicates of the same thing").
+  const ownerOf = new Map();
+  for (const b of bots) for (const h of b.helpers || []) if (h?.paneId) ownerOf.set(h.paneId, b);
+  const seen = new Set();
+  for (let p of panes) {
     if (p.alive === false) continue;
-    if (p.turn === 'waiting' || p.attention) {
+    const owner = ownerOf.get(p.id);
+    if (owner?.hidden) continue;
+    const dup = `${owner?.id || p.id}:${p.attention?.title || ''}`;
+    if (p.attention && seen.has(dup)) continue;
+    seen.add(dup);
+    if (owner) p = { ...p, project: owner.name };
+    // Only a real question or approval prompt. A terminal that just finished its turn is idle,
+    // not waiting for him (Noam 2026-10-20: "I'm drowning in notifications I don't need").
+    if (p.attention) {
       const approval = /permission|approv|allow/i.test(String(p.attention?.title || p.attention?.kind || ''));
       items.push({ key: `term:${p.id}:${hash(p.attention?.title || 'waiting')}`, kind: approval ? 'approve' : 'answer', source: 'terminal', who: paneName(p), what: clip(p.attention?.title || 'Waiting for your answer', 140), todo: approval ? 'Approve or decline it' : 'Answer it', go: `#${p.id}` });
     }
-    ready(paneName(p), 'terminal', p.id, `#${p.id}`);
   }
-  // Things to answer first (they block an agent), then things to try.
-  const order = { approve: 0, answer: 1, try: 2 };
+  // Approvals first, then questions.
+  const order = { approve: 0, answer: 1 };
   return items.sort((a, b) => order[a.kind] - order[b.kind]);
 }
 
@@ -70,12 +77,18 @@ export function createWaitingNotifier({ file, push = async () => {}, desktop = d
     const live = new Set(items.map((i) => i.key));
     for (const k of [...seen]) if (!live.has(k)) seen.delete(k);
     if (fresh.length || seen.size !== live.size) save();
-    for (const i of fresh) {
-      const title = i.kind === 'try' ? `Ready for you: ${i.who}` : `${i.who} is waiting for you`;
-      const body = i.kind === 'try' ? `${i.what}\nTry: ${i.todo}` : `${i.what}\n${i.todo}`;
-      await Promise.allSettled([push({ title, body, url: `/${i.go}` }), desktop({ title, body })]);
+    // Only what blocks work until he acts notifies; things ready to try wait quietly in the
+    // list (Noam: "I know I need to check things, it isn't urgent"). Several at once = one.
+    const blocking = fresh.filter((i) => i.kind !== 'try');
+    if (blocking.length === 1) {
+      const [i] = blocking;
+      await Promise.allSettled([push({ title: `${i.who} is waiting for you`, body: `${i.what}\n${i.todo}`, url: `/${i.go}` }), desktop({ title: `${i.who} is waiting for you`, body: `${i.what}\n${i.todo}` })]);
+    } else if (blocking.length > 1) {
+      const title = `${blocking.length} agents are waiting for you`;
+      const body = blocking.slice(0, 5).map((i) => `${i.who}: ${i.what}`).join('\n');
+      await Promise.allSettled([push({ title, body, url: '/' }), desktop({ title, body })]);
     }
-    return fresh;
+    return blocking;
   };
 }
 

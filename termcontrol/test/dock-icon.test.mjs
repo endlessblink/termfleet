@@ -63,7 +63,7 @@ test('the tabs carry the dock counts: unread bot messages in orange, waiting ter
   const { readFileSync } = await import('node:fs');
   const page = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
   assert.match(page, /botsNeed=botList\.filter\(b=>!b\.hidden\)\.reduce\(\(n,b\)=>n\+\(Number\(b\.unread\)\|\|0\),0\)/);
-  assert.match(page, /termsNeed=panes\.filter\(p=>p\.turn==='waiting'\)\.length/);
+  assert.match(page, /termsNeed=panes\.filter\(p=>p\.attention\)\.length/, 'a real question or approval, not a finished turn');
   assert.match(page, /\.tab-need-term\{background:var\(--terminals\)/);
   assert.match(page, /--terminals:#5aa9e6/);
 });

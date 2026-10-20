@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 const TAIL_BYTES = 8 * 1024 * 1024;
 // ready = built and live, waiting for Noam to try it (Noam 2026-10-20: "how will I know what
-// is ready and waiting for me?"). It lands in his shared "Waiting for you" list.
+// is ready and waiting for me?"). It stays quiet: not in his Waiting-for-you list, no notification.
 const STATUSES = ['done', 'ready', 'partial', 'dropped'];
 
 function tail(file, bytes = TAIL_BYTES) {
@@ -54,19 +54,63 @@ export const acknowledgement = (text) => {
   return /^(y|yes|yeah|yep|ok|okay|go|go on|go ahead|do it|continue|proceed|sure|thanks|thank you|great|good|נו|כן|יאללה|סבבה|תמשיך|המשך|אוקיי|תודה|מעולה)$/.test(t);
 };
 
-const COMMAND = /termfleet-asks\s+(done|ready|partial|dropped)\s+([\d,\s]+?)\s+(?:"([^"]*)"|'([^']*)'|(\S.*))$/m;
+/**
+ * A command line read the way the shell reads it: words (quotes and backslashes resolved)
+ * and the operators between them (| ; & && || newline, redirections). 2026-10-20: the note
+ * was taken from the raw line, so `... "note" | tail -3` showed "| tail -3" in Noam's list,
+ * and a mark called by path, or after another command, was missed.
+ */
+function shellWords(command) {
+  const out = [];
+  const s = String(command || '');
+  let word = null, i = 0;
+  const end = () => { if (word !== null) out.push({ word }); word = null; };
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '\\' && i + 1 < s.length) { if (s[i + 1] !== '\n') word = (word ?? '') + s[i + 1]; i += 2; continue; }
+    if (c === "'") { const j = s.indexOf("'", i + 1); const k = j < 0 ? s.length : j; word = (word ?? '') + s.slice(i + 1, k); i = k + 1; continue; }
+    if (c === '"') {
+      let j = i + 1, t = '';
+      while (j < s.length && s[j] !== '"') { if (s[j] === '\\' && /["\\$`\n]/.test(s[j + 1] || '')) { if (s[j + 1] !== '\n') t += s[j + 1]; j += 2; } else t += s[j++]; }
+      word = (word ?? '') + t; i = j + 1; continue;
+    }
+    if (c === ' ' || c === '\t') { end(); i++; continue; }
+    if (/[|;&\n()<>]/.test(c)) {
+      // A redirection like 2>&1 or 2>/dev/null takes its digits and its target with it.
+      if ((c === '>' || c === '<') && word !== null && /^\d+$/.test(word)) word = null;
+      end();
+      const op = /^(?:&&|\|\||>>|>&|<<|&>|[|;&\n()<>])/.exec(s.slice(i))[0];
+      out.push({ op }); i += op.length;
+      if (/[<>]/.test(op)) { while (s[i] === ' ' || s[i] === '\t') i++; i += /^[^\s|;&()<>]*/.exec(s.slice(i))[0].length; }
+      continue;
+    }
+    if (c === '#' && word === null) { while (i < s.length && s[i] !== '\n') i++; continue; }
+    word = (word ?? '') + c; i++;
+  }
+  end();
+  return out;
+}
 
-/** Every mark in one command line: agents often chain several with ; or &&. */
+const isAsksCommand = (w) => /(?:^|\/)termfleet-asks(?:\.mjs)?$/.test(w);
+
+/** Every mark in one command line (agents chain several with ; && or pipes); each takes only its own words. */
 export function parseMarks(command) {
-  return String(command || '').split(/\s*(?:;|&&|\n)\s*(?=termfleet-asks\b)/).map(parseMark).filter(Boolean);
+  const tokens = shellWords(command), marks = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (!isAsksCommand(tokens[i].word ?? '')) continue;
+    const args = [];
+    for (let j = i + 1; j < tokens.length && tokens[j].word !== undefined; j++) args.push(tokens[j].word);
+    const [status, numText = '', ...rest] = args;
+    if (!STATUSES.includes(status)) continue;
+    const nums = numText.split(',').filter(Boolean).map(Number);
+    if (!nums.length || !nums.every((n) => Number.isInteger(n) && n > 0)) continue;
+    marks.push({ status, nums, note: rest.join(' ').replace(/\s+/g, ' ').trim() });
+  }
+  return marks;
 }
 
 export function parseMark(command) {
-  const m = COMMAND.exec(String(command || ''));
-  if (!m) return null;
-  const nums = m[2].split(/[\s,]+/).map(Number).filter((n) => Number.isInteger(n) && n > 0);
-  const note = (m[3] ?? m[4] ?? m[5] ?? '').trim();
-  return nums.length ? { status: m[1], nums, note } : null;
+  return parseMarks(command)[0] ?? null;
 }
 
 const commandOf = (input) => {
@@ -130,7 +174,7 @@ export function asksForFile(file, { cacheDir = join(process.env.XDG_CACHE_HOME |
   let state = { offset: 0, asks: [], marks: [] };
   try {
     const saved = JSON.parse(readFileSync(cacheFile, 'utf8'));
-    if (saved && saved.v === 2 && saved.file === file && Number.isFinite(saved.offset) && saved.offset <= size) state = { offset: saved.offset, asks: saved.asks || [], marks: [] };
+    if (saved && saved.v === 3 && saved.file === file && Number.isFinite(saved.offset) && saved.offset <= size) state = { offset: saved.offset, asks: saved.asks || [], marks: [] };
   } catch { /* first look at this record */ }
   if (state.offset < size) {
     const fd = openSync(file, 'r');
@@ -156,7 +200,7 @@ export function asksForFile(file, { cacheDir = join(process.env.XDG_CACHE_HOME |
     try {
       mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
       const tmp = `${cacheFile}.${process.pid}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ v: 2, file, offset: state.offset, asks: state.asks.map((a) => ({ ...a, text: a.text.slice(0, 2000) })) }), { mode: 0o600 });
+      writeFileSync(tmp, JSON.stringify({ v: 3, file, offset: state.offset, asks: state.asks.map((a) => ({ ...a, text: a.text.slice(0, 2000) })) }), { mode: 0o600 });
       renameSync(tmp, cacheFile);
     } catch { /* the cache only saves time */ }
   }
@@ -183,7 +227,7 @@ export function ledgerText(allAsks, { newest = null, maxChars = 6000 } = {}) {
   for (const a of unfinished.slice(-15)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 80)}` : ''}] "${clip(a.text, 200)}"`);
   if (unfinished.length > 15) lines.push(`(${unfinished.length - 15} older unfinished requests not shown)`);
   if (newest) lines.push(`#${newest.n} is new. If it is a new or unclear request, first read it back in his words; ask at most 2 questions about real gaps.`);
-  lines.push('Mark them: termfleet-asks done|ready|partial|dropped <n> "<proof or note>". Use ready (not partial) when it is built and live but Noam has not tried it yet; the note says exactly what he should try, in a few words. It shows in his "Waiting for you" list. When he says it works, mark it done.');
+  lines.push('Mark them: termfleet-asks done|ready|partial|dropped <n> "<proof or note>". Use ready (not partial) when it is built and live but Noam has not tried it yet; the note says exactly what he should try, in a few words. It stays quiet (no notification, not in his "Waiting for you" list, which is only for approvals and questions that block work). When he says it works, mark it done.');
   const text = lines.join('\n');
   return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
 }

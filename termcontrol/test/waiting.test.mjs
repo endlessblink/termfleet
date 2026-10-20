@@ -19,38 +19,47 @@ const input = {
   asksOf: ({ kind, id }) => asks[`${kind}:${id}`] || null,
 };
 
-test('one list from every bot and terminal: who, what, and what to do, answers first', () => {
+// Noam 2026-10-20: "I'm drowning in notifications I don't need" / "this shouldn't be in the list
+// at all" (the Try rows). Only what blocks work until he acts: an approval or a question.
+test('only approvals and questions are listed: no ready-to-try items, no idle terminals', () => {
   const items = collectWaiting(input);
-  assert.deepEqual(items.map((i) => [i.kind, i.who]), [
-    ['approve', 'Desk deploy'], ['answer', 'pc-helper'],
-    ['try', 'Agent-Manager'], ['try', 'paper-bot'], ['try', 'rough-cut fixes'],
-  ]);
-  const ready = items.find((i) => i.who === 'paper-bot');
-  assert.equal(ready.todo, 'open a bot chat and tap 25/30');
-  assert.equal(ready.go, '#bot:b2');
-  assert.equal(items.find((i) => i.who === 'Desk deploy').go, '#p2');
-  assert.equal(items.find((i) => i.who === 'Desk deploy').todo, 'Approve or decline it');
-  assert.ok(!items.some((i) => /hidden bots|closed one|Still building|Old thing/.test(i.what + i.who)));
+  assert.deepEqual(items.map((i) => [i.kind, i.who]), [['approve', 'Desk deploy'], ['answer', 'pc-helper']]);
+  assert.equal(items[0].go, '#p2');
+  assert.equal(items[0].todo, 'Approve or decline it');
+  const idle = collectWaiting({ panes: [{ id: 'p5', project: 'rough-cut-mvp', turn: 'waiting' }], bots: [] });
+  assert.deepEqual(idle, [], 'a terminal that just finished its turn is not waiting for him');
 });
 
-test('one phone push and one desktop notification per new item; nothing on the first look', async () => {
+test('a terminal a bot started is listed once, under the bot, opening the terminal with the prompt', () => {
+  const attention = { kind: 'permission', title: 'Permission request: run npm install' };
+  const items = collectWaiting({
+    bots: [{ id: 'b1', name: 'paper-bot_dev', helpers: [{ paneId: 'p1' }, { paneId: 'p2' }] }],
+    panes: [{ id: 'p1', project: 'paper-bot', attention }, { id: 'p2', project: 'paper-bot', attention }],
+  });
+  assert.deepEqual(items.map((i) => [i.who, i.go]), [['paper-bot_dev', '#p1']]);
+});
+
+test('only blocking items notify, several at once become one notification, never twice', async () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tf-waiting-')), 'seen.json');
   const pushes = [], desktops = [];
   const notify = createWaitingNotifier({ file, push: async (n) => pushes.push(n), desktop: async (n) => desktops.push(n) });
-  const first = collectWaiting(input);
-  assert.deepEqual(await notify(first), [], 'what is already waiting at start is not news');
-  assert.deepEqual(await notify(first), []);
-  const more = collectWaiting({ ...input, asksOf: ({ kind, id }) => kind === 'bot' && id === 'b4' ? [{ n: 1, text: 'Clean the drive', status: 'ready', note: 'check the free space in Files' }] : input.asksOf({ kind, id }) });
-  const fresh = await notify(more);
-  assert.equal(fresh.length, 1);
+  assert.deepEqual(await notify([]), [], 'the first look only learns');
+  const ask = (id, title) => ({ id, project: id, attention: { kind: 'permission', title } });
+  const one = collectWaiting({ panes: [ask('p1', 'Allow this command?')] });
+  assert.equal((await notify(one)).length, 1);
   assert.equal(pushes.length, 1); assert.equal(desktops.length, 1);
-  assert.match(pushes[0].title, /Ready for you: pc-helper/);
-  assert.match(pushes[0].body, /Try: check the free space in Files/);
-  assert.equal(pushes[0].url, '/#bot:b4');
-  // Survives a restart: no repeat.
+  assert.match(pushes[0].title, /p1 is waiting for you/);
+  assert.equal(pushes[0].url, '/#p1');
+  assert.deepEqual(await notify(one), [], 'never twice for the same item');
+  const three = collectWaiting({ panes: [ask('p1', 'Allow this command?'), ask('p2', 'Allow Edit?'), ask('p3', 'Allow Write?')] });
+  assert.equal((await notify(three)).length, 2);
+  assert.equal(pushes.length, 2, 'two new items, one notification');
+  assert.match(pushes[1].title, /2 agents are waiting for you/);
+  // A ready-to-try item never notifies, even if one is handed in.
+  assert.deepEqual(await notify([...three, { key: 'ready:x', kind: 'try', who: 'x', what: 'y', todo: 'z', go: '#x' }]), []);
+  assert.equal(pushes.length, 2);
   const again = createWaitingNotifier({ file, push: async (n) => pushes.push(n), desktop: async () => {} });
-  assert.deepEqual(await again(more), []);
-  assert.equal(pushes.length, 1);
+  assert.deepEqual(await again(three), [], 'survives a restart');
 });
 
 test('agents mark a request ready with what to try, and are told to', () => {
@@ -66,6 +75,18 @@ test('a relayed request shows his own words, and a terminal is named by its proj
   const { plainAsk } = await import('../bridge/waiting.mjs');
   assert.equal(plainAsk('<pasted_content id="x">\n[Message from the bot "Agent-Manager" (bot:1), sent through TermFleet.] New task. Noam, his words: "אז אני צריך לקבל עדכונים". More.\n</pasted_content>'), 'אז אני צריך לקבל עדכונים');
   assert.equal(plainAsk('Make the header smaller'), 'Make the header smaller');
-  const items = collectWaiting({ panes: [{ id: 'p9', project: 'termfleet', title: '[Message from the bot "A"] long brief', turn: 'waiting' }], bots: [] });
+  const items = collectWaiting({ panes: [{ id: 'p9', project: 'termfleet', title: '[Message from the bot "A"] long brief', turn: 'waiting', attention: { title: 'Which file?' } }], bots: [] });
   assert.equal(items[0].who, 'termfleet');
+});
+
+// Agent-Manager 2026-10-20, from Noam's screenshot: a Try line showed "| tail -..." and only the
+// first of several chained marks counted. Each mark takes only its own quoted note.
+test('a mark takes only its own note, and every chained mark counts', async () => {
+  const { parseMarks } = await import('../../scripts/termfleet-asks.mjs');
+  assert.deepEqual(parseMarks('termfleet-asks ready 52 "click between board pages and tabs; each should open at once" | tail -3'),
+    [{ status: 'ready', nums: [52], note: 'click between board pages and tabs; each should open at once' }]);
+  const chained = parseMarks('cd /x && termfleet-asks done 5 "tests pass, 12/12" 2>&1 | tail -2; ~/.local/bin/termfleet-asks ready 55 \'open the board\' >/dev/null && echo ok\nnode scripts/termfleet-asks.mjs ready 66,67 "tap Requests" || true');
+  assert.deepEqual(chained.map((m) => [m.status, m.nums, m.note]), [['done', [5], 'tests pass, 12/12'], ['ready', [55], 'open the board'], ['ready', [66, 67], 'tap Requests']]);
+  assert.deepEqual(parseMarks('termfleet-asks ready 5 open the bots list; echo x'), [{ status: 'ready', nums: [5], note: 'open the bots list' }]);
+  assert.deepEqual(parseMarks('grep -n "termfleet-asks ready 5" file; termfleet-asks --help'), []);
 });
