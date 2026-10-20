@@ -41,11 +41,19 @@ test('an app from before the close fix says "not found" for a running terminal: 
     }
   }, 5);
   try {
-    const outdated = await requestClose('terminal-tab-a-p1', { dir, pause: fastPause, running: async () => true });
+    // Still running: the daemon stops it (works on what runs today); its card goes with the next relaunch.
+    const stopped = [];
+    const today = await requestClose('terminal-tab-a-p1', { dir, pause: fastPause, running: async () => true, stop: async (id) => { stopped.push(id); return true; } });
+    assert.equal(today.ok, true);
+    assert.equal(today.stoppedInDaemon, true);
+    assert.deepEqual(stopped, ['terminal-tab-a-p1']);
+    // The daemon could not stop it either: plain error, nothing claimed.
+    const outdated = await requestClose('terminal-tab-a-p1', { dir, pause: fastPause, running: async () => true, stop: async () => false });
     assert.equal(outdated.reason, 'app-outdated');
     assert.match(outdated.error, /needs one relaunch/);
-    const gone = await requestClose('terminal-tab-a-p1', { dir, pause: fastPause, running: async () => false });
-    assert.match(gone.error, /no longer has that terminal/);
+    // Already ended: that is closed, so removing its bot is not blocked.
+    const gone = await requestClose('terminal-tab-a-p1', { dir, pause: fastPause, running: async () => false, stop: async () => { throw new Error('nothing to stop'); } });
+    assert.deepEqual(gone, { ok: true, alreadyClosed: true, title: null });
   } finally { clearInterval(app); }
 });
 

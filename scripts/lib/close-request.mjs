@@ -17,6 +17,14 @@ async function stillRunning(paneId) {
   } catch { return null; }
 }
 
+/** Stop a terminal in the daemon as an intentional close (it is not brought back on restart). */
+async function stopInDaemon(paneId) {
+  try {
+    const res = await requestDaemon({ type: 'killSession', id: paneId, user_requested: true }, defaultDaemonSocket());
+    return res?.ok === true && (await stillRunning(paneId)) === false;
+  } catch { return false; }
+}
+
 export function closeRequestsDir(env = process.env) {
   return join(env.XDG_DATA_HOME || join(env.HOME || homedir(), '.local', 'share'), 'terminal-workspace', 'close-requests');
 }
@@ -29,7 +37,7 @@ const REASONS = {
   'close-failed': 'TermFleet could not close it. Check the PC.',
 };
 
-export async function requestClose(paneId, { by = 'unknown', timeoutMs = 10_000, dir = closeRequestsDir(), pause = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, running = stillRunning } = {}) {
+export async function requestClose(paneId, { by = 'unknown', timeoutMs = 10_000, dir = closeRequestsDir(), pause = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, running = stillRunning, stop = stopInDaemon } = {}) {
   if (typeof paneId !== 'string' || !paneId.startsWith('terminal-')) return { ok: false, error: 'That is not a terminal.' };
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const requestId = randomUUID();
@@ -43,10 +51,19 @@ export async function requestClose(paneId, { by = 'unknown', timeoutMs = 10_000,
     let result;
     try { result = JSON.parse(readFileSync(resultPath, 'utf8')); } catch { continue; } // still being written
     rmSync(resultPath, { force: true });
-    // The app says it has no such card while the terminal plainly runs: an app from before
-    // the 2026-10-20 close fix, which matched the wrong id. Say what helps.
-    if (!result.ok && result.reason === 'not-found' && await running(paneId)) {
-      return { ok: false, reason: 'app-outdated', error: 'TermFleet on the PC needs one relaunch before it can close terminals. Nothing was closed; the terminal keeps running.' };
+    if (!result.ok && result.reason === 'not-found') {
+      // The app has no such card. Already ended in the daemon: that is closed. Still running:
+      // an app from before the 2026-10-20 close fix (it matched the wrong id), so the daemon
+      // stops it as an intentional close; its empty card goes with the next relaunch.
+      // Noam 2026-10-21: closing has to work on what runs today, not only after a restart.
+      const live = await running(paneId);
+      if (live === false) return { ok: true, alreadyClosed: true, title: null };
+      if (live === true) {
+        const stopped = await stop(paneId);
+        return stopped
+          ? { ok: true, stoppedInDaemon: true, title: null, note: 'Stopped. Its empty card stays on the map until TermFleet is next relaunched.' }
+          : { ok: false, reason: 'app-outdated', error: 'TermFleet on the PC needs one relaunch before it can close terminals. Nothing was closed; the terminal keeps running.' };
+      }
     }
     return result.ok ? { ok: true, title: result.title || null } : { ok: false, reason: result.reason, error: REASONS[result.reason] || 'TermFleet did not close it.' };
   }
