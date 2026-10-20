@@ -61,3 +61,11 @@ test('agents mark a request ready with what to try, and are told to', () => {
   assert.match(text, /#1 \[ready: open a chat\]/);
   assert.match(text, /Use ready \(not partial\) when it is built and live/);
 });
+
+test('a relayed request shows his own words, and a terminal is named by its project', async () => {
+  const { plainAsk } = await import('../bridge/waiting.mjs');
+  assert.equal(plainAsk('<pasted_content id="x">\n[Message from the bot "Agent-Manager" (bot:1), sent through TermFleet.] New task. Noam, his words: "אז אני צריך לקבל עדכונים". More.\n</pasted_content>'), 'אז אני צריך לקבל עדכונים');
+  assert.equal(plainAsk('Make the header smaller'), 'Make the header smaller');
+  const items = collectWaiting({ panes: [{ id: 'p9', project: 'termfleet', title: '[Message from the bot "A"] long brief', turn: 'waiting' }], bots: [] });
+  assert.equal(items[0].who, 'termfleet');
+});

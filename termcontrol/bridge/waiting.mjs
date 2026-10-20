@@ -12,7 +12,15 @@ import { execFile } from 'node:child_process';
  */
 const clip = (s, n) => { const t = String(s || '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 const hash = (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10);
-const paneName = (p) => clip(p.title || p.task || path.basename(String(p.project || p.cwd || '')) || 'Terminal', 60);
+// A terminal is named by its project (its first message is often a long relayed brief).
+const paneName = (p) => clip(p.project || path.basename(String(p.cwd || '')) || p.title || 'Terminal', 40);
+/** A request in his own words: relay wrappers and pasted-text tags removed. */
+export function plainAsk(text) {
+  let t = String(text || '').replace(/<\/?pasted_content[^>]*>/g, ' ');
+  t = t.replace(/^\s*\[Message from [^\]]*\]\s*/i, '');
+  const his = /his words:\s*["“]([^"”]{3,})["”]/i.exec(t);
+  return clip(his ? his[1] : t, 140);
+}
 
 /**
  * @param panes   terminals as the service lists them (id, title, project, turn, attention)
@@ -24,7 +32,7 @@ export function collectWaiting({ panes = [], bots = [], asksOf = () => null }) {
   const ready = (who, kind, id, go) => {
     for (const a of asksOf({ kind, id }) || []) {
       if (a.status !== 'ready') continue;
-      items.push({ key: `ready:${kind}:${id}:${a.n}`, kind: 'try', source: kind, who, what: clip(a.text, 140), todo: clip(a.note, 120), go, n: a.n });
+      items.push({ key: `ready:${kind}:${id}:${a.n}`, kind: 'try', source: kind, who, what: plainAsk(a.text), todo: clip(a.note, 120), go, n: a.n });
     }
   };
   for (const b of bots) {
