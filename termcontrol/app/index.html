@@ -1137,6 +1137,17 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .close-sheet .bot-close-list b{font-weight:500;overflow-wrap:anywhere}
 .close-sheet .bot-close-list small{grid-column:2;color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
 .close-sheet .bot-close-list .loses{color:#e5484d}
+.close-sheet .bot-remove-list{display:grid;gap:2px;margin:0;padding:0;list-style:none;max-height:min(40vh,320px);overflow:auto}
+.close-sheet .bot-remove-list li{display:grid;gap:2px;padding:8px 10px;border-radius:10px;background:var(--control)}
+.close-sheet .bot-remove-list b{font-weight:500;overflow-wrap:anywhere}
+.close-sheet .bot-remove-list small{color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
+.close-sheet .bot-remove-list .loses{color:#e5484d}
+.close-sheet .bot-remove-ack{display:flex;gap:10px;align-items:flex-start;padding:10px 4px;cursor:pointer;line-height:1.4}
+.close-sheet .bot-remove-ack input{width:20px;height:20px;margin:0;flex:none;accent-color:#b3261e}
+.removed-bots{margin-top:6px}.removed-bots summary{color:var(--muted);font-size:13px;padding:6px 8px;cursor:pointer;list-style:none}
+.removed-bot{display:flex;align-items:center;gap:10px;padding:6px 8px;min-height:44px}.removed-bot span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.removed-bot button{min-height:36px;padding:0 14px;border:1px solid var(--line);border-radius:18px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+@media (pointer:coarse){.removed-bot button{min-height:44px}}
 </style>
 <header role="banner">
   <nav id="nav" aria-label="Back"></nav>
@@ -2438,7 +2449,9 @@ function botsHomeHtml(data){
   ].join('');
   const intro=`<div class="bots-intro"><h2>${ui('Your bots','הבוטים שלכם')}</h2><p>${ui('A bot is a teammate that works outside the terminals. Tell it what you need in plain words: it answers, remembers, runs on schedules, and directs terminal agents to do the real work.','בוט הוא חבר צוות שעובד מחוץ למסופים. כתבו לו מה צריך במילים פשוטות: הוא עונה, זוכר, פועל לפי לוח זמנים ומכוון סוכני מסוף לעשות את העבודה.')}</p></div>`;
   const hiddenHtml=hidden.length?`<details class="hidden-bots" data-key="hidden-bots"><summary>${ui(`Hidden bots (${hidden.length})`,`בוטים מוסתרים (${hidden.length})`)}</summary>${hidden.map(row).join('')}</details>`:'';
-  return `<section class="bots-home" data-key="bots-home" aria-label="${ui('Bots','בוטים')}">${shown.length?`<div class="bots-list">${shown.map(row).join('')}</div>`:intro}${actions}${hiddenHtml}${quiet?`<div class="bots-quiet-list">${quiet}</div>`:''}</section>`;
+  const removed=data?.archived || [];
+  const removedHtml=removed.length?`<details class="removed-bots" data-key="removed-bots"><summary>${ui(`Removed bots (${removed.length})`,`בוטים שהוסרו (${removed.length})`)}</summary>${removed.map(b=>`<div class="removed-bot"><span dir="auto">${esc(b.name)}</span><button type="button" data-restore="${esc(b.id)}" data-name="${esc(b.name)}">${ui('Bring back','החזרה')}</button></div>`).join('')}</details>`:'';
+  return `<section class="bots-home" data-key="bots-home" aria-label="${ui('Bots','בוטים')}">${shown.length?`<div class="bots-list">${shown.map(row).join('')}</div>`:intro}${actions}${hiddenHtml}${removedHtml}${quiet?`<div class="bots-quiet-list">${quiet}</div>`:''}</section>`;
 }
 // Bots first once there is a bot; until then the terminals (an empty Bots tab is still one tap away).
 // "How your agents are doing" (TF-096 goal item 5): three daily counts from the
@@ -3184,14 +3197,50 @@ function openBotMenu(row,x,y){
   closePaneMenu();
   const id=row.dataset.bot,name=row.querySelector('.room-name')?.textContent || ui('this bot','הבוט הזה');
   const menu=document.createElement('div');menu.className='pane-menu';menu.setAttribute('role','menu');
-  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button><button type="button" role="menuitem" class="danger" data-close>${ui('Close this bot…','סגירת הבוט…')}</button>`;
+  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button><button type="button" role="menuitem" class="danger" data-close>${ui('Close this bot…','סגירת הבוט…')}</button><button type="button" role="menuitem" class="danger" data-remove>${ui('Remove bot…','הסרת הבוט…')}</button>`;
   document.body.append(menu);
   const r=menu.getBoundingClientRect();
   menu.style.left=Math.max(12,Math.min(x,innerWidth-r.width-12))+'px';menu.style.top=Math.max(12,Math.min(y,innerHeight-r.height-12))+'px';
   menu.querySelector('[data-open]').onclick=()=>{closePaneMenu();row.click();};
   menu.querySelector('[data-close]').onclick=()=>{closePaneMenu();confirmBotClose(id,name,row);};
+  menu.querySelector('[data-remove]').onclick=()=>{closePaneMenu();confirmBotRemove(id,name,row);};
   menu.querySelector('button').focus();
 }
+async function confirmBotRemove(id,name,returnFocus){
+  document.querySelector('.close-sheet')?.remove();
+  const title=esc(ui(`Remove ${name} from your list?`,`להסיר את ${name} מהרשימה?`));
+  const wrap=document.createElement('div');wrap.className='close-sheet';
+  wrap.innerHTML=`<div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="close-sheet-title"><h2 id="close-sheet-title" dir="auto">${title}</h2><p>${ui('Checking what it is running…','בודק מה הוא מריץ…')}</p></div>`;
+  document.body.append(wrap);
+  const done=()=>{wrap.remove();returnFocus?.focus?.();};
+  wrap.onclick=e=>{if(e.target===wrap && !wrap.dataset.busy)done();};
+  wrap.onkeydown=e=>{if(e.key==='Escape' && !wrap.dataset.busy){e.preventDefault();done();}};
+  let plan;try{const r=await fetch(`/api/bot-close?bot=${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(10000)});plan=await r.json();}catch{plan={error:ui('Could not check what it is running.','לא ניתן לבדוק מה הוא מריץ.')}}
+  if(!wrap.isConnected)return;
+  const items=plan.items || [];
+  const list=items.map(i=>`<li><b dir="auto">${esc(i.label)}</b><small dir="auto">${esc(i.now || '')}</small>${i.loses?`<small class="loses" dir="auto">${esc(i.loses)}</small>`:''}</li>`).join('');
+  wrap.querySelector('.sheet').innerHTML=`<h2 id="close-sheet-title" dir="auto">${title}</h2>${plan.warning?`<p class="bot-close-warning" role="alert" dir="auto">${esc(ui(`${name} manages your other agents. Once it is removed, nothing checks on them.`,`${name} מנהל את הסוכנים האחרים. אחרי ההסרה שום דבר לא בודק אותם.`))}</p><label class="bot-remove-ack"><input type="checkbox" data-ack><span dir="auto">${esc(ui(`I understand: nothing will look after my other agents until I bring ${name} back.`,`הבנתי: שום דבר לא ישגיח על הסוכנים האחרים עד שאחזיר את ${name}.`))}</span></label>`:''}<p>${ui('Its chat and memory are archived, not lost. You can bring it back from “Removed bots” at the bottom of the list.','השיחה והזיכרון נשמרים בארכיון, לא נמחקים. אפשר להחזיר אותו מ„בוטים שהוסרו” בתחתית הרשימה.')}</p>${plan.error?`<p role="alert">${esc(plan.error)}</p>`:items.length?`<p>${ui('Removing it first closes:','ההסרה סוגרת קודם:')}</p><ul class="bot-remove-list">${list}</ul>`:''}<p class="sheet-result" role="status" aria-live="polite"></p><div class="sheet-actions"><button type="button" data-cancel>${ui('Cancel','ביטול')}</button>${plan.error?'':`<button type="button" class="danger" data-confirm>${ui('Remove','הסרה')}</button>`}</div>`;
+  const cancel=wrap.querySelector('[data-cancel]'),go=wrap.querySelector('[data-confirm]'),out=wrap.querySelector('.sheet-result'),ack=wrap.querySelector('[data-ack]');
+  cancel.onclick=done;cancel.focus();
+  if(!go)return;
+  const sync=()=>{go.disabled=Boolean(ack && !ack.checked);};
+  if(ack)ack.onchange=sync;sync();
+  go.onclick=async()=>{
+    wrap.dataset.busy='1';go.disabled=cancel.disabled=true;out.textContent=items.length?ui('Closing what it runs…','סוגר את מה שהוא מריץ…'):ui('Removing…','מסיר…');
+    let r;try{const sent=await fetch('/api/bot-remove',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bot:id,confirmManager:Boolean(ack?.checked)}),signal:AbortSignal.timeout(60000)});r=await sent.json();}
+    catch{r={error:ui('No answer from the PC. Check before trying again.','אין תשובה מהמחשב. בדקו לפני ניסיון נוסף.')}}
+    delete wrap.dataset.busy;
+    if(r.ok){done();if(location.hash==='#bot:'+id)history.pushState({},'',location.pathname);note(ui(`Removed ${name}. Its chat and memory are archived.`,`${name} הוסר. השיחה והזיכרון בארכיון.`));fleet(Boolean(focusedPane));return;}
+    out.textContent=r.error || ui('It was not removed.','הוא לא הוסר.');
+    cancel.disabled=false;sync();
+  };
+}
+document.addEventListener('click',async event=>{
+  const b=event.target?.closest?.('[data-restore]');if(!b)return;
+  b.disabled=true;
+  let r;try{r=await (await fetch('/api/bot/restore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.restore}),signal:AbortSignal.timeout(10000)})).json();}catch{r={error:ui('No answer from the PC.','אין תשובה מהמחשב.')}}
+  if(r.ok){note(ui(`${b.dataset.name} is back in your list.`,`${b.dataset.name} חזר לרשימה.`));fleet(Boolean(focusedPane));}else{note(r.error || ui('It could not be brought back.','לא ניתן להחזיר אותו.'),true);b.disabled=false;}
+});
 async function confirmBotClose(id,name,returnFocus){
   document.querySelector('.close-sheet')?.remove();
   const wrap=document.createElement('div');wrap.className='close-sheet';
@@ -3227,11 +3276,13 @@ document.addEventListener('contextmenu',e=>{const row=e.target.closest?.('.pane[
 document.addEventListener('pointerdown',e=>{
   if(!e.target.closest?.('.pane-menu'))closePaneMenu();
   const row=e.target.closest?.('.pane[data-id],.bot-row[data-bot]');if(!row || e.pointerType==='mouse')return;
-  pressAt={x:e.clientX,y:e.clientY};clearTimeout(pressTimer);
-  pressTimer=setTimeout(()=>{swallowClick=true;navigator.vibrate?.(15);openRowMenu(row,pressAt.x,pressAt.y);},550);
+  const sel=row.dataset.bot?`.bot-row[data-bot="${CSS.escape(row.dataset.bot)}"]`:`.pane[data-id="${CSS.escape(row.dataset.id)}"]`;
+  pressAt={x:e.clientX,y:e.clientY,sel,top:row.getBoundingClientRect().top};clearTimeout(pressTimer);
+  pressTimer=setTimeout(()=>{const now=document.querySelector(pressAt.sel);if(!now)return;swallowClick=true;navigator.vibrate?.(15);openRowMenu(now,pressAt.x,pressAt.y);},550);
 });
 document.addEventListener('pointermove',e=>{if(pressAt && Math.hypot(e.clientX-pressAt.x,e.clientY-pressAt.y)>10)clearTimeout(pressTimer);});
-for(const type of ['pointerup','pointercancel','scroll'])document.addEventListener(type,()=>clearTimeout(pressTimer),true);
+for(const type of ['pointerup','pointercancel'])document.addEventListener(type,()=>clearTimeout(pressTimer),true);
+document.addEventListener('scroll',()=>{const now=pressAt && document.querySelector(pressAt.sel);if(!now || Math.abs(now.getBoundingClientRect().top-pressAt.top)>10)clearTimeout(pressTimer);},true);
 document.addEventListener('click',e=>{
   if(swallowClick && e.target.closest?.('.pane[data-id],.bot-row[data-bot]')){e.preventDefault();e.stopPropagation();swallowClick=false;return;}
   swallowClick=false;

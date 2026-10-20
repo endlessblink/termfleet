@@ -16,7 +16,7 @@ import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
-import { botClosePlan, closeBotItems } from './bot-close.mjs';
+import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, moveInOrder } from './prefs.mjs';
 import { liveness, lastLine, screenOf } from './liveness.mjs';
@@ -386,7 +386,7 @@ const handle = async (req, res) => {
   }
   // Bots (TF-096). Same sign-in gate as every route below it.
   if (url.pathname === '/api/bots' && req.method === 'GET') {
-    return json(res, 200, { bots: bots.list(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
+    return json(res, 200, { bots: bots.list(), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
   }
   // Phone notifications (TF-096 part 7).
   if (url.pathname === '/api/push/key' && req.method === 'GET') return json(res, 200, { publicKey: push.keys().publicKey });
@@ -648,6 +648,17 @@ const handle = async (req, res) => {
     if (req.method === 'GET') return json(res, 200, plan);
     const result = await closeBotItems({ botId: bot.id, ids: Array.isArray(body.items) ? body.items.map(String) : [], plan, bots, routines, requestClose });
     return json(res, 200, result);
+  }
+
+  if ((url.pathname === '/api/bot-remove' || url.pathname === '/api/bot/restore') && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 4 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    if (url.pathname === '/api/bot/restore') { const r = bots.restore(body.id); return json(res, r.ok ? 200 : 409, r); }
+    const bot = bots.list().find((b) => b.id === body.bot);
+    if (!bot) return json(res, 404, { error: 'That bot no longer exists.' });
+    const plan = botClosePlan({ bot, panes: (await currentPanes()).panes, routines: routines.forPane(`bot:${bot.id}`), watches: bots.watches(bot.id) });
+    const result = await removeBot({ bot, plan, bots, routines, requestClose, confirmManager: body.confirmManager === true });
+    return json(res, result.ok ? 200 : 409, result);
   }
 
   if (url.pathname === '/api/close' && req.method === 'POST') {

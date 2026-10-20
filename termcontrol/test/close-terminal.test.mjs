@@ -41,7 +41,9 @@ test('closing a terminal from the list asks first and then removes its row', { t
         await p.goBack().catch(() => {});
         await p.evaluate(() => document.querySelector('.fleet-tabs [data-tab="terminals"]')?.click());
         await row.waitFor();
-        await row.evaluate((el, at) => el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', clientX: at.x, clientY: at.y })), { x: tap.x + 40, y: tap.y + 20 });
+        await p.waitForFunction(() => new Promise((ok) => { const m = document.querySelector('main'), y = m?.scrollTop; setTimeout(() => ok(m?.scrollTop === y), 400); }), null, { timeout: 10000 }); // the list restores its scroll after Back
+        const at = await row.boundingBox();
+        await row.evaluate((el, at) => el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch", clientX: at.x, clientY: at.y })), { x: at.x + 40, y: at.y + 20 });
         await p.waitForTimeout(800);
         await row.evaluate((el) => el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' })));
       }

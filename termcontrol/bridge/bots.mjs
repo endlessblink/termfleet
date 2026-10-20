@@ -497,6 +497,38 @@ export class Bots {
     return { ok: true };
   }
 
+  /** Remove from the list without losing anything: the folder moves to archived/ and can come back. */
+  archive(id) {
+    if (!this.read(id)) return { error: 'That bot no longer exists.' };
+    this.stop(id);
+    const shelf = path.join(this.dir, 'archived');
+    fs.mkdirSync(shelf, { recursive: true, mode: 0o700 });
+    if (fs.existsSync(path.join(shelf, id))) fs.renameSync(path.join(shelf, id), path.join(shelf, `${id}-${this.now()}`));
+    fs.renameSync(this.folder(id), path.join(shelf, id));
+    this.queues.delete(id);
+    return { ok: true };
+  }
+
+  archived() {
+    const shelf = path.join(this.dir, 'archived');
+    let ids = [];
+    try { ids = fs.readdirSync(shelf).filter((d) => /^[0-9a-f]{12}$/.test(d)); } catch { return []; }
+    return ids.map((id) => {
+      try { const b = JSON.parse(fs.readFileSync(path.join(shelf, id, 'bot.json'), 'utf8')); return { id, name: b.name, provider: b.provider, color: b.color }; } catch { return null; }
+    }).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  restore(id) {
+    if (!/^[0-9a-f]{12}$/.test(String(id))) return { error: 'Unknown bot.' };
+    const from = path.join(this.dir, 'archived', id);
+    let bot;
+    try { bot = JSON.parse(fs.readFileSync(path.join(from, 'bot.json'), 'utf8')); } catch { return { error: 'That removed bot is not there any more.' }; }
+    if (this.read(id)) return { error: 'That bot is already in your list.' };
+    if (this.list().some((b) => b.name.toLowerCase() === String(bot.name).toLowerCase())) return { error: `Another bot is already called ${bot.name}. Rename it first.` };
+    fs.renameSync(from, this.folder(id));
+    return { ok: true, bot: this.summary(id) };
+  }
+
   memory(id) { return new BotMemory(this.folder(id), { now: this.now }); }
 
   /** Terminal agents this bot started (newest last). */

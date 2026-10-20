@@ -47,6 +47,16 @@ export function botClosePlan({ bot, panes = [], routines = [], watches = [] }) {
   };
 }
 
+/** Remove a bot: close everything it runs (all items), then archive it. Anything that does not
+ *  close stops the removal, so no terminal is left running without its bot. */
+export async function removeBot({ bot, plan, bots, routines, requestClose, confirmManager = false }) {
+  if (isManagerBot(bot) && !confirmManager) return { ok: false, error: `Tick the box to confirm removing ${bot.name}.` };
+  const closed = await closeBotItems({ botId: bot.id, ids: plan.items.map((i) => i.id), plan, bots, routines, requestClose });
+  if (!closed.ok) return { ok: false, results: closed.results, error: `Not removed: ${closed.results.filter((r) => !r.ok).map((r) => `${r.label} (${r.error})`).join('; ')}` };
+  bots.append(bot.id, { role: 'note', text: 'Noam removed this bot from the list. Its chat and memory are archived and can be brought back.' });
+  return { ...bots.archive(bot.id), results: closed.results };
+}
+
 /** Close what Noam ticked. Each item gets a plain result; nothing else is touched. */
 export async function closeBotItems({ botId, ids, plan, bots, routines, requestClose }) {
   const wanted = new Set(ids), results = [];
