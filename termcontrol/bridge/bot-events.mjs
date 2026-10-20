@@ -62,6 +62,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
       else seen.set(key, { state, posted });
     }
     for (const w of bots.watches(b.id)) {
+      if (w.paused) continue; // paused when Noam closed the bot; kept so it can be turned back on
       const current = head(w.path);
       if (!current) continue;
       if (w.head && w.head !== current) bots.wake(b.id, `New code landed in ${w.path} (commit ${current.slice(0, 8)}). Look at what changed and act on it if it concerns your job.`);

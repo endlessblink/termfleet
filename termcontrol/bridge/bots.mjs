@@ -86,6 +86,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '  `termfleet-team start --provider claude|codex --cwd <folder> --task "<task>"` (open a new terminal agent for a job),',
     '  `termfleet-team routine add --time 09:00 --days weekdays --message "<text>"` (a scheduled message).',
     '- Say which terminal agent you handed work to, and check its result before telling Noam it is done.',
+    '- After you checked a terminal agent\'s result and told Noam, close it with `termfleet-team close <who>` if nothing else is pending there, so finished terminals do not pile up. It only closes terminals you started, and refuses while one is working, waiting for Noam, or has unsaved work: then leave it open and say why.',
     '- Keep Noam\'s requests in his exact words. For a new or unclear request, read it back as a short numbered list first.',
     '- Never say "done" without proof (what ran and what it showed). If you did less than asked, say so in your first sentence.',
     '- Never spend money, post publicly, send messages to people, or delete things without Noam\'s explicit yes.',
@@ -256,7 +257,7 @@ export function brainEnv(bot, env = process.env) {
 }
 
 /** Runs one brain turn as a child process and reports events as they come. */
-export function runBrain(bot, text, { onEvent, bins, extras, env = process.env, timeoutMs = 30 * 60 * 1000, idleMs = 10 * 60 * 1000, logPath = null } = {}) {
+export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = process.env, timeoutMs = 30 * 60 * 1000, idleMs = 10 * 60 * 1000, logPath = null } = {}) {
   const { bin, args } = brainCommand(bot, text, { bins, extras });
   return new Promise((resolve) => {
     let child;
@@ -267,7 +268,9 @@ export function runBrain(bot, text, { onEvent, bins, extras, env = process.env, 
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (error) { resolve({ error: String(error.message || error) }); return; }
-    let buffer = '', stderr = '', finalText = '', error = null, lastText = '', limit = null, completed = false;
+    let buffer = '', stderr = '', finalText = '', error = null, lastText = '', limit = null, completed = false, stopped = false;
+    // Noam closing the bot stops this reply the way the timeout does: a polite SIGTERM.
+    onStart?.(() => { stopped = true; child.kill('SIGTERM'); });
     // The last run's raw output, so a failure can be explained afterwards (capped).
     let log = null, logged = 0;
     if (logPath) { try { log = fs.openSync(logPath, 'w'); } catch { log = null; } }
@@ -303,6 +306,7 @@ export function runBrain(bot, text, { onEvent, bins, extras, env = process.env, 
       keep('', `\n[exit ${code}]\n`);
       if (log !== null) try { fs.closeSync(log); } catch { /* closed */ }
       if (!limit && isLimitText(stderr)) limit = { text: stderr.trim().split('\n').pop().slice(0, 300), resetsAt: resetTime(stderr) };
+      if (stopped) { resolve({ stopped: true, error: 'Stopped by Noam.', code }); return; }
       if (limit) { resolve({ limit, error: 'usage limit', code }); return; }
       // Codex says what it is about to do before doing it; that opening line is not
       // the answer. Without a completed turn the run stopped partway: say so.
@@ -587,6 +591,19 @@ export class Bots {
     return { ok: true };
   }
 
+  /**
+   * Stop what the bot is doing right now (Noam's "close this bot"): the reply in
+   * progress ends and messages waiting behind it are dropped. Its chat, memory and
+   * conversation stay; the next message starts it again.
+   */
+  stop(id) {
+    const current = this.running.get(id);
+    this.queues.set(id, []);
+    if (!current?.stop) return { ok: true, wasRunning: false };
+    current.stop();
+    return { ok: true, wasRunning: true };
+  }
+
   /** Folders whose new code wakes the bot (git HEAD changes). */
   watches(id) { return Array.isArray(this.read(id)?.watches) ? this.read(id).watches : []; }
 
@@ -594,7 +611,7 @@ export class Bots {
     const bot = this.read(id);
     if (!bot) return;
     const list = Array.isArray(bot.watches) ? bot.watches.filter((w) => w.path !== watch.path) : [];
-    if (!watch.remove) list.push({ path: watch.path, head: watch.head ?? null });
+    if (!watch.remove) list.push({ path: watch.path, head: watch.head ?? null, ...(watch.paused ? { paused: true } : {}) });
     bot.watches = list.slice(-20);
     this.write(bot);
   }
@@ -704,8 +721,9 @@ export class Bots {
       }
       // A [question] block becomes a card the chat can answer with one tap.
       const asked = result.error ? null : parseQuestion(result.text || '');
-      if (bot) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}) });
-      if (bot && bot.notify !== false) {
+      if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.' });
+      else if (bot) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}) });
+      if (bot && bot.notify !== false && !result.stopped) {
         try { this.notify({ title: result.error ? `${bot.name} could not answer` : bot.name, body: String(result.error || (asked?.question ? asked.question.text : result.text) || '').replace(/\s+/g, ' ').slice(0, 200), url: `/#bot:${id}` }); } catch { /* never block a bot on a notification */ }
       }
       this.running.delete(id);
@@ -808,6 +826,7 @@ export class Bots {
         bins: this.bins,
         extras,
         logPath: path.join(this.folder(id), 'last-run.log'),
+        onStart: (stop) => { const current = this.running.get(id); if (current) current.stop = stop; },
         onEvent: (ev) => {
           if (ev.activity) {
             const current = this.running.get(id);

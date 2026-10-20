@@ -17,6 +17,8 @@
 //   termfleet-team routine list [--for <who>] | routine remove <id>
 //   termfleet-team watch add|remove|list <folder>   (inside a bot) new code there wakes it
 //   termfleet-team follow <who> [--why T]  (inside a bot) wake me when that agent finishes its turn
+//   termfleet-team close <who>             (inside a bot) close a terminal YOU started, once it is done;
+//                                          refused while it works, waits for Noam, or has unsaved work
 //
 // <who> is a teammate's name, a terminal id, a unique part of one, or a project name.
 // Add --json for machine-readable output; --file F reads the text from a file.
@@ -201,6 +203,21 @@ async function main(argv) {
     return out(`Following ${pane.profile?.name || pane.project} (${pane.id}): you will be woken when it finishes its turn.`);
   }
 
+  if (command === 'close') {
+    // Only inside a bot, and only a terminal that bot started, once it is done.
+    const dir = botFolder();
+    if (!dir) fail('Only a bot can close terminals this way, and only ones it started. Noam closes the others.');
+    let owned = [];
+    try { owned = JSON.parse(readFileSync(join(dir, 'helpers.json'), 'utf8')).filter((h) => h?.paneId && !h.followed); } catch { owned = []; }
+    const { closeOwnTerminal } = await import('./lib/team-close.mjs');
+    const { requestClose } = await import('./lib/close-request.mjs');
+    const r = await closeOwnTerminal({
+      query: positional.join(' '), panes: await fleetPanes(), owned, resolvePane, stateOf,
+      request: requestClose, record: (entry) => recordInBot(entry), by: `bot:${process.env.TERMFLEET_BOT_NAME || process.env.TERMFLEET_BOT_ID}`,
+    });
+    if (json) return out(JSON.stringify(r));
+    return r.ok ? out(r.text) : fail(r.text, 2);
+  }
   if (command === 'routine') return routine(positional, flags, { selfId, json });
   if (command === 'watch') {
     // A bot watches a project folder; new code there wakes it.
