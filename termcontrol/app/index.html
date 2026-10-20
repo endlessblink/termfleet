@@ -296,7 +296,7 @@
   .rich table{border-collapse:collapse;width:max-content;min-width:100%;font-size:14px;line-height:1.4}
   .rich th, .rich td{
     padding:8px 10px;text-align:start;vertical-align:top;border-bottom:1px solid var(--line);
-    overflow-wrap:normal;word-break:normal;min-width:4.5em;max-width:15em;unicode-bidi:plaintext;
+    overflow-wrap:normal;word-break:normal;min-width:4.5em;max-width:15em;unicode-bidi:isolate;
   }
   .rich td code{white-space:nowrap}
   @media (max-width:640px){
@@ -827,7 +827,7 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 #side-asks li:last-child{border-bottom:0}
 #side-asks .st{font-size:0;line-height:0;align-self:center;display:grid;place-items:center;width:12px;height:12px}
 #side-asks .st::before{font-size:12px;line-height:1;color:var(--muted)}
-#side-asks .rail-what,#side-asks .rail-note{grid-column:2;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:start;unicode-bidi:plaintext}
+#side-asks .rail-what,#side-asks .rail-note{grid-column:2;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:start;unicode-bidi:isolate}
 #side-asks .rail-what{color:var(--text)}
 #side-asks .rail-note{font-size:12px;color:var(--muted)}
 #side-asks .rail-working{background:color-mix(in srgb,var(--strip-hot) 7%,transparent);padding-inline:6px;margin-inline:-6px}
@@ -1585,8 +1585,44 @@ const dirOf = (s) => {
   const text = String(s || '');
   const rtl = (text.match(/[֐-׿؀-ۿ]/g) || []).length;
   const ltr = (text.match(/[A-Za-zÀ-ɏ]/g) || []).length;
-  return rtl > ltr ? 'rtl' : 'ltr';
+  // Most letters win, not the first letter: "TermFleet צריך לעבוד טוב" is a Hebrew line (2026-10-20).
+  return rtl > 0 && rtl >= ltr ? 'rtl' : 'ltr';
 };
+// Message boxes take the same direction as the bubble they will become, while typing.
+const followTextDir = (el) => {
+  if (!el?.matches?.('textarea[dir]')) return;
+  // The custom-answer editor deliberately keeps a direction per line (its own test).
+  if (el.closest('.custom-answer')) return;
+  // Right-to-left when it starts in Hebrew (as before) or is mostly Hebrew (new).
+  const first = /[A-Za-zÀ-ɏ֐-׿؀-ۿ]/.exec(el.value);
+  el.dir = !first ? 'auto' : /[֐-׿؀-ۿ]/.test(first[0]) ? 'rtl' : dirOf(el.value);
+};
+// Guarded: the tests also load these helpers outside a browser.
+if (typeof document !== 'undefined') {
+  document.addEventListener('input', (event) => followTextDir(event.target), true);
+  document.addEventListener('focusin', (event) => followTextDir(event.target), true);
+}
+// Everything else that picks its own direction (dir="auto": titles, list rows, the
+// requests list, the Needs you strip) follows the same rule instead of the browser's
+// first-letter guess. Text with no letters keeps "auto".
+const AUTO_DIR = '[dir="auto"]:not(textarea):not(input),[data-auto-dir],bdi:not([dir]),.attention-reason';
+const LETTER = /[A-Za-zÀ-ɏ֐-׿؀-ۿ]/;
+// Judged on the element's own words: a small label inside it (" · demo") does not tip a Hebrew title.
+const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join(' ');
+const settleDir = (el) => { el.dataset.autoDir = '1'; const own = ownText(el); const t = LETTER.test(own) ? own : (el.textContent || ''); el.dir = LETTER.test(t) ? dirOf(t) : 'auto'; };
+const settleAll = (root) => {
+  if (root.nodeType !== 1) return;
+  if (root.matches(AUTO_DIR)) settleDir(root);
+  for (const el of root.querySelectorAll(AUTO_DIR)) settleDir(el);
+};
+if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') new MutationObserver((records) => {
+  for (const r of records) {
+    if (r.type === 'characterData') { const owner = r.target.parentElement?.closest('[data-auto-dir]'); if (owner) settleDir(owner); continue; }
+    for (const node of r.addedNodes) settleAll(node);
+    const owner = r.target.closest?.('[data-auto-dir]'); if (owner) settleDir(owner);
+  }
+}).observe(document.body, { childList: true, subtree: true, characterData: true });
+if (typeof document !== 'undefined' && document.body) settleAll(document.body);
 const inlineRich = (s) => esc(s)
   .replace(/`([^`]+)`/g, '<code>$1</code>')
   .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
@@ -2238,8 +2274,8 @@ function paintSideAsks(asks,current,liveText){
   const sorted=asks.slice().sort((x,y)=>((rank[state(x)]??5)-(rank[state(y)]??5)) || y.n-x.n);
   const rows=sorted.map(a=>{
     const cur=a.n===current,st=state(a),title=railShort(a.text,80),what=cur&&liveText?liveText:title,note=cur&&liveText?railShort(a.text,60):'';
-    const extra=st==='done' && ++doneSeen>SHOWN_DONE?' more-done':'',dir=/[\u0590-\u05FF]/.test(what)?'rtl':'ltr',w=word(a);
-    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="auto">${esc(note)}</span>`:''}</li>`;
+    const extra=st==='done' && ++doneSeen>SHOWN_DONE?' more-done':'',dir=dirOf(what),w=word(a);
+    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" dir="${dir}" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="${dirOf(note)}">${esc(note)}</span>`:''}</li>`;
   }).join('');
   const hiddenDone=Math.max(0,done-SHOWN_DONE),showAll=el.classList.contains('all-done');
   const more=hiddenDone?`<li class="rail-more"><button type="button" aria-expanded="${showAll}" data-more="${esc(ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}" data-less="${esc(ui('Show fewer','להציג פחות'))}">${esc(showAll?ui('Show fewer','להציג פחות'):ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}</button></li>`:'';
