@@ -43,6 +43,7 @@ import { BotBrowser } from './bot-browser.mjs';
 import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
 import { checkBotEvents } from './bot-events.mjs';
 import { Push } from './push.mjs';
+import { createDockIcon } from './dock-icon.mjs';
 import { asksForFile, isRealRequest } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter } from './asks-sidecar.mjs';
 
@@ -855,6 +856,25 @@ setInterval(() => {
   overLimit = mb > MEMORY_LIMIT_MB ? overLimit + 1 : 0;
   if (overLimit >= 2) shutdownGracefully(`memory ${Math.round(mb)} MB over ${MEMORY_LIMIT_MB} MB`, { exitCode: 75 });
 }, 30000).unref?.();
+
+// Dock icon counts (Noam 2026-10-20): bots unread in orange, terminals waiting for him in
+// blue. Off until Noam picks a quieter look ("a bit overpowering"): TC_DOCK_ICON=1 turns it
+// on. Live service only: tests and copies set TC_CONFIG_DIR and never touch the launcher.
+if (!process.env.TC_CONFIG_DIR && process.env.TC_DOCK_ICON === '1') {
+  const updateDock = createDockIcon();
+  let dockBusy = false;
+  const dockTick = async () => {
+    if (dockBusy) return;
+    dockBusy = true;
+    try {
+      const unread = bots.list().filter((b) => !b.hidden).reduce((n, b) => n + (Number(b.unread) || 0), 0);
+      const { panes } = await currentPanes();
+      await updateDock(unread, panes.filter((p) => p.turn === 'waiting').length);
+    } catch (error) { console.error('[dock]', error.message); } finally { dockBusy = false; }
+  };
+  setInterval(dockTick, 5000).unref?.();
+  setTimeout(dockTick, 2000).unref?.();
+}
 
 // The phone reaches us through a tunnel that keeps idle connections for about 90 s. Node
 // closes them after 5 s, so a request sent after a slow photo upload went down a closed
