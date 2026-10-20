@@ -25,19 +25,22 @@ try {
   await p.waitForFunction(() => document.querySelector('.bots-home'), null, { timeout: 20000, polling: 250 });
   const id = await p.evaluate(async () => { const r = await fetch('/api/bots', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Rail test' }) }); return (await r.json()).bot.id; });
   let asks = [
-    { n: 1, text: 'Fix the login page', status: 'done', note: '' },
-    { n: 2, text: 'Add a dark theme', status: 'partial', note: 'phone not checked' },
+    { n: 1, text: '[Noam attached 1 picture. Look at it (open the file to see it): /home/endlessblink/Pictures/x.png] Fix the login page. Then more words that are long.', status: 'done', note: '' },
+    { n: 2, text: 'Add a dark theme', status: 'partial', note: 'phone not checked | tail -1' },
     { n: 3, text: 'Make exports faster', status: 'open', note: '' },
     { n: 4, text: 'Widen the approval to local edits', status: 'open', note: '' },
   ];
-  await p.route('**/api/bot?*', async (route) => { const r = await route.fetch(); const j = await r.json(); j.asks = asks; await route.fulfill({ response: r, json: j }); });
+  let live = null;
+  await p.route('**/api/bot?*', async (route) => { const r = await route.fetch(); const j = await r.json(); j.asks = asks; if (live) { j.bot.state = 'working'; j.bot.helpers = [{ paneId: 'x', state: 'working', title: 'termfleet', live }]; } await route.fulfill({ response: r, json: j }); });
   await p.goto(base + '/#bot:' + id);
   await p.waitForFunction(() => document.querySelector('.asks-rail li'), null, { timeout: 15000, polling: 250 });
   const wide = await p.evaluate(() => {
     const rail = document.querySelector('.asks-rail'), box = rail.getBoundingClientRect();
-    return { visible: box.width > 200 && getComputedStyle(rail).display !== 'none', rows: [...rail.querySelectorAll('li')].map((li) => li.querySelector('.rail-st').textContent + '|' + li.querySelector('.rail-what').textContent), chipHidden: getComputedStyle(document.querySelector('.asks-chip')).display === 'none' };
+    return { visible: box.width > 200 && getComputedStyle(rail).display !== 'none', rows: [...rail.querySelectorAll('li')].map((li) => li.querySelector('.rail-sub').textContent.split(' \u00b7 ')[0] + '|' + li.querySelector('.rail-what').textContent), chipHidden: getComputedStyle(document.querySelector('.asks-chip')).display === 'none' };
   });
   assert.equal(wide.visible, true);
+  assert.equal(await p.evaluate(() => document.querySelector('.rail-toggle span').textContent), '3 open \u00b7 1 done');
+  assert.equal(await p.evaluate(() => document.querySelector('.asks-rail').textContent.includes('/home/') || document.querySelector('.asks-rail').textContent.includes('tail -1') || document.querySelector('.asks-rail').textContent.includes('[Noam')), false);
   assert.equal(wide.chipHidden, true);
   assert.deepEqual(wide.rows, ['✓ Done|Fix the login page', 'Partly done|Add a dark theme', 'Waiting|Make exports faster', 'Waiting|Widen the approval to local edits']);
   if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-wide.png' });
@@ -51,12 +54,21 @@ try {
   asks = asks.map((a) => (a.n === 3 ? { ...a, status: 'done' } : a));
   await p.waitForFunction(() => [...document.querySelectorAll('.asks-rail li')].some((li) => li.textContent.includes('✓ Done') && li.textContent.includes('Make exports faster')), null, { timeout: 12000, polling: 500 });
   assert.equal(await p.evaluate(() => window.__same), 1);
+  // The core of the panel: the row being worked on shows, as its main line, what the terminal agent it was handed to is doing now, and that line follows the agent on its own.
+  live = 'bringing the panel back';
+  await p.waitForFunction(() => document.querySelector('.asks-rail li:last-child .rail-what')?.textContent.includes('termfleet: bringing the panel back'), null, { timeout: 12000, polling: 500 });
+  if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-live1.png' });
+  live = 'checking the screenshots';
+  await p.waitForFunction(() => document.querySelector('.asks-rail li:last-child .rail-what')?.textContent.includes('termfleet: checking the screenshots'), null, { timeout: 12000, polling: 500 });
+  assert.match(await p.evaluate(() => document.querySelector('.asks-rail li:last-child .rail-sub').textContent), /^In work/);
+  if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-live2.png' });
+  live = null;
   // Many requests: about four rows show, the newest at the bottom is in view, older ones are above.
   asks = [...asks, { n: 5, text: 'Request five', status: 'done', note: '' }, { n: 6, text: 'Request six', status: 'done', note: '' }, { n: 7, text: 'Request seven', status: 'open', note: '' }];
   await p.waitForFunction(() => document.querySelectorAll('.asks-rail li').length === 7, null, { timeout: 12000, polling: 500 });
   await wait(600);
   const many = await p.evaluate(() => { const ul = document.querySelector('.asks-rail ul'), last = [...ul.querySelectorAll('li')].pop().getBoundingClientRect(), box = ul.getBoundingClientRect(); return { height: Math.round(box.height), atBottom: ul.scrollHeight - ul.scrollTop - ul.clientHeight < 8, newestVisible: last.bottom <= box.bottom + 1 && last.top >= box.top - 1, firstText: ul.querySelector('li').textContent }; });
-  assert.ok(many.height <= 230 && many.height >= 150, JSON.stringify(many));
+  assert.ok(many.height <= 310 && many.height >= 150, JSON.stringify(many));
   assert.equal(many.atBottom, true);
   assert.equal(many.newestVisible, true);
   assert.match(many.firstText, /Fix the login page/);

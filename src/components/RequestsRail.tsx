@@ -34,7 +34,7 @@ export function RequestsRail({ sessionId }: { sessionId: string }) {
         const raw = await invoke<string | null>("agent_status_read_sidecar", { fileName: asksSidecarFileName(sessionId) });
         if (cancelled) return;
         const parsed = parseAsksSidecar(raw);
-        setRows(parsed ? railRows(parsed.asks, parsed.working) : []);
+        setRows(parsed ? railRows(parsed.asks, parsed.working, parsed.live) : []);
       } catch {
         if (!cancelled) setRows([]);
       }
@@ -73,6 +73,7 @@ export function RequestsRail({ sessionId }: { sessionId: string }) {
 
   if (!rows.length) return <div ref={rootRef} hidden />;
   const done = rows.filter((r) => r.tone === "done").length;
+  const open = rows.filter((r) => r.tone !== "done" && r.tone !== "dropped").length;
   return (
     <div
       ref={rootRef}
@@ -82,7 +83,7 @@ export function RequestsRail({ sessionId }: { sessionId: string }) {
       onPointerDownCapture={(event) => event.stopPropagation()}
     >
       <button type="button" className="requests-rail__toggle" aria-expanded={!folded} onClick={toggle}>
-        <span>{`Your requests \u00b7 ${done}/${rows.length}`}</span>
+        <span>{open ? `${open} open \u00b7 ${done} done` : `All ${rows.length} done`}</span>
         <span aria-hidden="true">{folded ? "\u25b8" : "\u25be"}</span>
       </button>
       {!folded && (
@@ -96,9 +97,8 @@ export function RequestsRail({ sessionId }: { sessionId: string }) {
         >
           {rows.map((row) => (
             <li key={row.n} className={`requests-rail__row requests-rail__row--${row.tone}`}>
-              <span className="requests-rail__word">{row.word}</span>
-              <span className="requests-rail__text" dir="auto">{row.text}</span>
-              {row.note ? <span className="requests-rail__note" dir="auto">{row.note}</span> : null}
+              <span className="requests-rail__text" dir="auto">{row.tone === "working" && row.main !== row.text ? <i className="requests-rail__dot" aria-hidden="true" /> : null}{row.main}</span>
+              <span className="requests-rail__word" dir="auto">{row.sub}</span>
             </li>
           ))}
         </ul>

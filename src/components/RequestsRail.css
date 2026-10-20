@@ -53,3 +53,7 @@
 .requests-rail__row--partial .requests-rail__word { color: #e8a25a; }
 .requests-rail__row--done .requests-rail__word { color: #7fbf8f; }
 .requests-rail__note { color: var(--text-secondary, #a7adb0); font-size: 11.5px; }
+.requests-rail__text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.requests-rail__word { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.requests-rail__dot { display: inline-block; width: 7px; height: 7px; margin-inline-end: 6px; border-radius: 50%; background: #e8a25a; }
+.requests-rail__row--working .requests-rail__text { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

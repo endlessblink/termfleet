@@ -19,7 +19,7 @@ test('requests are written per live terminal, rewritten only when they change, a
     const panes = [{ id: 'p1', live: true, producing: true }, { id: 'p2', live: true }, { id: 'p3', live: false }];
     assert.equal(write(panes), 1);
     const file = path.join(dir, asksSidecarName('p1'));
-    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { paneId: 'p1', working: true, asks, updatedAt: 42 });
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { paneId: 'p1', working: true, live: null, asks, updatedAt: 42 });
     assert.equal(write(panes), 0, 'unchanged: no rewrite');
     asks = [{ n: 1, text: 'Fix the login', status: 'done', note: 'checked' }];
     assert.equal(write(panes), 1);

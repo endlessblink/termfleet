@@ -44,3 +44,16 @@ test("the terminal card mounts the panel once, keyed by the daemon session id", 
   expect(src.match(/<RequestsRail /g)?.length).toBe(1);
   expect(src).toContain("<RequestsRail sessionId={attachToPtyId ?? runtimeSessionId} />");
 });
+
+test("the row being worked on shows what is happening now as its main line; the status word is secondary", () => {
+  const asks = [
+    { n: 1, text: "[Noam attached 1 picture. Look at it: /home/x/p.png] Fix the login page. More words.", status: "done", note: "checked | tail -1" },
+    { n: 2, text: "Widen the approval", status: "open" },
+  ];
+  const rows = railRows(asks, true, "termfleet: bringing the panel back");
+  expect(rows[0]).toMatchObject({ main: "Fix the login page", sub: "✓ Done · checked" });
+  expect(rows[1].main).toBe("termfleet: bringing the panel back");
+  expect(rows[1].sub).toBe("In work · Widen the approval");
+  // nobody working: the row keeps its title and says it is waiting
+  expect(railRows(asks, false, "x")[1]).toMatchObject({ main: "Widen the approval", sub: "Waiting" });
+});

@@ -32,7 +32,8 @@ export function createAsksSidecarWriter({ dir = defaultAsksDir(), asksOf, now = 
       let asks = null;
       try { asks = asksOf(pane); } catch { asks = null; }
       if (!asks || !asks.length) continue;
-      const body = { paneId: pane.id, working: Boolean(pane.producing), asks };
+      const nowLabel = pane.sessionAuthority && pane.sessionViewV2?.now && !pane.sessionViewV2.now.stale ? String(pane.sessionViewV2.now.label || '') : '';
+      const body = { paneId: pane.id, working: Boolean(pane.producing || pane.turn === 'working'), live: nowLabel || null, asks };
       const key = JSON.stringify(body);
       if (written.get(pane.id) === key) continue;
       try {
