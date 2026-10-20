@@ -24,7 +24,7 @@ try {
   await p.evaluate(() => { const e = document.querySelector('#email'); if (e) e.value = 'owner@example.test'; document.querySelector('#password').value = 'a-good-password'; document.querySelector('form').requestSubmit(); });
   await p.waitForFunction(() => document.querySelector('.bots-home'), null, { timeout: 20000, polling: 250 });
   const id = await p.evaluate(async () => { const r = await fetch('/api/bots', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Rail test' }) }); return (await r.json()).bot.id; });
-  const asks = [
+  let asks = [
     { n: 1, text: 'Fix the login page', status: 'done', note: '' },
     { n: 2, text: 'Add a dark theme', status: 'partial', note: 'phone not checked' },
     { n: 3, text: 'Make exports faster', status: 'open', note: '' },
@@ -39,9 +39,24 @@ try {
   });
   assert.equal(wide.visible, true);
   assert.equal(wide.chipHidden, true);
-  assert.deepEqual(wide.rows, ['In work|Widen the approval to local edits', 'Waiting|Make exports faster', 'Partly done|Add a dark theme', '✓ Done|Fix the login page']);
+  assert.deepEqual(wide.rows, ['✓ Done|Fix the login page', 'Partly done|Add a dark theme', 'Waiting|Make exports faster', 'Waiting|Widen the approval to local edits']);
   if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-wide.png' });
   assert.ok((await p.evaluate(() => document.querySelector('.asks-rail').getBoundingClientRect().width)) <= 240);
+  // Live: a request moving to done shows up by itself, without a reload (the page redraws every few seconds).
+  await p.evaluate(() => { window.__same = 1; });
+  asks = asks.map((a) => (a.n === 3 ? { ...a, status: 'done' } : a));
+  await p.waitForFunction(() => [...document.querySelectorAll('.asks-rail li')].some((li) => li.textContent.includes('✓ Done') && li.textContent.includes('Make exports faster')), null, { timeout: 12000, polling: 500 });
+  assert.equal(await p.evaluate(() => window.__same), 1);
+  // Many requests: about four rows show, the newest at the bottom is in view, older ones are above.
+  asks = [...asks, { n: 5, text: 'Request five', status: 'done', note: '' }, { n: 6, text: 'Request six', status: 'done', note: '' }, { n: 7, text: 'Request seven', status: 'open', note: '' }];
+  await p.waitForFunction(() => document.querySelectorAll('.asks-rail li').length === 7, null, { timeout: 12000, polling: 500 });
+  await wait(600);
+  const many = await p.evaluate(() => { const ul = document.querySelector('.asks-rail ul'), last = [...ul.querySelectorAll('li')].pop().getBoundingClientRect(), box = ul.getBoundingClientRect(); return { height: Math.round(box.height), atBottom: ul.scrollHeight - ul.scrollTop - ul.clientHeight < 8, newestVisible: last.bottom <= box.bottom + 1 && last.top >= box.top - 1, firstText: ul.querySelector('li').textContent }; });
+  assert.ok(many.height <= 230 && many.height >= 150, JSON.stringify(many));
+  assert.equal(many.atBottom, true);
+  assert.equal(many.newestVisible, true);
+  assert.match(many.firstText, /Fix the login page/);
+  if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-many.png' });
   // Folding: one click hides the list, the choice survives a reload.
   await p.click('.rail-toggle');
   assert.equal(await p.evaluate(() => document.querySelector('.asks-rail ul').offsetParent === null), true);

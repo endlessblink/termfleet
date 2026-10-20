@@ -799,10 +799,10 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 .bots-panel{border-color:var(--line)}.bot-row .room-last{display:flex;gap:6px;align-items:center}.bot-avatar{flex:none;display:grid;place-items:center;width:40px;height:40px}.bot-avatar svg{width:40px;height:40px}.bot-avatar.head{display:inline-grid;width:30px;height:30px;margin-inline-end:8px;vertical-align:middle}.bot-avatar.head svg{width:30px;height:30px}.bot-failed{color:var(--danger,#d66)}.bot-feed{display:flex;flex-direction:column;gap:4px;padding-bottom:16px}.bot-activity{color:var(--muted);font-size:13px;margin:2px 4px}.bot-activity::before{content:"↳ "}.bot-note{color:var(--muted);font-size:13px;text-align:center;margin:8px 0}.bot-error{color:var(--danger,#d66);font-size:14px;margin:6px 4px}.bot-actions{display:flex;gap:8px;flex-wrap:wrap}.bot-actions button{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer}
 .asks-rail{display:none}
 @media(min-width:1400px){
-  .asks-rail{display:block;position:fixed;inset-block-start:76px;inset-inline-end:16px;width:230px;max-height:calc(100vh - 100px);overflow:auto;box-sizing:border-box;padding:6px 10px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg));font-size:13px;line-height:1.4;z-index:3}
+  .asks-rail{display:block;position:fixed;inset-block-start:76px;inset-inline-end:16px;width:230px;max-height:calc(100vh - 100px);overflow:hidden;box-sizing:border-box;padding:6px 10px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg));font-size:13px;line-height:1.4;z-index:3}
   .asks-rail .rail-toggle{display:flex;justify-content:space-between;gap:8px;width:100%;padding:6px 0;border:0;background:none;color:var(--muted);font:inherit;font-weight:500;cursor:pointer;text-align:start}
   .asks-rail:not(.folded) .rail-toggle{border-bottom:1px solid var(--line)}
-  .asks-rail ul{list-style:none;margin:0;padding:0;display:grid}
+  .asks-rail ul{list-style:none;margin:0;padding:0;display:grid;max-height:224px;overflow-y:auto;overscroll-behavior:contain}
   .asks-rail li{display:grid;gap:2px;padding:6px 0;border-bottom:1px solid var(--line)}.asks-rail li:last-child{border-bottom:0}
   .asks-rail .rail-st{font-size:12px;color:var(--muted)}
   .asks-rail .rail-working .rail-st{color:var(--waiting)}.asks-rail .rail-done .rail-st{color:var(--working)}.asks-rail .rail-partial .rail-st{color:var(--waiting)}
@@ -2066,7 +2066,10 @@ async function openInbox(){
 // The chat header is redrawn on every refresh, so the list remembers whether it was open.
 document.addEventListener('click',event=>{const b=event.target?.closest?.('.rail-toggle');if(!b)return;const rail=b.closest('.asks-rail'),folded=!rail.classList.contains('folded');rail.classList.toggle('folded',folded);rail.querySelector('ul').hidden=folded;b.setAttribute('aria-expanded',String(!folded));b.lastElementChild.textContent=folded?'▸':'▾';document.body.classList.toggle('asks-folded',folded);try{localStorage.setItem('termcontrol-asks-rail',folded?'folded':'open');}catch{}});
 document.addEventListener('toggle',event=>{if(event.target?.classList?.contains('asks-chip')){try{sessionStorage.setItem('termcontrol-asks-open',event.target.open?'open':'closed');}catch{}}},true);
-function asksHtml(asks){
+// The list is redrawn every few seconds: remember whether he scrolled up (null = stay at the newest).
+let railScrollTop=null;
+document.addEventListener('scroll',event=>{const ul=event.target;if(ul?.matches?.('.asks-rail ul'))railScrollTop=ul.scrollHeight-ul.scrollTop-ul.clientHeight<8?null:ul.scrollTop;},true);
+function asksHtml(asks,working){
   if(!asks || !asks.length)return '';
   const done=asks.filter(a=>a.status==='done').length,partial=asks.filter(a=>a.status==='partial').length,open=asks.filter(a=>a.status==='open').length;
   const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
@@ -2074,13 +2077,13 @@ function asksHtml(asks){
   const key='termcontrol-asks-open';let isOpen=false;try{isOpen=sessionStorage.getItem(key)==='open';}catch{}
   // Side panel for wide windows (like the Desk app's "change you asked for" box): newest open
   // request = in work, older open ones = waiting, then the finished ones, newest first.
-  const rank=a=>a.status==='open'?0:a.status==='partial'?1:2;
-  const openNums=asks.filter(a=>a.status==='open').map(a=>a.n),working=openNums.length?Math.max(...openNums):null;
-  const railWord=a=>a.status==='open'?(a.n===working?ui('In work','בעבודה'):ui('Waiting','ממתין')):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Partly done','בוצע חלקית'):label[a.status] || a.status;
-  const railRows=asks.slice().sort((x,y)=>rank(x)-rank(y) || y.n-x.n).map(a=>`<li class="rail-${a.status==='open'&&a.n===working?'working':esc(a.status)}"><span class="rail-st">${esc(railWord(a))}</span><span class="rail-what" dir="auto">${esc(a.text.length>140?a.text.slice(0,139)+'…':a.text)}</span>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('');
+  const openNums=asks.filter(a=>a.status==='open').map(a=>a.n),current=working&&openNums.length?Math.max(...openNums):null;
+  const railWord=a=>a.status==='open'?(a.n===current?ui('In work','בעבודה'):ui('Waiting','ממתין')):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Partly done','בוצע חלקית'):label[a.status] || a.status;
+  const railRows=asks.slice().sort((x,y)=>x.n-y.n).map(a=>`<li class="rail-${a.status==='open'&&a.n===current?'working':esc(a.status)}"><span class="rail-st">${esc(railWord(a))}</span><span class="rail-what" dir="auto">${esc(a.text.length>140?a.text.slice(0,139)+'…':a.text)}</span>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('');
   let folded=false;try{folded=localStorage.getItem('termcontrol-asks-rail')==='folded';}catch{}
   document.body.classList.toggle('asks-folded',folded);
   const rail=`<aside class="asks-rail${folded?' folded':''}" aria-label="${esc(ui('Your requests','הבקשות שלך'))}"><button type="button" class="rail-toggle" aria-expanded="${folded?'false':'true'}"><span>${esc(ui('Your requests','הבקשות שלך'))} · ${done}/${asks.length}</span><span aria-hidden="true">${folded?'▸':'▾'}</span></button><ul${folded?' hidden':''}>${railRows}</ul></aside>`;
+  requestAnimationFrame(()=>{const ul=document.querySelector('.asks-rail ul');if(ul)ul.scrollTop=railScrollTop===null?ul.scrollHeight:railScrollTop;});
   return rail+`<details class="asks-chip"${isOpen?' open':''}><summary>${esc(head)} ▾</summary><ol>${asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(a.text.length>240?a.text.slice(0,239)+'…':a.text)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol></details>`;
 }
 
@@ -2458,7 +2461,7 @@ async function openBot(id){
     const helpersMarkup=helpers.length?`<details class="helpers-chip"><summary>${esc(ui(`Terminal agents it started: ${helpers.length}${active?` (${active} working)`:''}`,`סוכני מסוף שהפעיל: ${helpers.length}${active?` (${active} עובדים)`:''}`))} ▾</summary><ul>${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul></details>`:'';
     let schedules=[];try{const r=await fetch(`/api/routines?pane=${encodeURIComponent('bot:'+id)}`,{signal:AbortSignal.timeout(6000)});if(r.ok)schedules=(await r.json()).routines || [];}catch{}
     const schedulesMarkup=`<span class="routinesline">${schedules.map(r=>`<span class="routine-pill">${icon('clock')}<span dir="auto">${esc(r.label)} ${esc(r.time)} · ${esc(r.text.length>40?r.text.slice(0,38)+'…':r.text)}</span></span>`).join('')}<button type="button" class="bot-schedule routine-pill">${icon('clock')}${ui('Schedule','תזמון')}</button></span>`;
-    const asksMarkup=asksHtml(data.asks)+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
+    const asksMarkup=asksHtml(data.asks,bot.state==='working')+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
     const html=data.messages.map(m=>{
       const when=m.at?ago(m.at):'';
       if(m.role==='operator')return messageHtml('user',m.images?`${m.text}\n📷 ${ui(m.images===1?'1 picture':`${m.images} pictures`,m.images===1?'תמונה אחת':`${m.images} תמונות`)}`:m.text,ui('You','אתה'),when);
@@ -2855,7 +2858,7 @@ async function chat(id,{motion=null,initialFeed=null}={}) {
           : '<span class="headlive quiet"><span class="dot idle" aria-hidden="true"></span>quiet</span>');
     sub.innerHTML = esc(`${named.job?named.job+' · ':''}${named.projectName} · ${d.pane.provider}`)
       + (d.producing && d.lastLine ? `<span class="headtail">${esc(d.lastLine)}</span>` : '');
-    chatStatus.innerHTML = statusHtml(d.pane)+(visitNotice===id?`<span role="status">${ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.')}</span>`:'')+asksHtml(d.asks);
+    chatStatus.innerHTML = statusHtml(d.pane)+(visitNotice===id?`<span role="status">${ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.')}</span>`:'')+asksHtml(d.asks,Boolean(d.producing));
     const preservedAsk=document.querySelector('.askbox');
     const presentAsk=()=>{
       if(mode!=='chat' || !d.ask){document.querySelector('.askbox')?.remove();return;}
