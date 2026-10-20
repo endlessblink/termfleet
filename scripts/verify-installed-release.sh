@@ -79,7 +79,7 @@ if [[ -d "$PLASMA_ICON_DIR" ]]; then
   shopt -s nullglob
   for pinned_entry in "$PLASMA_ICON_DIR"/*.desktop; do
     if grep -qx "Name=TermFleet" "$pinned_entry" &&
-      ! cmp -s "$DESKTOP_ENTRY" "$pinned_entry"; then
+      ! cmp -s <(grep -v '^Icon=' "$DESKTOP_ENTRY") <(grep -v '^Icon=' "$pinned_entry"); then   # the dock dots change only Icon=
       fail "TermFleet pinned taskbar launcher is stale: $pinned_entry"
     fi
   done
