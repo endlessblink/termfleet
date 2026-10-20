@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseQuestion, QUESTION_RULE } from '../bridge/bot-questions.mjs';
+import { parseQuestion, QUESTION_RULE, markRepeatedQuestions, sameQuestion } from '../bridge/bot-questions.mjs';
 import { Bots, brainBrief } from '../bridge/bots.mjs';
 
 // Noam 2026-10-20: "use the question tool always + in english for grill me and any other questions".
@@ -54,4 +54,27 @@ test('the skills list closes when the message is sent, even if it was still load
   const page = fs.readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
   assert.match(page, /if\(field\.value!==m\[0\]\)\{picker\.hidden=/);
   assert.match(page, /following=true;picker\.hidden=true;grow\(\);/);
+});
+
+// Noam 2026-10-20: "the questions show twice for nothing" (Rough-Cut bot re-asked an open question).
+test('a question asked again before Noam replies shows once, the newest; his reply in between keeps both', () => {
+  const opts = ['A recording or voice-over', 'An animation in Graphics', 'The whole window closed', "The agent's work"];
+  const q = (text, options = opts) => ({ role: 'bot', text: '', question: { text, options } });
+  const shown = (msgs) => markRepeatedQuestions(msgs).filter((m) => m.question && !m.repeated).length;
+  assert.equal(shown([q('What stopped before it finished?'), { role: 'bot', text: 'Still waiting.' }, q('What stopped before it finished?')]), 1);
+  // nearly the same words, or a "Question 2:" prefix, count as the same question
+  assert.equal(shown([q('Question 1: What stopped before it finished?'), q('What stopped, before it was finished?')]), 1);
+  // the same answers and half the words: the same question reworded
+  assert.equal(shown([q('What stopped before it finished?'), q('What stopped right before the finish?')]), 1);
+  // ...but not with different answers
+  assert.equal(shown([q('What stopped before it finished?'), q('What stopped right before the finish?', ['Yes', 'No'])]), 2);
+  // the newest card is the one kept
+  assert.equal(markRepeatedQuestions([q('What stopped before it finished?'), q('What stopped before it finished?')])[1].repeated, undefined);
+  // he replied in between: both stay (the first one is answered)
+  assert.equal(shown([q('What stopped before it finished?'), { role: 'operator', text: 'the recording' }, q('What stopped before it finished?')]), 2);
+  // a different question stays
+  assert.equal(shown([q('What stopped before it finished?'), q('Where should the bots run?', ['VPS', 'This PC'])]), 2);
+  assert.equal(sameQuestion({ text: 'Where should the bots run?', options: ['VPS', 'PC'] }, { text: 'Should the bots get a new name?', options: ['Yes', 'No'] }), false);
+  // bots are told not to re-ask an open question
+  assert.match(QUESTION_RULE, /never ask it again/);
 });

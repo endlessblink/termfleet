@@ -1794,7 +1794,10 @@ const teammateHandoff=text=>{const t=String(text || '');let m=/^\[Message from t
 // A bot's question as a card (the bots' question tool): one button per answer and
 // "write my own". Once Noam has answered (any later message from him) it is shown
 // settled, with the answer he tapped marked.
+// A bot that asks the same open question again shows one card, the newest (Noam 2026-10-20:
+// "the questions show twice for nothing"); the bridge marks the earlier one (markRepeatedQuestions).
 function botQuestionHtml(m,messages){
+  if(m.repeated)return '';
   const q=m.question,later=messages.find(x=>x.role==='operator' && x.at>m.at),answered=Boolean(later);
   return `<div class="bot-question${answered?' answered':''}" role="group" aria-label="${ui('Question from the bot','שאלה מהבוט')}"><p dir="auto">${esc(q.text)}</p><div class="bot-q-opts">${q.options.map((o,i)=>`<button type="button" dir="auto" data-answer="${esc(o)}"${q.recommended===i?' class="recommended"':''}${answered?' disabled':''}${answered && later.text===o?' aria-pressed="true"':''}>${esc(o)}${q.recommended===i?`<small>${ui('recommended','מומלץ')}</small>`:''}</button>`).join('')}</div>${answered?'':`<button type="button" class="bot-q-own">${ui('Write my own answer','לכתוב תשובה משלי')}</button>`}</div>`;
 }

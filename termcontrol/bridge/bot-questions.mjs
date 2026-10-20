@@ -40,6 +40,33 @@ export function parseQuestion(reply) {
   };
 }
 
+// The same question asked again (Noam 2026-10-20: "the questions show twice for nothing"):
+// the words mostly match once a "Question 2:" prefix and punctuation are dropped, or the
+// answers are the same and half the words match.
+const words = (s) => String(s || '').toLowerCase().replace(/^\s*question\s*\d+\s*[:.)-]\s*/i, '').replace(/[^\p{L}\p{N}\s]+/gu, ' ').split(/\s+/).filter(Boolean);
+const overlap = (a, b) => { const A = new Set(words(a)), B = new Set(words(b)); if (!A.size || !B.size) return 0; let n = 0; for (const w of A) if (B.has(w)) n++; return n / Math.max(A.size, B.size); };
+const sameAnswers = (a = [], b = []) => a.length === b.length && a.every((o, i) => words(o).join(' ') === words(b[i]).join(' '));
+export function sameQuestion(a, b) {
+  if (!a || !b) return false;
+  const share = overlap(a.text, b.text);
+  return share >= 0.8 || (share >= 0.5 && sameAnswers(a.options, b.options));
+}
+
+/**
+ * Marks a question card that is asked again later, before Noam replied, as `repeated`:
+ * the chat then shows only the newest card. His reply in between keeps both.
+ */
+export function markRepeatedQuestions(messages) {
+  return messages.map((m, i) => {
+    if (m.role !== 'bot' || !m.question) return m;
+    for (const later of messages.slice(i + 1)) {
+      if (later.role === 'operator') break;
+      if (later.role === 'bot' && sameQuestion(later.question, m.question)) return { ...m, repeated: true };
+    }
+    return m;
+  });
+}
+
 /** The rule every bot gets, so any question to Noam arrives as a card, in English. */
 export const QUESTION_RULE = [
   '- Questions to Noam: every time you ask him something (a choice, a yes/no, a clarification, each question in a skill such as grill-me), ask it in English as a question card. Put the question at the END of your message in exactly this form, one question per message, then stop and wait:',
@@ -49,4 +76,5 @@ export const QUESTION_RULE = [
   '  - <short answer>',
   '  [/question]',
   '  Give 2 to 4 short answers and mark the one you recommend with "(recommended)". He taps one or writes his own; it arrives as his next message.',
+  '  A question he has not answered yet stays on his screen with its buttons: never ask it again (Noam: "the questions show twice for nothing"). If you are woken before he answers, say in one plain line that you are still waiting for his answer above, with no new card.',
 ].join('\n');
