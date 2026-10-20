@@ -29,6 +29,7 @@ try {
   await p.waitForFunction((bid) => document.querySelector(`.bot-row[data-bot="${bid}"]`), first, { timeout: 15000, polling: 250 });
   await p.click(`.bot-row[data-bot="${first}"]`);
   await p.waitForFunction(() => document.querySelector('.bot-composer textarea'), null, { timeout: 15000, polling: 250 });
+  await p.waitForFunction(() => document.querySelector('body > header .bot-avatar'), null, { timeout: 15000, polling: 250 });
   // (a) the header shows its avatar and name fully: nothing above the window's top edge, and the chat starts below it.
   const head = await p.evaluate(() => { const h = document.querySelector('body > header').getBoundingClientRect(), a = document.querySelector('body > header .head-avatar, body > header .bot-avatar')?.getBoundingClientRect(), m = document.querySelector('main').getBoundingClientRect(); return { headerTop: Math.round(h.top), avatarTop: a ? Math.round(a.top) : null, headerBottom: Math.round(h.bottom), mainTop: Math.round(m.top) }; });
   assert.ok(head.headerTop >= 0 && head.avatarTop !== null && head.avatarTop >= 0 && head.headerBottom <= head.mainTop + 1, JSON.stringify(head));

@@ -8,6 +8,9 @@ test('wake-ups and restart notices are not requests; real ones (even relayed thr
   assert.equal(isRealRequest('(You were cut off by a restart while working on this; check first)'), false);
   assert.equal(isRealRequest('[Message from the bot "Agent-Manager"] Noam, his words: "fix it"'), true);
   assert.equal(isRealRequest('make the panel taller'), true);
+  // several queued messages arrive numbered: a wake-up among them is still not his
+  assert.equal(isRealRequest('(1) [Event, not from Noam] The terminal agent finished'), false);
+  assert.equal(isRealRequest('(1) make it bigger (2) and blue'), true);
 });
 
 test('the list the agent sees leaves them out, numbers unchanged', () => {

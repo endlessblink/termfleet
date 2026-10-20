@@ -29,9 +29,13 @@ try {
     { n: 2, text: 'Add a dark theme', status: 'partial', note: 'phone not checked | tail -1' },
     { n: 3, text: 'Make exports faster', status: 'open', note: '' },
     { n: 4, text: 'Widen the approval to local edits', status: 'open', note: '' },
+    { n: 5, text: '(1) [Event, not from Noam] wake-up: the agent finished', status: 'open', note: '' },
+    { n: 6, text: 'Morning check: read the terminal and report', status: 'done', note: 'Sent to agent: report' },
   ];
   let live = null;
   await p.route('**/api/bot?*', async (route) => { const r = await route.fetch(); const j = await r.json(); j.asks = asks; if (live) { j.bot.state = 'working'; j.bot.helpers = [{ paneId: 'x', state: 'working', title: 'termfleet', live }]; } await route.fulfill({ response: r, json: j }); });
+  // the bot's own schedule: its message is not one of his requests
+  await p.route('**/api/routines?*', (route) => route.fulfill({ json: { routines: [{ id: 'r1', text: 'Morning check: read the terminal and report', time: '09:00', label: 'Weekdays', days: [1, 2, 3, 4, 5] }] } }));
   await p.goto(base + '/#bot:' + id);
   await p.waitForFunction(() => document.querySelector('#side-asks li'), null, { timeout: 15000, polling: 250 });
   const geo = () => p.evaluate(() => { const rect = (q) => { const r = document.querySelector(q)?.getBoundingClientRect(); return r ? { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom) } : null; }; return { asks: rect('#side-asks'), side: rect('#fleet-side'), list: rect('#fleet-side .side-content'), main: rect('main'), composer: rect('.bot-composer'), vw: innerWidth, vh: innerHeight }; });
@@ -45,10 +49,12 @@ try {
   assert.match(text, /Your requests · 1 not finished · 2 answered · 1 done/);
   assert.doesNotMatch(text, /\/home\/|tail -1|\[Noam/);
   const rows = () => p.evaluate(() => [...document.querySelectorAll('#side-asks li')].map((li) => li.querySelector('.st').textContent + '|' + li.querySelector('.rail-what').textContent));
-  assert.deepEqual(await rows(), ['Answered|Widen the approval to local edits', 'Answered|Make exports faster', 'Not finished|Add a dark theme', '✓ Done|Fix the login page']);
+  assert.deepEqual(await rows(), ['Not finished|Add a dark theme', 'Answered|Widen the approval to local edits', 'Answered|Make exports faster', '✓ Done|Fix the login page']);
   if (process.env.TC_SHOT) await p.screenshot({ path: process.env.TC_SHOT + '-wide.png' });
   // Noam 2026-10-20: never 'Waiting' on a request the bot already moved past.
   assert.doesNotMatch(text, /Waiting/);
+  // Noam 2026-10-20: unfinished on top, finished ones below; only his words (no agent notes, wake-ups or scheduled messages).
+  assert.doesNotMatch(text, /phone not checked|wake-up|Morning check/);
   // Live: a request moving to done shows up by itself, without a reload.
   await p.evaluate(() => { window.__same = 1; });
   asks = asks.map((a) => (a.n === 3 ? { ...a, status: 'done' } : a));
@@ -67,9 +73,11 @@ try {
   asks = [...asks, ...Array.from({ length: 20 }, (_, k) => k + 5).map((n) => ({ n, text: `Request number ${n}`, status: n === 24 ? 'open' : 'done', note: '' }))];
   await p.waitForFunction(() => document.querySelectorAll('#side-asks li').length === 24, null, { timeout: 12000, polling: 500 });
   await wait(600);
+  const order = await rows();
+  assert.ok(order.findIndex((r) => r.endsWith('Request number 24')) < order.findIndex((r) => r.startsWith('✓ Done')), 'an unfinished request stays above the done ones ' + JSON.stringify(order));
   const many = await p.evaluate(() => { const ul = document.querySelector('#side-asks ul'), s = document.querySelector('#side-asks').getBoundingClientRect(); return { scrolls: ul.scrollHeight > ul.clientHeight, top: ul.scrollTop, first: ul.querySelector('li').textContent, share: s.height / innerHeight, dbg: [ul.scrollHeight, ul.clientHeight, Math.round(s.height), Math.round(s.top), innerHeight, document.querySelector('#fleet-side').getBoundingClientRect().height] }; });
   assert.deepEqual({ scrolls: many.scrolls, top: many.top }, { scrolls: true, top: 0 }, JSON.stringify(many));
-  assert.match(many.first, /Request number 24/);
+  assert.match(many.first, /Add a dark theme/);
   assert.ok(many.share <= 0.55, JSON.stringify(many));
   // Nothing in the chat moved through all of that.
   const g1 = await geo();

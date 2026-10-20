@@ -931,7 +931,7 @@ body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:va
 .inbox-keys{color:var(--dim);font-size:12px}
 
 .routinesline{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
-.routinesline:empty{display:none}
+.routinesline:empty{display:none}.routinesline .routinesline{min-width:0;max-width:100%;margin-top:0}
 .routine-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:2px 4px 2px 10px;border:1px solid var(--line);border-radius:14px;color:var(--muted);font-size:12px}
 .routine-pill svg{width:14px;height:14px;flex:none}
 .routine-pill>span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2109,8 +2109,9 @@ function paintSideAsks(asks,current,liveText){
   const state=a=>a.n===current?'working':a.status==='open'?'answered':a.status;
   const inWork=current===null?0:1,unfinished=asks.filter(a=>a.status==='partial').length,done=asks.filter(a=>a.status==='done').length,answered=asks.filter(a=>state(a)==='answered').length;
   const word=a=>a.n===current?ui('In work','בעבודה'):a.status==='open'?ui('Answered','נענה'):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Not finished','לא הסתיים'):ui('Dropped','בוטל');
-  const rows=asks.slice().sort((x,y)=>(Number(y.n===current)-Number(x.n===current)) || y.n-x.n).map(a=>{
-    const cur=a.n===current,title=railShort(a.text,80),what=cur&&liveText?liveText:title,note=cur&&liveText?railShort(a.text,60):(a.status==='partial' || a.status==='done')?railNote(a.note):'';
+  const rank={working:0,partial:1,open:1,answered:2,done:3,dropped:4};
+  const rows=asks.slice().sort((x,y)=>((rank[state(x)]??5)-(rank[state(y)]??5)) || y.n-x.n).map(a=>{
+    const cur=a.n===current,title=railShort(a.text,80),what=cur&&liveText?liveText:title,note=cur&&liveText?railShort(a.text,60):'';
     return `<li class="rail-${esc(state(a))}"><span class="st">${esc(word(a))}</span><span class="rail-what" dir="auto" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="auto">${esc(note)}</span>`:''}</li>`;
   }).join('');
   let folded=false;try{folded=localStorage.getItem('termcontrol-asks-rail')==='folded';}catch{}
@@ -2124,7 +2125,10 @@ function paintSideAsks(asks,current,liveText){
   const nu=el.querySelector('ul');if(nu)nu.scrollTop=top<8?0:top;
 }
 let live0='';
-function asksHtml(asks,working,live){
+const notHisWords=/^\s*(?:\(\d+\)\s*)?(?:\[Event, not from|\(You were cut off by a restart|\[System notice)/i;
+function asksHtml(asks,working,live,scheduled=[]){
+  const sched=new Set(scheduled.map(t=>String(t||'').replace(/\s+/g,' ').trim()).filter(Boolean));
+  asks=(asks || []).filter(a=>!notHisWords.test(a.text) && !sched.has(String(a.text||'').replace(/\s+/g,' ').trim()));
   if(!asks || !asks.length){clearSideAsks();return '';}
   const done=asks.filter(a=>a.status==='done').length,partial=asks.filter(a=>a.status==='partial').length,open=asks.filter(a=>a.status==='open').length;
   const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
@@ -2514,7 +2518,7 @@ async function openBot(id){
     let schedules=[];try{const r=await fetch(`/api/routines?pane=${encodeURIComponent('bot:'+id)}`,{signal:AbortSignal.timeout(6000)});if(r.ok)schedules=(await r.json()).routines || [];}catch{}
     const schedulesMarkup=`<span class="routinesline">${schedules.map(r=>`<span class="routine-pill">${icon('clock')}<span dir="auto">${esc(r.label)} ${esc(r.time)} · ${esc(r.text.length>40?r.text.slice(0,38)+'…':r.text)}</span></span>`).join('')}<button type="button" class="bot-schedule routine-pill">${icon('clock')}${ui('Schedule','תזמון')}</button></span>`;
     const lastTalk=data.messages.filter(m=>m.role==='activity' || m.role==='operator').pop(),busyHelper=helpers.filter(h=>h.state==='working').pop(),helperLive=busyHelper?`${busyHelper.title || ui('Terminal agent','סוכן מסוף')}: ${busyHelper.live || shortTask(busyHelper.task) || ui('working','עובד')}`:'',botLive=helperLive || (bot.state==='working' && lastTalk?.role==='activity'?String(lastTalk.text).split(':')[0]:'');
-    const asksMarkup=asksHtml(data.asks,bot.state==='working' || Boolean(busyHelper),botLive)+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
+    const asksMarkup=asksHtml(data.asks,bot.state==='working' || Boolean(busyHelper),botLive,schedules.map(r=>r.text))+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
     const html=data.messages.map(m=>{
       const when=m.at?ago(m.at):'';
       if(m.role==='operator')return messageHtml('user',m.images?`${m.text}\n📷 ${ui(m.images===1?'1 picture':`${m.images} pictures`,m.images===1?'תמונה אחת':`${m.images} תמונות`)}`:m.text,ui('You','אתה'),when);

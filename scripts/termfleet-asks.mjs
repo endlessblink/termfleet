@@ -164,7 +164,7 @@ const clip = (s, n) => { const t = String(s).replace(/\s+/g, ' ').trim(); return
 
 // Wake-ups and restart notices land in the conversation as "user" lines but are not requests from Noam.
 // Kept in the record (so numbers never shift); left out of everything he or the agent is shown.
-export const isRealRequest = (text) => !/^\s*(?:\[Event, not from|\(You were cut off by a restart|\[System notice)/i.test(String(text || ''));
+export const isRealRequest = (text) => !/^\s*(?:\(\d+\)\s*)?(?:\[Event, not from|\(You were cut off by a restart|\[System notice)/i.test(String(text || ''));
 
 export function summaryLine(asks) {
   const count = (s) => asks.filter((a) => a.status === s).length;
