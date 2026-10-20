@@ -402,7 +402,15 @@ const handle = async (req, res) => {
     // Which browsers run the current page (no content): explains a phone that never signs up.
     const ua = String(req.headers['user-agent'] || '').replace(/[^\w ./;()-]/g, '').slice(0, 120);
     if (!globalThis.__presenceSeen) globalThis.__presenceSeen = new Map();
-    if (Date.now() - (globalThis.__presenceSeen.get(ua) || 0) > 60_000) { globalThis.__presenceSeen.set(ua, Date.now()); console.error(`[push] page open: ${ua} | notifications supported: ${state.push ?? '?'}, permission: ${state.permission ?? '?'}, signed up: ${state.signedUp ?? '?'}, home screen app: ${state.homeScreen ?? '?'}`); }
+    if (Date.now() - (globalThis.__presenceSeen.get(ua) || 0) > 60_000) { globalThis.__presenceSeen.set(ua, Date.now()); console.error(`[push] page open: ${ua} | notifications supported: ${state.push ?? '?'}, permission: ${state.permission ?? '?'}, signed up: ${state.signedUp ?? '?'}, home screen app: ${state.homeScreen ?? '?'}, storage: ${state.storage ?? '?'}, tab: ${state.tab || '?'}, page: ${state.page || '?'}`); }
+    return json(res, 200, { ok: true });
+  }
+  if (url.pathname === '/api/page-error' && req.method === 'POST') {
+    // A script error from a page we cannot inspect (the PC app's embedded WebKit). Text only.
+    let body = {};
+    try { body = await readJson(req, 2048); } catch { body = {}; }
+    const ua = String(req.headers['user-agent'] || '').replace(/[^\w ./;()-]/g, '').slice(0, 80);
+    console.error(`[page error] ${String(body.message || '?').slice(0, 300)} @ ${String(body.where || '?').slice(0, 200)} | ${ua}`);
     return json(res, 200, { ok: true });
   }
   if (url.pathname === '/api/push/report' && req.method === 'POST') {
