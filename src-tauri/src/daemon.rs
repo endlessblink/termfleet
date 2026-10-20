@@ -13,7 +13,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, OnceLock,
 };
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const STATUS_COMMAND: &[u8] = b"status\n";
 /// Ceiling on a single control request, so a malformed client that never sends
@@ -21,6 +21,18 @@ const STATUS_COMMAND: &[u8] = b"status\n";
 /// full-buffer paste; small enough to be an obvious error.
 const MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const PROTOCOL_VERSION: u16 = 1;
+// Under heavy swap a client can take seconds to get its request onto the
+// socket and the daemon seconds to answer. The old 0.5s server budget dropped
+// such requests and starting a terminal failed with "Resource temporarily
+// unavailable (os error 11)". Each read blocks for at most one slice (no busy
+// loop) and a slow-but-alive client gets the whole arrival budget.
+const DAEMON_SERVER_READ_SLICE: Duration = Duration::from_secs(2);
+const DAEMON_SERVER_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+const DAEMON_REQUEST_ARRIVAL_BUDGET: Duration = Duration::from_secs(10);
+// The app waits this long for an answer. Kept moderate because the calling
+// command blocks the window while it waits.
+const DAEMON_CLIENT_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+const DAEMON_STATUS_PROBE_TIMEOUT: Duration = Duration::from_secs(1);
 pub const DAEMON_ARG: &str = "--terminal-workspace-daemon";
 pub const DAEMON_STDIO_ARG: &str = "--terminal-workspace-daemon-stdio";
 /// The daemon pins its build identity once, at startup, so a rebuilt binary at
@@ -335,10 +347,10 @@ pub fn send_daemon_request(request: DaemonRequest) -> Result<DaemonResponse, Str
         }
     };
     stream
-        .set_read_timeout(Some(Duration::from_millis(700)))
+        .set_read_timeout(Some(DAEMON_CLIENT_REQUEST_TIMEOUT))
         .map_err(|error| error.to_string())?;
     stream
-        .set_write_timeout(Some(Duration::from_millis(700)))
+        .set_write_timeout(Some(DAEMON_CLIENT_REQUEST_TIMEOUT))
         .map_err(|error| error.to_string())?;
 
     let request = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
@@ -655,10 +667,10 @@ fn is_expected_client_disconnect(error: &str) -> bool {
 fn query_daemon_status(socket_path: &PathBuf) -> Result<DaemonStatus, String> {
     let mut stream = daemon_ipc::connect(socket_path).map_err(|error| error.to_string())?;
     stream
-        .set_read_timeout(Some(Duration::from_millis(160)))
+        .set_read_timeout(Some(DAEMON_STATUS_PROBE_TIMEOUT))
         .map_err(|error| error.to_string())?;
     stream
-        .set_write_timeout(Some(Duration::from_millis(160)))
+        .set_write_timeout(Some(DAEMON_STATUS_PROBE_TIMEOUT))
         .map_err(|error| error.to_string())?;
     stream
         .write_all(STATUS_COMMAND)
@@ -779,10 +791,10 @@ fn handle_daemon_client(
     pty_manager: &PtyManager,
 ) -> Result<(), String> {
     stream
-        .set_read_timeout(Some(Duration::from_millis(500)))
+        .set_read_timeout(Some(DAEMON_SERVER_READ_SLICE))
         .map_err(|error| error.to_string())?;
     stream
-        .set_write_timeout(Some(Duration::from_millis(500)))
+        .set_write_timeout(Some(DAEMON_SERVER_WRITE_TIMEOUT))
         .map_err(|error| error.to_string())?;
 
     // Read until the request's terminating newline instead of trusting one
@@ -843,6 +855,15 @@ fn handle_daemon_client(
 /// the buffer was handed to the JSON parser truncated and rejected, so a paste
 /// over ~8KB through the control socket could never succeed.
 fn read_request_frame(reader: &mut impl Read) -> Result<Option<(Vec<u8>, usize)>, String> {
+    read_request_frame_until(reader, Instant::now() + DAEMON_REQUEST_ARRIVAL_BUDGET)
+}
+
+/// A read that times out (EAGAIN / os error 11) or is interrupted is retried
+/// until `deadline`; only then is the request given up on.
+fn read_request_frame_until(
+    reader: &mut impl Read,
+    deadline: Instant,
+) -> Result<Option<(Vec<u8>, usize)>, String> {
     let mut buffer: Vec<u8> = Vec::with_capacity(8192);
     let mut chunk = [0_u8; 8192];
     loop {
@@ -852,7 +873,20 @@ fn read_request_frame(reader: &mut impl Read) -> Result<Option<(Vec<u8>, usize)>
         if buffer.len() > MAX_REQUEST_BYTES {
             return Ok(None);
         }
-        let read = reader.read(&mut chunk).map_err(|error| error.to_string())?;
+        let read = match reader.read(&mut chunk) {
+            Ok(read) => read,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock
+                        | std::io::ErrorKind::TimedOut
+                        | std::io::ErrorKind::Interrupted
+                ) && Instant::now() < deadline =>
+            {
+                continue;
+            }
+            Err(error) => return Err(error.to_string()),
+        };
         if read == 0 {
             let len = buffer.len();
             return Ok(Some((buffer, len)));
@@ -1053,10 +1087,60 @@ fn write_daemon_response(
 mod tests {
     use super::{
         current_build_id, daemon_socket_path, daemon_status, daemon_stdio_bridge_argv,
-        embedded_fallback_status, prepare_socket_dir, read_request_frame, remove_stale_socket,
+        embedded_fallback_status, prepare_socket_dir, read_request_frame, read_request_frame_until,
+        remove_stale_socket,
         should_reuse_running_daemon_with_fresh_request, DaemonMode, DaemonRequest, DaemonResponse,
         DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
     };
+
+    /// A socket whose read timeout fires (EAGAIN) a few times before the
+    /// request finally arrives, as happens under heavy swap.
+    struct SlowArrivalReader {
+        timeouts_left: usize,
+        data: Vec<u8>,
+        position: usize,
+    }
+
+    impl std::io::Read for SlowArrivalReader {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            if self.timeouts_left > 0 {
+                self.timeouts_left -= 1;
+                return Err(std::io::Error::from_raw_os_error(11));
+            }
+            let take = (self.data.len() - self.position).min(out.len());
+            out[..take].copy_from_slice(&self.data[self.position..self.position + take]);
+            self.position += take;
+            Ok(take)
+        }
+    }
+
+    #[test]
+    fn request_that_arrives_after_read_timeouts_is_still_served() {
+        let request = b"{\"type\":\"listSessions\"}\n".to_vec();
+        let mut reader = SlowArrivalReader {
+            timeouts_left: 3,
+            data: request.clone(),
+            position: 0,
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let (buffer, count) = read_request_frame_until(&mut reader, deadline)
+            .expect("EAGAIN before the deadline must be retried")
+            .expect("request is framed");
+        assert_eq!(&buffer[..count], &request[..]);
+    }
+
+    #[test]
+    fn request_that_never_arrives_gives_up_at_the_deadline() {
+        let mut reader = SlowArrivalReader {
+            timeouts_left: usize::MAX,
+            data: Vec::new(),
+            position: 0,
+        };
+        let deadline = std::time::Instant::now();
+        let error = read_request_frame_until(&mut reader, deadline)
+            .expect_err("past the deadline the timeout is reported");
+        assert!(error.contains("os error 11"), "{error}");
+    }
 
     /// Delivers its payload in small pieces, the way a socket actually does.
     struct ChunkedReader {
