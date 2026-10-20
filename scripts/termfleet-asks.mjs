@@ -203,18 +203,65 @@ export function asksForFile(file, { cacheDir = join(process.env.XDG_CACHE_HOME |
     try {
       mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
       const tmp = `${cacheFile}.${process.pid}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ v: 3, file, offset: state.offset, asks: state.asks.map((a) => ({ ...a, text: a.text.slice(0, 2000) })) }), { mode: 0o600 });
+      // A long paste keeps its end too: his own words usually come after it.
+      const kept = (t) => (t.length > 2000 ? `${t.slice(0, 1300)}\n…\n${t.slice(-600)}` : t);
+      writeFileSync(tmp, JSON.stringify({ v: 3, file, offset: state.offset, asks: state.asks.map((a) => ({ ...a, text: kept(a.text) })) }), { mode: 0o600 });
       renameSync(tmp, cacheFile);
     } catch { /* the cache only saves time */ }
   }
-  return state.asks;
+  const gone = dismissedFor(file);
+  return gone.size ? state.asks.map((a) => (gone.has(a.n) ? { ...a, status: 'dropped', note: 'Noam removed it from his list', dismissed: true } : a)) : state.asks;
 }
 
 const clip = (s, n) => { const t = String(s).replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
 // Wake-ups and restart notices land in the conversation as "user" lines but are not requests from Noam.
 // Kept in the record (so numbers never shift); left out of everything he or the agent is shown.
-export const isRealRequest = (text) => !/^\s*(?:\(\d+\)\s*)?(?:\[Event, not from|\(You were cut off by a restart|\[System notice)/i.test(String(text || ''));
+export const isRealRequest = (text) => !/^\s*(?:\(\d+\)\s*)?(?:\[Event, not from|\(You were cut off by a restart|\[System notice)/i.test(String(text || '')) && !followUp(text);
+
+/** His own words: without "[Noam attached …]" notes and without lines quoting the agent back ("> …"). */
+export function ownWords(text) {
+  return String(text || '').split('\n').filter((l) => !/^\s*\[Noam attached [^\]]*\]\s*$/.test(l) && !/^\s*>/.test(l)).join('\n').trim();
+}
+
+// Noam 2026-10-20 ("it shows as open tasks, not clear why"): "Well?" or "התחברתי" answers the
+// request before it; it is not new work. A closed word list, so a short real request is never hidden.
+const FOLLOW_UP = /^(?:well|so|and|nu|any news|news|update|still nothing|i'?m in|connected|logged in|i did it|did it|tried it|i tried|נו|ו|אז|מה קורה|יש חדש|התחברתי|עשיתי|ניסיתי|מחובר|הנה)$/i;
+export function followUp(text) {
+  const raw = String(text || '');
+  const own = ownWords(raw);
+  if (!own) return /^\s*>/m.test(raw); // only quoted the agent back
+  const t = own.toLowerCase().replace(/[.!?,…]+$/g, '').trim();
+  return t.split(/\s+/).length <= 3 && FOLLOW_UP.test(t);
+}
+
+/**
+ * What a list shows for a request: his own words first. A job post or a log he pasted sits
+ * above his one line ("jobs like this should not pass the filter"), and the list showed the
+ * pasted title instead. Pasted text is recognised by script: an English block, his Hebrew line.
+ */
+export function askTitle(text) {
+  const lines = (ownWords(text) || String(text || '')).split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 3) return lines.join(' ');
+  const hebrew = (s) => /[֐-׿]/.test(s);
+  const last = lines[lines.length - 1];
+  return hebrew(last) && !hebrew(lines[0]) ? `${last} — ${lines[0]}` : lines.join(' ');
+}
+
+// Requests Noam removed from his list himself, per conversation record: {"<record path>": [n, …]}.
+const dismissFile = (env = process.env) => join(env.TC_CONFIG_DIR || join(homedir(), '.config', 'termcontrol'), 'asks-dismissed.json');
+function dismissedAll(env) { try { return JSON.parse(readFileSync(dismissFile(env), 'utf8')) || {}; } catch { return {}; } }
+export const dismissedFor = (file, env = process.env) => new Set((dismissedAll(env)[file] || []).map(Number));
+export function dismissAsk(file, n, env = process.env) {
+  const all = dismissedAll(env);
+  all[file] = [...new Set([...(all[file] || []), Number(n)])].sort((a, b) => a - b);
+  const target = dismissFile(env);
+  mkdirSync(join(target, '..'), { recursive: true, mode: 0o700 });
+  const tmp = `${target}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(all, null, 1), { mode: 0o600 });
+  renameSync(tmp, target);
+  return true;
+}
 
 export function summaryLine(asks) {
   const count = (s) => asks.filter((a) => a.status === s).length;
@@ -227,7 +274,7 @@ export function ledgerText(allAsks, { newest = null, maxChars = 6000 } = {}) {
   if (!asks.length) return '';
   const unfinished = asks.filter((a) => a.status === 'open' || a.status === 'partial' || a.status === 'ready');
   const lines = [`Noam's requests, his words (${summaryLine(asks)}):`];
-  for (const a of unfinished.slice(-15)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 80)}` : ''}] "${clip(a.text, 200)}"`);
+  for (const a of unfinished.slice(-15)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 80)}` : ''}] "${clip(askTitle(a.text), 200)}"`);
   if (unfinished.length > 15) lines.push(`(${unfinished.length - 15} older unfinished requests not shown)`);
   if (newest) lines.push(`#${newest.n} is new. If it is a new or unclear request, first read it back in his words; ask at most 2 questions about real gaps.`);
   lines.push('Mark them: termfleet-asks done|ready|partial|dropped <n> "<proof or note>". Use ready (not partial) when it is built and live but Noam has not tried it yet; the note says exactly what he should try, in a few words. It stays quiet (no notification, not in his "Waiting for you" list, which is only for approvals and questions that block work). When he says it works, mark it done.');

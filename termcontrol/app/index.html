@@ -837,6 +837,12 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 #side-asks .rail-answered .st::before{content:'↩'}
 #side-asks .rail-done .st::before{content:'✓';color:var(--working)}
 #side-asks .rail-dropped .st::before{content:'–'}
+#side-asks .rail-ready .st::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--ready)}
+#side-asks li:has(.rail-x){grid-template-columns:12px minmax(0,1fr) 22px}
+#side-asks .rail-x{grid-column:3;grid-row:1;align-self:center;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:none;color:var(--muted);font:inherit;font-size:15px;line-height:1;cursor:pointer;opacity:.35}
+#side-asks li:hover .rail-x,#side-asks .rail-x:focus-visible{opacity:1}#side-asks .rail-x:hover{background:var(--surface-2);color:var(--text)}
+#side-asks .rail-x:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#side-asks li.removing{opacity:.4;pointer-events:none}
 #side-asks .rail-answered .rail-what,#side-asks .rail-done .rail-what,#side-asks .rail-dropped .rail-what{color:var(--muted)}
 #side-asks .rail-done{padding-block:4px}
 #side-asks .more-done{display:none}#side-asks.all-done .more-done{display:grid}
@@ -1095,6 +1101,8 @@ body:not(.bot-view) .bot-head-actions{display:none}
 .sheet-list{margin:0;padding:0 12px 8px 34px;display:grid;gap:10px;line-height:1.45;font-size:14.5px}
 ul.sheet-list{list-style:none;padding-inline-start:12px}
 .sheet-list li{display:block}.sheet-list .ask-status{margin-inline-end:6px}.sheet-list .ask-note{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.sheet-list .ask-remove{display:inline-flex;align-items:center;min-height:36px;margin-top:4px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:13px;cursor:pointer}.sheet-list .ask-remove:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sheet-list li.removing{opacity:.4;pointer-events:none}
 .sheet-list a{color:var(--text)}
 @media(min-width:1000px){.bot-menu-sheet{inset:64px 16px auto auto;width:360px;border:1px solid var(--line);border-radius:16px;padding:8px}.bot-menu-sheet .sheet-grab{display:none}.bot-menu-sheet::backdrop{background:rgba(0,0,0,.5)}}
 /* Waiting for you: one quiet block at the top of the list, rows you can tap. */
@@ -2321,6 +2329,15 @@ function placeSideAsks(){
 function markStripScroll(){const ul=document.querySelector('#side-asks ul');if(!ul)return;const scrolls=ul.scrollHeight>ul.clientHeight+2;ul.classList.toggle('scrolls',scrolls);ul.classList.toggle('at-end',ul.scrollTop+ul.clientHeight>=ul.scrollHeight-4);}
 document.addEventListener('scroll',event=>{if(event.target?.matches?.('#side-asks ul'))markStripScroll();},true);
 document.addEventListener('click',event=>{const b=event.target?.closest?.('#side-asks .rail-more button');if(!b)return;const el=document.getElementById('side-asks'),all=!el.classList.contains('all-done');el.classList.toggle('all-done',all);b.textContent=all?b.dataset.less:b.dataset.more;b.setAttribute('aria-expanded',String(all));markStripScroll();});
+// Noam removes a request himself (2026-10-20: pasted posts and "Well?" showed as open work).
+const asksOwner=()=>/^#bot:/.test(location.hash)?{bot:location.hash.slice(5)}:focusedPane?{pane:focusedPane}:null;
+async function removeAsk(n,row){
+  const owner=asksOwner();if(!owner || !n)return;
+  row?.classList.add('removing');
+  try{const r=await fetch('/api/asks/dismiss',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...owner,n:Number(n)}),signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error();row?.remove();}
+  catch{row?.classList.remove('removing');}
+}
+document.addEventListener('click',event=>{const b=event.target?.closest?.('#side-asks .rail-x');if(b)removeAsk(b.dataset.n,b.closest('li'));});
 window.addEventListener('resize',()=>placeSideAsks());
 if(window.ResizeObserver)new ResizeObserver(()=>placeSideAsks()).observe(document.documentElement);
 function clearSideAsks(){const el=document.getElementById('side-asks');if(el){el.hidden=true;el.replaceChildren();delete el.dataset.html;}}
@@ -2328,20 +2345,22 @@ function paintSideAsks(asks,current,liveText){
   const el=document.getElementById('side-asks');if(!el)return;
   const state=a=>a.n===current?'working':a.status==='open'?'answered':a.status;
   const inWork=current===null?0:1,unfinished=asks.filter(a=>a.status==='partial').length,done=asks.filter(a=>a.status==='done').length,answered=asks.filter(a=>state(a)==='answered').length;
-  const word=a=>a.n===current?ui('In work','בעבודה'):a.status==='open'?ui('Answered','נענה'):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Not finished','לא הסתיים'):ui('Dropped','בוטל');
-  const rank={working:0,partial:1,open:1,answered:2,done:3,dropped:4};
+  const word=a=>a.n===current?ui('In work','בעבודה'):a.status==='open'?ui('Answered','נענה'):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Not finished','לא הסתיים'):a.status==='ready'?ui('Ready to try','מוכן לבדיקה'):ui('Dropped','בוטל');
+  const rank={working:0,partial:1,ready:1,open:1,answered:2,done:3,dropped:4};
+  const removable=st=>['partial','ready','answered'].includes(st);
   const SHOWN_DONE=3;let doneSeen=0;
   const sorted=asks.slice().sort((x,y)=>((rank[state(x)]??5)-(rank[state(y)]??5)) || y.n-x.n);
   const rows=sorted.map(a=>{
-    const cur=a.n===current,st=state(a),title=railShort(a.text,80),what=cur&&liveText?liveText:title,note=cur&&liveText?railShort(a.text,60):'';
+    const cur=a.n===current,st=state(a),title=railShort(a.title || a.text,80),what=cur&&liveText?liveText:title,note=cur&&liveText?railShort(a.title || a.text,60):'';
     const extra=st==='done' && ++doneSeen>SHOWN_DONE?' more-done':'',dir=dirOf(what),w=word(a);
-    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" dir="${dir}" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="${dirOf(note)}">${esc(note)}</span>`:''}</li>`;
+    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" dir="${dir}" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="${dirOf(note)}">${esc(note)}</span>`:''}${removable(st)?`<button type="button" class="rail-x" data-n="${a.n}" aria-label="${esc(ui('Remove from the list','להסיר מהרשימה'))}" title="${esc(ui('Remove from the list','להסיר מהרשימה'))}">×</button>`:''}</li>`;
   }).join('');
   const hiddenDone=Math.max(0,done-SHOWN_DONE),showAll=el.classList.contains('all-done');
   const more=hiddenDone?`<li class="rail-more"><button type="button" aria-expanded="${showAll}" data-more="${esc(ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}" data-less="${esc(ui('Show fewer','להציג פחות'))}">${esc(showAll?ui('Show fewer','להציג פחות'):ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}</button></li>`:'';
   let folded=false;try{folded=localStorage.getItem('termcontrol-asks-rail')==='folded';}catch{}
   // what needs him leads; the finished count sits at the end and never gets cut
-  const lead=[inWork?ui('1 in work','1 בעבודה'):'',unfinished?ui(`${unfinished} not finished`,`${unfinished} לא הסתיימו`):''].filter(Boolean).join(' · ');
+  const toTry=asks.filter(a=>a.status==='ready' && a.n!==current).length;
+  const lead=[inWork?ui('1 in work','1 בעבודה'):'',unfinished?ui(`${unfinished} not finished`,`${unfinished} לא הסתיימו`):'',toTry?ui(`${toTry} to try`,`${toTry} לבדיקה`):''].filter(Boolean).join(' · ');
   const finished=answered+done;
   const html=`<details${folded?'':' open'}><summary><span class="asks-title">${esc(ui('Requests','בקשות'))}</span>${lead?`<span class="asks-open">· ${esc(lead)}</span>`:''}${finished?`<span class="asks-done">${esc(ui(`${finished} done`,`${finished} בוצעו`))}</span>`:''}</summary><ul>${rows}${more}</ul></details>`;
   el.hidden=false;
@@ -2362,14 +2381,14 @@ function asksHtml(asks,working,live,scheduled=[]){
   asks=visibleAsks(asks,scheduled);
   if(!asks || !asks.length){clearSideAsks();return '';}
   const done=asks.filter(a=>a.status==='done').length,partial=asks.filter(a=>a.status==='partial').length,open=asks.filter(a=>a.status==='open').length;
-  const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
+  const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),ready:ui('ready to try','מוכן לבדיקה'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
   const head=ui(`Your requests: ${done} of ${asks.length} done`,`הבקשות שלך: ${done} מתוך ${asks.length} בוצעו`)+(partial?ui(`, ${partial} partial`,`, ${partial} חלקיות`):'')+(open?ui(`, ${open} open`,`, ${open} פתוחות`):'');
   const key='termcontrol-asks-open';let isOpen=false;try{isOpen=sessionStorage.getItem(key)==='open';}catch{}
   // Side panel for wide windows (like the Desk app's "change you asked for" box): newest open
   // request = in work, older open ones = waiting, then the finished ones, newest first.
   const openNums=asks.filter(a=>a.status==='open').map(a=>a.n),current=working&&openNums.length?Math.max(...openNums):null;
   live0=String(live||'');paintSideAsks(asks,current,railLive(live));
-  return `<details class="asks-chip"${isOpen?' open':''}><summary>${esc(head)} ▾</summary><ol>${asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(a.text.length>240?a.text.slice(0,239)+'…':a.text)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol></details>`;
+  return `<details class="asks-chip"${isOpen?' open':''}><summary>${esc(head)} ▾</summary><ol>${asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc((a.title || a.text).length>240?(a.title || a.text).slice(0,239)+'…':(a.title || a.text))}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol></details>`;
 }
 
 // Slim bot header (option B): "25/30" opens the requests; the line under the bar fills as they get done.
@@ -2412,10 +2431,10 @@ function botMenu(id,bot,state,start='menu'){
     +item('pin',bot?.pinned?ui('Unpin','ביטול הצמדה'):ui('Pin','הצמדה'))
     +item('hide',bot?.hidden?ui('Show in list','הצגה ברשימה'):ui('Hide','הסתרה'))
     +item('del',ui('Delete bot','מחיקת הבוט'),'','danger');
-  const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
+  const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),ready:ui('ready to try','מוכן לבדיקה'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
   const stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),closed:ui('closed','נסגר')};
   const back=`<button type="button" class="menu-item menu-back" data-act="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="menu-label">${ui('Bot menu','תפריט הבוט')}</span></button>`;
-  const asksList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui(`Your requests: ${sum.text}`,`הבקשות שלך: ${sum.text}`))}</h2><ol class="sheet-list">${state.asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(a.text.length>240?a.text.slice(0,239)+'…':a.text)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}</li>`).join('')}</ol>`;
+  const asksList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui(`Your requests: ${sum.text}`,`הבקשות שלך: ${sum.text}`))}</h2><ol class="sheet-list">${state.asks.slice().sort((x,y)=>((['done','dropped'].includes(x.status)?1:0)-(['done','dropped'].includes(y.status)?1:0)) || y.n-x.n).map(a=>{const t=a.title || a.text;return `<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(t.length>240?t.slice(0,239)+'…':t)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}${['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}">${esc(ui('Remove from list','הסרה מהרשימה'))}</button>`:''}</li>`;}).join('')}</ol>`;
   const agentsList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui('Terminal agents it started','סוכני מסוף שהפעיל'))}</h2><ul class="sheet-list">${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul>`;
   const show=view=>{dialog.innerHTML=view==='asks'?asksList():view==='agents'?agentsList():menu();dialog.querySelector('.menu-item')?.focus();};
   dialog.addEventListener('click',e=>{
@@ -2423,6 +2442,7 @@ function botMenu(id,bot,state,start='menu'){
     if(e.target.closest('.sheet-list a'))return close();
     const act=e.target.closest('[data-act]')?.dataset.act;if(!act)return;
     if(act==='back')return show('menu');
+    if(act==='ask-remove'){const b=e.target.closest('[data-act]'),n=Number(b.dataset.n);state.asks=state.asks.filter(a=>a.n!==n);removeAsk(n,b.closest('li'));return;}
     if(act==='asks' || act==='agents')return show(act);
     if(act==='theme')return press('.theme-toggle');
     if(act==='schedule')return press('.bot-schedule');

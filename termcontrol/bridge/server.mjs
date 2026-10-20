@@ -47,7 +47,7 @@ import { checkBotEvents, helperState } from './bot-events.mjs';
 import { Push } from './push.mjs';
 import { createDockIcon } from './dock-icon.mjs';
 import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
-import { asksForFile, isRealRequest } from '../../scripts/termfleet-asks.mjs';
+import { asksForFile, isRealRequest, askTitle, dismissAsk } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -236,8 +236,9 @@ function asksForTranscript(file) {
   // its splash screen (Noam 2026-10-20 "termcontrol לא עולה לי בסלולרי").
   if (!file || !String(file).endsWith('.jsonl')) return null;
   try {
-    const asks = asksForFile(file).filter((a) => isRealRequest(a.text));
-    return asks.length ? asks.slice(-30).map((a) => ({ n: a.n, text: a.text.slice(0, 600), status: a.status, note: String(a.note || '').slice(0, 200) })) : null;
+    // Removed by Noam (dismissAsk) and short follow-ups (isRealRequest) are left out; numbers stay.
+    const asks = asksForFile(file).filter((a) => isRealRequest(a.text) && !a.dismissed);
+    return asks.length ? asks.slice(-30).map((a) => ({ n: a.n, text: a.text.slice(0, 600), title: askTitle(a.text).slice(0, 300), status: a.status, note: String(a.note || '').slice(0, 200) })) : null;
   } catch { return null; }
 }
 
@@ -503,6 +504,20 @@ const handle = async (req, res) => {
             : { error: 'Unknown memory action.' };
     } catch (error) { result = { error: error.message || 'That did not work.' }; }
     return json(res, result.error ? 400 : 200, result);
+  }
+  // Noam removes a request from a bot's or terminal's list himself (2026-10-20). The agent then
+  // sees it as dropped; the number stays, so its other marks still land right.
+  if (url.pathname === '/api/asks/dismiss' && req.method === 'POST') {
+    let body = {};
+    try { body = await readJson(req, 1024); } catch { body = {}; }
+    const n = Number(body.n);
+    if (!Number.isInteger(n) || n < 1) return json(res, 400, { error: 'Which request?' });
+    let file = null;
+    if (body.bot) { const raw = bots.read(String(body.bot)); file = raw?.sessions?.claude?.started ? claudeTranscript(raw.cwd, raw.sessions.claude.id) : null; }
+    else if (body.pane) { const pane = (await currentPanes()).panes.find((p) => p.id === String(body.pane)); file = pane ? adapterFor(pane)?.transcriptPath(pane) : null; }
+    if (!file || !String(file).endsWith('.jsonl')) return json(res, 404, { error: 'That conversation has no request list.' });
+    dismissAsk(file, n);
+    return json(res, 200, { ok: true });
   }
   if (['/api/bots', '/api/bot/send', '/api/bot/update', '/api/bot/delete', '/api/bot/retry', '/api/bot/profile/accept', '/api/bot/profile/dismiss'].includes(url.pathname) && req.method === 'POST') {
     let body;
