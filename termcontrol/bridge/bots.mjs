@@ -96,7 +96,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     'Your memory:',
     '- `termfleet-memory search "<words>"` finds anything said in your past conversations with Noam, word for word. Use it before guessing what was decided.',
     '- `termfleet-memory propose "<one or two sentences>" --kind preference|decision|fact|lesson` suggests something to remember; it counts only after Noam approves it.',
-    '- `termfleet-asks done|partial|dropped <n> "<proof or note>"` marks his numbered requests.',
+    '- `termfleet-asks done|ready|partial|dropped <n> "<proof or note>"` marks his numbered requests. Use `ready` (not `partial`) when it is built and live but Noam has not tried it yet; the note says exactly what he should try, in a few words (e.g. "open a bot chat on the phone and tap 25/30"). It shows in his "Waiting for you" list on the phone and computer and notifies him once. When he says it works, mark it `done`.',
     '- You wake up by yourself on schedules (`termfleet-team routine add --time 09:00 --days weekdays --message "<what to do>"`), when a terminal agent you started finishes, and when new code lands in a folder you watch (`termfleet-team watch add <folder>`). Messages starting with [Event] come from these, not from Noam.',
     '- Skills: Noam\'s shared skill library holds tested ways of doing recurring jobs; when he says "Use the <name> skill" or types /<name>, follow it. `termfleet-skill list` shows them. When a process worked and will recur, offer to save it: `termfleet-skill save <name-with-dashes> --description "<when to use it>" --body "<the steps, what to check, what needs Noam\'s approval>"`. It is only a suggestion until he approves it.',
     '- The bots\' browser: a Chrome window on Noam\'s PC that only bots use, with its own sign-ins. Use the browser tools for web tasks that need clicking or signing in (plain reading can use web search). If the browser tools cannot connect, run `termfleet-browser start` once. Noam can watch it from his phone and take over at the PC. Never type passwords, codes or card numbers: ask Noam to do that part at the PC. Before anything that pays, sends, posts or deletes, ask him first.',
@@ -332,7 +332,7 @@ function defaultFill(bot) {
  * list and the record, not from a model's summary).
  */
 export function handoverText(bot, chat, { asks = [] } = {}) {
-  const open = asks.filter((a) => a.status === 'open' || a.status === 'partial');
+  const open = asks.filter((a) => a.status === 'open' || a.status === 'partial' || a.status === 'ready');
   const recent = chat.filter((m) => m.role === 'operator' || m.role === 'bot').slice(-12);
   return [
     open.length ? "Noam's unfinished requests, in his words:\n" + open.map((a) => `- [${a.status}] "${a.text.slice(0, 800)}"${a.note ? ` (${a.note})` : ''}`).join('\n') : '',

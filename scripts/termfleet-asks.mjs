@@ -10,6 +10,7 @@
 //    Stop refuses one "done" while requests are unmarked (reminder mode).
 //  - Command for agents and bots:
 //      termfleet-asks done <n[,n]> "<proof: what ran and what it showed>"
+//      termfleet-asks ready <n> "<exactly what Noam should try, in a few words>"
 //      termfleet-asks partial <n> "<what is still missing>"
 //      termfleet-asks dropped <n> "<why, and who decided>"
 //    The command only checks its own wording; the record is the command itself in
@@ -24,7 +25,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TAIL_BYTES = 8 * 1024 * 1024;
-const STATUSES = ['done', 'partial', 'dropped'];
+// ready = built and live, waiting for Noam to try it (Noam 2026-10-20: "how will I know what
+// is ready and waiting for me?"). It lands in his shared "Waiting for you" list.
+const STATUSES = ['done', 'ready', 'partial', 'dropped'];
 
 function tail(file, bytes = TAIL_BYTES) {
   const size = statSync(file).size;
@@ -51,7 +54,7 @@ export const acknowledgement = (text) => {
   return /^(y|yes|yeah|yep|ok|okay|go|go on|go ahead|do it|continue|proceed|sure|thanks|thank you|great|good|נו|כן|יאללה|סבבה|תמשיך|המשך|אוקיי|תודה|מעולה)$/.test(t);
 };
 
-const COMMAND = /termfleet-asks\s+(done|partial|dropped)\s+([\d,\s]+?)\s+(?:"([^"]*)"|'([^']*)'|(\S.*))$/m;
+const COMMAND = /termfleet-asks\s+(done|ready|partial|dropped)\s+([\d,\s]+?)\s+(?:"([^"]*)"|'([^']*)'|(\S.*))$/m;
 
 /** Every mark in one command line: agents often chain several with ; or &&. */
 export function parseMarks(command) {
@@ -168,19 +171,19 @@ export const isRealRequest = (text) => !/^\s*(?:\(\d+\)\s*)?(?:\[Event, not from
 
 export function summaryLine(asks) {
   const count = (s) => asks.filter((a) => a.status === s).length;
-  return `${count('done')}/${asks.length} done${count('partial') ? `, ${count('partial')} partial` : ''}${count('dropped') ? `, ${count('dropped')} dropped` : ''}${count('open') ? `, ${count('open')} open` : ''}`;
+  return `${count('done')}/${asks.length} done${count('ready') ? `, ${count('ready')} ready for Noam` : ''}${count('partial') ? `, ${count('partial')} partial` : ''}${count('dropped') ? `, ${count('dropped')} dropped` : ''}${count('open') ? `, ${count('open')} open` : ''}`;
 }
 
 /** What the agent is shown: every unfinished request verbatim, finished ones counted. */
 export function ledgerText(allAsks, { newest = null, maxChars = 6000 } = {}) {
   const asks = allAsks.filter((a) => isRealRequest(a.text));
   if (!asks.length) return '';
-  const unfinished = asks.filter((a) => a.status === 'open' || a.status === 'partial');
+  const unfinished = asks.filter((a) => a.status === 'open' || a.status === 'partial' || a.status === 'ready');
   const lines = [`Noam's requests, his words (${summaryLine(asks)}):`];
   for (const a of unfinished.slice(-15)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 80)}` : ''}] "${clip(a.text, 200)}"`);
   if (unfinished.length > 15) lines.push(`(${unfinished.length - 15} older unfinished requests not shown)`);
   if (newest) lines.push(`#${newest.n} is new. If it is a new or unclear request, first read it back in his words; ask at most 2 questions about real gaps.`);
-  lines.push('Mark finished ones: termfleet-asks done|partial|dropped <n> "<proof or note>".');
+  lines.push('Mark them: termfleet-asks done|ready|partial|dropped <n> "<proof or note>". Use ready (not partial) when it is built and live but Noam has not tried it yet; the note says exactly what he should try, in a few words. It shows in his "Waiting for you" list. When he says it works, mark it done.');
   const text = lines.join('\n');
   return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
 }
@@ -253,18 +256,19 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
     const unmarked = asks.filter((a) => a.status === 'open');
     if (!unmarked.length) return null;
     const list = unmarked.slice(-3).map((a) => `#${a.n} "${clip(a.text, 60)}"`).join('; ');
-    return { decision: 'block', reason: `Mark open requests first (termfleet-asks done|partial|dropped <n> "<proof>"); if anything is not done, say so in your first sentence. Open: ${list}` };
+    return { decision: 'block', reason: `Mark open requests first (termfleet-asks done|ready|partial|dropped <n> "<proof>"); if anything is not done, say so in your first sentence. Open: ${list}` };
   }
   return null;
 }
 
 export function cli(args) {
   const [status, nums, ...rest] = args;
-  if (!STATUSES.includes(status)) return { ok: false, message: 'Use: termfleet-asks done|partial|dropped <n[,n]> "<proof or note>"' };
+  if (!STATUSES.includes(status)) return { ok: false, message: 'Use: termfleet-asks done|ready|partial|dropped <n[,n]> "<proof or note>"' };
   const list = String(nums || '').split(',').map(Number);
   if (!list.length || list.some((n) => !Number.isInteger(n) || n < 1)) return { ok: false, message: 'Give the request number(s) shown in the list, e.g. 3 or 2,5.' };
   const note = rest.join(' ').trim();
   if (status === 'done' && note.length < 8) return { ok: false, message: 'A "done" needs proof: what ran and what it showed (a test result, a command\'s output, a screenshot you looked at).' };
+  if (status === 'ready' && note.length < 6) return { ok: false, message: 'Say exactly what Noam should try, in a few words (e.g. "open a bot chat on the phone and tap 25/30").' };
   if (!note) return { ok: false, message: `Say ${status === 'partial' ? 'what is still missing' : 'why, and who decided'}.` };
   return { ok: true, message: `Marked #${list.join(', #')} ${status}.` };
 }

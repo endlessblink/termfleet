@@ -550,8 +550,8 @@ main .desk-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:22px}
 
 
 /* Owner-approved warm graphite direction. All assets and actions stay local. */
-:root{--terminals:#5aa9e6;--bg:#141312;--deep:#0f0e0d;--surface:#1f1d1b;--surface-2:#292623;--line:#393530;--text:#f2eee9;--muted:#b0a89f;--dim:#a69e94;--accent:#d97757;--waiting:#d97757;--working:#b4b7b0;--control:#645d55;--user:#292623;--ui:Rubik,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
-:root[data-theme="light"]{color-scheme:light;--terminals:#2f86c9;--bg:#f5f2ed;--deep:#ede8e1;--surface:#ffffff;--surface-2:#e9e4dd;--line:#d5cfc6;--text:#26221e;--muted:#665e54;--dim:#73695e;--working:#535c54;--control:#aaa093;--user:#e9e4dd}
+:root{--ready:#8cc79a;--terminals:#5aa9e6;--bg:#141312;--deep:#0f0e0d;--surface:#1f1d1b;--surface-2:#292623;--line:#393530;--text:#f2eee9;--muted:#b0a89f;--dim:#a69e94;--accent:#d97757;--waiting:#d97757;--working:#b4b7b0;--control:#645d55;--user:#292623;--ui:Rubik,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+:root[data-theme="light"]{color-scheme:light;--ready:#3f8a53;--terminals:#2f86c9;--bg:#f5f2ed;--deep:#ede8e1;--surface:#ffffff;--surface-2:#e9e4dd;--line:#d5cfc6;--text:#26221e;--muted:#665e54;--dim:#73695e;--working:#535c54;--control:#aaa093;--user:#e9e4dd}
 body{font-size:14px}header{min-height:56px;padding:6px 12px;gap:8px}header h1{font-weight:500}header>.theme-toggle{margin-inline-start:auto;flex:none}header .sub{max-width:680px}.theme-toggle,.back{width:44px;height:44px;min-width:44px;min-height:44px;display:grid;place-items:center;padding:0;margin:0;color:var(--muted);background:transparent;border:0;border-radius:10px;cursor:pointer}.back:dir(rtl) svg{transform:rotate(180deg)}.theme-toggle:hover,.back:hover{background:var(--surface-2)}
 main{max-width:none;padding:0 0 12px}body.chat main{padding:20px 20px 16px;max-width:760px}main .fleet-content{padding:0 12px}.fleetbar{display:flex;flex-direction:row;gap:10px;padding:4px 0 8px;margin:0;border:0}.fleetbar label{display:flex;align-items:center;gap:6px;min-width:0;flex:1;font-size:12px;color:var(--muted)}.fleetbar select{min-width:0;flex:1;width:100%;min-height:44px;border:0;border-radius:8px;background:var(--bg);color:var(--text);font:13px var(--ui);padding:0 4px;cursor:pointer}
 .projgroup{margin:0}.projhead{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;margin:0;color:var(--muted);font-size:12px;font-weight:500;list-style:none;cursor:pointer}.projhead::-webkit-details-marker{display:none}.projhead::after{content:'⌄';width:18px;text-align:center;font-size:16px}.projgroup:not([open])>.projhead::after{content:'›'}.projhead .count{background:transparent;padding:0;border:0;margin-inline-start:auto;font-size:12px;color:var(--muted)}.group-color{width:7px;height:7px;border-radius:2px;flex:none}.group-rows{min-width:0}.pane{min-height:44px;height:44px;display:flex;gap:9px;align-items:center;padding:4px 4px;margin:0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font-size:13px}.pane.waiting,.pane.idle{padding:4px;background:transparent;border:0;border-bottom:1px solid var(--line)}.pane.waiting::before{display:none}.pane:hover,.pane:active,.pane.selected{background:var(--surface-2)}.pane .project,.pane.idle .project,.pane.waiting .project{color:var(--text);font-size:13px;font-weight:500}.pane-copy{flex:1;min-width:0;display:flex;flex-direction:column}.pane .row1{margin:0;gap:6px;min-height:17px}.pane .badge{font-family:var(--ui);text-transform:none;letter-spacing:0;font-size:10px;font-weight:400;color:var(--muted);background:transparent;border:0;padding:0;margin:0;white-space:nowrap}.pane .task{display:block;font-size:12px;line-height:15px;min-height:15px;max-width:100%;color:var(--muted)}.row-color{width:2px;height:22px;border-radius:1px;flex:none}.pane-meta{flex:none;display:flex;flex-direction:column;text-align:end;gap:1px;max-width:90px}.pane .state{display:block;background:transparent;padding:0;border:0;border-radius:0;font-size:10px;margin:0;color:var(--muted);line-height:15px}.pane.waiting .state{color:var(--waiting)}.last-active{font-size:10px;color:var(--muted);line-height:13px;white-space:nowrap}
@@ -1082,6 +1082,27 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .sheet-list li{display:block}.sheet-list .ask-status{margin-inline-end:6px}.sheet-list .ask-note{display:block;color:var(--muted);font-size:13px;margin-top:2px}
 .sheet-list a{color:var(--text)}
 @media(min-width:1000px){.bot-menu-sheet{inset:64px 16px auto auto;width:360px;border:1px solid var(--line);border-radius:16px;padding:8px}.bot-menu-sheet .sheet-grab{display:none}.bot-menu-sheet::backdrop{background:rgba(0,0,0,.5)}}
+/* Waiting for you: one quiet block at the top of the list, rows you can tap. */
+.waiting-panel{margin:0 0 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);overflow:hidden}
+.waiting-panel>summary{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 12px;cursor:pointer;list-style:none;font-weight:500;font-size:14.5px}
+.waiting-panel>summary::-webkit-details-marker{display:none}
+.waiting-panel>summary::after{content:"";width:7px;height:7px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg) translateY(-2px);margin-inline-start:auto;transition:transform .2s}
+.waiting-panel[open]>summary::after{transform:rotate(-135deg) translateY(-1px)}
+.waiting-panel .open-inbox{margin-inline-start:auto;min-height:32px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);font:inherit;font-size:12.5px;font-weight:400}
+.waiting-panel>summary:has(.open-inbox)::after{margin-inline-start:8px}
+.waiting-count{min-width:22px;height:22px;padding:0 7px;border-radius:11px;background:var(--accent);color:var(--bg);font-size:12.5px;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums}
+.waiting-list{display:grid;border-top:1px solid var(--line)}
+.waiting-row{display:flex;align-items:flex-start;gap:10px;width:100%;padding:10px 12px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--text);font:inherit;text-align:start;cursor:pointer}
+.waiting-row:last-child{border-bottom:0}
+.waiting-row:hover{background:var(--surface-2)}
+.waiting-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.waiting-tag{flex:none;min-width:58px;margin-top:1px;padding:2px 0;border-radius:8px;font-size:11.5px;font-weight:500;text-align:center;color:var(--bg);background:var(--accent)}
+.waiting-try .waiting-tag{background:var(--ready)}
+.waiting-copy{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:1px;line-height:1.35}
+.waiting-who{font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.waiting-what{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.waiting-todo{font-size:13px;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@media(prefers-reduced-motion:reduce){.waiting-panel>summary::after{transition:none}}
 </style>
 </head>
 <body>
@@ -1991,6 +2012,7 @@ async function fleet(background=false) {
   let r;
   const roomsRequest=fetch('/api/rooms',{signal:AbortSignal.timeout(8000)}).then(response=>response.ok?response.json():null).catch(()=>null);
   const botsRequest=fetch('/api/bots',{signal:AbortSignal.timeout(8000)}).then(response=>response.ok?response.json():null).catch(()=>null);
+  const waitingRequest=fetch('/api/waiting',{signal:AbortSignal.timeout(8000)}).then(response=>response.ok?response.json():null).catch(()=>null);
   try {
     const resp = await fetch('/api/panes', { signal: AbortSignal.timeout(12000) });
     if (!resp.ok) throw failedRead(resp,'/api/panes');
@@ -2006,6 +2028,7 @@ async function fleet(background=false) {
   fleetPaneRecords=new Map(r.panes.map(p=>[p.id,p]));
   const roomsData=await roomsRequest;
   const botsData=await botsRequest;
+  const waitingItems=(await waitingRequest)?.items || [];
   if (mine !== view || request !== fleetRequest) return;
   const sortBy = localStorage.getItem('termcontrol-sort') || 'map';
   const windowKey = localStorage.getItem('termcontrol-window') || 'all';
@@ -2018,8 +2041,8 @@ async function fleet(background=false) {
   const waiting = panes.filter((p) => p.turn === 'waiting');
   if(!background)sub.textContent = r.daemon === false
     ? ui('Cannot check TermFleet right now — showing last known status','לא ניתן לבדוק את TermFleet כרגע — מוצג המצב האחרון הידוע')
-    : waiting.length
-      ? `${waiting.length} waiting for you`
+    : (waitingItems.length || waiting.length)
+      ? ui(`${waitingItems.length || waiting.length} waiting for you`,`${waitingItems.length || waiting.length} ממתינים לך`)
       : `${panes.length} terminal${panes.length === 1 ? '' : 's'}`;
 
 
@@ -2070,8 +2093,8 @@ async function fleet(background=false) {
   if(tab==='health')loadAgentHealth().then(()=>{if(agentHealth && !container.querySelector('.health-page .health-rows'))liveRefresh();});
   const botsNeed=botList.filter(b=>!b.hidden).reduce((n,b)=>n+(Number(b.unread)||0),0),termsNeed=panes.filter(p=>p.turn==='waiting').length;   // same counts as the dock icon
   const need=(n,kind='')=>n?`<span class="tab-need${kind?' tab-need-'+kind:''}" aria-label="${kind==='term'?ui(`${n} waiting for you`,`${n} ממתינים לך`):ui(`${n} unread`,`${n} שלא נקראו`)}">${n>99?'99+':n}</span>`:'';
-  const tabs=`<div class="fleet-tabs" role="tablist" data-key="tabs"><button type="button" role="tab" data-tab="bots" aria-selected="${tab==='bots'}">${ui('Bots','בוטים')}<span class="tab-count">${botList.filter(b=>!b.hidden).length}</span>${need(botsNeed)}</button><button type="button" role="tab" data-tab="terminals" aria-selected="${tab==='terminals'}">${ui('Terminals','מסופים')}<span class="tab-count">${panes.length}</span>${need(termsNeed,'term')}</button><button type="button" role="tab" data-tab="health" aria-selected="${tab==='health'}">${ui('Health','מצב')}</button></div>`;
-  patchFleet(container,tabs+(tab==='health'?healthCardHtml(agentHealth,true):searchBox+(tab==='bots'?botsHomeHtml(botsData):bar+roomsPanelHtml(roomsData)+attentionPanel+none+content+footer)));
+  const tabs=`<div class="fleet-tabs" role="tablist" data-key="tabs"><button type="button" role="tab" data-tab="bots" aria-selected="${tab==='bots'}">${ui('Bots','בוטים')}<span class="tab-count">${botList.filter(b=>!b.hidden).length}</span>${need(botsNeed+waitingItems.filter(i=>i.kind==='try' && i.source==='bot').length)}</button><button type="button" role="tab" data-tab="terminals" aria-selected="${tab==='terminals'}">${ui('Terminals','מסופים')}<span class="tab-count">${panes.length}</span>${need(termsNeed,'term')}</button><button type="button" role="tab" data-tab="health" aria-selected="${tab==='health'}">${ui('Health','מצב')}</button></div>`;
+  patchFleet(container,waitingHtml(waitingItems)+tabs+(tab==='health'?healthCardHtml(agentHealth,true):searchBox+(tab==='bots'?botsHomeHtml(botsData):bar+roomsPanelHtml(roomsData)+none+content+footer)));
   container.querySelectorAll('.fleet-tabs [data-tab]').forEach(el=>{el.onclick=()=>{try{localStorage.setItem('termcontrol-fleet-tab',el.dataset.tab);}catch{}fleet(Boolean(focusedPane));};});
   const healthDetails=container.querySelector('.health-card');if(healthDetails)healthDetails.ontoggle=()=>sessionStorage.setItem('termcontrol-health-open',healthDetails.open?'open':'closed');
   wireFleetSearch(container);
@@ -2079,6 +2102,8 @@ async function fleet(background=false) {
   container.querySelectorAll('.fleetbar select').forEach(el=>{el.onchange=()=>{localStorage.setItem(`termcontrol-${el.dataset.pref}`,el.value);fleet(Boolean(focusedPane));};});
   container.querySelectorAll('.attention-review,.pane').forEach(el=>{el.classList.toggle('selected',el.classList.contains('pane') && el.dataset.id===selected);el.onclick=()=>openFleetPane(el);});
   container.querySelectorAll('[data-room]').forEach(el=>{el.onclick=()=>{history.pushState({room:el.dataset.room},'','#room:'+el.dataset.room);openRoom(el.dataset.room);};});
+  container.querySelectorAll('.waiting-row[data-go]').forEach(el=>{el.onclick=()=>{const go=el.dataset.go;if(go.startsWith('#bot:')){const id=go.slice(5);history.pushState({bot:id},'',go);openBot(id);}else{const id=go.slice(1);history.pushState({pane:id,openedFromAgents:true},'',go);chat(id);}};});
+  const waitingDetails=container.querySelector('.waiting-panel');waitingDetails?.querySelector('summary')?.addEventListener('click',()=>{try{sessionStorage.setItem('termcontrol-waiting-open',waitingDetails.open?'closed':'open');}catch{}},{once:true});
   const inboxButton=container.querySelector('.open-inbox');if(inboxButton)inboxButton.onclick=event=>{event.preventDefault();event.stopPropagation();history.pushState({inbox:true},'','#inbox');openInbox();};
   const newRoomButton=container.querySelector('.new-room:not(.new-bot)');if(newRoomButton)newRoomButton.onclick=()=>newRoom(roomsData?.agents || []);
   container.querySelectorAll('[data-bot]').forEach(el=>{el.onclick=()=>{history.pushState({bot:el.dataset.bot},'','#bot:'+el.dataset.bot);openBot(el.dataset.bot);};});
@@ -2372,6 +2397,17 @@ function botMenu(id,bot,state,start='menu'){
   });
   dialog.addEventListener('close',()=>dialog.remove());
   document.body.append(dialog);show(start);dialog.showModal();
+}
+
+// "Waiting for you" (Noam 2026-10-20: "a short summary that keeps itself up to date, with
+// exactly what to do"): everything from every bot and terminal that waits on him, one line
+// each (who, what, what to do), tap to go there. Answers come first: they hold an agent up.
+function waitingHtml(items){
+  if(!items.length)return '';
+  let open=true;try{open=sessionStorage.getItem('termcontrol-waiting-open')!=='closed';}catch{}
+  const tag={try:ui('Try','לנסות'),approve:ui('Approve','לאשר'),answer:ui('Answer','לענות')};
+  const answerable=items.filter(i=>i.kind!=='try' && i.source==='terminal').length;
+  return `<details class="waiting-panel" data-key="waiting"${open?' open':''}><summary><span class="waiting-title">${ui('Waiting for you','ממתין לך')}</span><span class="waiting-count">${items.length}</span>${answerable>1?`<button type="button" class="open-inbox">${ui('Answer all here','מענה לכולם כאן')}</button>`:''}</summary><div class="waiting-list">${items.map(i=>`<button type="button" class="waiting-row waiting-${esc(i.kind)}" data-go="${esc(i.go)}" data-key="waiting:${esc(i.key)}"><span class="waiting-tag">${esc(tag[i.kind] || i.kind)}</span><span class="waiting-copy"><span class="waiting-who" dir="auto">${esc(i.who)}</span><span class="waiting-what" dir="auto">${esc(i.what)}</span><span class="waiting-todo" dir="auto">${esc(i.kind==='try'?ui('Try: ','לנסות: ')+i.todo:i.todo)}</span></span></button>`).join('')}</div></details>`;
 }
 
 // TF-096 bots: managers that run outside the terminals (like Grok Bot's bots) and

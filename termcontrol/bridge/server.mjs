@@ -46,6 +46,7 @@ import { report as agentHealthReport } from '../../scripts/termfleet-agent-healt
 import { checkBotEvents } from './bot-events.mjs';
 import { Push } from './push.mjs';
 import { createDockIcon } from './dock-icon.mjs';
+import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter } from './asks-sidecar.mjs';
 
@@ -379,6 +380,10 @@ const handle = async (req, res) => {
     return json(res, 200, { ok: true, profile: saved.profile, told: told ? Boolean(told.ok) : null, toldError: told?.error || null });
   }
 
+  if (url.pathname === '/api/waiting' && req.method === 'GET') {
+    const items = url.searchParams.get('fresh') === '1' ? await refreshWaiting() : waitingNow;
+    return json(res, 200, { items });
+  }
   // Bots (TF-096). Same sign-in gate as every route below it.
   if (url.pathname === '/api/bots' && req.method === 'GET') {
     return json(res, 200, { bots: bots.list(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
@@ -884,6 +889,33 @@ setInterval(() => {
   if (overLimit >= 2) shutdownGracefully(`memory ${Math.round(mb)} MB over ${MEMORY_LIMIT_MB} MB`, { exitCode: 75 });
 }, 30000).unref?.();
 
+// "Waiting for you" (Noam 2026-10-20): everything waiting on him from every bot and terminal,
+// kept fresh here; the page reads /api/waiting. Notifications (phone + desktop) only from the
+// live service: tests and copies set TC_CONFIG_DIR.
+let waitingNow = [];
+const notifyWaiting = !process.env.TC_CONFIG_DIR && process.env.TC_NO_WAITING_NOTIFY !== '1'
+  ? createWaitingNotifier({ file: path.join(os.homedir(), '.config', 'termcontrol', 'waiting-seen.json'), push: (note) => push.notify(note) })
+  : null;
+let waitingBusy = false;
+async function refreshWaiting() {
+  if (waitingBusy) return waitingNow;
+  waitingBusy = true;
+  try {
+    const { panes } = await currentPanes();
+    const byId = new Map(panes.map((p) => [p.id, p]));
+    const asksOf = ({ kind, id }) => {
+      if (kind === 'terminal') return asksForTranscript(adapterFor(byId.get(id))?.transcriptPath(byId.get(id)));
+      const raw = bots.read(id);
+      return raw?.sessions?.claude?.started ? asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id)) : null;
+    };
+    waitingNow = collectWaiting({ panes, bots: bots.list(), asksOf });
+    if (notifyWaiting) await notifyWaiting(waitingNow);
+  } catch (error) { console.error('[waiting]', error.message); } finally { waitingBusy = false; }
+  return waitingNow;
+}
+setInterval(refreshWaiting, 5000).unref?.();
+setTimeout(refreshWaiting, 1500).unref?.();
+
 // Dock icon counts (Noam 2026-10-20): bots unread in orange, terminals waiting for him in
 // blue, as two small dots (Noam's pick). TC_NO_DOCK_ICON=1 turns it off. Live service only:
 // tests and copies set TC_CONFIG_DIR and never touch the launcher.
@@ -894,7 +926,7 @@ if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_DOCK_ICON !== '1') {
     if (dockBusy) return;
     dockBusy = true;
     try {
-      const unread = bots.list().filter((b) => !b.hidden).reduce((n, b) => n + (Number(b.unread) || 0), 0);
+      const unread = bots.list().filter((b) => !b.hidden).reduce((n, b) => n + (Number(b.unread) || 0), 0) + waitingNow.filter((i) => i.kind === 'try' && i.source === 'bot').length;
       const { panes } = await currentPanes();
       await updateDock(unread, panes.filter((p) => p.turn === 'waiting').length);
     } catch (error) { console.error('[dock]', error.message); } finally { dockBusy = false; }
