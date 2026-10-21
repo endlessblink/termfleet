@@ -36,11 +36,12 @@ test('a message menu stays open while the chat refreshes; Reply quotes the messa
     await wait(5000);   // several refreshes
     const during = await p.evaluate(() => ({ open: document.querySelector('.msg.assistant .message-menu')?.open, newShown: /second message/.test(document.querySelector('main').textContent) }));
     assert.deepEqual(during, { open: true, newShown: false }, 'the menu is not closed by a refresh, and nothing is redrawn under it');
-    // Reply puts a quote in the box and closes the menu; the chat then catches up.
+    // Reply shows the quoted message above the box (2026-10-21: tied to that message by id,
+    // nothing pasted into the draft) and closes the menu; the chat then catches up.
     await p.evaluate(() => { document.querySelector('.bot-composer textarea').value = 'yes'; });
     await p.evaluate(() => document.querySelector('.msg.assistant .reply-message').click());
-    const box = await p.inputValue('.bot-composer textarea');
-    assert.equal(box, '> First answer from the bot\n\nyes');
+    assert.equal(await p.inputValue('.bot-composer textarea'), 'yes');
+    assert.match(await p.evaluate(() => document.querySelector('.bot-composer .reply-preview:not([hidden])')?.innerText || ''), /First answer from the bot/);
     await p.waitForFunction(() => /second message/.test(document.querySelector('main').textContent), null, { timeout: 8000, polling: 250 });
     // "Model and plan" is its own row and shows only the plan, model and backup.
     await p.evaluate(() => { document.querySelector('.bot-more > summary').click(); document.querySelector('.bot-more .bot-model').click(); });
