@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { followActive } from './follows.mjs';
 
 /**
  * TF-096 part 7: things that wake a bot without Noam writing (Grok Bot's event
@@ -33,7 +34,7 @@ const stateOf = (pane) => (!pane ? 'closed' : pane.turn === 'waiting' ? 'waiting
  * yesterday and Noam now uses for something else does not show as "waiting".
  */
 export function helperState(bot, panes, now = Date.now()) {
-  const ids = new Set((bot.helpers || []).filter((h) => h?.paneId && now - Number(h.at || 0) < 12 * 3600_000).map((h) => h.paneId));
+  const ids = new Set((bot.helpers || []).filter((h) => h?.paneId && followActive(h) && now - Number(h.at || 0) < 12 * 3600_000).map((h) => h.paneId));
   let waitingOn = 0, helpersAsking = 0;
   for (const id of ids) {
     const state = stateOf(panes.find((p) => p.id === id));
@@ -55,15 +56,21 @@ export function terminalAskMessage(paneId, label, ask) {
 
 export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, head = gitHead }) {
   for (const b of bots.list()) {
-    for (const h of b.helpers || []) {
+    // One entry per terminal: a bot that followed the same agent twice is woken once.
+    const live = new Map();
+    for (const h of b.helpers || []) if (h?.paneId && followActive(h)) live.set(h.paneId, h);
+    for (const key of [...seen.keys()]) if (key.startsWith(`${b.id}|`) && !live.has(key.slice(b.id.length + 1))) seen.delete(key);
+    for (const h of live.values()) {
       const pane = panes.find((p) => p.id === h.paneId);
       const key = `${b.id}|${h.paneId}`;
       const before = seen.get(key) || {};
       const state = stateOf(pane);
       const label = h.task || h.paneId;
       if (before.state === 'working' && state === 'idle') {
+        // A follow is for one job: this finished turn ends it, so later turns of that agent stay quiet.
+        if (h.followed) bots.endFollow?.(b.id, h.paneId);
         bots.wake(b.id, h.followed
-          ? `The terminal agent you are following ("${label}") has finished its turn. Read its result (termfleet-team read ${h.paneId}), do what you told Noam you would do next, and tell him in plain words.`
+          ? `The terminal agent you followed ("${label}") has finished its turn, and the follow has now ended. Read its result (termfleet-team read ${h.paneId}) and, only if it is the job you told Noam you would report on, tell him in plain words. Follow it again only if Noam asked you to keep watching it.`
           : `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words. Then close it (termfleet-team close ${h.paneId}) unless you are sending it more work now.`);
       }
       let posted = state === 'waiting' ? before.posted || null : null;

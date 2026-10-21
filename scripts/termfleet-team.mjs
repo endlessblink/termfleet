@@ -20,7 +20,8 @@
 //                          --message T [--for <who>]   a scheduled message (default: you)
 //   termfleet-team routine list [--for <who>] | routine remove <id>
 //   termfleet-team watch add|remove|list <folder>   (inside a bot) new code there wakes it
-//   termfleet-team follow <who> [--why T]  (inside a bot) wake me when that agent finishes its turn
+//   termfleet-team follow <who> [--why T]  (inside a bot) wake me once when that agent finishes its turn
+//   termfleet-team unfollow <who> | --all  (inside a bot) stop being woken by that agent (or by every one I follow)
 //   termfleet-team close <who>             (inside a bot) close a terminal YOU started, once it is done;
 //                                          refused while it works, waits for Noam, or has unsaved work
 //
@@ -33,6 +34,7 @@ import { dirname, join } from 'node:path';
 import {
   fleetPanes, resolvePane, stateOf, recentMessages, delegate, waitForReply, framedMessage,
 } from '../termcontrol/bridge/orchestrate.mjs';
+import { endFollows } from '../termcontrol/bridge/follows.mjs';
 import { resolveCaller } from './termfleet-child.mjs';
 import { findOwnerWords, recentOwnerWords } from '../termcontrol/bridge/owner-words.mjs';
 import { Routines, describeDays } from '../termcontrol/bridge/routines.mjs';
@@ -225,6 +227,29 @@ async function main(argv) {
     const why = String(flags.why || pane.title || pane.project || '').slice(0, 300);
     recordHelper({ paneId: pane.id, provider: pane.provider || null, task: why, cwd: pane.cwd || null, followed: true });
     return out(`Following ${pane.profile?.name || pane.project} (${pane.id}): you will be woken when it finishes its turn.`);
+  }
+
+  if (command === 'unfollow') {
+    // Noam 2026-10-21: bots kept reporting other bots' work he never asked about.
+    const dir = botFolder();
+    if (!dir) fail('Unfollowing works inside a bot.');
+    const file = join(dir, 'helpers.json');
+    let list = [];
+    try { list = JSON.parse(readFileSync(file, 'utf8')); } catch { list = []; }
+    let paneId = null, name = 'every agent you follow';
+    if (flags.all !== true) {
+      const query = positional.join(' ').trim();
+      if (!query) fail('Say whom to unfollow, or use --all.');
+      // A closed terminal is no longer in the fleet, so its id is matched straight from the list.
+      const known = list.find((h) => h?.paneId === query);
+      if (known) paneId = known.paneId;
+      else { const { pane } = await target(query, null); paneId = pane.id; name = pane.profile?.name || pane.project || pane.id; }
+      if (known) name = known.task || known.paneId;
+    }
+    const { list: next, count } = endFollows(list, { paneId, all: flags.all === true });
+    if (!count) return out(flags.all === true ? 'You were not following anyone.' : `You were not following ${name}.`);
+    writeFile(file, JSON.stringify(next, null, 1), { mode: 0o600 });
+    return out(`Stopped following ${name}${count > 1 && flags.all === true ? ` (${count})` : ''}: its turns will not wake you.`);
   }
 
   if (command === 'close') {

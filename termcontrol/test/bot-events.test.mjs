@@ -94,7 +94,7 @@ test('a bot that follows an agent it did not start is woken when it finishes, an
   assert.equal(answered.length, 0, 'Noam\'s own agent is never auto-denied');
   await tick(30 * 60 * 1000 + 1, 'working');
   await tick(30 * 60 * 1000 + 2, 'idle');
-  assert.match(woke.at(-1), /you are following \("paper bot fix"\) has finished its turn.*do what you told Noam you would do next/);
+  assert.match(woke.at(-1), /you followed \("paper bot fix"\) has finished its turn, and the follow has now ended/);
 });
 
 // Noam 2026-10-20: a bot waiting on terminal agents it handed work to shows that

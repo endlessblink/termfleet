@@ -12,6 +12,7 @@ import { uploadDir } from './uploads.mjs';
 import { skillPrompt } from './skills.mjs';
 import { parseQuestion, QUESTION_RULE, markRepeatedQuestions } from './bot-questions.mjs';
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
+import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 
 /**
@@ -102,7 +103,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- You wake up by yourself on schedules (`termfleet-team routine add --time 09:00 --days weekdays --message "<what to do>"`), when a terminal agent you started finishes, and when new code lands in a folder you watch (`termfleet-team watch add <folder>`). Messages starting with [Event] come from these, not from Noam.',
     '- Skills: Noam\'s shared skill library holds tested ways of doing recurring jobs; when he says "Use the <name> skill" or types /<name>, follow it. `termfleet-skill list` shows them. When a process worked and will recur, offer to save it: `termfleet-skill save <name-with-dashes> --description "<when to use it>" --body "<the steps, what to check, what needs Noam\'s approval>"`. It is only a suggestion until he approves it.',
     '- The bots\' browser: Chrome on Noam\'s PC that only bots use, with shared sign-ins. Use the browser tools for web tasks that need clicking or signing in (plain reading can use web search). You get your own window there: you see only your own pages, other bots browse at the same time in theirs, and your window closes when your task ends. If the browser tools cannot connect, run `termfleet-browser start` once. Never type passwords, codes or card numbers. When a step needs Noam (signing in, a code, a choice), run `termfleet-browser ask-noam "<exactly what he should do in your window>"`, tell him the same in one line, and stop: your window stays open, and when he hands it back his note arrives as a message; then look at the page and carry on. If a browser tool says Noam has taken over, stop and wait for his note. Before anything that pays, sends, posts or deletes, ask him first.',
-    '- You only act when a message or an event arrives; nothing runs between them. So never say you will check or do something later unless you set up the wake-up first: `termfleet-team follow <who>` wakes you when that agent finishes, `termfleet-team routine add` wakes you at a time. Otherwise do it now, or say plainly that it is waiting for Noam. Do not end with "Next I\'m doing" unless a wake-up is set.',
+    '- You only act when a message or an event arrives; nothing runs between them. So never say you will check or do something later unless you set up the wake-up first: `termfleet-team follow <who>` wakes you once when that agent finishes (then the follow ends; `termfleet-team unfollow <who>` or `unfollow --all` stops it sooner), `termfleet-team routine add` wakes you at a time. Report on another agent\'s work only when Noam asked for it. Otherwise do it now, or say plainly that it is waiting for Noam. Do not end with "Next I\'m doing" unless a wake-up is set.',
     card ? `\n${card}` : '',
     handover ? `\nYou are continuing after a fresh start (your previous conversation filled up). Pick up exactly here:\n${handover}` : '',
   ].filter((l) => l !== '').join('\n');
@@ -573,6 +574,16 @@ export class Bots {
   available(provider) {
     const h = this.health()[provider];
     return !h || !h.limitedUntil || h.limitedUntil <= this.now();
+  }
+
+  /** End this bot's follow of one terminal (it finished the job it was followed for). */
+  endFollow(id, paneId) {
+    const file = path.join(this.folder(id), 'helpers.json');
+    let list;
+    try { list = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return 0; }
+    const { list: next, count } = endFollows(list, { paneId, followedOnly: true, at: this.now() });
+    if (count) fs.writeFileSync(file, JSON.stringify(next, null, 1), { mode: 0o600 });
+    return count;
   }
 
   /** Moves a bot to another plan, starting a fresh brain conversation there with a handover. */
