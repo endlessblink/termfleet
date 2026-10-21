@@ -101,7 +101,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- `termfleet-asks done|ready|partial|dropped <n> "<proof or note>"` marks his numbered requests. Use `ready` (not `partial`) when it is built and live but Noam has not tried it yet; the note says exactly what he should try, in a few words (e.g. "open a bot chat on the phone and tap 25/30"). It stays quiet: no notification, and it is NOT in his "Waiting for you" list (that list is only for approvals and questions that block work until he acts); untried work goes into one quiet "try later" task, never a ping. When he says it works, mark it `done`.',
     '- You wake up by yourself on schedules (`termfleet-team routine add --time 09:00 --days weekdays --message "<what to do>"`), when a terminal agent you started finishes, and when new code lands in a folder you watch (`termfleet-team watch add <folder>`). Messages starting with [Event] come from these, not from Noam.',
     '- Skills: Noam\'s shared skill library holds tested ways of doing recurring jobs; when he says "Use the <name> skill" or types /<name>, follow it. `termfleet-skill list` shows them. When a process worked and will recur, offer to save it: `termfleet-skill save <name-with-dashes> --description "<when to use it>" --body "<the steps, what to check, what needs Noam\'s approval>"`. It is only a suggestion until he approves it.',
-    '- The bots\' browser: a Chrome window on Noam\'s PC that only bots use, with its own sign-ins. Use the browser tools for web tasks that need clicking or signing in (plain reading can use web search). If the browser tools cannot connect, run `termfleet-browser start` once. Noam can watch it from his phone and take over at the PC. Never type passwords, codes or card numbers: ask Noam to do that part at the PC. Before anything that pays, sends, posts or deletes, ask him first.',
+    '- The bots\' browser: Chrome on Noam\'s PC that only bots use, with shared sign-ins. Use the browser tools for web tasks that need clicking or signing in (plain reading can use web search). You get your own window there: you see only your own pages, other bots browse at the same time in theirs, and your window closes when your task ends. If the browser tools cannot connect, run `termfleet-browser start` once. Never type passwords, codes or card numbers. When a step needs Noam (signing in, a code, a choice), run `termfleet-browser ask-noam "<exactly what he should do in your window>"`, tell him the same in one line, and stop: your window stays open, and when he hands it back his note arrives as a message; then look at the page and carry on. If a browser tool says Noam has taken over, stop and wait for his note. Before anything that pays, sends, posts or deletes, ask him first.',
     '- You only act when a message or an event arrives; nothing runs between them. So never say you will check or do something later unless you set up the wake-up first: `termfleet-team follow <who>` wakes you when that agent finishes, `termfleet-team routine add` wakes you at a time. Otherwise do it now, or say plainly that it is waiting for Noam. Do not end with "Next I\'m doing" unless a wake-up is set.',
     card ? `\n${card}` : '',
     handover ? `\nYou are continuing after a fresh start (your previous conversation filled up). Pick up exactly here:\n${handover}` : '',
@@ -125,6 +125,9 @@ export const PLAYWRIGHT_MCP = fs.existsSync(PLAYWRIGHT_MCP_CLI)
 // Bots get it through `termfleet-browser mcp`, which opens the bots' browser the
 // first time a browser tool is used (a bot never has to remember to start it).
 export const BROWSER_MCP = { command: process.execPath, args: [fileURLToPath(new URL('../../scripts/termfleet-browser.mjs', import.meta.url)), 'mcp'] };
+// Each bot's browser tools see only that bot's own window (Codex hands an MCP server
+// only a few of its settings, so the bot is named in the arguments, not the settings).
+export const browserMcp = (bot) => ({ command: BROWSER_MCP.command, args: [...BROWSER_MCP.args, '--bot', String(bot?.id || ''), '--bot-name', String(bot?.name || '')] });
 
 export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
   if (bot.provider === 'codex') {
@@ -137,7 +140,7 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
     const runtime = process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid?.() ?? 1000}`;
     const roots = [path.join(os.homedir(), '.local', 'share', 'terminal-workspace'), path.join(runtime, 'terminal-workspace'), defaultDir(), BOTS_HOME()];
     const config = ['-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(roots)}`, '-c', 'sandbox_workspace_write.network_access=true', '-c', 'approval_policy="never"',
-      '-c', `mcp_servers.browser.command=${JSON.stringify(BROWSER_MCP.command)}`, '-c', `mcp_servers.browser.args=${JSON.stringify(BROWSER_MCP.args)}`, '-c', 'mcp_servers.browser.disabled_tools=["browser_run_code_unsafe"]',
+      '-c', `mcp_servers.browser.command=${JSON.stringify(BROWSER_MCP.command)}`, '-c', `mcp_servers.browser.args=${JSON.stringify(browserMcp(bot).args)}`, '-c', 'mcp_servers.browser.disabled_tools=["browser_run_code_unsafe"]',
       '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"', '-c', 'mcp_servers.node_repl.enabled=false', '-c', 'plugins."unified-computer-use@openai-bundled".enabled=false'];
     const args = first
       ? ['exec', '--json', '--skip-git-repo-check', '-C', bot.cwd, '-s', 'workspace-write', ...(bot.model ? ['-m', bot.model] : []), ...config, prompt]
@@ -151,7 +154,7 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
     '--add-dir', uploadDir(),   // pictures Noam attaches
     '--permission-mode', 'dontAsk',
     ...(bot.model ? ['--model', bot.model] : []),
-    '--mcp-config', JSON.stringify({ mcpServers: { browser: BROWSER_MCP } }),
+    '--mcp-config', JSON.stringify({ mcpServers: { browser: browserMcp(bot) } }),
     '--allowedTools', ...CLAUDE_TOOLS,
     '--disallowedTools', ...CLAUDE_DENY,
     ...(session?.started ? ['--resume', session.id] : ['--session-id', session?.id || crypto.randomUUID()])];

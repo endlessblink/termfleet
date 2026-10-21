@@ -860,7 +860,7 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 @media(prefers-reduced-motion:reduce){#side-asks .rail-working .st::before{animation:none}#side-asks summary::after{transition:none}}
 .asks-chip{margin-top:4px;font-size:13px}.asks-chip summary{cursor:pointer;color:var(--muted);list-style:none}.asks-chip summary::-webkit-details-marker{display:none}.asks-chip ol{margin:6px 0 0;padding-inline-start:22px;display:grid;gap:6px;max-height:40vh;overflow:auto}.asks-chip li{line-height:1.45}.asks-chip .ask-status{font-size:11.5px;border-radius:8px;padding:1px 6px;margin-inline-end:6px;border:1px solid var(--line)}.asks-chip .ask-done{color:var(--working)}.asks-chip .ask-partial{color:var(--waiting)}.asks-chip .ask-open{color:var(--accent)}.asks-chip .ask-note{display:block;color:var(--muted);font-size:12px}
 .skill-picker{display:grid;gap:2px;max-height:220px;overflow:auto;margin:0 0 6px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg))}.bot-composer .skill-picker{position:absolute;left:12px;right:12px;bottom:calc(100% + 4px);margin:0;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.25)}.skill-picker[hidden]{display:none}.skill-picker button{display:grid;gap:2px;text-align:start;padding:8px 10px;border:0;border-radius:9px;background:none;color:inherit;font:inherit;cursor:pointer}.skill-picker button:hover,.skill-picker button:focus-visible{background:var(--line)}.skill-picker b{font-weight:500;font-size:14px}.skill-picker span{font-size:12.5px;color:var(--muted);line-height:1.35}.skill-preview{white-space:pre-wrap;font-size:12.5px;color:var(--muted);margin:4px 0 0;max-height:180px;overflow:auto}
-.browser-dialog{width:min(560px,calc(100vw - 32px))}.browser-shot{display:block;width:100%;border:1px solid var(--line);border-radius:12px;background:#fff;min-height:120px;object-fit:contain}.browser-page{font-size:13px;color:var(--muted);margin:6px 0 10px;overflow-wrap:anywhere}.teach-live{display:flex;align-items:center;gap:8px;font-size:14px;margin:8px 0}.teach-live::before{content:'';width:9px;height:9px;border-radius:50%;background:#e5484d;animation:teachPulse 1.4s ease-in-out infinite}@keyframes teachPulse{50%{opacity:.35}}@media (prefers-reduced-motion:reduce){.teach-live::before{animation:none}}
+.browser-dialog{width:min(560px,calc(100vw - 32px))}.browser-shot{display:block;width:100%;border:1px solid var(--line);border-radius:12px;background:#fff;min-height:120px;object-fit:contain}.browser-page{font-size:13px;color:var(--muted);margin:6px 0 10px;overflow-wrap:anywhere}.bw-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}.bw-tab{font:inherit;font-size:13px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:transparent;color:inherit}.bw-tab[aria-pressed=true]{border-color:currentColor;font-weight:500}.bw-tab.bw-needs{border-color:#e5484d}.bw-state{font-size:14px;margin:4px 0 8px}.bw-note{display:block;width:100%;box-sizing:border-box;margin:0 0 8px;font:inherit;font-size:14px}.teach-live{display:flex;align-items:center;gap:8px;font-size:14px;margin:8px 0}.teach-live::before{content:'';width:9px;height:9px;border-radius:50%;background:#e5484d;animation:teachPulse 1.4s ease-in-out infinite}@keyframes teachPulse{50%{opacity:.35}}@media (prefers-reduced-motion:reduce){.teach-live::before{animation:none}}
 .fleet-tabs{display:grid;grid-template-columns:1fr 1fr auto;gap:4px;padding:4px;margin:0 0 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}.fleet-tabs button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:0;border-radius:10px;background:none;color:var(--muted);font:inherit;font-size:15px;font-weight:500;cursor:pointer}.fleet-tabs button[aria-selected=true]{background:var(--line);color:var(--text)}.fleet-tabs .tab-count{font-size:12px;font-weight:400;color:var(--muted);opacity:.7}.fleet-tabs .tab-need-term{background:var(--terminals);color:#141312}.tab-need{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;display:inline-grid;place-items:center}
 .bots-home{display:grid;gap:22px;margin:4px 0 24px}.bots-actions{display:flex;flex-wrap:wrap;gap:8px}.bots-actions .new-bot{font-weight:500}.bots-actions .new-room{margin:0}.bots-list{display:grid;gap:8px}.bots-home .bot-row{min-height:72px;padding:12px 10px;border-radius:14px;gap:12px}.bots-home .bot-avatar,.bots-home .bot-avatar svg{width:48px;height:48px}.bots-home .room-name{font-size:16px;font-weight:500}.bots-home .room-last{font-size:14px}.bots-home .bot-row{display:flex;align-items:center;width:100%;text-align:start}.bots-home .room-copy{flex:1;min-width:0;display:grid;gap:3px}.bots-home .room-last{min-width:0;overflow:hidden}.bots-home .room-last>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bot-unread{flex:none;min-width:22px;height:22px;border-radius:11px;background:var(--accent);color:var(--bg);font-size:12.5px;font-weight:500;display:grid;place-items:center;padding:0 7px;font-variant-numeric:tabular-nums;align-self:center}.bots-home .bot-row:not(.unread) .room-name{font-weight:400}.bot-row.unread .room-name{color:var(--text);font-weight:500}.bot-row.unread .room-last{color:var(--text)}.bot-row.unread .bot-when{color:var(--accent)}.bot-top{display:flex;align-items:baseline;gap:8px;min-width:0}.bot-top .room-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bot-when{flex:none;font-size:12.5px;color:var(--muted)}.bots-intro{padding:22px 18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);display:grid;gap:10px}.bots-intro h2{margin:0;font-size:18px;font-weight:500}.bots-intro p{margin:0;color:var(--muted);line-height:1.5}
 .bots-actions .new-bot{width:100%;min-height:44px}.bots-quiet-list{display:grid;gap:2px}.bots-quiet{background:none;border:0;color:var(--muted);font:inherit;font-size:13.5px;text-align:start;padding:6px 4px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}.health-card summary{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:14.5px;cursor:pointer;list-style:none}.health-card summary::-webkit-details-marker{display:none}.health-short{color:var(--muted);font-size:13px;white-space:nowrap}.health-card[open] summary{margin-bottom:6px}.health-card:not([open]){gap:0}
@@ -2618,20 +2618,23 @@ async function browserDialog(){
   document.querySelector('.room-dialog')?.remove();
   const dialog=document.createElement('dialog');dialog.className='room-dialog browser-dialog';
   document.body.append(dialog);dialog.showModal();
-  let tick=null,shotUrl=null,lastState='';
+  let tick=null,shotUrl=null,lastState='',chosen=null;
   const stop=()=>{clearInterval(tick);tick=null;if(shotUrl)URL.revokeObjectURL(shotUrl);};
   const close=()=>{stop();dialog.close();dialog.remove();};
   dialog.addEventListener('close',stop);
   const call=async(path,body)=>{const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body || {}),signal:AbortSignal.timeout(20000)});const d=await r.json();if(!r.ok)throw Object.assign(new Error(d.error),{data:d});return d;};
   const refreshShot=async()=>{
     const img=dialog.querySelector('.browser-shot');if(!img)return;
-    try{const r=await fetch(`/api/browser/shot?t=${Date.now()}`,{signal:AbortSignal.timeout(6000)});if(!r.ok)return;const url=URL.createObjectURL(await r.blob());img.src=url;if(shotUrl)URL.revokeObjectURL(shotUrl);shotUrl=url;}catch{}
+    try{const r=await fetch(`/api/browser/shot?t=${Date.now()}${chosen?.pages?.[0]?`&page=${encodeURIComponent(chosen.pages[0].id)}`:''}`,{signal:AbortSignal.timeout(6000)});if(!r.ok)return;const url=URL.createObjectURL(await r.blob());img.src=url;if(shotUrl)URL.revokeObjectURL(shotUrl);shotUrl=url;}catch{}
   };
   const render=async()=>{
     let st;
     try{const r=await fetch('/api/browser',{signal:AbortSignal.timeout(6000)});st=await r.json();}catch{dialog.innerHTML=`<p class="room-error">${ui('Could not reach the PC.','לא ניתן להגיע למחשב.')}</p><div class="room-actions"><button type="button" class="room-cancel">${ui('Close','סגירה')}</button></div>`;dialog.querySelector('.room-cancel').onclick=close;return;}
-    const state=`${st.running}|${Boolean(st.teaching)}`;
-    const page=st.pages?.[0];
+    // Each bot has its own window (TF-096); pick one to watch, the one waiting for Noam first.
+    const wins=st.windows || [];
+    chosen=wins.find(w=>w.botId===chosen?.botId) || wins.find(w=>w.takeover) || wins[0] || null;
+    const state=`${st.running}|${Boolean(st.teaching)}|${wins.map(w=>`${w.botId}:${w.takeover?.by || ''}:${w.takeover?.ask || ''}`).join(',')}|${chosen?.botId || ''}`;
+    const page=chosen?.pages?.[0] || st.pages?.[0];
     if(state===lastState && dialog.querySelector('form')){
       const info=dialog.querySelector('.browser-page');if(info)info.textContent=page?`${page.title || ''} · ${page.url}`:'';
       const live=dialog.querySelector('.teach-steps');if(live && st.teaching)live.textContent=String(st.teaching.steps);
@@ -2650,25 +2653,41 @@ async function browserDialog(){
         <label class="room-field"><span>${ui('Name for this skill','שם לסקיל')}</span><input name="name" dir="auto" maxlength="50" placeholder="weekly-invoice-check" autocomplete="off"></label>
         <label class="room-field"><span>${ui('When should a bot use it?','מתי בוט צריך להשתמש בו?')}</span><textarea name="description" rows="2" dir="auto" maxlength="300"></textarea></label>`
       :`<p class="rooms-empty">${ui('To take over, use the window on your PC: sign in, enter codes, or fix a step. Anything you do there, the bots see.','כדי להשתלט, השתמשו בחלון במחשב: התחברו, הזינו קודים או תקנו צעד. כל מה שתעשו שם, הבוטים רואים.')}</p>`;
+    const who=chosen?esc(chosen.botName || ui('This bot','הבוט הזה')):'';
+    const windowsBlock=st.teaching || !chosen?''
+      :chosen.takeover
+        ?`<p class="bw-state" dir="auto">${chosen.takeover.by==='noam'?ui(`You have ${who}'s window. Do what is needed at the PC, then hand it back.`,`החלון של ${who} אצלכם. עשו מה שצריך במחשב, ואז החזירו אותו.`):`${ui(`${who} asks you:`,`${who} מבקש:`)} ${esc(chosen.takeover.ask || '')}`}</p>
+          <textarea class="bw-note" name="note" rows="2" dir="auto" maxlength="2000" placeholder="${ui('A short note for the bot, e.g. I logged in','הערה קצרה לבוט, למשל התחברתי')}"></textarea>`
+        :`<p class="bw-state" dir="auto">${ui(`${who} is using this window.`,`${who} משתמש בחלון הזה.`)}</p>`;
+    const windowActions=st.teaching || !chosen?''
+      :chosen.takeover?`<button type="button" class="room-create bw-handback">${ui('Hand back','החזרה לבוט')}</button>`
+        :`<button type="button" class="room-cancel bw-takeover">${ui('Take over','השתלטות')}</button>`;
     dialog.innerHTML=`<form><h2>${ui('Bots\' browser','הדפדפן של הבוטים')}</h2>
+      ${wins.length>1?`<div class="bw-tabs">${wins.map(w=>`<button type="button" class="bw-tab${w.takeover?' bw-needs':''}" data-bot="${esc(w.botId)}" aria-pressed="${w.botId===chosen?.botId}" dir="auto">${esc(w.botName || w.botId)}</button>`).join('')}</div>`:''}
       <img class="browser-shot" alt="${ui('Live picture of the bots\' browser','תמונה חיה של הדפדפן של הבוטים')}">
       <p class="browser-page" dir="auto">${page?esc(`${page.title || ''} · ${page.url}`):''}</p>
-      ${teach}
+      ${windowsBlock}
+      ${st.teaching || !chosen?teach:''}
       <p class="room-error" role="alert"></p>
       <div class="room-actions">${st.teaching
         ?`<button type="button" class="room-cancel teach-discard">${ui('Stop without saving','עצירה בלי שמירה')}</button><button type="submit" class="room-create">${ui('Stop and save as a skill','עצירה ושמירה כסקיל')}</button>`
-        :`<button type="button" class="room-cancel">${ui('Close','סגירה')}</button><button type="button" class="room-create teach-start">${ui('Teach a task','ללמד משימה')}</button>`}</div></form>`;
+        :`<button type="button" class="room-cancel">${ui('Close','סגירה')}</button>${windowActions || `<button type="button" class="room-create teach-start">${ui('Teach a task','ללמד משימה')}</button>`}`}</div></form>`;
     const form=dialog.querySelector('form'),error=dialog.querySelector('.room-error');
     refreshShot();
+    dialog.querySelectorAll('.bw-tab').forEach(b=>{b.onclick=()=>{chosen=wins.find(w=>w.botId===b.dataset.bot) || chosen;lastState='';render();};});
+    const takeButton=dialog.querySelector('.bw-takeover');
+    if(takeButton)takeButton.onclick=async()=>{takeButton.disabled=true;try{await call('/api/browser/takeover',{bot:chosen.botId});lastState='';await render();}catch(e){takeButton.disabled=false;error.textContent=e.message;}};
+    const backButton=dialog.querySelector('.bw-handback');
+    if(backButton)backButton.onclick=async()=>{backButton.disabled=true;const name=chosen.botName || '';try{await call('/api/browser/handback',{bot:chosen.botId,note:form.elements.note?.value || ''});note(ui(`Handed back to ${name}. It continues from there.`,`הוחזר ל${name}. הוא ממשיך משם.`));lastState='';await render();}catch(e){backButton.disabled=false;error.textContent=e.message;}};
     if(st.teaching){
       dialog.querySelector('.teach-discard').onclick=async()=>{try{await call('/api/browser/teach/stop',{save:false});lastState='';await render();}catch(e){error.textContent=e.message;}};
       form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('[type=submit]');button.disabled=true;
         try{const d=await call('/api/browser/teach/stop',{save:true,name:form.elements.name.value,description:form.elements.description.value});note(ui(`Saved "${d.name}" with ${d.steps} steps. Approve it under Skills.`,`"${d.name}" נשמר עם ${d.steps} צעדים. אשרו אותו תחת סקילים.`));lastState='';await render();}
         catch(e){button.disabled=false;error.textContent=e.message;if(e.data?.draft){lastState='';await render();}}};
     }else{
-      dialog.querySelector('.room-cancel').onclick=close;
+      dialog.querySelector('.room-cancel:not(.bw-takeover)').onclick=close;
       const teachButton=dialog.querySelector('.teach-start');
-      teachButton.onclick=async()=>{teachButton.disabled=true;try{await call('/api/browser/teach/start');lastState='';await render();}catch(e){teachButton.disabled=false;error.textContent=e.message;}};
+      if(teachButton)teachButton.onclick=async()=>{teachButton.disabled=true;try{await call('/api/browser/teach/start');lastState='';await render();}catch(e){teachButton.disabled=false;error.textContent=e.message;}};
     }
   };
   dialog.innerHTML=`<p>${ui('Loading…','טוען…')}</p>`;

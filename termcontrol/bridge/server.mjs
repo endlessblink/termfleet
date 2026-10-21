@@ -43,7 +43,8 @@ import { Routines, describeDays } from './routines.mjs';
 import { profiles, rulesMessage } from './profiles.mjs';
 import { Bots, PROVIDERS as BOT_PROVIDERS, modelChoices } from './bots.mjs';
 import { listSkills, approveSkill, rejectSkill, suggestSkill, checkSkill } from './skills.mjs';
-import { BotBrowser } from './bot-browser.mjs';
+import { BotBrowser, BROWSER_PORT } from './bot-browser.mjs';
+import { sweepWindows, setTakeover, clearTakeover, handBackText, readWindows } from './bot-windows.mjs';
 import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
 import { checkBotEvents, helperState } from './bot-events.mjs';
 import { Push } from './push.mjs';
@@ -195,6 +196,8 @@ const push = new Push();
 const botBrowser = new BotBrowser();
 // Codex bots cannot open the browser from inside their safety box; they ask us.
 setInterval(() => { botBrowser.serveRequests().catch(() => {}); }, 1000).unref();
+// A bot's window closes when its task ends; this catches tasks that ended by a crash.
+setInterval(() => { sweepWindows({ port: BROWSER_PORT }).catch(() => {}); }, 15000).unref();
 // The daily agent counts are read from big conversation records, so they are updated
 // in a separate low-priority process: a few minutes the first time, seconds after.
 let healthRun = null;
@@ -436,8 +439,19 @@ const handle = async (req, res) => {
   // The bots' browser (TF-096 part 8): watch from the phone, teach a task at the PC.
   if (url.pathname === '/api/browser' && req.method === 'GET') return json(res, 200, await botBrowser.status());
   if (url.pathname === '/api/browser/start' && req.method === 'POST') { const r = await botBrowser.start(); return json(res, r.error ? 500 : 200, r); }
+  // Take over a bot's window, and hand it back with a note the bot continues from.
+  if ((url.pathname === '/api/browser/takeover' || url.pathname === '/api/browser/handback') && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 16 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    const botId = String(body.bot || '');
+    if (!readWindows().some((w) => w.botId === botId)) return json(res, 404, { error: 'That bot has no window open now.' });
+    if (url.pathname === '/api/browser/takeover') return json(res, 200, { ok: true, takeover: setTakeover(botId, { by: 'noam' }) });
+    clearTakeover(botId);
+    const sent = bots.read(botId) ? bots.send(botId, handBackText(body.note)) : { error: 'That bot no longer exists.' };
+    return json(res, sent.error ? 400 : 200, sent.error ? sent : { ok: true });
+  }
   if (url.pathname === '/api/browser/shot' && req.method === 'GET') {
-    try { const shot = await botBrowser.screenshot(); res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'no-store' }); return res.end(shot.image); }
+    try { const shot = await botBrowser.screenshot(url.searchParams.get('page') || null); res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'no-store' }); return res.end(shot.image); }
     catch (error) { return json(res, 503, { error: error.message }); }
   }
   if (url.pathname === '/api/browser/teach/start' && req.method === 'POST') {

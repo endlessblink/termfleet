@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { BOTS_HOME, findBinary, BOT_BROWSER_PORT } from './bots.mjs';
+import { readWindows } from './bot-windows.mjs';
 
 /**
  * The bots' browser (TF-096 part 8, grill decisions 17-18). One Chrome window on the
@@ -85,8 +86,8 @@ export function stepsToSkill(steps, { when = new Date() } = {}) {
 }
 
 export class BotBrowser {
-  constructor({ port = BROWSER_PORT, profile = path.join(BOTS_HOME(), '.browser'), binary = null, launch = spawn, headless = false, request = requestFile(), waitMs = 20000 } = {}) {
-    this.port = port; this.profile = profile; this.launch = launch; this.headless = headless; this.request = request; this.waitMs = waitMs;
+  constructor({ port = BROWSER_PORT, profile = path.join(BOTS_HOME(), '.browser'), binary = null, launch = spawn, headless = false, request = requestFile(), waitMs = 20000, windowsDir = undefined } = {}) {
+    this.port = port; this.profile = profile; this.launch = launch; this.headless = headless; this.request = request; this.waitMs = waitMs; this.windowsDir = windowsDir;
     this.binary = binary || findBinary('google-chrome') || findBinary('chromium') || findBinary('brave-browser');
     this.teaching = null;
   }
@@ -99,8 +100,13 @@ export class BotBrowser {
   async status() {
     try {
       const pages = await this.targets();
-      return { running: true, pages: pages.map((p) => ({ title: p.title, url: p.url })), teaching: this.teaching ? { steps: this.teaching.steps.length, startedAt: this.teaching.startedAt } : null };
-    } catch { return { running: false, pages: [], teaching: null }; }
+      // Each bot's own window (TF-096): which pages are whose, and whether Noam has it.
+      const windows = readWindows(this.windowsDir).map((w) => ({
+        botId: w.botId, botName: w.botName, takeover: w.takeover || null,
+        pages: pages.filter((p) => (w.targets || []).includes(p.id)).map((p) => ({ id: p.id, title: p.title, url: p.url })),
+      })).filter((w) => w.pages.length);
+      return { running: true, pages: pages.map((p) => ({ id: p.id, title: p.title, url: p.url })), windows, teaching: this.teaching ? { steps: this.teaching.steps.length, startedAt: this.teaching.startedAt } : null };
+    } catch { return { running: false, pages: [], windows: [], teaching: null }; }
   }
 
   async start({ allowRequest = true } = {}) {
@@ -142,15 +148,16 @@ export class BotBrowser {
     return { error: 'The bots\' browser did not start.' };
   }
 
-  async page() {
-    const [first] = await this.targets();
-    if (!first) throw new Error('The bots\' browser has no open page.');
-    return first;
+  async page(id = null) {
+    const pages = await this.targets();
+    const found = id ? pages.find((p) => p.id === id) : pages[0];
+    if (!found) throw new Error(id ? 'That window is closed now.' : 'The bots\' browser has no open page.');
+    return found;
   }
 
-  /** A live picture for the phone. */
-  async screenshot() {
-    const target = await this.page();
+  /** A live picture for the phone (of one bot's page when `id` is given). */
+  async screenshot(id = null) {
+    const target = await this.page(id);
     const c = await cdp(target.webSocketDebuggerUrl);
     try {
       const shot = await c.send('Page.captureScreenshot', { format: 'jpeg', quality: 55 });

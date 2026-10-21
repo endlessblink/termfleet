@@ -13,8 +13,9 @@ import { mcpProxy } from '../../scripts/termfleet-browser.mjs';
 test('bot brains get the bots\' browser through the Playwright MCP, for both plans', () => {
   const claude = brainCommand({ id: 'b1', name: 'Quill', provider: 'claude', cwd: '/tmp', sessions: {} }, 'hi');
   const config = JSON.parse(claude.args[claude.args.indexOf('--mcp-config') + 1]);
-  assert.deepEqual(config.mcpServers.browser, BROWSER_MCP);
+  assert.deepEqual(config.mcpServers.browser.args.slice(0, BROWSER_MCP.args.length), BROWSER_MCP.args);
   assert.equal(BROWSER_MCP.args.at(-1), 'mcp', 'through the go-between that opens the browser on first use');
+  assert.deepEqual(config.mcpServers.browser.args.slice(BROWSER_MCP.args.length), ['--bot', 'b1', '--bot-name', 'Quill'], 'each bot gets its own window');
   assert.ok(PLAYWRIGHT_MCP.args.includes('--cdp-endpoint'));
   assert.ok(claude.args.includes('mcp__browser') && claude.args.includes('Bash(termfleet-browser:*)') && claude.args.includes('Bash(termfleet-skill:*)'));
   const codex = brainCommand({ id: 'b1', name: 'Quill', provider: 'codex', cwd: '/tmp', sessions: {} }, 'hi');

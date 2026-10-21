@@ -170,6 +170,7 @@ Four more asks (relayed by a research helper, confirmed by the operator 2026-10-
   - the bots' browser: Chrome with its own profile on port 9333, local only; `termfleet-browser start|status`; Playwright MCP given to both Claude and Codex bot brains;
   - Browser view with a live picture every 2 s;
   - Teach a task: a CDP recorder with clicks, typing and pages; passwords, codes and card numbers are never recorded; 10-minute cap; saved as a suggested skill.
+  - 2026-10-21 (ideas from Xiryn, no per-bot desktops): each bot gets its own window in the shared bots' browser (shared sign-ins kept) through a small per-bot go-between that hides other bots' pages; its window closes when its task ends (a sweep catches crashes). Take over / Hand back with a note from the phone's Browser view; the note reaches the bot as a message; a bot can `termfleet-browser ask-noam "<step>"`, which keeps its window open for him. Proof: two real bots' browser tools browsing at once in a hidden Chrome (each sees only its own pages), take-over blocks the bot, hand-back resumes the same window; phone test with screenshots.
 - **Proof:**
   - 4 skill tests and 3 browser tests, including a real hidden Chrome teaching a task with no password leak;
   - 232/233 agents-app tests (the 1 failure is the known swipe-timing flake);
