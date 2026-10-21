@@ -23,7 +23,13 @@ function audit(entry) {
 
 /** The daemon wraps every reply as { ok, value } — unwrap or throw. */
 async function ask(request) {
-  const res = await requestDaemon(request, defaultDaemonSocket());
+  let res = await requestDaemon(request, defaultDaemonSocket());
+  // A busy daemon sometimes refuses or closes a fresh connection before reading it (seen as
+  // "write EPIPE" on a phone answer, 2026-10-21). Then nothing was received, so try again.
+  for (let tries = 0; tries < 2 && res?.ok !== true && /EPIPE|ECONNREFUSED/.test(String(res?.error || '')); tries++) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    res = await requestDaemon(request, defaultDaemonSocket());
+  }
   if (!res || res.ok !== true) throw new Error(res?.error || 'the terminal service refused');
   if(res.value?.error || (request.type==='writeSession' && res.value?.ok!==true))throw new Error(res.value?.error || 'The terminal did not acknowledge the write.');
   return res.value;
@@ -313,17 +319,33 @@ export async function sendCustomAnswer(pane, question, text, {
   // Wrapped lines and the form's box borders must not hide the question (2026-10-20).
   const squash = value => String(value || '').replace(/[\u2500-\u257f\s]+/g,'');
   const sameQuestion = value => squash(value).includes(squash(question.title));
-  const inEditor = value => sameQuestion(value) && /Type something\.|Type your answer|Enter your answer/i.test(value) && !/\d+\.\s*(?:Type something|Other)|Chat about this/i.test(value);
+  // Claude Code 2.1.288 types into the numbered "Type something." row itself: focused, it reads
+  // "❯ 3. Type something." with "4. Chat about this" still below (Noam 2026-10-21: "לא יכול לשלוח
+  // את זה" — the older separate-field check refused every typed answer).
+  const rows = value => String(value || '').replace(/[│┃]/g, ' ').split('\n');
   let snapshot = await screen();
   if (!sameQuestion(snapshot)) return {error:'That question is no longer on screen. Refresh before answering.',notSent:true};
+  const chat = snapshot.match(/(?:^|\n)\s*(?:[›❯>]\s*)?([1-9])\.\s*Chat about this/i), other = snapshot.match(/(?:^|\n)\s*(?:[›❯>]\s*)?([1-9])\.\s*(?:Type something|Other)\b/i);
+  const row = other ? other[1] : chat && Number(chat[1]) > 1 ? String(Number(chat[1]) - 1) : null;
+  const rowText = value => { for (const line of rows(value)) { const m = line.match(new RegExp(`^\\s*[›❯>]\\s*${row}\\.\\s?(.*)$`)); if (m) return m[1].trim(); } return null; };
+  const placeholder = text => /^(?:Type something|Other)\b/i.test(text);
+  const inEditor = value => sameQuestion(value) && ((/Type something\.|Type your answer|Enter your answer/i.test(value) && !/\d+\.\s*(?:Type something|Other)|Chat about this/i.test(value)) || (row !== null && rowText(value) !== null));
   if (!inEditor(snapshot)) {
-    const other = snapshot.match(/(?:^|\n)\s*(?:[›❯>]\s*)?([1-9])\.\s*(?:Type something|Other)\b/i);
-    if (!other) return {error:'The terminal has no verified custom-answer field. Open Screen to check it.',notSent:true};
+    if (!row) return {error:'The terminal has no verified custom-answer field. Open Screen to check it.',notSent:true};
     // The digit focuses Other. Never send Enter into a menu before verifying
     // the text field: Enter there can accept or decline the entire request.
-    const focusedAt=Date.now(); await write(other[1]);
+    const focusedAt=Date.now(); await write(row);
     for (let i=0;i<24;i++) { await pause(150); snapshot=await screen({after:focusedAt}); if(inEditor(snapshot)) break; }
     if (!inEditor(snapshot)) return {error:'Could not confirm the custom-answer field. Your text was not sent. Check Screen.',notSent:true};
+  }
+  // Words left in that row (an earlier try, or typed at the PC) are cleared first, so the
+  // answer arrives exactly as written. Ctrl+U empties the row; nothing is submitted.
+  const typed = row !== null ? rowText(snapshot) : null;
+  if (typed && !placeholder(typed)) {
+    const clearedAt=Date.now(); await write('\u0015');
+    for (let i=0;i<24;i++) { await pause(150); snapshot=await screen({after:clearedAt}); const now=rowText(snapshot); if(now!==null && (!now || placeholder(now))) break; }
+    const now = rowText(snapshot);
+    if (now === null || (now && !placeholder(now))) return {error:'Could not clear the earlier text in the answer field. Your text was not sent. Check Screen.',notSent:true};
   }
   const typedAt=Date.now(); await write(`\u001b[200~${answer}\u001b[201~`);
   for(let i=0;i<24;i++){await pause(150);snapshot=await screen({after:typedAt});if(sameQuestion(snapshot) && squash(snapshot).includes(squash(answer)))break;}

@@ -4048,6 +4048,8 @@ async function chat(id,{motion=null,initialFeed=null}={}) {
   timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
 }
 
+// Why a typed answer was not sent, kept per question so the box still says it after it redraws.
+const askErrors={};
 function mountAsk(id, ask, onDone, receipt=null) {
   document.body.classList.add('chat');
   const current=document.querySelector('.askbox');
@@ -4083,16 +4085,24 @@ function mountAsk(id, ask, onDone, receipt=null) {
   box.closeAnswerEditor=close;box.openAnswerEditor=open;
   if(field){try{field.value=sessionStorage.getItem(customKey)||'';}catch{}field.oninput=()=>{draft();form.querySelector('[type=submit]').disabled=!customSupported || !field.value.trim();};field.oninput();field.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();close();}};}
   if(other)other.onclick=()=>open();
+  // Redrawn after a typed answer was not sent: reopen the draft with the reason beside it.
+  if(askErrors[ask.id] && !waiting && field){box.querySelector('.askresult').textContent=askErrors[ask.id];open(false);}
   form?.querySelector('[data-cancel-answer]').addEventListener('click',()=>close());
   let sending=false;
   const submit=async(choice,answer)=>{
     if(sending || (!choice && !customSupported))return;sending=true;box.dataset.sending='true';
     box.querySelectorAll('[data-choice],.typeinstead,[type=submit],[data-submit-multi]').forEach(button=>button.disabled=true);
-    const result=box.querySelector('.askresult');result.textContent=multi && choice!=='submit-multi'?ui('Updating the terminal…','מעדכן במסוף…'):ui('Sending to this question…','שולח תשובה לשאלה הזו…');result.scrollIntoView({block:'center'});let response;
-    try{const sent=await fetch('/api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id,askId:ask.id,...(choice?{choice}:{answer}),...(multi?{multi:true}:{})}),signal:AbortSignal.timeout(multi?15000:10000)});response=await sent.json();if(!response.ok && !response.error)response={error:ui('The terminal did not acknowledge this answer.','המסוף לא אישר את קבלת התשובה הזו.')};}
-    catch{response={error:ui('Delivery is unconfirmed. Your draft is saved. Check the terminal before retrying.','מסירת התשובה לא אושרה. הטיוטה נשמרה. בדקו במסוף לפני ניסיון נוסף.'),uncertain:true};}
+    const result=box.querySelector('.askresult');result.textContent=multi && choice!=='submit-multi'?ui('Updating the terminal…','מעדכן במסוף…'):answer?ui('Typing your answer into the terminal… this takes a few seconds.','מקליד את התשובה שלך במסוף… זה לוקח כמה שניות.'):ui('Sending to this question…','שולח תשובה לשאלה הזו…');result.scrollIntoView({block:'center'});let response;
+    // A typed answer is typed and checked key by key, which takes several seconds (Noam
+    // 2026-10-21: "לא יכול לשלוח את זה" — the page gave up at 10 s and left every button dead).
+    // A late or lost reply can be retried safely: the bridge never types the same answer twice.
+    try{const sent=await fetch('/api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id,askId:ask.id,...(choice?{choice}:{answer}),...(multi?{multi:true}:{})}),signal:AbortSignal.timeout(answer?30000:multi?15000:10000)});response=await sent.json();if(!response.ok && !response.error)response={error:ui('The terminal did not acknowledge this answer.','המסוף לא אישר את קבלת התשובה הזו.')};}
+    catch{response={error:ui('No reply from the terminal yet. Your draft is kept; this box updates by itself. If it does not, press Send again: it is never typed twice.','עדיין אין תשובה מהמסוף. הטיוטה נשמרה והתיבה תתעדכן לבד. אם לא, לחצו שוב על שליחה: התשובה לא תוקלד פעמיים.')};}
     sending=false;box.dataset.sending='false';
-    if(response.error){result.textContent=deliveryError(response.error);result.scrollIntoView({block:'center'});box.querySelectorAll('[data-choice],.typeinstead,[type=submit],[data-submit-multi]').forEach(button=>button.disabled=Boolean(response.uncertain) || (button.matches('.typeinstead,[type=submit]') && !customSupported));if(field && !response.uncertain)field.oninput();return;}
+    const again=answer && response.notSent?' '+ui('Your draft is kept. Press Send answer to try again.','הטיוטה נשמרה. לחצו על שליחת תשובה כדי לנסות שוב.'):'';
+    if(answer && response.notSent)askErrors[ask.id]=deliveryError(response.error)+again;
+    if(response.error){result.textContent=deliveryError(response.error)+again;result.scrollIntoView({block:'center'});box.querySelectorAll('[data-choice],.typeinstead,[type=submit],[data-submit-multi]').forEach(button=>button.disabled=Boolean(response.uncertain) || (button.matches('.typeinstead,[type=submit]') && !customSupported));if(field && !response.uncertain)field.oninput();return;}
+    delete askErrors[ask.id];
     if(multi && choice!=='submit-multi'){
       box.querySelectorAll('[data-choice],.typeinstead,[data-submit-multi]').forEach(button=>button.disabled=false);
       box.querySelectorAll('[data-choice]').forEach(button=>button.setAttribute('aria-pressed',String((response.checked||[]).includes(button.dataset.choice))));
