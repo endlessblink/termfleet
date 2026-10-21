@@ -119,7 +119,7 @@ function run(request, budget) {
   });
 }
 
-function submit(audio, language, op, uploadMs) {
+function submit(audio, language, op, uploadMs, hint) {
   if (pendingJobs >= MAX_PENDING) return Promise.reject(Object.assign(new Error('Speech recognition is busy. Try again shortly.'), { statusCode: 503 }));
   pendingJobs++;
   const enqueued = performance.now(), id = crypto.randomUUID();
@@ -148,7 +148,7 @@ function submit(audio, language, op, uploadMs) {
         file = path.join(dir, 'clip');
         fs.writeFileSync(file, audio, { mode: 0o600 });
       }
-      const reply = await run({ id, op, path: file, language: language || null }, budget);
+      const reply = await run({ id, op, path: file, language: language || null, ...(hint ? { hotwords: hint } : {}) }, budget);
       const timings = { ...reply.timings, ...base, queueMs, totalMs: Math.round((performance.now() - enqueued) * 10) / 10 };
       remember(timings, 'ok');
       resolve({ ...reply, timings });
@@ -183,12 +183,13 @@ async function viaDesk(audio, uploadMs) {
   return { text: out.text, language: /[֐-׿]/.test(out.text) ? 'he' : 'en', seconds: out.secs, timings };
 }
 
-/** Turns one recorded clip into text. `language` is 'he', 'en' or empty for automatic. */
-export async function transcribe(audio, { language, uploadMs } = {}) {
+/** Turns one recorded clip into text. `language` is 'he', 'en' or empty for automatic.
+ *  `hint` lists words the owner taught it (his word-fix list); our own worker biases toward them. */
+export async function transcribe(audio, { language, uploadMs, hint } = {}) {
   if (!audio?.length) throw new Error('No audio was received.');
   if (audio.length > MAX_AUDIO_BYTES) throw new Error('That recording is too long.');
   if (useDesk()) { const r = await viaDesk(audio, uploadMs); if (r) return r; }
-  return submit(audio, language, 'transcribe', uploadMs);
+  return submit(audio, language, 'transcribe', uploadMs, typeof hint === 'string' ? hint.slice(0, 400) : '');
 }
 
 /** Best effort while recording. Coalesce hints and never queue behind dictation. */

@@ -32,6 +32,7 @@ import { filesIn, matchFiles } from './files.mjs';
 import { projectCatalog, resolveProject, projectLaunchArgs, projectLaunchReady, projectLaunchCapabilityPath, PROJECT_PROVIDERS, legacyProjectChoice } from './projects.mjs';
 import { spawnArgs } from './spawn.mjs';
 import { transcribe, prepareTranscriber, recentTranscriptionTimings, MAX_AUDIO_BYTES } from './transcribe/index.mjs';
+import { readWordFixes, addWordFix, removeWordFix, applyWordFixes, wordFixHint } from './word-fixes.mjs';
 import { safeUrl, crossSiteWrite } from './guard.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
 import { Rooms } from './rooms.mjs';
@@ -791,6 +792,21 @@ const handle = async (req, res) => {
     return;
   }
 
+  // The owner's own "heard -> correct" list for dictation, shared by PC and phone.
+  if (url.pathname === '/api/word-fixes') {
+    if (req.method === 'GET') return json(res, 200, { fixes: readWordFixes() });
+    if (req.method === 'POST' || req.method === 'DELETE') {
+      let raw = '';
+      for await (const chunk of req) { raw += chunk; if (raw.length > 4096) return json(res, 413, { error: 'Request too large.' }); }
+      let body; try { body = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'bad request' }); }
+      try {
+        const result = req.method === 'POST' ? addWordFix(body.heard, body.correct) : removeWordFix(body.heard);
+        return json(res, result.error ? 400 : 200, result);
+      } catch { return json(res, 503, { error: 'The word list could not be saved.' }); }
+    }
+    return json(res, 405, { error: 'Method not allowed.' });
+  }
+
   // Start cold loading while recording; no clip or text is accepted here.
   // This is only a hint: the eventual clip still selects its actual language.
   if (url.pathname === '/api/transcribe/timings' && req.method === 'GET') {
@@ -811,10 +827,12 @@ const handle = async (req, res) => {
     const uploadMs = Math.round((performance.now() - received) * 10) / 10;
     const lang = ['he', 'en'].includes(url.searchParams.get('lang')) ? url.searchParams.get('lang') : null;
     try {
-      const { text, language, seconds, timings: stages } = await transcribe(audio, { language: lang, uploadMs });
+      const fixes = readWordFixes();
+      const { text: heard, language, seconds, timings: stages } = await transcribe(audio, { language: lang, uploadMs, hint: wordFixHint(fixes) });
+      const { text, changed } = applyWordFixes(heard, fixes);
       const timings = { ...stages, uploadMs, requestMs: Math.round((performance.now() - received) * 10) / 10 };
       speechTimingHeader(res, timings);
-      return json(res, 200, { text, language, seconds, timings });
+      return json(res, 200, { text, language, seconds, fixed: changed, timings });
     } catch (error) {
       const timings = { ...error.timings, uploadMs, requestMs: Math.round((performance.now() - received) * 10) / 10 };
       speechTimingHeader(res, timings);

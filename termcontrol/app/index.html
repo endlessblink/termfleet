@@ -785,7 +785,7 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 .composer-menu .modeswitch{display:flex;margin:0 0 8px;padding:0}
 .composer-menu .modeswitch button{flex:1;min-height:44px;min-width:44px;font-size:14px}
 /* TF-096: every row of the + menu looks the same (Noam: "please redesign this"). */
-.composer-menu-panel .attach,.composer-menu-panel .mic,.composer-menu-panel .schedule-message,.composer-menu-panel .edit-profile{border:0;cursor:pointer;width:100%;height:auto;min-height:44px;display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:8px 0;border-radius:0;background:transparent;text-align:start;font:14px var(--ui);color:var(--text)}
+.composer-menu-panel .attach,.composer-menu-panel .mic,.composer-menu-panel .schedule-message,.composer-menu-panel .word-fixes,.composer-menu-panel .edit-profile{border:0;cursor:pointer;width:100%;height:auto;min-height:44px;display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:8px 0;border-radius:0;background:transparent;text-align:start;font:14px var(--ui);color:var(--text)}
 .composer.question-open{padding:4px 8px;min-height:54px;border:0;border-radius:0;background:transparent;margin-top:0}
 .composer.question-open .pending-answer{font-size:14px;font-weight:400;text-align:start;color:var(--text);padding-inline:8px}
 
@@ -1032,8 +1032,8 @@ main .fleet-content{padding:0 10px}
 /* Calm list: only an agent that is doing something or needs you carries a dot; quiet controls. */
 .pane[data-state=idle] .state-dot,.pane[data-state=exited] .state-dot{display:none}
 .speak-message,.schedule-message{min-height:44px;min-width:44px}
-.composer-menu-panel .attach svg,.composer-menu-panel .mic svg,.composer-menu-panel .schedule-message svg,.composer-menu-panel .edit-profile svg{flex:none;width:22px;height:22px}
-.composer-menu-panel .attach:hover,.composer-menu-panel .mic:hover,.composer-menu-panel .schedule-message:hover,.composer-menu-panel .edit-profile:hover{color:var(--accent)}
+.composer-menu-panel .attach svg,.composer-menu-panel .mic svg,.composer-menu-panel .schedule-message svg,.composer-menu-panel .word-fixes svg,.composer-menu-panel .edit-profile svg{flex:none;width:22px;height:22px}
+.composer-menu-panel .attach:hover,.composer-menu-panel .mic:hover,.composer-menu-panel .schedule-message:hover,.composer-menu-panel .word-fixes:hover,.composer-menu-panel .edit-profile:hover{color:var(--accent)}
 .fleetbar select{border-color:transparent;background:transparent;color:var(--muted);font-size:13px;padding-inline:4px}
 .fleetbar select:hover,.fleetbar select:focus-visible{background:var(--surface);color:var(--text)}
 .fleetbar .icon-button,.fleetbar .global-new-agent{border-color:transparent;background:transparent;color:var(--muted)}
@@ -1149,6 +1149,9 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .close-sheet .sheet-actions .danger{border-color:#b3261e;background:#b3261e;color:#fff}
 .close-sheet .sheet-actions button:disabled{opacity:.55;cursor:default}
 .close-sheet .sheet-result:empty{display:none}
+.word-fix-sheet .wf-row{display:grid;gap:4px}.word-fix-sheet label{font-size:13px;color:var(--muted)}.word-fix-sheet input{min-height:44px;box-sizing:border-box;width:100%;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:16px var(--ui)}
+.word-fix-sheet .sheet-actions .go{border-color:transparent;background:var(--text);color:var(--bg)}
+.word-fix-sheet .wf-list{display:grid;gap:2px;max-height:min(34vh,260px);overflow:auto;margin:0;padding:0;list-style:none}.word-fix-sheet .wf-list li{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 10px;border-radius:10px;background:var(--control)}.word-fix-sheet .wf-list bdi{flex:1;min-width:0;overflow-wrap:anywhere}.word-fix-sheet .wf-list s{color:var(--muted)}.word-fix-sheet .wf-list button{flex:none;width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--muted);font-size:18px;cursor:pointer}.word-fix-sheet .wf-list button:hover{color:var(--text)}
 .close-terminal-head{margin-inline-start:8px;padding:0 8px;min-height:24px;border:1px solid var(--line);border-radius:8px;background:none;color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
 .close-terminal-head:hover{color:var(--text)}
 @media (pointer:coarse){.close-terminal-head{min-height:44px;padding:0 14px;font-size:13px;vertical-align:middle}}
@@ -1425,7 +1428,7 @@ const refreshFleet=()=>{if(document.visibilityState!=='hidden')liveRefresh();};
 window.addEventListener('online',refreshFleet);window.addEventListener('pageshow',refreshFleet);document.addEventListener('visibilitychange',refreshFleet);
 const recordVisit=id=>fetch('/api/visit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:id}),signal:AbortSignal.timeout(6000)}).then(async response=>{const result=await response.json();if(!response.ok)throw new Error(result.error);visitNotice=null;return result;}).catch(()=>{visitNotice=id;const status=document.getElementById('chat-status');if(status && location.hash==='#'+id)status.textContent=ui('Recent order could not be saved.','סדר השיחות האחרונות לא נשמר.');});
 const projectLabel=name=>name==='freelance-desk'?'Freelance Desk':String(name || 'Agent');
-const icons={person:'M12 12a4 4 0 100-8 4 4 0 000 8z M4.5 21c1.4-3.8 4.3-5.8 7.5-5.8s6.1 2 7.5 5.8',back:'M15 5l-7 7 7 7',copy:'M9 7h10v14H9z M5 17V3h10',mic:'M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z M5 11a7 7 0 0014 0 M12 18v3',attach:'M8 12l6-6a4 4 0 015 5l-9 9a6 6 0 01-8-8l10-10',paste:'M9 4h6v3H9z M7 5.5H5.5v15h13v-15H17 M9 12h6 M9 16h4',terminal:'M5 7l5 5-5 5 M13 17h6',send:'M12 19V5 M5 12l7-7 7 7',sun:'M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6L7 7 M17 17l1.4 1.4 M5.6 18.4L7 17 M17 7l1.4-1.4 M16 12a4 4 0 11-8 0 4 4 0 018 0',search:'M10 18a8 8 0 110-16 8 8 0 010 16z M16 16l6 6',clock:'M12 21a9 9 0 110-18 9 9 0 010 18z M12 7v5l3 2',speaker:'M4 9h4l5-4v14l-5-4H4z M16 9a4 4 0 010 6 M19 6a8 8 0 010 12'};
+const icons={person:'M12 12a4 4 0 100-8 4 4 0 000 8z M4.5 21c1.4-3.8 4.3-5.8 7.5-5.8s6.1 2 7.5 5.8',back:'M15 5l-7 7 7 7',copy:'M9 7h10v14H9z M5 17V3h10',mic:'M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z M5 11a7 7 0 0014 0 M12 18v3',attach:'M8 12l6-6a4 4 0 015 5l-9 9a6 6 0 01-8-8l10-10',paste:'M9 4h6v3H9z M7 5.5H5.5v15h13v-15H17 M9 12h6 M9 16h4',terminal:'M5 7l5 5-5 5 M13 17h6',send:'M12 19V5 M5 12l7-7 7 7',sun:'M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6L7 7 M17 17l1.4 1.4 M5.6 18.4L7 17 M17 7l1.4-1.4 M16 12a4 4 0 11-8 0 4 4 0 018 0',search:'M10 18a8 8 0 110-16 8 8 0 010 16z M16 16l6 6',clock:'M12 21a9 9 0 110-18 9 9 0 010 18z M12 7v5l3 2',speaker:'M4 9h4l5-4v14l-5-4H4z M16 9a4 4 0 010 6 M19 6a8 8 0 010 12',fix:'M4 20h4L19 9l-4-4L4 16z M13 7l4 4'};
 const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${icons[name] || icons.terminal}"/></svg>`;
 let viewTabs=document.createElement('div');
 const side=document.getElementById('fleet-side'),sideContent=side.querySelector('.side-content');
@@ -2813,7 +2816,7 @@ async function openBot(id){
           const res=await fetch('/api/transcribe',{method:'POST',headers:{'content-type':audio.type},body:audio,signal:AbortSignal.timeout(180000)});
           const d=await res.json();if(!res.ok)throw new Error(d.error || ui('Could not turn that into text.','לא ניתן להפוך את זה לטקסט.'));
           if(!d.text)throw new Error(ui('No speech heard.','לא נשמע דיבור.'));
-          const before=field.value;field.value=before+(before && !/\s$/.test(before)?' ':'')+d.text;grow();field.focus();document.querySelector('.sendstate')?.remove();
+          const before=field.value;field.value=before+(before && !/\s$/.test(before)?' ':'')+d.text;grow();field.focus();dictationDone(field,grow,d.fixed);
         }catch(e){note(e.message,true);}finally{micButton.classList.remove('busy');}
       };
       r.start();micButton.classList.add('rec');
@@ -3765,6 +3768,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
       <button type="button" class="attach" aria-label="${ui('Attach an image','צירוף תמונה')}">${icon('attach')}${ui('Attach an image','צירוף תמונה')}</button><input type="file" accept="image/*" aria-hidden="true">
       <button type="button" class="paste-image">${icon('copy')}${ui('Paste picture','הדבקת תמונה')}</button>
       <button type="button" class="mic" aria-label="${ui('Dictate a message','הקלדה בקול')}">${icon('mic')}${ui('Dictate a message','הקלדה בקול')}</button>
+      <button type="button" class="word-fixes">${icon('fix')}${ui('Fix dictation words','תיקון מילים בתמלול')}</button>
       <button type="button" class="schedule-message">${icon('clock')}${ui('Schedule a message','תזמון הודעה')}</button>
       <button type="button" class="edit-profile">${icon('person')}${ui('Name, job and rules','שם, תפקיד וכללים')}</button>
     </div></details>
@@ -3799,6 +3803,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
   document.body.appendChild(bar);
   viewTabs=bar.querySelector('.modeswitch');
   bar.querySelector('.edit-profile').onclick=()=>{bar.querySelector('.composer-menu').open=false;profileDialog(id);};
+  bar.querySelector('.word-fixes').onclick=()=>{bar.querySelector('.composer-menu').open=false;wordFixSheet(bar.querySelector('textarea'),()=>bar.querySelector('textarea').dispatchEvent(new Event('input',{bubbles:true})));};
   bar.querySelector('.schedule-message').onclick=()=>{bar.querySelector('.composer-menu').open=false;scheduleDialog(id,bar.querySelector('textarea').value);};
 
   const cmdlist = bar.querySelector('.cmdlist');
@@ -4067,7 +4072,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
           const gap = before && !/\s$/.test(before.slice(0, at)) ? ' ' : '';
           box.value = before.slice(0, at) + gap + d.text + before.slice(box.selectionEnd ?? at);
           box.selectionStart = box.selectionEnd = at + gap.length + d.text.length;
-          box.focus(); sync(); document.querySelector('.sendstate')?.remove();
+          box.focus(); sync(); dictationDone(box, sync, d.fixed);
         } catch (e) { if (!disposed) note(e.name === 'AbortError' ? ui('Transcription took too long. Try a shorter recording.', 'התמלול ארך זמן רב מדי. נסו הקלטה קצרה יותר.') : e.message, true); }
         finally { clearTimeout(timeout); transcribeAbort = null; resetMic(); }
       };
@@ -4279,6 +4284,67 @@ function note(text, isError = false) {
   if (!isError) return el;
   setTimeout(() => el.remove(), 5000);
   return el;
+}
+
+// Dictation word fixes (2026-10-21, Noam: "I need a way to fix common words the
+// transcription model gets wrong"). One list on the PC for PC and phone; the bridge
+// applies it to every dictation. Pick the wrong word in the box, write the right one.
+// Same rule as the bridge: a Hebrew word of 3+ letters keeps a one-letter prefix (ו, ה, ב...).
+const wordFixPattern = (heard) => new RegExp('(?<![\\p{L}\\p{M}\\p{N}_])(' + (/^[\u0590-\u05FF]/.test(heard.trim()) && heard.trim().length >= 3 ? '[והבלמשכ]{0,2}' : '') + ')' + heard.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+') + '(?![\\p{L}\\p{M}\\p{N}_])', 'giu');
+function wordFixSheet(box, sync) {
+  document.querySelector('.close-sheet')?.remove();
+  const picked = box ? box.value.slice(box.selectionStart ?? 0, box.selectionEnd ?? 0).trim() : '';
+  const wrap = document.createElement('div'); wrap.className = 'close-sheet word-fix-sheet';
+  wrap.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="word-fix-title"><h2 id="word-fix-title">${ui('Fix a word dictation gets wrong', 'תיקון מילה שהתמלול טועה בה')}</h2><p>${ui('From now on every dictation writes it the right way.', 'מעכשיו כל הקלדה בקול תכתוב אותה נכון.')}</p>
+    <div class="wf-row"><label for="wf-heard">${ui('It wrote', 'נכתב')}</label><input id="wf-heard" dir="auto" maxlength="80" autocomplete="off" value="${esc(picked)}"></div>
+    <div class="wf-row"><label for="wf-correct">${ui('It should be', 'צריך להיות')}</label><input id="wf-correct" dir="auto" maxlength="80" autocomplete="off"></div>
+    <p class="sheet-result" role="status" aria-live="polite"></p>
+    <div class="sheet-actions"><button type="button" data-cancel>${ui('Close', 'סגירה')}</button><button type="button" class="go" data-save>${ui('Always fix this', 'לתקן תמיד')}</button></div>
+    <ul class="wf-list" aria-label="${ui('Your word fixes', 'התיקונים שלך')}"></ul></div>`;
+  document.body.append(wrap);
+  const heard = wrap.querySelector('#wf-heard'), correct = wrap.querySelector('#wf-correct'), out = wrap.querySelector('.sheet-result'), list = wrap.querySelector('.wf-list'), save = wrap.querySelector('[data-save]');
+  const done = () => { wrap.remove(); box?.focus(); };
+  wrap.querySelector('[data-cancel]').onclick = done;
+  wrap.onclick = (e) => { if (e.target === wrap) done(); };
+  wrap.onkeydown = (e) => { if (e.key === 'Escape') { e.preventDefault(); done(); } if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); save.click(); } };
+  const show = (fixes) => {
+    list.innerHTML = fixes.map((f) => `<li><bdi dir="auto"><s>${esc(f.heard)}</s> → ${esc(f.correct)}</bdi><button type="button" data-heard="${esc(f.heard)}" aria-label="${esc(ui('Stop fixing ' + f.heard, 'להפסיק לתקן את ' + f.heard))}">×</button></li>`).join('');
+    list.hidden = !fixes.length;
+    list.querySelectorAll('button').forEach((b) => b.onclick = async () => {
+      b.disabled = true;
+      try { const r = await fetch('/api/word-fixes', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ heard: b.dataset.heard }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); show(d.fixes); out.textContent = ui('Removed.', 'הוסר.'); }
+      catch (e) { b.disabled = false; out.textContent = e.message || ui('Could not reach the PC.', 'אין חיבור למחשב.'); }
+    });
+  };
+  list.hidden = true;
+  fetch('/api/word-fixes').then((r) => r.json()).then((d) => show(d.fixes || [])).catch(() => {});
+  save.onclick = async () => {
+    const h = heard.value.trim(), c = correct.value.trim();
+    if (!h || !c) { out.textContent = ui('Write both the wrong word and the right one.', 'כתבו גם את המילה השגויה וגם את הנכונה.'); (h ? correct : heard).focus(); return; }
+    save.disabled = true; out.textContent = '';
+    try {
+      const r = await fetch('/api/word-fixes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ heard: h, correct: c }) });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error);
+      show(d.fixes);
+      // Fix it in the message being written too, not only in future dictation.
+      if (box) { const next = box.value.replace(wordFixPattern(h), (_, prefix) => prefix + c); if (next !== box.value) { box.value = next; sync?.(); } }
+      out.textContent = ui(`Saved. "${h}" will be written "${c}".`, `נשמר. "${h}" ייכתב "${c}".`);
+      heard.value = correct.value = ''; heard.focus();
+    } catch (e) { out.textContent = e.message || ui('Could not reach the PC.', 'אין חיבור למחשב.'); }
+    finally { save.disabled = false; }
+  };
+  (picked ? correct : heard).focus();
+}
+function dictationDone(box, sync, fixed) {
+  // The words are in the box now: close the tools menu so the box and this note show.
+  document.querySelectorAll('.composer-menu[open]').forEach((menu) => { if (!menu.querySelector('.mic.rec')) menu.open = false; });
+  const el = note(fixed ? ui(`Fixed ${fixed} word${fixed === 1 ? '' : 's'} from your list.`, fixed === 1 ? 'תוקנה מילה אחת מהרשימה שלך.' : `תוקנו ${fixed} מילים מהרשימה שלך.`) : ui('Wrong word? Select it and fix it.', 'מילה שגויה? סמנו אותה ותקנו.'));
+  el.classList.add('dictation-done');
+  el.insertAdjacentHTML('beforeend', `<div class="acts"><button type="button" class="go" data-fix>${ui('Fix a word', 'תיקון מילה')}</button></div>`);
+  // pointerdown keeps the box's selection: that selection is the word to fix.
+  el.querySelector('[data-fix]').onpointerdown = (e) => e.preventDefault();
+  el.querySelector('[data-fix]').onclick = () => { el.remove(); wordFixSheet(box, sync); };
+  setTimeout(() => el.remove(), 9000);
 }
 
 function confirmBusy(message, go) {

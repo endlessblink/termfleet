@@ -132,10 +132,11 @@ def transcribe(request):
         language, _ = detect(audio, timings)
     model = load(MODELS[language], True, timings)
     stage = time.perf_counter()
-    segments, _info = model.transcribe(
-        audio, language=language, beam_size=5, vad_filter=True,
-        condition_on_previous_text=False, temperature=0.0,
-    )
+    options = dict(language=language, beam_size=5, vad_filter=True,
+                   condition_on_previous_text=False, temperature=0.0)
+    if request.get("hotwords"):  # words the owner taught it (his word-fix list)
+        options["hotwords"] = str(request["hotwords"])[:400]
+    segments, _info = model.transcribe(audio, **options)
     text = " ".join(s.text.strip() for s in segments).strip()
     # faster-whisper segments are lazy: include consumption, not just creation.
     timings["inferenceMs"] = (time.perf_counter() - stage) * 1000
