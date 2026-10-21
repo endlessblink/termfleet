@@ -78,3 +78,23 @@ test('a question asked again before Noam replies shows once, the newest; his rep
   // bots are told not to re-ask an open question
   assert.match(QUESTION_RULE, /never ask it again/);
 });
+
+// Noam 2026-10-21 to Freelance-desk_dev: "תשתמש תמיד בכלי השאלות" — the bot answered that
+// bots have no question tool, because the rule only ever called it a "card".
+test('the rule names the card as the bots\' question tool, so "use the question tool" finds it', () => {
+  assert.match(QUESTION_RULE, /question tool/i);
+  assert.match(QUESTION_RULE, /no other question tool/i);
+  assert.match(QUESTION_RULE, /Hebrew/);
+});
+
+test('a card written in a Hebrew conversation still becomes buttons', () => {
+  const rlm = '‏';
+  const r = parseQuestion(`הנה ההמלצה שלי.\n\n${rlm}[question]${rlm}\n${rlm}לאן לתייק את הקורס?\n${rlm}- להוראה שלך (מומלץ)\n${rlm}– לבינה מעצבת\n${rlm}[/question]`);
+  assert.equal(r.text, 'הנה ההמלצה שלי.');
+  assert.deepEqual(r.question, { text: 'לאן לתייק את הקורס?', options: ['להוראה שלך', 'לבינה מעצבת'], recommended: 0 });
+  const tags = parseQuestion('[שאלה]\nלשלוח היום?\n- כן (recommended)\n- לא\n[/שאלה]');
+  assert.deepEqual(tags.question, { text: 'לשלוח היום?', options: ['כן', 'לא'], recommended: 0 });
+  const fenced = parseQuestion('טקסט\n```\n[question]\nShip today?\n- Yes (recommended)\n- No\n[/question]\n```');
+  assert.equal(fenced.text, 'טקסט');
+  assert.deepEqual(fenced.question.options, ['Yes', 'No']);
+});

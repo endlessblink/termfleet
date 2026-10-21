@@ -138,6 +138,12 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
   ].filter((l) => l !== '').join('\n');
 }
 
+/**
+ * Which brief a conversation holds: the bot's own rules and how it works, without the
+ * memory card or handover (those change often and must not make it resend).
+ */
+export const briefStamp = (bot) => crypto.createHash('sha256').update(brainBrief(bot)).digest('hex').slice(0, 16);
+
 const CLAUDE_TOOLS = ['Read', 'Skill', 'Grep', 'Glob', 'Bash(termfleet-team:*)', 'Bash(termfleet-memory:*)', 'Bash(termfleet-asks:*)', 'Bash(termfleet-skill:*)', 'Bash(termfleet-browser:*)', 'mcp__browser', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(ls:*)', 'WebSearch', 'WebFetch', 'mcp__plugin_context-mode_context-mode__ctx_fetch_and_index', 'mcp__plugin_context-mode_context-mode__ctx_search'];
 const CLAUDE_DENY = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'mcp__browser__browser_run_code_unsafe'];
 
@@ -163,7 +169,12 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
   if (bot.provider === 'codex') {
     const bin = bins.codex || 'codex';
     const first = !bot.sessions?.codex;
-    const prompt = first ? `${brainBrief(bot, extras)}\n\n---\nNoam says:\n${text}` : text;
+    // Codex keeps its brief only inside the conversation, so a conversation that started
+    // before the brief changed (e.g. the question tool) gets the current one again, once.
+    const knows = !first && bot.codexBrief?.session === bot.sessions.codex && bot.codexBrief?.stamp === briefStamp(bot);
+    const prompt = first ? `${brainBrief(bot, extras)}\n\n---\nNoam says:\n${text}`
+      : knows ? text
+      : `Your instructions were updated. They replace the earlier ones:\n${brainBrief(bot, extras)}\n\n---\nNoam says:\n${text}`;
     // Codex runs in its write-limited safety box; open only what a bot needs to direct
     // terminal agents (the helper-request folder, the terminal service's socket, its
     // own bot folder), and never stop to ask: nobody is at a bot's keyboard.
@@ -1003,6 +1014,7 @@ export class Bots {
       this.write(bot);
       if (bot && !result.error) {
         if ((bot.active || bot.provider) === 'claude') bot.sessions.claude = { ...bot.sessions.claude, started: true };
+        else if (bot.sessions?.codex) bot.codexBrief = { session: bot.sessions.codex, stamp: briefStamp(bot) };
         delete bot.handover;   // the new conversation has it now
         this.write(bot);
       }

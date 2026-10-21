@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Bots, brainCommand, brainBrief, parseBrainLine, runBrain, activityLine, brainEnv, isLimitText, resetTime } from '../bridge/bots.mjs';
+import { Bots, brainCommand, brainBrief, briefStamp, parseBrainLine, runBrain, activityLine, brainEnv, isLimitText, resetTime } from '../bridge/bots.mjs';
 
 // TF-096 part 1: bots are managers outside the terminals (Grok Bot's model). These
 // tests never call Claude or Codex: the brain is a stand-in.
@@ -91,7 +91,7 @@ test('the Codex brain gets the brief on its first message and resumes after', ()
   const first = brainCommand(bot, 'hello', { bins: { codex: '/bin/codex' } });
   assert.deepEqual(first.args.slice(0, 2), ['exec', '--json']);
   assert.match(first.args.at(-1), /You are "Shaoruru"[\s\S]*Noam says:\nhello/);
-  const later = brainCommand({ ...bot, sessions: { codex: 'T9' } }, 'again', { bins: { codex: '/bin/codex' } });
+  const later = brainCommand({ ...bot, sessions: { codex: 'T9' }, codexBrief: { session: 'T9', stamp: briefStamp(bot) } }, 'again', { bins: { codex: '/bin/codex' } });
   assert.deepEqual(later.args.slice(0, 3), ['exec', 'resume', 'T9']);
   const roots = first.args[first.args.indexOf('-c') + 1];
   assert.match(roots, /writable_roots=.*terminal-workspace/, 'the bot can reach the terminal service');
@@ -343,4 +343,42 @@ test('bots can read web pages through the plugin\'s read-only fetch and search, 
   const allowed = args.slice(args.indexOf('--allowedTools') + 1, args.indexOf('--disallowedTools'));
   for (const tool of ['WebFetch', 'WebSearch', 'mcp__plugin_context-mode_context-mode__ctx_fetch_and_index', 'mcp__plugin_context-mode_context-mode__ctx_search']) assert.ok(allowed.includes(tool), tool);
   assert.ok(!allowed.some((t) => /ctx_execute|ctx_batch_execute/.test(t)), 'no arbitrary code through the plugin');
+});
+
+// A Codex bot gets its brief only inside its conversation, so a conversation started
+// before a rule changed (the question tool) never learned it. It is sent again once,
+// whenever the brief differs from the one that conversation last received.
+test('a resumed Codex conversation gets the current brief again only when it changed', () => {
+  const bot = { id: 'abcdefabcdef', name: 'Shaoruru', provider: 'codex', cwd: '/tmp', sessions: { codex: 'T9' } };
+  const old = brainCommand(bot, 'again', { bins: { codex: '/bin/codex' } });
+  assert.match(old.args.at(-1), /You are "Shaoruru"[\s\S]*question tool[\s\S]*Noam says:\nagain$/, 'an older conversation with no record gets it');
+  const stamp = briefStamp(bot);
+  const same = brainCommand({ ...bot, codexBrief: { session: 'T9', stamp } }, 'again', { bins: { codex: '/bin/codex' } });
+  assert.equal(same.args.at(-1), 'again', 'unchanged brief is not repeated');
+  const changed = brainCommand({ ...bot, rules: 'New rule.', codexBrief: { session: 'T9', stamp } }, 'again', { bins: { codex: '/bin/codex' } });
+  assert.match(changed.args.at(-1), /New rule\.[\s\S]*Noam says:\nagain$/);
+  const otherChat = brainCommand({ ...bot, codexBrief: { session: 'OLD', stamp } }, 'again', { bins: { codex: '/bin/codex' } });
+  assert.match(otherChat.args.at(-1), /You are "Shaoruru"/, 'a record from another conversation does not count');
+  assert.notEqual(briefStamp(bot, { card: 'memory changes' }), undefined);
+  assert.equal(briefStamp(bot, { card: 'memory changes' }), stamp, 'memory/handover changes alone do not resend');
+});
+
+test('after a Codex turn the bot records which brief its conversation has', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-cb-'));
+  for (const d of ['.claude', '.codex']) fs.mkdirSync(path.join(home, d));
+  fs.writeFileSync(path.join(home, '.claude', '.credentials.json'), '{}');
+  fs.writeFileSync(path.join(home, '.codex', 'auth.json'), '{}');
+  fs.writeFileSync(path.join(home, 'daemon.sock'), '');
+  const seen = [];
+  const bots = new Bots({ checks: { home, socket: path.join(home, 'daemon.sock') }, dir: fs.mkdtempSync(path.join(os.tmpdir(), 'tc-cb-bots-')), notify: () => {},
+    run: async (runner, text, { onEvent }) => { seen.push(brainCommand(runner, text).args.at(-1)); onEvent({ session: 'T1' }); return { text: 'ok' }; } });
+  const { bot } = bots.create({ name: 'Cody', cwd: os.tmpdir(), provider: 'codex' });
+  for (const msg of ['one', 'two']) {
+    bots.send(bot.id, msg);
+    for (let i = 0; i < 200 && bots.running.has(bot.id); i++) await new Promise((r) => setTimeout(r, 5));
+  }
+  assert.equal(bots.read(bot.id).codexBrief.session, 'T1');
+  assert.equal(bots.read(bot.id).codexBrief.stamp, briefStamp(bots.read(bot.id)));
+  assert.match(seen[0], /You are "Cody"/);
+  assert.equal(seen[1], 'two', 'the second turn is not padded with the brief');
 });

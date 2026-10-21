@@ -14,9 +14,14 @@
  * card with one button per answer plus "write my own", and a tap is sent back as
  * Noam's next message. A block with fewer than two answers stays as plain text.
  */
-const BLOCK = /\[question\]\s*\n([\s\S]*?)\n\s*\[\/question\]\s*/i;
-const OPTION = /^\s*(?:[-*•]|\d+[.)])\s+(.+?)\s*$/;
-const RECOMMENDED = /\s*\((?:recommended|my recommendation)\)\s*$/i;
+// A card written in a Hebrew conversation (Noam 2026-10-21) carries invisible direction
+// marks, Hebrew tags or a code fence around it; all still count as the same card.
+const MARKS = /[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const M = '[\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*';
+const TAG = '(?:question|שאלה)';
+const BLOCK = new RegExp(`(?:\`\`\`[a-z]*[ \\t]*\\r?\\n)?${M}\\[${TAG}\\]${M}\\s*\\n([\\s\\S]*?)\\n\\s*${M}\\[\\/${TAG}\\]${M}[ \\t]*(?:\\r?\\n\\s*\`\`\`)?\\s*`, 'i');
+const OPTION = /^\s*(?:[-*•–—]|\d+[.)])\s+(.+?)\s*$/;
+const RECOMMENDED = /\s*\((?:recommended|my recommendation|מומלץ|מומלצת|ההמלצה שלי)\)\s*$/i;
 
 export function parseQuestion(reply) {
   const text = String(reply || '');
@@ -24,7 +29,7 @@ export function parseQuestion(reply) {
   if (!m) return { text, question: null };
   const asked = [], options = [];
   let recommended = null;
-  for (const line of m[1].split('\n')) {
+  for (const line of m[1].replace(MARKS, '').split('\n')) {
     const opt = OPTION.exec(line);
     if (opt && options.length < 4) {
       const label = opt[1].replace(RECOMMENDED, '').trim().slice(0, 200);
@@ -69,12 +74,12 @@ export function markRepeatedQuestions(messages) {
 
 /** The rule every bot gets, so any question to Noam arrives as a card, in English. */
 export const QUESTION_RULE = [
-  '- Questions to Noam: every time you ask him something (a choice, a yes/no, a clarification, each question in a skill such as grill-me), ask it in English as a question card. Put the question at the END of your message in exactly this form, one question per message, then stop and wait:',
+  '- Your question tool: every time you ask Noam something (a choice, a yes/no, a clarification, each question in a skill such as grill-me), ask it in English as a question card; the chat turns it into tap buttons. This card IS the bots\' question tool: when Noam says "use the question tool" (in Hebrew: "כלי השאלות"), he means this card. You have no other question tool (no AskUserQuestion), so never tell him bots cannot ask with buttons. Put the question at the END of your message in exactly this form, one question per message, then stop and wait:',
   '  [question]',
   '  <the question in one or two short English sentences>',
   '  - <short answer> (recommended)',
   '  - <short answer>',
   '  [/question]',
-  '  Give 2 to 4 short answers and mark the one you recommend with "(recommended)". He taps one or writes his own; it arrives as his next message.',
+  '  Give 2 to 4 short answers and mark the one you recommend with "(recommended)". He taps one or writes his own; it arrives as his next message. Even when the rest of your message is in Hebrew, keep the [question] and [/question] lines exactly as written, each on its own line, and do not put the card inside a code block.',
   '  A question he has not answered yet stays on his screen with its buttons: never ask it again (Noam: "the questions show twice for nothing"). If you are woken before he answers, say in one plain line that you are still waiting for his answer above, with no new card.',
 ].join('\n');
