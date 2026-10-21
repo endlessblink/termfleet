@@ -1678,7 +1678,7 @@ const BOX_RULE = /^[\s─━═┌┐└┘├┤┬┴┼╭╮╰╯╞╡╪+
 // A line reads right-to-left only when it is mostly Hebrew/Arabic. Going by the
 // first letter flips an English line that merely starts with a Hebrew name.
 const dirOf = (s) => {
-  // A link's letters are not words: "הריפו ב-https://github.com/…" is still a Hebrew line.
+  // A link's letters are not words: "הריפו ב-github.com/…" is still a Hebrew line.
   const text = String(s || '').replace(/\]\([^)\s]*\)/g, ']').replace(/(?:https?:\/\/|www\.)\S+|(?:^|\s)~?\/\S+|[\w-]+(?:\.[\w-]+)+\/\S*|[a-z0-9-]+\.(?:com|org|net|io|dev|app|ai)\b/gi, ' ');
   const rtl = (text.match(/[֐-׿؀-ۿ]/g) || []).length;
   const ltr = (text.match(/[A-Za-zÀ-ɏ]/g) || []).length;
@@ -1962,6 +1962,19 @@ function speakableText(text){
 main.addEventListener('click',event=>{
   const button=event.target.closest('.speak-message');if(!button)return;
   event.stopPropagation();
+  const status=button.closest('.msg')?.querySelector('.copy-status');
+  if(!('speechSynthesis' in window)){if(status)status.textContent=ui('Reading aloud is not available on this device.','הקראה אינה זמינה במכשיר הזה.');return;}
+  if(speechSynthesis.speaking && button.dataset.speaking==='true'){speechSynthesis.cancel();return;}
+  speechSynthesis.cancel();
+  const text=speakableText(button.closest('.msg').querySelector('[data-copy-text]').dataset.copyText);
+  const utterance=new SpeechSynthesisUtterance(text);
+  utterance.lang=/[֐-׿]/.test(text)?'he-IL':'en-US';
+  const voice=speechSynthesis.getVoices().find(v=>v.lang?.toLowerCase().startsWith(utterance.lang.slice(0,2)));if(voice)utterance.voice=voice;
+  const label=button.innerHTML;
+  utterance.onend=utterance.onerror=()=>{button.dataset.speaking='false';button.innerHTML=label;};
+  button.dataset.speaking='true';button.innerHTML=`${icon('speaker')}${ui('Stop reading','עצירת ההקראה')}`;
+  speechSynthesis.speak(utterance);
+});
 // Links in a message: the small button copies, and a long press (phone) or right click (PC)
 // offers "Open link" / "Copy link". A short "Copied" note confirms either way.
 function linkToast(text){
@@ -2027,19 +2040,6 @@ document.addEventListener('scroll',closeLinkMenu,true);
   document.addEventListener('pointerup',cancel);document.addEventListener('pointercancel',cancel);
   document.addEventListener('click',event=>{if(swallow && event.target.closest?.('a.msg-link')){event.preventDefault();event.stopPropagation();}swallow=false;},true);
 }
-  const status=button.closest('.msg')?.querySelector('.copy-status');
-  if(!('speechSynthesis' in window)){if(status)status.textContent=ui('Reading aloud is not available on this device.','הקראה אינה זמינה במכשיר הזה.');return;}
-  if(speechSynthesis.speaking && button.dataset.speaking==='true'){speechSynthesis.cancel();return;}
-  speechSynthesis.cancel();
-  const text=speakableText(button.closest('.msg').querySelector('[data-copy-text]').dataset.copyText);
-  const utterance=new SpeechSynthesisUtterance(text);
-  utterance.lang=/[֐-׿]/.test(text)?'he-IL':'en-US';
-  const voice=speechSynthesis.getVoices().find(v=>v.lang?.toLowerCase().startsWith(utterance.lang.slice(0,2)));if(voice)utterance.voice=voice;
-  const label=button.innerHTML;
-  utterance.onend=utterance.onerror=()=>{button.dataset.speaking='false';button.innerHTML=label;};
-  button.dataset.speaking='true';button.innerHTML=`${icon('speaker')}${ui('Stop reading','עצירת ההקראה')}`;
-  speechSynthesis.speak(utterance);
-});
 
 // Native disclosures keep secondary actions reachable without persistent toolbars.
 document.addEventListener('toggle',event=>{

@@ -927,7 +927,6 @@ const handle = async (req, res) => {
     return json(res, 200, { screen: await screenOf(pane.id), project: pane.project });
   }
 
-  if (url.pathname === '/api/live') {
   // The PC app shows this page inside a frame that drops "open in a new tab", so a link
   // clicked there opens in the PC's own browser (Noam: "ללחוץ על זה לא פותח את הלינקים").
   // Only from this machine itself, and only a web address or a picture this page may show.
@@ -955,6 +954,7 @@ const handle = async (req, res) => {
     return fs.createReadStream(image.file).pipe(res);
   }
 
+  if (url.pathname === '/api/live') {
     return liveSessionIds()
       .then((ids) => json(res, 200, { live: [...ids] }))
       .catch((e) => json(res, 200, { live: [], error: String(e.message || e) }));

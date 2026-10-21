@@ -81,3 +81,13 @@ test('the picture preview only serves pictures under home or temp', () => {
   assert.equal(resolveLocalImage(path.join(home, '../', path.basename(outside), 'other.png'), opts), null);
   assert.equal(resolveLocalImage('shot.png', opts), null);
 });
+
+// Noam: "לחיצה על לינק עדיין לא עושה כלום" — the PC app's link handler was pasted inside the
+// read-aloud click handler, so it only switched on after "read aloud" was pressed.
+test('the PC-app link handler is registered on load, not inside another handler', () => {
+  const speak = html.indexOf("closest('.speak-message')");
+  const linkCode = html.indexOf('const insidePcApp=');
+  const speakEnd = html.indexOf('speechSynthesis.speak(utterance);\n});', speak);
+  assert.ok(speak > 0 && linkCode > 0 && speakEnd > 0);
+  assert.ok(speakEnd < linkCode || speak > linkCode, 'read-aloud handler must close before the link code starts');
+});

@@ -863,6 +863,14 @@ async function main() {
     return `${opens} rules, balanced`;
   });
 
+  // The PC app's link click goes through this route; once it sat inside another route's
+  // block and every click fell back to a new tab the frame drops (Noam: "לחיצה על לינק עדיין לא עושה כלום").
+  await check('the PC link-opening route is reachable', async () => {
+    const r = await req('/api/open-link', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: 'not a link' }) });
+    eq(r.status, 400, 'status');
+    return 'answers';
+  });
+
   await check('an unknown address is a clean 404', async () => {
     const r = await req('/api/nope');
     eq(r.status, 404, 'status');
