@@ -914,6 +914,17 @@ body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:va
 .room-delete{border:0;background:none;color:var(--muted);font:inherit;font-size:13px;padding:6px 0;cursor:pointer}
 .room-delete[data-armed=true]{color:var(--accent)}
 .room-feed{display:flex;flex-direction:column}
+/* @-tags and bot groups (Noam 2026-10-21): a tagged bot's answer carries its own face and name. */
+.guest-from{display:flex;align-items:center;gap:6px;margin:8px 2px 2px;font-size:13px;color:var(--muted)}.guest-from bdi{color:var(--text);font-weight:500}.guest-from .bot-avatar,.guest-from .bot-avatar svg{width:24px;height:24px}
+.tagged-from{font-size:12.5px;color:var(--muted);text-align:right;margin:8px 2px 2px}.tagged-from a{color:inherit}
+.untagged-note{font-size:12.5px;color:var(--dim,var(--muted));text-align:right;margin:2px 4px 6px}
+.bubble bdi.mention{color:var(--accent);font-weight:500;unicode-bidi:isolate}
+.mention-picker button{grid-template-columns:auto 1fr;align-items:center;gap:8px}.mention-picker button>span:last-child{display:grid;gap:1px;min-width:0}.mention-picker button>span:last-child>span{color:var(--muted);font-size:12.5px}.mention-picker .bot-avatar,.mention-picker .bot-avatar svg{width:26px;height:26px}.mention-picker .all-tag{width:26px;height:26px;display:grid;place-items:center;border-radius:50%;background:var(--surface-2);color:var(--accent);font-weight:500}
+.group-faces{display:inline-flex;flex:none;width:48px;height:48px;position:relative}.group-faces .bot-avatar{position:absolute;width:32px;height:32px}.group-faces .bot-avatar svg{width:32px;height:32px}.group-faces .bot-avatar:first-child{top:0;inset-inline-start:0}.group-faces .bot-avatar:nth-child(2){bottom:0;inset-inline-end:0}.group-faces.head{width:32px;height:32px;vertical-align:middle;margin-inline-end:8px}.group-faces.head .bot-avatar,.group-faces.head .bot-avatar svg{width:22px;height:22px}
+.bots-groups{display:grid;gap:8px}.bots-groups h3{margin:0 2px;font-size:13px;font-weight:400;color:var(--muted)}
+.bots-actions .new-group{min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:14px;cursor:pointer;width:100%}
+.group-member{display:inline-flex;align-items:center;gap:4px;margin-inline-end:10px;white-space:nowrap;color:var(--muted)}.group-member .bot-avatar,.group-member .bot-avatar svg{width:18px;height:18px}
+.group-tools{display:flex;gap:14px}.group-tools button{border:0;background:none;color:var(--muted);font:inherit;font-size:13px;padding:6px 0;cursor:pointer}.group-tools button[data-armed=true]{color:var(--accent)}
 .room-author{font-size:13px;color:var(--muted);margin:6px 2px 4px}
 .room-author bdi{color:var(--text);font-weight:500}
 .room-author span{color:var(--dim);margin-inline-start:4px}
@@ -1456,7 +1467,7 @@ let viewTabs=document.createElement('div');
 const side=document.getElementById('fleet-side'),sideContent=side.querySelector('.side-content');
 // The bot whose chat is open keeps its outline in the list. The outline used to be the browser's
 // focus ring, which vanished whenever a live update redrew the list (Noam 2026-10-20).
-const paintOpenBot=()=>{const open=/^#bot:/.test(location.hash)?location.hash.slice(5):'';sideContent.querySelectorAll('.bot-row').forEach(el=>el.classList.toggle('open-chat',Boolean(open) && el.dataset.bot===open));};
+const paintOpenBot=()=>{const open=/^#bot:/.test(location.hash)?location.hash.slice(5):'',group=/^#group:/.test(location.hash)?location.hash.slice(7):'';sideContent.querySelectorAll('.bot-row').forEach(el=>el.classList.toggle('open-chat',(Boolean(open) && el.dataset.bot===open) || (Boolean(group) && el.dataset.group===group)));};
 new MutationObserver(paintOpenBot).observe(sideContent,{childList:true,subtree:true});
 window.addEventListener('hashchange',paintOpenBot);
 let fleetTimer=null, fleetRequest=0;
@@ -2178,7 +2189,7 @@ function showReadFailure(error, retry) {
 // (Noam 2026-10-20: "clicking here does not load the terminals" while the PC was under load).
 let lastFleetData=null;
 async function fleet(background=false,{fromCache=false}={}) {
-  if(background && !focusedPane && otherView!=='bot')return;
+  if(background && !focusedPane && otherView!=='bot' && otherView!=='group')return;
   if(fromCache && !lastFleetData)fromCache=false;
   const selected=focusedPane;
   const request=++fleetRequest;
@@ -2302,12 +2313,14 @@ async function fleet(background=false,{fromCache=false}={}) {
   const newRoomButton=container.querySelector('.new-room:not(.new-bot)');if(newRoomButton)newRoomButton.onclick=()=>newRoom(roomsData?.agents || []);
   container.querySelectorAll('[data-bot]').forEach(el=>{el.onclick=()=>{history.pushState({bot:el.dataset.bot},'','#bot:'+el.dataset.bot);openBot(el.dataset.bot);};});
   const newBotButton=container.querySelector('.new-bot');if(newBotButton)newBotButton.onclick=()=>botDialog(null,botsData);
+  container.querySelectorAll('[data-group]').forEach(el=>{el.onclick=()=>{history.pushState({group:el.dataset.group},'','#group:'+el.dataset.group);openGroup(el.dataset.group);};});
+  const newGroupButton=container.querySelector('.new-group');if(newGroupButton)newGroupButton.onclick=()=>groupDialog(null);
   const skillsButton=container.querySelector('.open-skills');if(skillsButton)skillsButton.onclick=()=>skillsDialog();
   const browserButton=container.querySelector('.open-browser');if(browserButton)browserButton.onclick=()=>browserDialog();
   const pushButton=container.querySelector('.enable-push');if(pushButton)pushButton.onclick=async()=>{reportPush('tapped','');pushButton.disabled=true;try{await enableNotifications();reportPush('on','');note(ui('Notifications are on for this phone.','ההתראות הופעלו בטלפון הזה.'));pushButton.remove();}catch(e){note(e.message || ui('Could not turn notifications on.','לא ניתן להפעיל התראות.'),true);pushButton.disabled=false;}};
   container.querySelectorAll('details[data-group]').forEach(el=>{el.querySelector('summary').onclick=()=>sessionStorage.setItem(`termcontrol-group:${el.dataset.group}`,el.open?'closed':'open');});
   const attentionDetails=container.querySelector('.attention-panel');attentionDetails?.querySelector('summary')?.addEventListener('click',()=>sessionStorage.setItem('termcontrol-attention-open',attentionDetails.open?'closed':'open'),{once:true});
-  if(background){paintOpenBot();if(otherView==='bot')return;if(!chatOrder.length){freezeChatOrder(focusedPane,container);paintChatNavigation();}return;}
+  if(background){paintOpenBot();if(otherView==='bot' || otherView==='group')return;if(!chatOrder.length){freezeChatOrder(focusedPane,container);paintChatNavigation();}return;}
   restoreFleetReturn();
   clearInterval(fleetTimer);fleetTimer=setInterval(()=>fleet(Boolean(focusedPane)),15000);paintOpenBot();
 }
@@ -2633,6 +2646,52 @@ const STATE_MARK={
 STATE_MARK.stalled=STATE_MARK.idle;
 const stateChip=(kind,words)=>`<span class="row-state" data-s="${kind}"><span class="rs-mark" aria-hidden="true">${STATE_MARK[kind] || STATE_MARK.idle}</span><span class="rs-words">${words}</span></span>`;
 function botAvatar(bot,size=40,head=false){return `<span class="bot-avatar${head?' head':''}" aria-hidden="true">${blobSvg({id:'bot:'+bot.id,project:bot.name},size)}</span>`;}
+// @-tags (Noam 2026-10-21: "אפשר גם שאני אוכל לתייג סוכן אחר בהודעה ואז הוא יגיב גם"): typing
+// "@" lists the bots; picking one writes its full name. The bridge does the routing.
+let tagBotsCache=null,tagBotsAt=0;
+const tagBots=async()=>{if(tagBotsCache && Date.now()-tagBotsAt<30000)return tagBotsCache;try{const r=await fetch('/api/bots',{signal:AbortSignal.timeout(8000)});if(r.ok){tagBotsCache=((await r.json()).bots || []).map(b=>({id:b.id,name:b.name,job:b.job || ''}));tagBotsAt=Date.now();}}catch{}return tagBotsCache || [];};
+function mentionPicker(field,picker,{bots,everyone=false,after=()=>{}}){
+  let token=null;
+  const fold=s=>String(s).toLowerCase().replace(/[\s_-]+/g,'');
+  const hide=()=>{picker.hidden=true;token=null;};
+  const update=async()=>{
+    const upto=field.value.slice(0,field.selectionStart ?? field.value.length),m=/(?:^|[^\p{L}\p{N}_])@([\p{L}\p{N}_-]*)$/u.exec(upto);
+    if(!m){hide();return;}
+    const list=await bots(),q=fold(m[1]),start=upto.length-m[1].length-1;
+    const hits=[...(everyone?[{id:'all',name:'all',job:ui('Everyone in the group','כל מי שבקבוצה')}]:[]),...list].filter(b=>!q || fold(b.name).includes(q)).slice(0,12);
+    if(!hits.length){hide();return;}
+    token={start,end:upto.length};
+    picker.innerHTML=hits.map(b=>`<button type="button" role="option" data-tag="${esc(b.name)}">${b.id==='all'?'<span class="all-tag" aria-hidden="true">@</span>':botAvatar(b,26)}<span><b dir="auto">@${esc(b.name)}</b>${b.job?`<span dir="auto">${esc(b.job)}</span>`:''}</span></button>`).join('');
+    picker.hidden=false;
+    picker.querySelectorAll('[data-tag]').forEach(b=>{b.onpointerdown=e=>e.preventDefault();b.onclick=()=>pick(b.dataset.tag);});
+  };
+  const pick=name=>{if(!token)return;const before=field.value.slice(0,token.start),rest=field.value.slice(token.end).replace(/^\s*/,'');field.value=`${before}@${name} ${rest}`;const at=before.length+name.length+2;field.setSelectionRange?.(at,at);hide();after();field.focus();};
+  // true when the key belonged to the picker (Enter/Tab picks the first name, Escape closes)
+  const key=event=>{if(picker.hidden)return false;if(event.key==='Escape'){event.preventDefault();hide();return true;}if((event.key==='Enter' && !event.shiftKey) || event.key==='Tab'){const first=picker.querySelector('[data-tag]');if(first){event.preventDefault();pick(first.dataset.tag);return true;}}return false;};
+  return {update,key,hide,isOpen:()=>!picker.hidden};
+}
+// Shown names in a sent message are wrapped so a Latin name stays whole inside Hebrew (and back).
+function markMentions(root,names){
+  const list=[...new Set(names.filter(Boolean))].sort((a,b)=>b.length-a.length);if(!list.length)return;
+  const re=new RegExp(`@(?:${list.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/[\s_-]+/g,'[\\s_-]+')).join('|')})(?![\\p{L}\\p{N}])`,'giu');
+  root.querySelectorAll('.msg .bubble').forEach(bubble=>{
+    const walker=document.createTreeWalker(bubble,NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+    for(const node of nodes){
+      if(node.parentElement?.closest('bdi.mention,pre,code'))continue;
+      const text=node.nodeValue;re.lastIndex=0;if(!re.test(text))continue;re.lastIndex=0;
+      const frag=document.createDocumentFragment();let at=0;
+      for(const m of text.matchAll(re)){frag.append(text.slice(at,m.index));const b=document.createElement('bdi');b.className='mention';b.dir='auto';b.textContent=m[0];frag.append(b);at=m.index+m[0].length;}
+      frag.append(text.slice(at));node.replaceWith(frag);
+    }
+  });
+}
+// A tagged bot's answer: its face and name above the bubble.
+function guestReplyHtml(m,when){
+  const head=`<div class="guest-from">${botAvatar(m.guest,24)}<bdi dir="auto">${esc(m.guest.name)}</bdi></div>`;
+  if(m.role==='error')return head+`<div class="bot-error" role="alert" dir="auto">${esc(ui(`${m.guest.name} could not answer: `,`${m.guest.name} לא הצליח לענות: `)+m.text)}</div>`;
+  return head+messageHtml('assistant',m.text,m.guest.name,when,' guest');
+}
+const groupFaces=(members,head=false)=>`<span class="group-faces${head?' head':''}" aria-hidden="true">${members.slice(0,2).map(b=>botAvatar(b,32)).join('')}</span>`;
 // The Bots tab (TF-096): bots are the main screen of the Agents view, like Grok
 // Bot's home: one chat-style row per bot, actions on top, terminals on their own tab.
 function botsHomeHtml(data){
@@ -2652,7 +2711,12 @@ function botsHomeHtml(data){
     return `<button type="button" class="room-row bot-row${unread?' unread':''}" data-state="${kind}" data-bot="${esc(b.id)}" data-key="bot:${esc(b.id)}" aria-label="${esc(b.name)}, ${words}${unread?', '+ui(`${unread} unread`,`${unread} לא נקראו`):''}">${botAvatar(b,48)}<span class="room-copy"><span class="bot-top"><span class="room-name" dir="auto">${b.pinned?'📌 ':''}${esc(b.name)}</span>${at?`<span class="bot-when">${shortWhen(at)}</span>`:''}</span><span class="room-last">${line}</span></span>${unread?`<span class="bot-unread" aria-hidden="true">${unread>99?'99+':unread}</span>`:''}</button>`;
   };
   const shown=bots.filter(b=>!b.hidden),hidden=bots.filter(b=>b.hidden);
-  const actions=`<div class="bots-actions"><button type="button" class="new-room new-bot">${ui('+ New bot','+ בוט חדש')}</button></div>`;
+  const actions=`<div class="bots-actions"><button type="button" class="new-room new-bot">${ui('+ New bot','+ בוט חדש')}</button>${bots.length?`<button type="button" class="new-group">${ui('+ New group','+ קבוצה חדשה')}</button>`:''}</div>`;
+  // Groups: bots answer there only when tagged (Noam: "סוכן מנהל + קבוצה ואני אפעל בהתאם למה שנוח").
+  const groups=data?.groups || [],byId=new Map(bots.map(b=>[b.id,b]));
+  const groupRow=g=>{const members=g.members.map(id=>byId.get(id)).filter(Boolean),at=Number(g.lastAt || 0),said=g.last?`${g.last.who?esc(g.last.who)+': ':g.last.role==='operator'?ui('You: ','אתה: '):''}${esc(g.last.text)}`:esc(members.map(b=>b.name).join(', '));
+    return `<button type="button" class="room-row bot-row group-row" data-group="${esc(g.id)}" data-key="group:${esc(g.id)}" aria-label="${esc(ui(`Group ${g.name}`,`קבוצה ${g.name}`))}">${groupFaces(members)}<span class="room-copy"><span class="bot-top"><span class="room-name" dir="auto">${esc(g.name)}</span>${at?`<span class="bot-when">${shortWhen(at)}</span>`:''}</span><span class="room-last"><span dir="auto">${said}</span></span></span></button>`;};
+  const groupsHtml=groups.length?`<div class="bots-groups"><h3>${ui('Groups','קבוצות')}</h3>${groups.map(groupRow).join('')}</div>`:'';
   const quiet=[
     data?.skillsWaiting?`<button type="button" class="bots-quiet open-skills">${ui(`${data.skillsWaiting} skill${data.skillsWaiting===1?'':'s'} waiting for your OK`,`${data.skillsWaiting} סקילים ממתינים לאישור`)}</button>`:'',
     pushSignedUp?'':`<button type="button" class="bots-quiet enable-push">${ui('Turn on phone notifications','הפעלת התראות בטלפון')}</button>`,
@@ -2661,7 +2725,7 @@ function botsHomeHtml(data){
   const hiddenHtml=hidden.length?`<details class="hidden-bots" data-key="hidden-bots"><summary>${ui(`Hidden bots (${hidden.length})`,`בוטים מוסתרים (${hidden.length})`)}</summary>${hidden.map(row).join('')}</details>`:'';
   const removed=data?.archived || [];
   const removedHtml=removed.length?`<details class="removed-bots" data-key="removed-bots"><summary>${ui(`Removed bots (${removed.length})`,`בוטים שהוסרו (${removed.length})`)}</summary>${removed.map(b=>`<div class="removed-bot"><span dir="auto">${esc(b.name)}</span><button type="button" data-restore="${esc(b.id)}" data-name="${esc(b.name)}">${ui('Bring back','החזרה')}</button></div>`).join('')}</details>`:'';
-  return `<section class="bots-home" data-key="bots-home" aria-label="${ui('Bots','בוטים')}">${shown.length?`<div class="bots-list">${shown.map(row).join('')}</div>`:intro}${actions}${hiddenHtml}${removedHtml}${quiet?`<div class="bots-quiet-list">${quiet}</div>`:''}</section>`;
+  return `<section class="bots-home" data-key="bots-home" aria-label="${ui('Bots','בוטים')}">${groupsHtml}${shown.length?`<div class="bots-list">${shown.map(row).join('')}</div>`:intro}${actions}${hiddenHtml}${removedHtml}${quiet?`<div class="bots-quiet-list">${quiet}</div>`:''}</section>`;
 }
 // Bots first once there is a bot; until then the terminals (an empty Bots tab is still one tap away).
 // "How your agents are doing" (TF-096 goal item 5): three daily counts from the
@@ -2908,7 +2972,7 @@ async function openBot(id){
   main.addEventListener('scroll',onScroll,{passive:true});
   releaseChatScroll=()=>{main.removeEventListener('scroll',onScroll);releaseChatScroll=null;};
   const bar=document.createElement('div');bar.className='composer room-composer bot-composer';
-  bar.innerHTML=`<div class="skill-picker" role="listbox" hidden></div><div class="bot-pics" hidden></div><div class="stack"><button type="button" class="bot-attach" aria-label="${ui('Add pictures','הוספת תמונות')}">${icon('attach')}</button><input type="file" accept="image/*" multiple hidden class="bot-files"><button type="button" class="bot-paste" aria-label="${ui('Paste picture','הדבקת תמונה')}" title="${ui('Paste picture','הדבקת תמונה')}">${icon('paste')}</button><button type="button" class="bot-mic" aria-label="${ui('Dictate in Hebrew or English','הקלדה בקול בעברית או באנגלית')}">${icon('mic')}</button><textarea rows="1" dir="auto" enterkeyhint="send" aria-label="${ui('Message the bot','הודעה לבוט')}" placeholder="${ui('Message the bot… (/ for skills)','הודעה לבוט… (/ לסקילים)')}"></textarea><button type="button" class="send" aria-label="${ui('Send','שליחה')}">${icon('send')}</button></div>`;
+  bar.innerHTML=`<div class="skill-picker" role="listbox" hidden></div><div class="skill-picker mention-picker" role="listbox" hidden></div><div class="bot-pics" hidden></div><div class="stack"><button type="button" class="bot-attach" aria-label="${ui('Add pictures','הוספת תמונות')}">${icon('attach')}</button><input type="file" accept="image/*" multiple hidden class="bot-files"><button type="button" class="bot-paste" aria-label="${ui('Paste picture','הדבקת תמונה')}" title="${ui('Paste picture','הדבקת תמונה')}">${icon('paste')}</button><button type="button" class="bot-mic" aria-label="${ui('Dictate in Hebrew or English','הקלדה בקול בעברית או באנגלית')}">${icon('mic')}</button><textarea rows="1" dir="auto" enterkeyhint="send" aria-label="${ui('Message the bot','הודעה לבוט')}" placeholder="${ui('Message the bot… (/ for skills)','הודעה לבוט… (/ לסקילים)')}"></textarea><button type="button" class="send" aria-label="${ui('Send','שליחה')}">${icon('send')}</button></div>`;
   document.body.append(bar);
   const field=bar.querySelector('textarea'),send=bar.querySelector('.send'),draftKey='tc-bot-draft:'+id;
   try{field.value=sessionStorage.getItem(draftKey) || '';}catch{}
@@ -2925,7 +2989,8 @@ async function openBot(id){
     picker.hidden=false;
     picker.querySelectorAll('[data-name]').forEach(b=>{b.onclick=()=>{field.value=`Use the ${b.dataset.name} skill: `;picker.hidden=true;grow();field.focus();};});
   };
-  field.oninput=()=>{grow();showPicker();};grow();
+  const tags=mentionPicker(field,bar.querySelector('.mention-picker'),{bots:async()=>(await tagBots()).filter(b=>b.id!==id),after:grow});tagBots().then(()=>{signature='';render?.();});
+  field.oninput=()=>{grow();showPicker();tags.update();};grow();
   // A message shows at once as "sending…", then either joins the chat or stays as
   // "Not sent" with Resend (Grok Bot's delivery states); nothing is lost silently.
   const deliver=async entry=>{
@@ -3003,7 +3068,7 @@ async function openBot(id){
     await deliver(entry);
   };
   send.onclick=post;
-  field.onkeydown=event=>{if(event.key==='Escape' && !picker.hidden){event.preventDefault();picker.hidden=true;return;}if(event.key==='Enter' && !picker.hidden){const first=picker.querySelector('[data-name]');if(first){event.preventDefault();first.click();return;}}if(event.key==='Enter' && !event.shiftKey && !event.isComposing && !matchMedia('(pointer:coarse)').matches){event.preventDefault();post();}};
+  field.onkeydown=event=>{if(tags.key(event))return;if(event.key==='Escape' && !picker.hidden){event.preventDefault();picker.hidden=true;return;}if(event.key==='Enter' && !picker.hidden){const first=picker.querySelector('[data-name]');if(first){event.preventDefault();first.click();return;}}if(event.key==='Enter' && !event.shiftKey && !event.isComposing && !matchMedia('(pointer:coarse)').matches){event.preventDefault();post();}};
   const render=async()=>{
     let data;
     try{const response=await fetch(`/api/bot?id=${encodeURIComponent(id)}${document.visibilityState==='visible'?'&read=1':''}`,{signal:AbortSignal.timeout(10000)});data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error),{gone:response.status===404});}
@@ -3047,6 +3112,8 @@ async function openBot(id){
     Object.assign(headState,{asks:visibleAsks(data.asks,schedules.map(r=>r.text)),helpers,schedules});paintBotHead(headState);
     const html=data.messages.map(m=>{
       const when=m.at?ago(m.at):'';
+      if(m.guest)return guestReplyHtml(m,when);
+      if(m.role==='operator' && m.from)return `<div class="tagged-from" dir="auto"><a href="#${m.from.kind==='group'?'group':'bot'}:${esc(m.from.id)}">↪ ${esc(m.from.kind==='group'?ui(`You tagged ${bot.name} in the group ${m.from.name}`,`תייגת את ${bot.name} בקבוצה ${m.from.name}`):ui(`You tagged ${bot.name} in your chat with ${m.from.name}`,`תייגת את ${bot.name} בשיחה עם ${m.from.name}`))}</a></div>`+messageHtml('user',m.text,ui('You','אתה'),when);
       if(m.role==='operator')return messageHtml('user',m.images?`${m.text}\n📷 ${ui(m.images===1?'1 picture':`${m.images} pictures`,m.images===1?'תמונה אחת':`${m.images} תמונות`)}`:m.text,ui('You','אתה'),when);
       if(m.role==='bot')return (m.text?messageHtml('assistant',m.text,bot.name,when):'')+(m.question?botQuestionHtml(m,[...data.messages,...pendingSends.filter(e=>e.answerTo && e.state!=='failed').map(e=>({role:'operator',text:e.text,answerTo:e.answerTo}))]):'');
       if(m.role==='activity')return `<div class="bot-activity" dir="auto">${esc(m.text)}</div>`;
@@ -3060,7 +3127,7 @@ async function openBot(id){
     // Never redraw under an open message menu: it would close it (Noam: "keeps closing by itself").
     // ...nor under a card answer being written (it would wipe the words and the phone keyboard).
     const writing=[...main.querySelectorAll('.bot-q-write:not([hidden]) textarea:not(:disabled)')].some(t=>t.value.trim() || document.activeElement===t);
-    if(html!==signature && !main.querySelector('.message-menu[open]') && !writing){signature=html;main.innerHTML=`<div class="bot-feed">${html}</div>`;if(following)main.scrollTop=main.scrollHeight;
+    if(html!==signature && !main.querySelector('.message-menu[open]') && !writing){signature=html;main.innerHTML=`<div class="bot-feed">${html}</div>`;markMentions(main,(tagBotsCache || []).map(b=>b.name));if(following)main.scrollTop=main.scrollHeight;
       main.querySelectorAll('[data-pending]').forEach(el=>{const entry=pendingSends[Number(el.dataset.pending)];const resend=el.querySelector('[data-resend]'),discard=el.querySelector('[data-discard]');if(resend)resend.onclick=()=>deliver(entry);if(discard)discard.onclick=()=>{pendingSends.splice(pendingSends.indexOf(entry),1);render();};});
       const scheduleButton=routinesLine.querySelector('.bot-schedule');if(scheduleButton)scheduleButton.onclick=()=>scheduleDialog('bot:'+id,'');
       main.querySelectorAll('[data-term-choice]').forEach(b=>{b.onclick=()=>answerTermAsk(b);});
@@ -3274,6 +3341,103 @@ function roomsPanelHtml(data){
   const list=rooms.map(room=>`<button type="button" class="room-row" data-room="${esc(room.id)}" data-key="room:${esc(room.id)}"><span class="room-icon" aria-hidden="true">#</span><span class="room-copy"><span class="room-name" dir="auto">${esc(room.name)}</span><span class="room-last" dir="auto">${room.last?`${esc(room.last.author==='You'?ui('You','אני'):room.last.author)}: ${esc(room.last.text)}`:esc(room.members.map(m=>'@'+m.handle).join(' '))}</span></span>${room.waiting?`<span class="room-busy" aria-label="${ui('Agents are answering','סוכנים עונים')}"><i></i><i></i><i></i></span>`:''}</button>`).join('');
   if(!rooms.length)return '';
   return `<details class="rooms-panel" data-key="rooms"${open?' open':''}><summary><span>${ui('Rooms','חדרים')}</span>${rooms.length?`<span class="attention-count">${rooms.length}</span>`:''}</summary><div class="rooms-list">${list || `<p class="rooms-empty">${ui('Put several agents in one chat. Mention one with @ to ask it directly.','שימו כמה סוכנים בשיחה אחת. כתבו @ ושם כדי לפנות לאחד מהם.')}</p>`}</div></details>`;
+}
+
+// A group of bots: a name and its members, changeable later.
+async function groupDialog(existing){
+  document.querySelector('.room-dialog')?.remove();
+  const list=await tagBots(),chosen=new Set(existing?.members?.map(m=>m.id) || []);
+  const dialog=document.createElement('dialog');dialog.className='room-dialog';
+  dialog.innerHTML=`<form><h2>${existing?ui('Edit group','עריכת קבוצה'):ui('New group','קבוצה חדשה')}</h2>
+    <label class="room-field"><span>${ui('Name','שם')}</span><input name="name" dir="auto" maxlength="60" required placeholder="${ui('e.g. Launch team','למשל: צוות השקה')}"></label>
+    <p class="room-hint">${ui('A bot answers in the group only when you tag it with @ (or @all).','בוט עונה בקבוצה רק כשמתייגים אותו עם @ (או ‎@all).')}</p>
+    <fieldset><legend>${ui('Bots in the group','בוטים בקבוצה')}</legend>${list.map(b=>`<label class="room-agent"><input type="checkbox" value="${esc(b.id)}"${chosen.has(b.id)?' checked':''}>${botAvatar(b,26)}<span dir="auto">${esc(b.name)}</span>${b.job?`<small dir="auto">${esc(b.job)}</small>`:''}</label>`).join('') || `<p>${ui('Make a bot first.','צרו קודם בוט.')}</p>`}</fieldset>
+    <p class="room-error" role="alert"></p>
+    <div class="room-actions"><button type="button" class="room-cancel">${ui('Cancel','ביטול')}</button><button type="submit" class="room-create">${existing?ui('Save','שמירה'):ui('Create group','יצירת קבוצה')}</button></div></form>`;
+  document.body.append(dialog);
+  const form=dialog.querySelector('form'),error=dialog.querySelector('.room-error');
+  form.elements.name.value=existing?.name || '';
+  dialog.querySelector('.room-cancel').onclick=()=>{dialog.close();dialog.remove();};
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    const members=[...form.querySelectorAll('input[type=checkbox]:checked')].map(box=>box.value),name=form.elements.name.value.trim();
+    if(!name){error.textContent=ui('Give the group a name.','תנו שם לקבוצה.');return;}
+    if(!members.length){error.textContent=ui('Pick at least one bot.','בחרו לפחות בוט אחד.');return;}
+    const button=form.querySelector('.room-create');button.disabled=true;error.textContent='';
+    try{
+      const response=await fetch(existing?'/api/bot-group/update':'/api/bot-groups',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(existing?{id:existing.id,name,members}:{name,members}),signal:AbortSignal.timeout(10000)});
+      const result=await response.json();if(!response.ok)throw new Error(result.error);
+      dialog.close();dialog.remove();
+      if(existing){openGroup(existing.id);return;}
+      history.pushState({group:result.group.id},'','#group:'+result.group.id);openGroup(result.group.id);
+    }catch(e){error.textContent=e.message || ui('That did not work.','זה לא הצליח.');button.disabled=false;}
+  };
+  dialog.showModal();form.elements.name.focus();
+}
+
+async function openGroup(id){
+  rememberCurrentChat();saveChatView=null;clearChatGesture();otherView='group';
+  document.querySelector('.composer')?.releaseDraft?.();document.querySelector('.composer')?.remove();document.querySelector('.askbox')?.remove();document.querySelector('.room-dialog')?.remove();document.querySelector('.bot-head-actions')?.remove();
+  const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
+  sideContent.querySelectorAll('.pane').forEach(el=>el.classList.remove('selected'));
+  focusedPane=null;const mine=++view;
+  clearInterval(timer);clearInterval(fleetTimer);releaseChatScroll?.();releaseChatWake?.();
+  document.body.classList.remove('bot-view');document.body.classList.add('chat');
+  fleetTimer=setInterval(()=>{if(otherView==='group')fleet(true);},15000);setTimeout(()=>{if(otherView==='group')fleet(true);},0);
+  nav.innerHTML=`<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
+  nav.querySelector('.back').onclick=()=>{history.pushState({},'',location.pathname);fleet();};
+  main.innerHTML='<div class="spin">loading…</div>';chatStatus.innerHTML='';routinesLine.innerHTML='';title.textContent=ui('Group','קבוצה');sub.textContent='';
+  let following=true,signature='',group=null;
+  const onScroll=()=>{following=main.scrollHeight-main.scrollTop-main.clientHeight<=80;};
+  main.addEventListener('scroll',onScroll,{passive:true});
+  releaseChatScroll=()=>{main.removeEventListener('scroll',onScroll);releaseChatScroll=null;};
+  const bar=document.createElement('div');bar.className='composer room-composer bot-composer group-composer';
+  bar.innerHTML=`<div class="skill-picker mention-picker" role="listbox" hidden></div><div class="stack"><textarea rows="1" dir="auto" enterkeyhint="send" aria-label="${ui('Message the group','הודעה לקבוצה')}" placeholder="${ui('Tag a bot with @ to get an answer…','תייגו בוט עם @ כדי לקבל תשובה…')}"></textarea><button type="button" class="send" aria-label="${ui('Send to the group','שליחה לקבוצה')}" disabled>${icon('send')}</button></div>`;
+  document.body.append(bar);
+  const field=bar.querySelector('textarea'),send=bar.querySelector('.send'),draftKey='tc-group-draft:'+id;
+  try{field.value=sessionStorage.getItem(draftKey) || '';}catch{}
+  const grow=()=>{field.style.height='auto';field.style.height=Math.min(field.scrollHeight,160)+'px';send.disabled=!field.value.trim() || bar.dataset.sending==='true';try{sessionStorage.setItem(draftKey,field.value);}catch{}};
+  const tags=mentionPicker(field,bar.querySelector('.mention-picker'),{bots:async()=>group?.members || [],everyone:true,after:grow});
+  field.oninput=()=>{grow();tags.update();};field.onclick=()=>tags.update();grow();
+  const post=async()=>{
+    const text=field.value.trim();if(!text || bar.dataset.sending==='true')return;
+    bar.dataset.sending='true';send.disabled=true;tags.hide();
+    try{
+      const response=await fetch('/api/bot-group/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,text}),signal:AbortSignal.timeout(20000)});
+      const result=await response.json();if(!response.ok)throw new Error(result.error);
+      field.value='';try{sessionStorage.removeItem(draftKey);}catch{}following=true;
+    }catch(e){note(e.message || ui('The message was not sent.','ההודעה לא נשלחה.'),true);}
+    finally{bar.dataset.sending='false';grow();render();}
+  };
+  send.onclick=post;
+  field.onkeydown=event=>{if(tags.key(event))return;if(event.key==='Enter' && !event.shiftKey && !event.isComposing && !matchMedia('(pointer:coarse)').matches){event.preventDefault();post();}};
+  const render=async()=>{
+    let data;
+    try{const response=await fetch(`/api/bot-group?id=${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(10000)});data=await response.json();if(!response.ok)throw new Error(data.error);}
+    catch(e){if(mine!==view)return;if(signature){chatStatus.innerHTML=`<span class="connection-note" role="status">${ui('Reconnecting…','מתחבר מחדש…')}</span>`;return;}main.innerHTML=`<div class="empty">${esc(e.message || ui('Could not open the group.','לא ניתן לפתוח את הקבוצה.'))}</div>`;bar.remove();return;}
+    if(mine!==view)return;
+    group=data.group;const members=group.members;
+    title.innerHTML=`${groupFaces(members,true)}<bdi dir="auto">${esc(group.name)}</bdi>`;
+    sub.innerHTML=members.map(m=>`<a class="group-member" href="#bot:${esc(m.id)}">${botAvatar(m,18)}<bdi dir="auto">${esc(m.name)}</bdi></a>`).join('');
+    if(!chatStatus.querySelector('.group-tools')){
+      chatStatus.innerHTML=`<span class="group-tools"><button type="button" class="group-edit">${ui('Name and members','שם וחברים')}</button><button type="button" class="group-delete">${ui('Delete group','מחיקת הקבוצה')}</button></span>`;
+      chatStatus.querySelector('.group-edit').onclick=()=>groupDialog(group);
+      const del=chatStatus.querySelector('.group-delete');
+      del.onclick=async()=>{if(del.dataset.armed!=='true'){del.dataset.armed='true';del.textContent=ui('Tap again to delete','הקישו שוב למחיקה');setTimeout(()=>{if(del.isConnected){del.dataset.armed='false';del.textContent=ui('Delete group','מחיקת הקבוצה');}},4000);return;}
+        const response=await fetch('/api/bot-group/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})});if(response.ok){history.pushState({},'',location.pathname);fleet();}else note(ui('The group could not be deleted.','לא ניתן למחוק את הקבוצה.'),true);};
+    }
+    const answering=members.filter(m=>m.answering);
+    const html=data.messages.map(m=>{
+      const when=m.at?ago(m.at):'';
+      if(m.guest)return guestReplyHtml(m,when);
+      if(m.role==='operator')return messageHtml('user',m.text,ui('You','אתה'),when)+(Array.isArray(m.tagged) && !m.tagged.length?`<div class="untagged-note" dir="auto">${ui('No bot tagged, so nobody answers.','לא תויג בוט, אז אף אחד לא עונה.')}</div>`:'');
+      return `<div class="room-system" dir="auto">${esc(m.text)}</div>`;
+    }).join('')+(data.messages.some(m=>m.role==='operator')?'':`<div class="empty">${ui('Type @ to tag a bot. Only tagged bots answer here; @all asks everyone.','הקלידו @ כדי לתייג בוט. רק בוטים מתויגים עונים כאן; ‎@all שואל את כולם.')}</div>`)
+      +(answering.length?`<div class="busyline" role="status"><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext" dir="auto">${esc(answering.map(m=>m.name).join(', '))} ${ui(answering.length>1?'are answering':'is answering','עונה')}${answering.length===1 && answering[0].activity?` · ${esc(answering[0].activity)}`:''}</span></div>`:'');
+    if(html!==signature && !main.querySelector('.message-menu[open]')){signature=html;main.innerHTML=`<div class="bot-feed group-feed">${html}</div>`;markMentions(main,[...members.map(m=>m.name),'all']);if(following)main.scrollTop=main.scrollHeight;}
+  };
+  await render();
+  if(mine===view)timer=setInterval(render,3000);
 }
 
 function newRoom(agents){
@@ -4535,6 +4699,8 @@ window.addEventListener('popstate', (e) => {
   if(e.state?.inbox || location.hash==='#inbox'){openInbox();return;}
   const botId = e.state?.bot ?? (location.hash.startsWith('#bot:') ? location.hash.slice(5) : null);
   if(botId){openBot(botId);return;}
+  const groupId = e.state?.group ?? (location.hash.startsWith('#group:') ? location.hash.slice(7) : null);
+  if(groupId){openGroup(groupId);return;}
   const roomId = e.state?.room ?? (location.hash.startsWith('#room:') ? location.hash.slice(6) : null);
   if(roomId){openRoom(roomId);return;}
   const id = e.state?.pane ?? location.hash.slice(1);
@@ -4547,17 +4713,19 @@ window.addEventListener('hashchange', () => {
   if(location.hash==='#inbox'){openInbox();return;}
   if(location.hash.startsWith('#room:')){openRoom(location.hash.slice(6));return;}
   if(location.hash.startsWith('#bot:')){openBot(location.hash.slice(5));return;}
+  if(location.hash.startsWith('#group:')){openGroup(location.hash.slice(7));return;}
   const id = location.hash.slice(1);
   if(id){if(id!==focusedPane)recordVisit(id);chat(id);}else fleet();
 });
 
-const opening = location.hash.startsWith('#room:') || location.hash.startsWith('#bot:') || location.hash==='#inbox' ? '' : location.hash.slice(1);
+const opening = location.hash.startsWith('#room:') || location.hash.startsWith('#bot:') || location.hash.startsWith('#group:') || location.hash==='#inbox' ? '' : location.hash.slice(1);
 if(location.hash==='#inbox'){history.replaceState({inbox:true},'',location.hash);openInbox();}
 else if(location.hash.startsWith('#room:')){history.replaceState({room:location.hash.slice(6)},'',location.hash);openRoom(location.hash.slice(6));}
 else if(location.hash.startsWith('#bot:')){history.replaceState({bot:location.hash.slice(5)},'',location.hash);openBot(location.hash.slice(5));}
+else if(location.hash.startsWith('#group:')){history.replaceState({group:location.hash.slice(7)},'',location.hash);openGroup(location.hash.slice(7));}
 else if(opening && performance.getEntriesByType('navigation')[0]?.type==='navigate')recordVisit(opening);
 if (opening) { history.replaceState({ pane: opening }, '', location.hash); chat(opening); }
-else if(!location.hash.startsWith('#room:') && !location.hash.startsWith('#bot:') && location.hash!=='#inbox') fleet();
+else if(!location.hash.startsWith('#room:') && !location.hash.startsWith('#bot:') && !location.hash.startsWith('#group:') && location.hash!=='#inbox') fleet();
 </script>
 </body>
 </html>

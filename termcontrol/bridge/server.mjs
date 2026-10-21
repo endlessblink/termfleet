@@ -398,7 +398,7 @@ const handle = async (req, res) => {
   // Bots (TF-096). Same sign-in gate as every route below it.
   if (url.pathname === '/api/bots' && req.method === 'GET') {
     const livePanes = await currentPanes().then((r) => r.panes || []).catch(() => []);
-    return json(res, 200, { bots: bots.list().map((b) => ({ ...b, ...helperState(b, livePanes) })), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
+    return json(res, 200, { bots: bots.list().map((b) => ({ ...b, ...helperState(b, livePanes) })), groups: bots.groups.list(), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
   }
   // Phone notifications (TF-096 part 7).
   if (url.pathname === '/api/push/key' && req.method === 'GET') return json(res, 200, { publicKey: push.keys().publicKey });
@@ -490,6 +490,25 @@ const handle = async (req, res) => {
   if (url.pathname === '/api/search' && req.method === 'GET') {
     const q = String(url.searchParams.get('q') || '').slice(0, 200);
     return json(res, 200, { hits: q.trim() ? bots.search(q) : [] });
+  }
+  // Bot groups: a bot answers in a group only when Noam tags it (@name or @all).
+  if (url.pathname === '/api/bot-groups' && req.method === 'GET') return json(res, 200, { groups: bots.groups.list() });
+  if (url.pathname === '/api/bot-group' && req.method === 'GET') {
+    let view = null;
+    try { view = bots.groupView(url.searchParams.get('id')); } catch { view = null; }
+    return view ? json(res, 200, view) : json(res, 404, { error: 'That group no longer exists.' });
+  }
+  if (['/api/bot-groups', '/api/bot-group/update', '/api/bot-group/delete', '/api/bot-group/send'].includes(url.pathname) && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 64 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    let result;
+    try {
+      result = url.pathname === '/api/bot-groups' ? bots.groups.create(body)
+        : url.pathname === '/api/bot-group/update' ? bots.groups.update(body.id, body)
+          : url.pathname === '/api/bot-group/send' ? bots.sendGroup(body.id, body.text)
+            : bots.groups.remove(body.id);
+    } catch (error) { result = { error: error.message || 'That did not work.' }; }
+    return json(res, result.error ? 400 : 200, result);
   }
   if (url.pathname === '/api/bot' && req.method === 'GET') {
     let view = null;

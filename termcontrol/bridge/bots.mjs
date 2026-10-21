@@ -14,6 +14,7 @@ import { parseQuestion, QUESTION_RULE, markRepeatedQuestions } from './bot-quest
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
+import { BotGroups } from './bot-groups.mjs';
 
 /**
  * Bots (TF-096, after Grok Bot): managers that run OUTSIDE the terminals. Each bot
@@ -54,6 +55,33 @@ const UNREAD_ROLES = new Set(['bot', 'error', 'needs-you']);
 
 const clean = (v, max) => String(v ?? '').trim().slice(0, max);
 const newId = () => crypto.randomBytes(6).toString('hex');
+
+/**
+ * Bots Noam tagged by name in a message ("@Quill", "@Grok Bot", "@grok-bot"), longest name
+ * first so "@Agent-Manager" never also counts as "@Agent" (Noam 2026-10-21: "אפשר גם שאני
+ * אוכל לתייג סוכן אחר בהודעה ואז הוא יגיב גם").
+ */
+export function mentionedBots(text, bots) {
+  const body = String(text || '');
+  const spans = [];
+  for (const b of bots || []) {
+    const parts = String(b?.name || '').trim().split(/[\s_-]+/).filter(Boolean);
+    if (!parts.length) continue;
+    const re = new RegExp(`(?:^|[^\\p{L}\\p{N}_])@(${parts.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s_-]+')})(?![\\p{L}\\p{N}])`, 'giu');
+    for (const m of body.matchAll(re)) { const start = m.index + m[0].length - m[1].length; spans.push({ bot: b, start, end: start + m[1].length }); }
+  }
+  spans.sort((a, b) => (b.end - b.start) - (a.end - a.start));
+  const taken = [], found = new Map();
+  for (const s of spans) {
+    if (taken.some((t) => s.start < t.end && t.start < s.end)) continue;
+    taken.push(s);
+    found.set(s.bot.id, s.bot);
+  }
+  return [...found.values()];
+}
+
+/** "@all" / "@כולם" in a group: every member answers. */
+export const TAGS_EVERYONE = (text) => /(?:^|[^\p{L}\p{N}_])@(?:all|everyone|כולם)(?![\p{L}\p{N}])/iu.test(String(text || ''));
 
 /** The brain binaries, found once. The bridge runs under systemd with a thin PATH. */
 export function findBinary(name, env = process.env) {
@@ -344,7 +372,7 @@ export function handoverText(bot, chat, { asks = [] } = {}) {
   const recent = chat.filter((m) => m.role === 'operator' || m.role === 'bot').slice(-12);
   return [
     open.length ? "Noam's unfinished requests, in his words:\n" + open.map((a) => `- [${a.status}] "${a.text.slice(0, 800)}"${a.note ? ` (${a.note})` : ''}`).join('\n') : '',
-    recent.length ? 'The latest messages, word for word:\n' + recent.map((m) => `${m.role === 'operator' ? 'Noam' : 'You'}: ${String(m.text).slice(0, 1500)}`).join('\n') : '',
+    recent.length ? 'The latest messages, word for word:\n' + recent.map((m) => `${m.role === 'operator' ? 'Noam' : m.guest ? m.guest.name : 'You'}: ${String(m.text).slice(0, 1500)}`).join('\n') : '',
     'Older conversation: search it with termfleet-memory search.',
   ].filter(Boolean).join('\n\n');
 }
@@ -366,6 +394,8 @@ export class Bots {
     this.queues = new Map();    // id -> [text]
     this.closing = false;       // the service is restarting: finish running replies, start no new ones
     this.resumed = new Set();   // bots whose interrupted turn is being re-run (only once)
+    this.echoes = new Map();    // id -> Set of 'bot:<id>' / 'group:<id>' where Noam tagged it; its next answer is shown there too
+    this.groups = new BotGroups({ dir: path.join(dir, 'groups'), now: this.now, botExists: (id) => Boolean(this.read(id)) });
   }
 
   folder(id) {
@@ -651,6 +681,7 @@ export class Bots {
   stop(id) {
     const current = this.running.get(id);
     this.queues.set(id, []);
+    this.echoes.delete(id);
     if (!current?.stop) return { ok: true, wasRunning: false };
     current.stop();
     return { ok: true, wasRunning: true };
@@ -715,12 +746,109 @@ export class Bots {
     if (owner) { try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text: body }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ } }
     const said = skillPrompt(body) || body;   // "/grill-me" etc. carry the skill's steps
     const answered = asked ? `[Noam's answer to your question "${asked.question.text}"]\n${said}` : said;
-    const forBrain = pictures.length ? `${answered}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : answered;
+    let forBrain = pictures.length ? `${answered}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : answered;
+    forBrain = this.withTags(id, bot, msg, body, forBrain, { owner, pictures });
     const queue = this.queues.get(id) || [];
     queue.push(forBrain);
     this.queues.set(id, queue);
     if (!this.running.has(id)) this.drain(id);
     return { ok: true, message: msg, queued: this.running.has(id) && queue.length > 0 };
+  }
+
+  /**
+   * @-tags in a message Noam typed to a bot: each tagged bot gets the message too and its
+   * answer shows in this chat. Only his own typed messages tag; routines, events and bot
+   * answers never bring a bot in (Noam: "אבל סתם ככה זה יוצר כאוס"). Also hands this bot
+   * what tagged bots answered here since it last heard from him.
+   */
+  withTags(id, bot, msg, body, forBrain, { owner = false, pictures = [] } = {}) {
+    let out = forBrain;
+    const tagged = owner ? mentionedBots(body, this.list().filter((b) => b.id !== id)) : [];
+    if (tagged.length) {
+      const context = this.recentLines(this.messages(id).filter((m) => m.id !== msg.id), bot.name);
+      for (const other of tagged) this.ask(other.id, { text: body, origin: { kind: 'bot', id, name: bot.name }, context, pictures });
+      const one = tagged.length === 1;
+      out += `\n\n[Noam also tagged ${tagged.map((b) => b.name).join(', ')} in this message. ${one ? 'It answers for itself' : 'They answer for themselves'} here in this chat; do not do ${one ? 'its' : 'their'} part or message ${one ? 'it' : 'them'}.]`;
+    }
+    const fresh = this.read(id);
+    if (fresh?.guestNotes?.length) {
+      out = `[Since your last message, bots Noam tagged answered in this chat:\n${fresh.guestNotes.map((n) => `- ${n.name}: ${n.text}`).join('\n')}]\n\n${out}`;
+      delete fresh.guestNotes;
+      this.write(fresh);
+    }
+    return out;
+  }
+
+  /** The last few lines of a chat, word for word, for a bot that was just tagged into it. */
+  recentLines(chat, hostName = null, limit = 8) {
+    return chat.filter((m) => m.role === 'operator' || m.role === 'bot').slice(-limit)
+      .map((m) => `${m.role === 'operator' ? 'Noam' : m.guest?.name || hostName || 'Bot'}: ${String(m.text || '').replace(/\s+/g, ' ').slice(0, 600)}`).join('\n');
+  }
+
+  /**
+   * Noam tagged this bot in another bot's chat or in a group. The message lands in its own
+   * chat too (marked where it came from), is recorded as his own words so approvals in it
+   * count, and the bot's next answer is also posted back where he tagged it.
+   */
+  ask(id, { text, origin, context = '', pictures = [] } = {}) {
+    const bot = this.read(id);
+    if (!bot || !origin?.id) return null;
+    const msg = this.append(id, { role: 'operator', text, from: { kind: origin.kind, id: origin.id, name: origin.name }, ...(pictures.length ? { images: pictures.length } : {}) });
+    try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ }
+    const where = origin.kind === 'group' ? `the group chat "${origin.name}"` : `his chat with the bot "${origin.name}"`;
+    const brain = [
+      `[Noam tagged you (@${bot.name}) in ${where}. He typed this himself: treat it as his own message to you, approvals included. Your answer is shown there under your name and here in your own chat. Answer only your part. Never message other bots or that chat yourself; if another bot should help, tell Noam to tag it.]`,
+      context ? `The latest messages there, word for word:\n${context}` : '',
+      `Noam's message:\n${skillPrompt(text) || text}`,
+      pictures.length ? `[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : '',
+    ].filter(Boolean).join('\n\n');
+    const queue = this.queues.get(id) || [];
+    queue.push(brain);
+    this.queues.set(id, queue);
+    const echo = this.echoes.get(id) || new Set();
+    echo.add(`${origin.kind}:${origin.id}`);
+    this.echoes.set(id, echo);
+    if (!this.running.has(id)) this.drain(id);
+    return msg;
+  }
+
+  /** Noam writes in a group: only the bots he tags (or @all) answer; untagged, nobody does. */
+  sendGroup(groupId, text) {
+    const group = this.groups.read(groupId);
+    if (!group) return { error: 'That group no longer exists.' };
+    const body = clean(text, LIMITS.message);
+    if (!body) return { error: 'Nothing to send.' };
+    const members = group.members.map((m) => this.read(m)).filter(Boolean);
+    const tagged = TAGS_EVERYONE(body) ? members : mentionedBots(body, members);
+    const before = this.groups.messages(groupId);
+    const msg = this.groups.append(groupId, { role: 'operator', text: body, tagged: tagged.map((b) => b.id) });
+    const context = this.recentLines(before);
+    for (const b of tagged) this.ask(b.id, { text: body, origin: { kind: 'group', id: groupId, name: group.name }, context });
+    return { ok: true, message: msg, tagged: tagged.map((b) => ({ id: b.id, name: b.name })) };
+  }
+
+  groupView(groupId) {
+    const group = this.groups.read(groupId);
+    if (!group) return null;
+    const members = group.members.map((m) => this.summary(m)).filter(Boolean)
+      .map((b) => ({ id: b.id, name: b.name, state: b.state, activity: b.activity, answering: this.echoes.get(b.id)?.has(`group:${groupId}`) || this.running.get(b.id)?.echo?.includes(`group:${groupId}`) || false }));
+    return { group: { id: group.id, name: group.name, members }, messages: this.groups.messages(groupId).slice(-MAX_CHAT_RETURNED) };
+  }
+
+  /** A tagged bot's answer, posted back in the chat or group where Noam tagged it. */
+  postEcho(id, targets, entry) {
+    const bot = this.read(id);
+    if (!bot) return;
+    for (const target of targets) {
+      const [kind, where] = target.split(':');
+      const posted = { ...entry, guest: { id, name: bot.name } };
+      if (kind === 'group') { this.groups.append(where, posted); continue; }
+      const host = this.read(where);
+      if (!host) continue;
+      this.append(where, posted);
+      host.guestNotes = [...(host.guestNotes || []), { name: bot.name, text: String(entry.text || '').replace(/\s+/g, ' ').slice(0, 1200) }].slice(-6);
+      this.write(host);
+    }
   }
 
   async drain(id) {
@@ -729,7 +857,9 @@ export class Bots {
       const texts = this.queues.get(id).splice(0);
       // Messages that arrived while the bot was busy go in together, oldest first.
       const text = texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n');
-      this.running.set(id, { activity: 'Thinking', startedAt: this.now() });
+      const echo = [...(this.echoes.get(id) || [])];
+      this.echoes.delete(id);
+      this.running.set(id, { activity: 'Thinking', startedAt: this.now(), echo });
       this.returnIfReset(id);
       this.freshStartIfFull(id);
       {
@@ -790,8 +920,13 @@ export class Bots {
       const asked = result.error ? null : parseQuestion(result.text || '');
       if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.' });
       else if (bot) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}) });
+      // Tagged elsewhere: the same answer also shows there, under this bot's name.
+      if (bot && echo.length && !result.stopped) {
+        this.postEcho(id, echo, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: [asked.text, asked.question?.text].filter(Boolean).join('\n\n') || 'Done, with nothing to add.' });
+      }
+      const [echoKind, echoAt] = (echo[0] || '').split(':');
       if (bot && bot.notify !== false && !result.stopped) {
-        try { this.notify({ title: result.error ? `${bot.name} could not answer` : bot.name, body: String(result.error || (asked?.question ? asked.question.text : result.text) || '').replace(/\s+/g, ' ').slice(0, 200), url: `/#bot:${id}` }); } catch { /* never block a bot on a notification */ }
+        try { this.notify({ title: result.error ? `${bot.name} could not answer` : bot.name, body: String(result.error || (asked?.question ? asked.question.text : result.text) || '').replace(/\s+/g, ' ').slice(0, 200), url: echoAt ? `/#${echoKind}:${echoAt}` : `/#bot:${id}` }); } catch { /* never block a bot on a notification */ }
       }
       this.running.delete(id);
     }
