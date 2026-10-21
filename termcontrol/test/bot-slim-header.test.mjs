@@ -38,7 +38,7 @@ test('a bot chat opens with a one-line header and a menu that keeps every option
     await p.click('.bot-menu-button');
     await p.waitForSelector('.bot-menu-sheet[open]');
     const items = await p.$$eval('.bot-menu-sheet .menu-item .menu-label', (els) => els.map((e) => e.textContent));
-    assert.deepEqual(items, ['Model and backup', 'Memory', 'Schedule', 'Edit bot', 'Light or dark', 'Browser', 'Notifications on', 'Pin', 'Hide', 'Delete bot']);
+    assert.deepEqual(items, ['Activity', 'Model and backup', 'Memory', 'Schedule', 'Edit bot', 'Light or dark', 'Browser', 'Notifications on', 'Pin', 'Hide', 'Delete bot']);
     // Light or dark still works from the menu.
     const before = await p.evaluate(() => document.documentElement.dataset.theme || '');
     await p.click('.bot-menu-sheet [data-act=theme]');

@@ -524,6 +524,12 @@ const handle = async (req, res) => {
     }
     return json(res, view ? 200 : 404, view || { error: 'That bot no longer exists.' });
   }
+  // A bot's Activity (TF-098): what it and its terminal agents did, who approved it. Record only.
+  if (url.pathname === '/api/bot/activity' && req.method === 'GET') {
+    let view = null;
+    try { view = bots.activity(url.searchParams.get('id'), { only: url.searchParams.get('only') === 'approval' ? 'approval' : null, receipts: (() => { try { return JSON.parse(fs.readFileSync(choiceReceipts.file, 'utf8')) || {}; } catch { return choiceReceipts.records; } })() }); } catch { view = null; }
+    return json(res, view ? 200 : 404, view || { error: 'That bot no longer exists.' });
+  }
   // A bot's memory card: entries it proposed wait here for the operator.
   if (url.pathname === '/api/bot/memory' && req.method === 'GET') {
     try { return json(res, 200, { entries: bots.memory(url.searchParams.get('id')).entries().filter((e) => e.status !== 'forgotten') }); }

@@ -13,8 +13,9 @@ import { skillPrompt } from './skills.mjs';
 import { parseQuestion, QUESTION_RULE, markRepeatedQuestions } from './bot-questions.mjs';
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
-import { recordOwnerWords } from './owner-words.mjs';
+import { recordOwnerWords, recentOwnerWords } from './owner-words.mjs';
 import { BotGroups } from './bot-groups.mjs';
+import { classifyTool, appendAction, readActions, paneLogFile, botApproval, paneApproval, foldFiles, APPROVAL_LABEL } from './action-log.mjs';
 
 /**
  * Bots (TF-096, after Grok Bot): managers that run OUTSIDE the terminals. Each bot
@@ -235,6 +236,20 @@ export function resetTime(text, now = Date.now()) {
   return at.getTime();
 }
 
+/** Every tool call in one brain output line, for the bot's action log (TF-098). */
+export function brainToolUses(provider, line) {
+  let o;
+  try { o = JSON.parse(line); } catch { return []; }
+  if (provider === 'codex') {
+    if (o.type !== 'item.started' || !o.item) return [];
+    if (o.item.type === 'command_execution') return [{ name: 'command_execution', input: { command: o.item.command } }];
+    if (o.item.type === 'mcp_tool_call') return [{ name: `mcp__${o.item.server}__${o.item.tool}`, input: o.item.arguments || {} }];
+    return [];
+  }
+  if (o.type !== 'assistant') return [];
+  return (o.message?.content || []).filter((b) => b?.type === 'tool_use').map((b) => ({ name: b.name, input: b.input || {}, id: b.id || null }));
+}
+
 /** Turns brain output lines into events: activity, final text, session id, failure. */
 export function parseBrainLine(provider, line) {
   let o;
@@ -322,6 +337,7 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
       let nl;
       while ((nl = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1);
+        for (const use of brainToolUses(bot.provider, line)) onEvent?.({ action: use });
         const ev = parseBrainLine(bot.provider, line);
         if (!ev) continue;
         if (ev.limit) { limit = limit || ev.limit; if (!ev.final) { ownKill = true; child.kill('SIGTERM'); } }
@@ -574,6 +590,53 @@ export class Bots {
   /** Terminal agents this bot started (newest last). */
   helpers(id) {
     try { return JSON.parse(fs.readFileSync(path.join(this.folder(id), 'helpers.json'), 'utf8')).slice(-20); } catch { return []; }
+  }
+
+  /** One tool call the bot's brain made, kept in its action log when it changes something. */
+  recordAction(id, use) {
+    const bot = this.read(id);
+    if (!bot) return null;
+    const action = classifyTool(use.name, use.input, bot.cwd);
+    if (!action) return null;
+    const entry = { at: this.now(), actor: 'bot', ...action, toolUseId: use.id || null };
+    appendAction(path.join(this.folder(id), 'actions.jsonl'), entry);
+    return entry;
+  }
+
+  /**
+   * The bot's Activity view (TF-098): what it and the terminal agents it started did,
+   * newest first, each with who approved it. Record only; a post, send, delete or spend
+   * with no recorded approval comes back marked unapproved (shown in red).
+   */
+  activity(id, { only = null, receipts = {}, limit = 300 } = {}) {
+    const bot = this.read(id);
+    if (!bot) return null;
+    const chat = this.messages(id);
+    const owner = new Set(recentOwnerWords({ botId: id, limit: 5000, ...(this.ownerWordsBase ? { base: this.ownerWordsBase } : {}) }).map((e) => e.id));
+    const helpers = this.helpers(id);
+    const out = [];
+    for (const a of readActions(path.join(this.folder(id), 'actions.jsonl'))) {
+      // Its starts come from the helpers list below, which also says what the terminal was for.
+      if (a.kind === 'terminal' && /^Started/.test(a.text) && helpers.some((h) => Math.abs(Number(h.at) - a.at) < 3 * 60 * 1000)) continue;
+      out.push({ ...a, who: bot.name, approval: botApproval(a, chat, owner) });
+    }
+    const seen = new Set();
+    helpers.forEach((h, i) => {
+      const label = `Terminal ${i + 1}${h.provider ? ` (${providerName(h.provider)})` : ''}`;
+      out.push({ at: Number(h.at) || 0, actor: 'bot', kind: 'terminal', text: `Started a terminal agent${h.task ? `: ${String(h.task).replace(/\s+/g, ' ').slice(0, 120)}` : ''}`, who: bot.name, approval: 'not-needed', paneId: h.paneId });
+      if (!h.paneId || seen.has(h.paneId)) return;
+      seen.add(h.paneId);
+      for (const a of readActions(paneLogFile(h.paneId, this.actionsDir))) {
+        if (Number(a.at) < Number(h.at) - 60 * 1000) continue;   // before the bot started it
+        out.push({ ...a, who: label, approval: paneApproval(a, { receipts, paneId: h.paneId }) });
+      }
+    });
+    out.sort((a, b) => a.at - b.at);
+    let list = foldFiles(out).reverse();
+    for (const e of list) { e.approvalText = APPROVAL_LABEL[e.approval] || e.approval; e.unapproved = Boolean(e.needsApproval) && e.approval === 'none'; }
+    const counts = { all: list.length, approval: list.filter((e) => e.needsApproval).length, unapproved: list.filter((e) => e.unapproved).length };
+    if (only === 'approval') list = list.filter((e) => e.needsApproval);
+    return { bot: { id: bot.id, name: bot.name }, counts, actions: list.slice(0, limit).map(({ toolUseId, mode, asked, file, ...e }) => e) };
   }
 
   /** Search every bot's conversation (Grok Bot's search), best matches first. */
@@ -1059,6 +1122,7 @@ export class Bots {
         logPath: path.join(this.folder(id), 'last-run.log'),
         onStart: (stop) => { const current = this.running.get(id); if (current) current.stop = stop; },
         onEvent: (ev) => {
+          if (ev.action) { try { this.recordAction(id, ev.action); } catch { /* the log never stops a reply */ } return; }
           if (ev.activity) {
             const current = this.running.get(id);
             if (current && current.activity !== ev.activity) { current.activity = ev.activity; current.activityAt = this.now(); this.append(id, { role: 'activity', text: ev.activity }); }

@@ -890,6 +890,17 @@ body main .message-menu-panel .message-details>pre{margin:6px 4px 4px;padding:10
 body main .message-menu-panel .message-provenance{margin:2px 12px 6px;padding-top:6px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
 body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:var(--muted)}
 .share-words{margin:0 0 14px;padding:10px 12px;border-radius:12px;background:var(--surface-2);color:var(--text);font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;max-height:7.5em;overflow:hidden}.share-thumbs{display:flex;gap:8px;overflow-x:auto;margin:4px 0 14px}.share-thumbs img{height:84px;width:auto;max-width:140px;object-fit:cover;border-radius:12px;border:1px solid var(--line)}.share-list{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;max-height:50vh;overflow:auto}.share-list:focus,.share-list:focus-visible{outline:none!important;box-shadow:none!important}.share-row{box-sizing:border-box;width:100%;min-width:0;display:flex;align-items:center;gap:12px;min-height:52px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;text-align:start;cursor:pointer}.share-row:hover,.share-row:focus-visible{background:var(--line)}.share-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}.share-sub{flex:none;font-size:12.5px;color:var(--muted);max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sendstate .sendstate-action{margin-inline-start:12px;padding:6px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font:inherit;cursor:pointer}
+.act-dialog{width:min(560px,calc(100vw - 32px))}.act-dialog h2{margin-bottom:6px}
+.act-filters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.act-filters button{min-height:36px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:14px;cursor:pointer}
+.act-filters button[aria-pressed="true"]{background:var(--surface-2);color:var(--text);border-color:var(--muted)}
+.act-warn{margin:0 0 12px;padding:10px 12px;border-radius:12px;background:rgba(229,72,77,.12);color:#ff8a8d;font-size:14px;line-height:1.45}
+.act-list{list-style:none;margin:0;padding:0;display:grid;gap:8px;max-height:min(62dvh,calc(100dvh - 380px));min-height:160px;overflow:auto;overscroll-behavior:contain}
+.act-day{position:sticky;top:0;background:var(--surface);color:var(--muted);font-size:13px;padding:6px 0 2px}
+.act-row{display:grid;grid-template-columns:52px 1fr;gap:4px 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font-size:14.5px;line-height:1.45}
+.act-time{color:var(--muted);font-variant-numeric:tabular-nums;font-size:13px;padding-top:2px}
+.act-what{overflow-wrap:anywhere}.act-meta{grid-column:2;color:var(--muted);font-size:13px}
+.act-row.needs .act-what::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--waiting);margin-inline-end:7px;vertical-align:middle}
+.act-row.unapproved{border-color:#e5484d;background:rgba(229,72,77,.10)}.act-row.unapproved .act-what::before{background:#e5484d}.act-row.unapproved .act-approval{color:#ff8a8d;font-weight:500}
 .mem-list{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px}.mem-row{display:grid;gap:6px;padding:10px;border:1px solid var(--line);border-radius:12px;font-size:14px;line-height:1.45}.mem-row .ask-status{justify-self:start;font-size:11.5px;border-radius:8px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
 .bot-health{flex:none;width:9px;height:9px;border-radius:50%;background:var(--idle);align-self:center}.bot-health-ok{background:var(--working)}.bot-health-busy{background:var(--working);animation:busy-fade 1.6s infinite}.bot-health-warn{background:var(--waiting)}.bot-health-bad{background:var(--accent)}.bot-needs{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:10px}.bot-needs p{margin:0;line-height:1.5}
 .bot-term-ask{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:8px;max-width:100%;box-sizing:border-box}
@@ -2569,7 +2580,7 @@ function paintBotHead(state){
   chip.setAttribute('aria-label',ui(`Your requests: ${sum.text}`,`הבקשות שלך: ${sum.text}`));
   bar.firstElementChild.style.transform=`scaleX(${(sum.done/sum.total).toFixed(3)})`;
 }
-const menuIcons={asks:'M5 12l4 4L19 6',agents:'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h4',model:'M12 9a3 3 0 100 6 3 3 0 000-6z M12 3v3 M12 18v3 M3 12h3 M18 12h3',memory:'M6 4h12v16l-6-4-6 4z',schedule:'M12 4a8 8 0 100 16 8 8 0 000-16z M12 8v4l3 2',edit:'M4 20h4L19 9l-4-4L4 16z',theme:'M12 8a4 4 0 100 8 4 4 0 000-8z M12 3v2 M12 19v2 M3 12h2 M19 12h2',browser:'M4 5h16v14H4z M4 9h16',notify:'M6 16V11a6 6 0 0112 0v5l2 2H4z M10 20h4',pin:'M9 4h6l-1 6 3 3H7l3-3z M12 13v7',hide:'M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z M4 4l16 16',del:'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13'};
+const menuIcons={activity:'M3 12h4l3-7 4 14 3-7h4',asks:'M5 12l4 4L19 6',agents:'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h4',model:'M12 9a3 3 0 100 6 3 3 0 000-6z M12 3v3 M12 18v3 M3 12h3 M18 12h3',memory:'M6 4h12v16l-6-4-6 4z',schedule:'M12 4a8 8 0 100 16 8 8 0 000-16z M12 8v4l3 2',edit:'M4 20h4L19 9l-4-4L4 16z',theme:'M12 8a4 4 0 100 8 4 4 0 000-8z M12 3v2 M12 19v2 M3 12h2 M19 12h2',browser:'M4 5h16v14H4z M4 9h16',notify:'M6 16V11a6 6 0 0112 0v5l2 2H4z M10 20h4',pin:'M9 4h6l-1 6 3 3H7l3-3z M12 13v7',hide:'M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z M4 4l16 16',del:'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13'};
 function menuIcon(name){return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${menuIcons[name]}"/></svg>`;}
 // The bot menu: a sheet from the bottom (thumb reach) on a phone, a small panel on a wide window.
 // Items in the approved mockup's order; the remaining existing options follow so nothing is lost.
@@ -2584,7 +2595,8 @@ function botMenu(id,bot,state,start='menu'){
   const menu=()=>`<div class="sheet-grab" aria-hidden="true"></div>`
     +(sum.total?item('asks',ui('Your requests','הבקשות שלך'),sum.text,'big'):'')
     +(helpers.length?item('agents',ui('Terminal agents it started','סוכני מסוף שהפעיל'),String(helpers.length),'big'):'')
-    +((sum.total || helpers.length)?'<div class="menu-sep"></div>':'')
+    +item('activity',ui('Activity','פעילות'),ui('what it did','מה הוא עשה'))
+    +'<div class="menu-sep"></div>'
     +item('model',ui('Model and backup','מודל וגיבוי'),brain(bot?.active || bot?.provider))
     +item('memory',ui('Memory','זיכרון'),bot?.memoryPending?ui(`${bot.memoryPending} to review`,`${bot.memoryPending} לבדיקה`):'')
     +item('schedule',ui('Schedule','תזמון'),state.schedules?.length?String(state.schedules.length):'')
@@ -2609,6 +2621,7 @@ function botMenu(id,bot,state,start='menu'){
     if(act==='back')return show('menu');
     if(act==='ask-remove'){const b=e.target.closest('[data-act]'),n=Number(b.dataset.n);state.asks=state.asks.filter(a=>a.n!==n);removeAsk(n,b.closest('li'));return;}
     if(act==='asks' || act==='agents')return show(act);
+    if(act==='activity'){close();return botActivityDialog(id,bot?.name || '');}
     if(act==='theme')return press('.theme-toggle');
     if(act==='schedule')return press('.bot-schedule');
     if(act==='del'){const b=e.target.closest('[data-act]');if(b.dataset.armed!=='true'){b.dataset.armed='true';b.querySelector('.menu-label').textContent=ui('Tap again to delete','הקישו שוב למחיקה');return;}close();const del=document.querySelector('.bot-delete');del?.click();del?.click();return;}
@@ -2912,6 +2925,39 @@ async function skillsDialog(){
     const error=dialog.querySelector('.room-error');
     dialog.querySelector('.room-cancel').onclick=()=>{dialog.close();dialog.remove();};
     dialog.querySelectorAll('[data-act]').forEach(b=>{b.onclick=async()=>{b.disabled=true;try{const r=await fetch(`/api/skills/${b.dataset.act}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:b.closest('[data-skill]').dataset.skill}),signal:AbortSignal.timeout(8000)});const d=await r.json();if(!r.ok)throw new Error(d.error);await render();}catch(e){b.disabled=false;error.textContent=e.message || ui('That did not work.','זה לא הצליח.');}};});
+  };
+  dialog.innerHTML=`<p>${ui('Loading…','טוען…')}</p>`;
+  await render();
+}
+
+// Activity (TF-098, after OpenBot's action gateway): what the bot and the terminal agents it
+// started did, newest first, and who approved each. Record only. A post, send, delete or spend
+// with no recorded approval is shown in red.
+async function botActivityDialog(id,name){
+  document.querySelector('.room-dialog')?.remove();
+  const dialog=document.createElement('dialog');dialog.className='room-dialog act-dialog';dialog.setAttribute('aria-label',ui(`What ${name} did`,`מה ${name} עשה`));
+  document.body.append(dialog);dialog.showModal();
+  dialog.addEventListener('close',()=>dialog.remove());
+  let only=null;
+  const day=at=>{const d=new Date(at),t=new Date();const y=new Date(t);y.setDate(t.getDate()-1);return d.toDateString()===t.toDateString()?ui('Today','היום'):d.toDateString()===y.toDateString()?ui('Yesterday','אתמול'):d.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'});};
+  const hm=at=>new Date(at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const what=a=>a.kind==='files' && a.count>1?ui(`${a.text} (${a.count} changes${a.files?.length?`: ${a.files.join(', ')}`:''})`,`${a.text} (${a.count} שינויים)`):a.kind==='files' && a.files?.length?`${a.text} (${a.files.join(', ')})`:a.text;
+  const render=async()=>{
+    let d;
+    try{const r=await fetch(`/api/bot/activity?id=${encodeURIComponent(id)}${only?'&only=approval':''}`,{signal:AbortSignal.timeout(8000)});d=await r.json();if(!r.ok)throw new Error(d.error);}
+    catch(e){dialog.innerHTML=`<p class="room-error">${esc(e.message || ui('Could not load the activity.','לא ניתן לטעון את הפעילות.'))}</p><div class="room-actions"><button type="button" class="room-cancel">${ui('Close','סגירה')}</button></div>`;dialog.querySelector('.room-cancel').onclick=()=>dialog.close();return;}
+    name=d.bot?.name || name;
+    let lastDay='';
+    const rows=d.actions.map(a=>{const dd=day(a.at),head=dd!==lastDay?`<li class="act-day">${esc(dd)}</li>`:'';lastDay=dd;
+      return `${head}<li class="act-row${a.needsApproval?' needs':''}${a.unapproved?' unapproved':''}"><span class="act-time">${esc(hm(a.at))}</span><bdi class="act-what" dir="auto">${esc(what(a))}</bdi><span class="act-meta"><bdi dir="auto">${esc(a.who)}</bdi> · <span class="act-approval">${a.unapproved?ui('Done without a recorded approval','בוצע בלי אישור מתועד'):esc(a.approvalText)}</span></span></li>`;}).join('');
+    dialog.innerHTML=`<h2 dir="auto">${esc(ui(`What ${name} did`,`מה ${name} עשה`))}</h2>
+      <p class="rooms-empty">${ui('Everything it and the terminal agents it started changed, newest first, and who approved it.','כל מה שהבוט וסוכני המסוף שהפעיל שינו, מהחדש לישן, ומי אישר.')}</p>
+      <div class="act-filters" role="group" aria-label="${ui('Show','הצגה')}"><button type="button" data-only="" aria-pressed="${!only}">${ui(`All (${d.counts.all})`,`הכול (${d.counts.all})`)}</button><button type="button" data-only="approval" aria-pressed="${Boolean(only)}">${ui(`Needs approval (${d.counts.approval})`,`דורש אישור (${d.counts.approval})`)}</button></div>
+      ${d.counts.unapproved?`<p class="act-warn">${ui(`${d.counts.unapproved} post, send, delete or spend ${d.counts.unapproved===1?'action was':'actions were'} done without a recorded approval (in red).`,`${d.counts.unapproved} פעולות פרסום, שליחה, מחיקה או תשלום בוצעו בלי אישור מתועד (באדום).`)}</p>`:''}
+      ${d.actions.length?`<ol class="act-list">${rows}</ol>`:`<p class="rooms-empty">${only?ui('No posts, sends, deletes or spending yet.','עוד אין פרסומים, שליחות, מחיקות או תשלומים.'):ui('Nothing recorded yet. Its next actions will show here.','עוד לא נרשם דבר. הפעולות הבאות שלו יופיעו כאן.')}</p>`}
+      <div class="room-actions"><button type="button" class="room-cancel">${ui('Close','סגירה')}</button></div>`;
+    dialog.querySelector('.room-cancel').onclick=()=>dialog.close();
+    dialog.querySelectorAll('[data-only]').forEach(b=>{b.onclick=()=>{only=b.dataset.only || null;render();};});
   };
   dialog.innerHTML=`<p>${ui('Loading…','טוען…')}</p>`;
   await render();
