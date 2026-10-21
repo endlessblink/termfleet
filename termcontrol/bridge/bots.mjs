@@ -12,6 +12,7 @@ import { uploadDir } from './uploads.mjs';
 import { skillPrompt } from './skills.mjs';
 import { parseQuestion, QUESTION_RULE, markRepeatedQuestions } from './bot-questions.mjs';
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
+import { recordOwnerWords } from './owner-words.mjs';
 
 /**
  * Bots (TF-096, after Grok Bot): managers that run OUTSIDE the terminals. Each bot
@@ -86,6 +87,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '  `termfleet-team start --provider claude|codex --cwd <folder> --task "<task>"` (open a new terminal agent for a job),',
     '  `termfleet-team routine add --time 09:00 --days weekdays --message "<text>"` (a scheduled message).',
     '- Say which terminal agent you handed work to, and check its result before telling Noam it is done.',
+    '- When Noam approves or decides something here that a terminal agent needs (e.g. "Yes add the images"), pass on his own words, never a retelling: `termfleet-team send <who> --owner-words latest "<what to do with it>"` attaches his exact latest message here as a record the agent can check (use a message id from `termfleet-team verify` instead of latest for an older one). Never ask Noam to repeat an approval he already gave; if an agent still refuses, send it his words this way again.',
     '- Always close a terminal you started once its work is done: right after you checked its result and told Noam, run `termfleet-team close <who>`, unless you are sending it more work now. Never leave a finished terminal open "just in case"; Noam does not want finished terminals piling up. The command refuses while one is working, waiting for Noam, or has unsaved work: then leave it open, say why, and close it once that is resolved.',
     '- Keep Noam\'s requests in his exact words. For a new or unclear request, read it back as a short numbered list first.',
     '- Never say "done" without proof (what ran and what it showed). If you did less than asked, say so in your first sentence.',
@@ -680,7 +682,7 @@ export class Bots {
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */
-  send(id, text, { images = [] } = {}) {
+  send(id, text, { images = [], owner = false } = {}) {
     const bot = this.read(id);
     if (!bot) return { error: 'That bot no longer exists.' };
     // Pictures come from the app's own upload folder only (never any path on the PC).
@@ -691,6 +693,9 @@ export class Bots {
     const body = clean(text, LIMITS.message) || (pictures.length ? (pictures.length === 1 ? 'Here is a picture.' : 'Here are some pictures.') : '');
     if (!body) return { error: 'Nothing to send.' };
     const msg = this.append(id, { role: 'operator', text: body, ...(pictures.length ? { images: pictures.length } : {}) });
+    // Typed by Noam in the app (not a routine, an event or another agent): keep a signed
+    // copy so the bot can pass his exact words on and the receiver can check them.
+    if (owner) { try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text: body }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ } }
     const asked = skillPrompt(body) || body;   // "/grill-me" etc. carry the skill's steps
     const forBrain = pictures.length ? `${asked}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : asked;
     const queue = this.queues.get(id) || [];

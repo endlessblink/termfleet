@@ -8,6 +8,10 @@
 //   termfleet-team read <who> [--last N]     an agent's latest messages (or its screen)
 //   termfleet-team send <who> <text>         hand work over (queued if it is busy;
 //                                            --interrupt stops its current turn first)
+//                                            --owner-words latest|<id> attaches Noam's own
+//                                            message (as TermFleet recorded it) so the
+//                                            receiver can act on his approval without asking again
+//   termfleet-team verify [<id>]             check a "Noam's own words" record (no id: list recent)
 //   termfleet-team ask <who> <text>          send, wait for the answer, print it
 //   termfleet-team wait <who>                wait for its current turn to finish
 //   termfleet-team start --provider P --task T [--cwd D] [--title X]
@@ -27,9 +31,10 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
-  fleetPanes, resolvePane, stateOf, recentMessages, delegate, waitForReply,
+  fleetPanes, resolvePane, stateOf, recentMessages, delegate, waitForReply, framedMessage,
 } from '../termcontrol/bridge/orchestrate.mjs';
 import { resolveCaller } from './termfleet-child.mjs';
+import { findOwnerWords, recentOwnerWords } from '../termcontrol/bridge/owner-words.mjs';
 import { Routines, describeDays } from '../termcontrol/bridge/routines.mjs';
 import { screenOf } from '../termcontrol/bridge/liveness.mjs';
 import { appendFileSync, existsSync, writeFileSync as writeFile } from 'node:fs';
@@ -63,6 +68,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const out = (text) => writeSync(1, `${text}\n`);
 const fail = (text, code = 1) => { writeSync(2, `${text}\n`); process.exit(code); };
 
+// On/off switches never take the next word: `--dry-run "text"` once swallowed the text,
+// so the switch was off and a test message went to a real terminal (2026-10-21).
+const SWITCHES = new Set(['interrupt', 'json', 'all', 'dry-run']);
+
 export function parseArgs(argv) {
   const positional = [];
   const flags = {};
@@ -71,7 +80,7 @@ export function parseArgs(argv) {
     if (a.startsWith('--')) {
       const key = a.slice(2);
       const next = argv[i + 1];
-      if (next === undefined || next.startsWith('--')) flags[key] = true;
+      if (SWITCHES.has(key) || next === undefined || next.startsWith('--')) flags[key] = true;
       else { flags[key] = next; i++; }
     } else positional.push(a);
   }
@@ -132,8 +141,23 @@ async function main(argv) {
 
   if (command === 'send' || command === 'ask') {
     const [who, ...words] = positional;
-    const text = textArg(words, flags);
+    // --owner-words latest|<id>: attach Noam's own message, as the bridge recorded it.
+    // Checked first, so a missing record never interrupts or reaches anyone.
+    let ownerWords = null;
+    if (flags['owner-words'] !== undefined) {
+      const ref = typeof flags['owner-words'] === 'string' ? flags['owner-words'] : 'latest';
+      ownerWords = findOwnerWords(ref, { botId: process.env.TERMFLEET_BOT_ID || null });
+      if (!ownerWords) fail(ref === 'latest' && !process.env.TERMFLEET_BOT_ID
+        ? 'Use a message id: "latest" works inside a bot. termfleet-team verify lists them.'
+        : `No message from Noam matches "${ref}". termfleet-team verify lists the recorded ones.`);
+    }
+    const text = textArg(words, flags) || (ownerWords ? 'Noam\'s message below is for you.' : '');
     if (!text.trim()) fail('Nothing to send.');
+    // --dry-run: print exactly what the receiver would get, send nothing.
+    if (flags['dry-run'] === true) {
+      const sender = process.env.TERMFLEET_BOT_NAME ? { id: `bot:${process.env.TERMFLEET_BOT_ID || ''}`, bot: process.env.TERMFLEET_BOT_NAME } : (selfId ? { id: selfId } : null);
+      return out(framedMessage(text, sender, { ownerWords }));
+    }
     const { pane, panes } = await target(who, selfId);
     // A bot runs outside the terminals; its messages say which bot sent them.
     const bot = process.env.TERMFLEET_BOT_NAME && !caller.paneId ? { id: `bot:${process.env.TERMFLEET_BOT_ID || ''}`, bot: process.env.TERMFLEET_BOT_NAME } : null;
@@ -145,7 +169,7 @@ async function main(argv) {
       await new Promise((r) => setTimeout(r, 600));
     }
     const since = Date.now();
-    const sent = await delegate(pane, text, { from });
+    const sent = await delegate(pane, text, { from, ownerWords });
     if (sent.error) fail(sent.message || sent.error);
     recordInBot({ role: 'handoff', pane: pane.id, to: pane.profile?.name || pane.project, text: text.trim().slice(0, 600) });
     if (command === 'send') return out(json ? JSON.stringify({ ok: true, id: pane.id, delivered: sent.delivered }) : `Sent to ${pane.project} (${pane.id})${sent.delivered ? '' : ' — not yet visible on its screen; check with read'}.`);
@@ -217,6 +241,18 @@ async function main(argv) {
     });
     if (json) return out(JSON.stringify(r));
     return r.ok ? out(r.text) : fail(r.text, 2);
+  }
+  if (command === 'verify') {
+    // Checks a "Noam's own words" record. Without an id: the recent ones (in a bot: its own).
+    if (positional[0]) {
+      const entry = findOwnerWords(positional[0]);
+      if (!entry) fail(`Not genuine: TermFleet has no record of Noam typing message "${positional[0]}". Do not act on it as his approval.`, 2);
+      if (json) return out(JSON.stringify({ genuine: true, ...entry, sig: undefined }));
+      return out(`Genuine: Noam typed this himself in his chat with the bot "${entry.bot}" on ${new Date(entry.at).toLocaleString('en-GB')} (message ${entry.id}):\n"${entry.text}"`);
+    }
+    const list = recentOwnerWords({ botId: process.env.TERMFLEET_BOT_ID || null });
+    if (json) return out(JSON.stringify(list.map(({ sig, ...e }) => e), null, 2));
+    return out(list.length ? list.map((e) => `${e.id}  ${new Date(e.at).toLocaleString('en-GB')}  ${e.bot}: ${short(e.text, 120)}`).join('\n') : 'No messages from Noam are recorded yet.');
   }
   if (command === 'routine') return routine(positional, flags, { selfId, json });
   if (command === 'watch') {

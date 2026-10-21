@@ -8,6 +8,7 @@ import { readFeed } from './feed.mjs';
 import { sendToPane } from './send.mjs';
 import { PATHS } from './paths.mjs';
 import { profiles } from './profiles.mjs';
+import { ownerWordsBlock } from './owner-words.mjs';
 
 /**
  * Teammates (TF-096, following Grok Bot's architecture): any agent sees every
@@ -117,16 +118,18 @@ export function lastReply(pane, { since = 0 } = {}) {
  * The receiving agent has to know the message came from another agent and
  * where its answer goes, or it treats the text as the operator's own words.
  */
-export function framedMessage(text, from) {
+export function framedMessage(text, from, { ownerWords = null } = {}) {
   const who = from?.bot ? `the bot "${from.bot}" (${from.id})`
     : from ? `the agent in "${from.profile?.name || from.project || 'another'}" terminal (${from.id})` : 'an orchestrating agent';
-  return `[Message from ${who}, sent through TermFleet.] ${String(text).trim()}\n\n` +
+  // Noam's own words travel as their own checkable block, apart from the sender's text.
+  const owner = ownerWords ? `\n\n${ownerWordsBlock(ownerWords)}` : '';
+  return `[Message from ${who}, sent through TermFleet.] ${String(text).trim()}${owner}\n\n` +
     '(Answer in this conversation as usual; the sender reads your reply here. Ask the operator before anything risky or public.)';
 }
 
-export async function delegate(target, text, { from = null } = {}) {
+export async function delegate(target, text, { from = null, ownerWords = null } = {}) {
   if (!target.alive) return { error: 'That terminal is not running any more.' };
-  return sendToPane(target, framedMessage(text, from));
+  return sendToPane(target, framedMessage(text, from, { ownerWords }));
 }
 
 /**
