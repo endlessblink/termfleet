@@ -45,7 +45,7 @@ test('the chat stores the question on the bot message so the page can draw butto
 test('the page draws the card and sends a tap as Noam\'s answer', () => {
   const page = fs.readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
   assert.match(page, /function botQuestionHtml/);
-  assert.match(page, /m\.question\?botQuestionHtml\(m,data\.messages\)/);
+  assert.match(page, /m\.question\?botQuestionHtml\(m,\[\.\.\.data\.messages,/);
   assert.match(page, /\.bot-question:not\(\.answered\) \[data-answer\]/);
   assert.match(page, /Write my own answer/);
 });

@@ -685,7 +685,7 @@ export class Bots {
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */
-  send(id, text, { images = [], owner = false } = {}) {
+  send(id, text, { images = [], owner = false, answerTo = null } = {}) {
     const bot = this.read(id);
     if (!bot) return { error: 'That bot no longer exists.' };
     // Pictures come from the app's own upload folder only (never any path on the PC).
@@ -695,12 +695,16 @@ export class Bots {
     if ((images || []).length && pictures.length !== Math.min(images.length, 10)) return { error: 'A picture could not be found. Attach it again.' };
     const body = clean(text, LIMITS.message) || (pictures.length ? (pictures.length === 1 ? 'Here is a picture.' : 'Here are some pictures.') : '');
     if (!body) return { error: 'Nothing to send.' };
-    const msg = this.append(id, { role: 'operator', text: body, ...(pictures.length ? { images: pictures.length } : {}) });
+    // An answer typed or tapped on one of the bot's question cards stays tied to that card
+    // (Noam 2026-10-21: "זה לא מאפשר לי לכתוב את התשובה שלי"), even when it is no longer the newest.
+    const asked = answerTo ? this.messages(id).find((m) => m.id === String(answerTo) && m.role === 'bot' && m.question) : null;
+    const msg = this.append(id, { role: 'operator', text: body, ...(pictures.length ? { images: pictures.length } : {}), ...(asked ? { answerTo: asked.id } : {}) });
     // Typed by Noam in the app (not a routine, an event or another agent): keep a signed
     // copy so the bot can pass his exact words on and the receiver can check them.
     if (owner) { try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text: body }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ } }
-    const asked = skillPrompt(body) || body;   // "/grill-me" etc. carry the skill's steps
-    const forBrain = pictures.length ? `${asked}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : asked;
+    const said = skillPrompt(body) || body;   // "/grill-me" etc. carry the skill's steps
+    const answered = asked ? `[Noam's answer to your question "${asked.question.text}"]\n${said}` : said;
+    const forBrain = pictures.length ? `${answered}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : answered;
     const queue = this.queues.get(id) || [];
     queue.push(forBrain);
     this.queues.set(id, queue);
