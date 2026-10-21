@@ -13,9 +13,9 @@ import { skillPrompt } from './skills.mjs';
 import { parseQuestion, QUESTION_RULE, markRepeatedQuestions } from './bot-questions.mjs';
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
-import { recordOwnerWords, recentOwnerWords } from './owner-words.mjs';
+import { recordOwnerWords } from './owner-words.mjs';
 import { BotGroups } from './bot-groups.mjs';
-import { classifyTool, appendAction, readActions, paneLogFile, botApproval, paneApproval, foldFiles, APPROVAL_LABEL } from './action-log.mjs';
+import { classifyTool, appendAction, readActions, paneLogFile, botApproval, paneApproval, foldFiles, approvalText } from './action-log.mjs';
 
 /**
  * Bots (TF-096, after Grok Bot): managers that run OUTSIDE the terminals. Each bot
@@ -242,12 +242,27 @@ export function brainToolUses(provider, line) {
   try { o = JSON.parse(line); } catch { return []; }
   if (provider === 'codex') {
     if (o.type !== 'item.started' || !o.item) return [];
-    if (o.item.type === 'command_execution') return [{ name: 'command_execution', input: { command: o.item.command } }];
-    if (o.item.type === 'mcp_tool_call') return [{ name: `mcp__${o.item.server}__${o.item.tool}`, input: o.item.arguments || {} }];
+    if (o.item.type === 'command_execution') return [{ id: o.item.id || null, name: 'command_execution', input: { command: o.item.command } }];
+    if (o.item.type === 'mcp_tool_call') return [{ id: o.item.id || null, name: `mcp__${o.item.server}__${o.item.tool}`, input: o.item.arguments || {} }];
     return [];
   }
   if (o.type !== 'assistant') return [];
   return (o.message?.content || []).filter((b) => b?.type === 'tool_use').map((b) => ({ name: b.name, input: b.input || {}, id: b.id || null }));
+}
+
+/** Which tool calls finished in one brain output line, and whether each worked (a denied or failed call did nothing). */
+export function brainToolResults(provider, line) {
+  let o;
+  try { o = JSON.parse(line); } catch { return []; }
+  if (provider === 'codex') {
+    if (o.type !== 'item.completed' || !o.item?.id) return [];
+    if (o.item.type === 'command_execution') return [{ id: o.item.id, ok: o.item.exit_code === 0 && o.item.status !== 'failed' && o.item.status !== 'declined' }];
+    if (o.item.type === 'mcp_tool_call') return [{ id: o.item.id, ok: o.item.status === 'completed' && !o.item.error }];
+    return [];
+  }
+  if (o.type !== 'user') return [];
+  const content = Array.isArray(o.message?.content) ? o.message.content : [];
+  return content.filter((b) => b?.type === 'tool_result' && b.tool_use_id).map((b) => ({ id: b.tool_use_id, ok: b.is_error !== true }));
 }
 
 /** Turns brain output lines into events: activity, final text, session id, failure. */
@@ -318,6 +333,7 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
       });
     } catch (error) { resolve({ error: String(error.message || error) }); return; }
     let buffer = '', stderr = '', finalText = '', error = null, lastText = '', limit = null, completed = false, stopped = false, ownKill = false;
+    const calls = new Map();   // tool calls waiting for their result (action log)
     // Noam closing the bot stops this reply the way the timeout does: a polite SIGTERM.
     onStart?.(() => { stopped = true; child.kill('SIGTERM'); });
     // The last run's raw output, so a failure can be explained afterwards (capped).
@@ -337,7 +353,9 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
       let nl;
       while ((nl = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1);
-        for (const use of brainToolUses(bot.provider, line)) onEvent?.({ action: use });
+        // An action is logged only once its call succeeded: a denied or failed call never happened.
+        for (const use of brainToolUses(bot.provider, line)) if (use.id) calls.set(use.id, use);
+        for (const done of brainToolResults(bot.provider, line)) { const use = calls.get(done.id); calls.delete(done.id); if (use && done.ok) onEvent?.({ action: use }); }
         const ev = parseBrainLine(bot.provider, line);
         if (!ev) continue;
         if (ev.limit) { limit = limit || ev.limit; if (!ev.final) { ownKill = true; child.kill('SIGTERM'); } }
@@ -605,20 +623,19 @@ export class Bots {
 
   /**
    * The bot's Activity view (TF-098): what it and the terminal agents it started did,
-   * newest first, each with who approved it. Record only; a post, send, delete or spend
-   * with no recorded approval comes back marked unapproved (shown in red).
+   * newest first, each with the approval evidence that matches it (an approval-card grant for
+   * that call, or a scoped standing rule). Record only; a post, send, delete or spend without
+   * such evidence comes back marked unapproved ("approval not recorded", shown in red).
    */
   activity(id, { only = null, receipts = {}, limit = 300 } = {}) {
     const bot = this.read(id);
     if (!bot) return null;
-    const chat = this.messages(id);
-    const owner = new Set(recentOwnerWords({ botId: id, limit: 5000, ...(this.ownerWordsBase ? { base: this.ownerWordsBase } : {}) }).map((e) => e.id));
     const helpers = this.helpers(id);
     const out = [];
     for (const a of readActions(path.join(this.folder(id), 'actions.jsonl'))) {
       // Its starts come from the helpers list below, which also says what the terminal was for.
       if (a.kind === 'terminal' && /^Started/.test(a.text) && helpers.some((h) => Math.abs(Number(h.at) - a.at) < 3 * 60 * 1000)) continue;
-      out.push({ ...a, who: bot.name, approval: botApproval(a, chat, owner) });
+      out.push({ ...a, who: bot.name, approval: botApproval(a) });
     }
     const seen = new Set();
     helpers.forEach((h, i) => {
@@ -633,7 +650,7 @@ export class Bots {
     });
     out.sort((a, b) => a.at - b.at);
     let list = foldFiles(out).reverse();
-    for (const e of list) { e.approvalText = APPROVAL_LABEL[e.approval] || e.approval; e.unapproved = Boolean(e.needsApproval) && e.approval === 'none'; }
+    for (const e of list) { e.text = String(e.text || '').replace(/\bterminal-[0-9a-f-]{12,}…?/gi, 'a terminal agent'); e.approvalText = approvalText(e); e.unapproved = Boolean(e.needsApproval) && e.approval === 'none'; }
     const counts = { all: list.length, approval: list.filter((e) => e.needsApproval).length, unapproved: list.filter((e) => e.unapproved).length };
     if (only === 'approval') list = list.filter((e) => e.needsApproval);
     return { bot: { id: bot.id, name: bot.name }, counts, actions: list.slice(0, limit).map(({ toolUseId, mode, asked, file, ...e }) => e) };

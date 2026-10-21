@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Action log hook (TF-098): records what a terminal agent did, in plain words, for the
 // Activity view of the bot that started it. Claude and Codex call it on PostToolUse
-// (the action happened) and PermissionRequest (the agent asked first). Record only:
+// (the action happened) and PermissionRequest (the agent asked first; that is a request,
+// never counted as an approval). Record only:
 // it never blocks, never prints, and always exits 0.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { classifyTool, appendAction, paneLogFile } from '../termcontrol/bridge/action-log.mjs';
+import { classifyTool, appendAction, paneLogFile, standingRule } from '../termcontrol/bridge/action-log.mjs';
 
 const ASK_TTL_MS = 60 * 60 * 1000;
 const fingerprint = (name, input) => crypto.createHash('sha1').update(`${name}\n${JSON.stringify(input ?? null)}`).digest('hex').slice(0, 16);
@@ -32,18 +33,24 @@ export function handle(payload, env = process.env, now = Date.now()) {
     return { asked: key };
   }
   if (event !== 'PostToolUse') return null;
+  // A call that failed did nothing (Claude reports those separately; Codex says so in the response).
+  const response = payload.tool_response ?? payload.toolResponse;
+  if (response && typeof response === 'object' && (response.is_error === true || response.success === false || response.interrupted === true || (Number.isInteger(response.exit_code) && response.exit_code !== 0) || (Number.isInteger(response.exitCode) && response.exitCode !== 0))) return null;
   const cwd = String(payload.cwd || process.cwd());
   const action = classifyTool(name, input, cwd);
   if (!action) return null;
+  const provider = env.CODEX_THREAD_ID || payload.turn_id ? 'codex' : 'claude';
   let asked = false;
   try {
     const marks = JSON.parse(fs.readFileSync(askFile, 'utf8')) || {};
     if (marks[key] && now - marks[key] < ASK_TTL_MS) { asked = true; delete marks[key]; fs.writeFileSync(askFile, JSON.stringify(marks), { mode: 0o600 }); }
   } catch { /* nothing was asked */ }
   const entry = {
-    at: now, actor: 'terminal', paneId, provider: env.CODEX_THREAD_ID || payload.turn_id ? 'codex' : 'claude',
+    at: now, actor: 'terminal', paneId, provider,
     ...action, toolUseId: payload.tool_use_id || payload.toolUseId || null,
     mode: payload.permission_mode || payload.permissionMode || payload.approval_policy || null, asked, cwd,
+    // Evidence, not inference: the scoped allow rule in force right now that covers this exact action.
+    rule: action.needsApproval ? standingRule(name, input, { provider, home: env.HOME || undefined, cwd }) : null,
   };
   appendAction(file, entry);
   return entry;

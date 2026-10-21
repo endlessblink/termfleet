@@ -2931,8 +2931,8 @@ async function skillsDialog(){
 }
 
 // Activity (TF-098, after OpenBot's action gateway): what the bot and the terminal agents it
-// started did, newest first, and who approved each. Record only. A post, send, delete or spend
-// with no recorded approval is shown in red.
+// started did, newest first, with the approval recorded for that exact action. Record only. A
+// post, send, delete or spend with no recorded approval is shown in red.
 async function botActivityDialog(id,name){
   document.querySelector('.room-dialog')?.remove();
   const dialog=document.createElement('dialog');dialog.className='room-dialog act-dialog';dialog.setAttribute('aria-label',ui(`What ${name} did`,`מה ${name} עשה`));
@@ -2949,11 +2949,11 @@ async function botActivityDialog(id,name){
     name=d.bot?.name || name;
     let lastDay='';
     const rows=d.actions.map(a=>{const dd=day(a.at),head=dd!==lastDay?`<li class="act-day">${esc(dd)}</li>`:'';lastDay=dd;
-      return `${head}<li class="act-row${a.needsApproval?' needs':''}${a.unapproved?' unapproved':''}"><span class="act-time">${esc(hm(a.at))}</span><bdi class="act-what" dir="auto">${esc(what(a))}</bdi><span class="act-meta"><bdi dir="auto">${esc(a.who)}</bdi> · <span class="act-approval">${a.unapproved?ui('Done without a recorded approval','בוצע בלי אישור מתועד'):esc(a.approvalText)}</span></span></li>`;}).join('');
+      return `${head}<li class="act-row${a.needsApproval?' needs':''}${a.unapproved?' unapproved':''}"><span class="act-time">${esc(hm(a.at))}</span><bdi class="act-what" dir="auto">${esc(what(a))}</bdi><span class="act-meta"><bdi dir="auto">${esc(a.who)}</bdi> · <span class="act-approval">${esc(a.approvalText)}</span></span></li>`;}).join('');
     dialog.innerHTML=`<h2 dir="auto">${esc(ui(`What ${name} did`,`מה ${name} עשה`))}</h2>
-      <p class="rooms-empty">${ui('Everything it and the terminal agents it started changed, newest first, and who approved it.','כל מה שהבוט וסוכני המסוף שהפעיל שינו, מהחדש לישן, ומי אישר.')}</p>
+      <p class="rooms-empty">${ui('Everything it and the terminal agents it started changed, newest first. An approval shows only when one was recorded for that exact action.','כל מה שהבוט וסוכני המסוף שהפעיל שינו, מהחדש לישן. אישור מוצג רק כשנרשם אישור לאותה פעולה בדיוק.')}</p>
       <div class="act-filters" role="group" aria-label="${ui('Show','הצגה')}"><button type="button" data-only="" aria-pressed="${!only}">${ui(`All (${d.counts.all})`,`הכול (${d.counts.all})`)}</button><button type="button" data-only="approval" aria-pressed="${Boolean(only)}">${ui(`Needs approval (${d.counts.approval})`,`דורש אישור (${d.counts.approval})`)}</button></div>
-      ${d.counts.unapproved?`<p class="act-warn">${ui(`${d.counts.unapproved} post, send, delete or spend ${d.counts.unapproved===1?'action was':'actions were'} done without a recorded approval (in red).`,`${d.counts.unapproved} פעולות פרסום, שליחה, מחיקה או תשלום בוצעו בלי אישור מתועד (באדום).`)}</p>`:''}
+      ${d.counts.unapproved?`<p class="act-warn">${ui(`${d.counts.unapproved} post, send, delete or spend ${d.counts.unapproved===1?'action has':'actions have'} no recorded approval (in red).`,`ל-${d.counts.unapproved} פעולות פרסום, שליחה, מחיקה או תשלום אין אישור מתועד (באדום).`)}</p>`:''}
       ${d.actions.length?`<ol class="act-list">${rows}</ol>`:`<p class="rooms-empty">${only?ui('No posts, sends, deletes or spending yet.','עוד אין פרסומים, שליחות, מחיקות או תשלומים.'):ui('Nothing recorded yet. Its next actions will show here.','עוד לא נרשם דבר. הפעולות הבאות שלו יופיעו כאן.')}</p>`}
       <div class="room-actions"><button type="button" class="room-cancel">${ui('Close','סגירה')}</button></div>`;
     dialog.querySelector('.room-cancel').onclick=()=>dialog.close();
