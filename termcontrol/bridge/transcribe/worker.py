@@ -41,6 +41,11 @@ MODELS = {
     "en": os.environ.get("TC_STT_ENGLISH", "Systran/faster-whisper-large-v3"),
 }
 SUPPORTED = ("he", "en")
+# Hebrew dictation is often Hebrew with English words in it. Starting the Hebrew model from
+# an example written that way keeps those words in English ("ש-Claude", "ה-dashboard")
+# instead of Hebrew sounds ("שקלוד"); measured on mixed clips, 2026-10-21.
+MIXED_PROMPT = os.environ.get("TC_STT_HE_PROMPT",
+    "אני עובד עם Claude Code ו-n8n, פותח את ה-dashboard ב-After Effects ומריץ grill me על ה-workflow ב-Rough Cut.")
 
 _loaded = {}  # repo -> model; at most the detector plus one large model
 
@@ -134,6 +139,8 @@ def transcribe(request):
     stage = time.perf_counter()
     options = dict(language=language, beam_size=5, vad_filter=True,
                    condition_on_previous_text=False, temperature=0.0)
+    if language == "he" and MIXED_PROMPT:
+        options["initial_prompt"] = MIXED_PROMPT
     if request.get("hotwords"):  # words the owner taught it (his word-fix list)
         options["hotwords"] = str(request["hotwords"])[:400]
     segments, _info = model.transcribe(audio, **options)

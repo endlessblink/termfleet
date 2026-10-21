@@ -1691,10 +1691,17 @@ const BOX_RULE = /^[\s─━═┌┐└┘├┤┬┴┼╭╮╰╯╞╡╪+
 const dirOf = (s) => {
   // A link's letters are not words: "הריפו ב-github.com/…" is still a Hebrew line.
   const text = String(s || '').replace(/\]\([^)\s]*\)/g, ']').replace(/(?:https?:\/\/|www\.)\S+|(?:^|\s)~?\/\S+|[\w-]+(?:\.[\w-]+)+\/\S*|[a-z0-9-]+\.(?:com|org|net|io|dev|app|ai)\b/gi, ' ');
-  const rtl = (text.match(/[֐-׿؀-ۿ]/g) || []).length;
-  const ltr = (text.match(/[A-Za-zÀ-ɏ]/g) || []).length;
-  // Most letters win, not the first letter: "TermFleet צריך לעבוד טוב" is a Hebrew line (2026-10-20).
-  return rtl > 0 && rtl >= ltr ? 'rtl' : 'ltr';
+  // Most WORDS win, not the first letter or the most letters: "TermFleet צריך לעבוד טוב" is a
+  // Hebrew line (2026-10-20), and so is "Claude צריך לבדוק את ה-dashboard ב-After Effects."
+  // although its English words are longer (dictation, 2026-10-21). A word with any Hebrew
+  // letter ("ה-dashboard") counts as Hebrew.
+  const words = text.split(/\s+/);
+  const rtl = words.filter((w) => /[֐-׿؀-ۿ]/.test(w)).length;
+  const ltr = words.filter((w) => !/[֐-׿؀-ۿ]/.test(w) && /[A-Za-zÀ-ɏ]/.test(w)).length;
+  if (rtl !== ltr) return rtl > ltr ? 'rtl' : 'ltr';
+  // A tie ("English first" + "שלום לעולם") goes to whichever has more letters, as before.
+  const rtlLetters = (text.match(/[֐-׿؀-ۿ]/g) || []).length;
+  return rtl > 0 && rtlLetters >= (text.match(/[A-Za-zÀ-ɏ]/g) || []).length ? 'rtl' : 'ltr';
 };
 // Message boxes take the same direction as the bubble they will become, while typing.
 const followTextDir = (el) => {
@@ -4758,6 +4765,8 @@ function wordFixSheet(box, sync) {
   (picked ? correct : heard).focus();
 }
 function dictationDone(box, sync, fixed) {
+  // Dictated words are set in code, which fires no input event: settle the direction now (mixed Hebrew + English).
+  followTextDir(box);
   // The words are in the box now: close the tools menu so the box and this note show.
   document.querySelectorAll('.composer-menu[open]').forEach((menu) => { if (!menu.querySelector('.mic.rec')) menu.open = false; });
   const el = note(fixed ? ui(`Fixed ${fixed} word${fixed === 1 ? '' : 's'} from your list.`, fixed === 1 ? 'תוקנה מילה אחת מהרשימה שלך.' : `תוקנו ${fixed} מילים מהרשימה שלך.`) : ui('Wrong word? Select it and fix it.', 'מילה שגויה? סמנו אותה ותקנו.'));

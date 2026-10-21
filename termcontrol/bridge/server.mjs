@@ -33,6 +33,7 @@ import { filesIn, matchFiles } from './files.mjs';
 import { resolveLocalImage } from './local-image.mjs';
 import { projectCatalog, resolveProject, projectLaunchArgs, projectLaunchReady, projectLaunchCapabilityPath, PROJECT_PROVIDERS, legacyProjectChoice } from './projects.mjs';
 import { spawnArgs } from './spawn.mjs';
+import { applyEnglishTerms } from './english-terms.mjs';
 import { transcribe, prepareTranscriber, recentTranscriptionTimings, MAX_AUDIO_BYTES } from './transcribe/index.mjs';
 import { readWordFixes, addWordFix, removeWordFix, applyWordFixes, wordFixHint } from './word-fixes.mjs';
 import { safeUrl, crossSiteWrite } from './guard.mjs';
@@ -871,7 +872,9 @@ const handle = async (req, res) => {
     try {
       const fixes = readWordFixes();
       const { text: heard, language, seconds, timings: stages } = await transcribe(audio, { language: lang, uploadMs, hint: wordFixHint(fixes) });
-      const { text, changed } = applyWordFixes(heard, fixes);
+      const own = applyWordFixes(heard, fixes);   // his own list first: it wins, and "fixed" counts it
+      const { text } = applyEnglishTerms(own.text);   // Hebrew dictation keeps English words in English
+      const { changed } = own;
       const timings = { ...stages, uploadMs, requestMs: Math.round((performance.now() - received) * 10) / 10 };
       speechTimingHeader(res, timings);
       return json(res, 200, { text, language, seconds, fixed: changed, timings });
