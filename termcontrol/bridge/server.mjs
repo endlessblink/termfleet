@@ -26,6 +26,7 @@ import { deskRoot, readDesk } from './desk.mjs';
 import { ChoiceReceipts } from './choice-receipts.mjs';
 import { visibleScreenOf, liveScreenOf } from './screen.mjs';
 import { readSessionStatus, subscribeSessionEventHeads, applyVendorStatus, stalledFor } from './session-status.mjs';
+import { readUsageLimits } from './usage-limits.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { filesIn, matchFiles } from './files.mjs';
@@ -352,6 +353,7 @@ const handle = async (req, res) => {
       daemon,
       view: inventory.view,
       inventoryVersion: inventory.inventoryVersion,
+      usage: readUsageLimits(),
       panes,
       groups: byProject(panes, { groupRoots: new Map((readWorkspace()?.groups || []).filter((g) => g?.id && g.projectRoot).map((g) => [g.id, g.projectRoot])) }),
     });
