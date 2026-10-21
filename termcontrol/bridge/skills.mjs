@@ -47,11 +47,15 @@ export function listSkills() {
   return [...read(PATHS.suggested(), 'suggested'), ...[...library, ...builtIn].sort((a, b) => a.name.localeCompare(b.name))];
 }
 
-/** The full instructions of an approved skill (library first, then built-in). */
+/**
+ * The full instructions of a skill: the shared library first, then the built-in ones,
+ * then Noam's own skill folders (Claude, Codex, OpenCode), so every bot can run any of
+ * them (Noam 2026-10-21: "וכל סוכן אחר אמורים להיות מסוגלים להריץ סקילים").
+ */
 export function skillText(name) {
   const n = String(name || '').toLowerCase();
   if (!NAME.test(n)) return null;
-  for (const dir of [PATHS.library(), PATHS.builtin()]) {
+  for (const dir of [PATHS.library(), PATHS.builtin(), ...PATHS.providers()]) {
     try { return fs.readFileSync(path.join(dir, n, 'SKILL.md'), 'utf8').replace(/^---[\s\S]*?---\n/, '').trim(); } catch { /* next */ }
   }
   return null;
@@ -66,12 +70,52 @@ export function skillText(name) {
 export function skillPrompt(text) {
   const m = /^\s*\/([a-z0-9][a-z0-9-]{1,48})(?:\s+([\s\S]*))?$/i.exec(String(text || ''))
     || /^\s*Use the ([a-z0-9][a-z0-9-]{1,48}) skill:?(?:\s+([\s\S]*))?$/i.exec(String(text || ''));
-  if (!m) return null;
+  if (!m) return mentionedSkill(text);
   const name = m[1].toLowerCase();
   const body = skillText(name);
   if (!body) return null;
   const rest = (m[2] || '').trim();
   return `Noam started the "${name}" skill in this chat. Follow these instructions from now until it is finished:\n\n${body}\n\n---\n${rest ? `What Noam wrote with it:\n${rest}` : 'Noam wrote nothing else with it yet.'}`;
+}
+
+// He also asks in passing, in either language: "תחזיר את מה שהיה ותריץ grill me".
+const RUN = /(?:\b(?:run|use|start|load|apply|follow)\b|תריץ|הרץ|להריץ|תפעיל|הפעל|להפעיל|תשתמש|השתמש|תעבור עם)/i;
+const SKILL_WORD = '(?:skill|סקיל|הסקיל)';
+const RUN_WORD = '(?:run|use|start|load|apply|[וש]?(?:תריץ|הרץ|להריץ|תפעיל|הפעל|להפעיל))';
+
+function skillNames() {
+  const names = new Set();
+  for (const dir of [PATHS.library(), PATHS.builtin(), ...PATHS.providers()]) {
+    try { for (const n of fs.readdirSync(dir)) if (NAME.test(n)) names.add(n); } catch { /* missing folder */ }
+  }
+  return [...names];
+}
+
+/**
+ * A skill named inside a message that asks to run it. Its exact name ("grill-me",
+ * "/quieter") always counts; written with spaces ("grill me") it counts only right after
+ * a run word or next to the word "skill", so "use the map and zoom out" stays plain text.
+ * A one-word name needs "/name" or the word "skill" next to it. No run word, no skill.
+ */
+function mentionedSkill(text) {
+  const said = String(text || '');
+  if (!RUN.test(said)) return null;
+  let best = null;
+  const lower = said.toLowerCase();
+  for (const name of skillNames()) {
+    if (!lower.includes(name.split('-')[0])) continue;   // quick skip; ~450 names
+    const words = name.split('-').map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const exact = words.join('-'), spaced = words.join('[\\s_]+');
+    const named = `(?:${exact}|${spaced})`;
+    const forms = [`/${exact}`, `${named}\\s+${SKILL_WORD}`, `${SKILL_WORD}\\s+(?:של\\s+)?${named}`];
+    if (words.length > 1) forms.push(exact, `${RUN_WORD}\\s+(?:the\\s+|את\\s+)?${spaced}`);
+    const re = new RegExp(`(?:^|[^\\p{L}\\p{N}/-])(?:${forms.join('|')})(?![\\p{L}\\p{N}-])`, 'iu');
+    const hit = re.exec(` ${said}`);
+    if (hit && (!best || hit.index < best.at || (hit.index === best.at && name.length > best.name.length))) best = { name, at: hit.index };
+  }
+  const body = best && skillText(best.name);
+  if (!body) return null;
+  return `Noam asked you to run the "${best.name}" skill in this chat. Follow these instructions from now until it is finished:\n\n${body}\n\n---\nNoam's message, as he typed it:\n${said.trim()}`;
 }
 
 /** Name and description checks, usable before there is a body (teach-a-task). */

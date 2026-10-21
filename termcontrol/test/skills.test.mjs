@@ -134,3 +134,59 @@ test('a bot gets the skill steps while the chat keeps exactly what Noam typed', 
     assert.equal(bots.messages(bot.id).find((m) => m.role === 'operator').text, '/grill-me my launch plan');
   } finally { s.done(); }
 });
+
+// Noam 2026-10-21: "וכל סוכן אחר אמורים להיות מסוגלים להריץ סקילים. נניח את grill me ישירות בצ'אט שלהם".
+test('a skill asked for mid-message, in Hebrew or English, from his own skill folders too', () => {
+  const s = sandbox();
+  try {
+    delete process.env.TC_SKILLS_BUILTIN;
+    fs.mkdirSync(path.join(s.codex, 'quieter'));
+    fs.writeFileSync(path.join(s.codex, 'quieter', 'SKILL.md'), '---\nname: quieter\ndescription: Tone a design down.\n---\nOne focal point per screen.');
+    fs.mkdirSync(path.join(s.claude, 'pixel-art-sprites'));
+    fs.writeFileSync(path.join(s.claude, 'pixel-art-sprites', 'SKILL.md'), '---\nname: pixel-art-sprites\ndescription: Sprites.\n---\nDraw on a 32px grid.');
+    const he = skillPrompt('תחזיר את מה שהיה ותריץ grill me');
+    assert.match(he, /run the "grill-me" skill/);
+    assert.match(he, /ONE question per message/);
+    assert.match(he, /תחזיר את מה שהיה ותריץ grill me/);
+    assert.match(skillPrompt('please use the quieter skill on the home page'), /One focal point per screen/);
+    assert.match(skillPrompt('/quieter'), /One focal point per screen/);
+    assert.match(skillPrompt('Load the pixel-art-sprites skill first and follow it'), /32px grid/);
+    assert.equal(skillPrompt('make it quieter and use less glow'), null, 'a one-word skill needs "/" or the word skill');
+    assert.equal(skillPrompt('grill me later about it'), null, 'no run word, no skill');
+    fs.mkdirSync(path.join(s.claude, 'zoom-out'));
+    fs.writeFileSync(path.join(s.claude, 'zoom-out', 'SKILL.md'), '---\nname: zoom-out\ndescription: Step back.\n---\nLook at the whole system.');
+    assert.equal(skillPrompt('use the map and zoom out a bit'), null, 'a skill written with spaces needs a run word right before it');
+    assert.match(skillPrompt('run zoom out on this'), /Look at the whole system/);
+    assert.match(skillPrompt('use zoom-out'), /Look at the whole system/);
+    assert.equal(skillPrompt('please /grill-me later'), null);
+  } finally { s.done(); }
+});
+
+test('every bot kind can run skills: Claude bots may use the Skill tool, both get the steps in the message', async () => {
+  const { brainCommand, brainBrief } = await import('../bridge/bots.mjs');
+  const claude = brainCommand({ id: 'b1', name: 'politic-figther_dev', provider: 'claude', cwd: os.tmpdir(), sessions: {} }, 'hi');
+  const allowed = claude.args.slice(claude.args.indexOf('--allowedTools') + 1, claude.args.indexOf('--disallowedTools'));
+  assert.ok(allowed.includes('Skill'), 'Claude bots may load skills themselves');
+  assert.ok(allowed.includes('Read'), 'and read a skill file');
+  const brief = brainBrief({ id: 'b2', name: 'x', provider: 'codex', cwd: os.tmpdir() });
+  assert.match(brief, /~\/\.codex\/skills/);
+  assert.match(brief, /Never say a bot cannot run a skill/);
+
+  const s = sandbox();
+  try {
+    delete process.env.TC_SKILLS_BUILTIN;
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-grill-'));
+    for (const d of ['.claude', '.codex']) fs.mkdirSync(path.join(home, d));
+    fs.writeFileSync(path.join(home, '.claude', '.credentials.json'), '{}');
+    fs.writeFileSync(path.join(home, '.codex', 'auth.json'), '{}');
+    fs.writeFileSync(path.join(home, 'daemon.sock'), '');
+    for (const provider of ['claude', 'codex']) {
+      const seen = [];
+      const bots = new Bots({ checks: { home, socket: path.join(home, 'daemon.sock') }, dir: fs.mkdtempSync(path.join(os.tmpdir(), 'tc-grill-bots-')), run: async (bot, text) => { seen.push(text); return { text: 'Question 1: ...' }; } });
+      const { bot } = bots.create({ name: `Griller-${provider}`, provider, cwd: os.tmpdir() });
+      assert.equal(bots.send(bot.id, 'תחזיר את מה שהיה ותריץ grill me').ok, true);
+      for (let i = 0; i < 200 && bots.running.has(bot.id); i++) await new Promise((r) => setTimeout(r, 5));
+      assert.match(seen[0], /ONE question per message/, `${provider} bot got the grill-me steps`);
+    }
+  } finally { s.done(); }
+});
