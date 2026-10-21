@@ -13,7 +13,7 @@ import { canvasSidebarView, listPanes, reconcileLivePanes, readWorkspace, invent
 import { transcriptPath as codexTranscript } from './adapters/codex.mjs';
 import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
-import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
+import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } from './auth.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
@@ -30,6 +30,7 @@ import { readUsageLimits } from './usage-limits.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { filesIn, matchFiles } from './files.mjs';
+import { resolveLocalImage } from './local-image.mjs';
 import { projectCatalog, resolveProject, projectLaunchArgs, projectLaunchReady, projectLaunchCapabilityPath, PROJECT_PROVIDERS, legacyProjectChoice } from './projects.mjs';
 import { spawnArgs } from './spawn.mjs';
 import { transcribe, prepareTranscriber, recentTranscriptionTimings, MAX_AUDIO_BYTES } from './transcribe/index.mjs';
@@ -908,6 +909,33 @@ const handle = async (req, res) => {
   }
 
   if (url.pathname === '/api/live') {
+  // The PC app shows this page inside a frame that drops "open in a new tab", so a link
+  // clicked there opens in the PC's own browser (Noam: "ללחוץ על זה לא פותח את הלינקים").
+  // Only from this machine itself, and only a web address or a picture this page may show.
+  if (url.pathname === '/api/open-link' && req.method === 'POST') {
+    if (!isLocalRecoveryRequest(req, url)) return json(res, 403, { error: 'Links open on the PC only from the PC app.' });
+    let body = '';
+    for await (const chunk of req) { body += chunk; if (body.length > 8192) return json(res, 413, { error: 'too long' }); }
+    let target = '';
+    try { target = String(JSON.parse(body).url || ''); } catch {}
+    const picture = target.startsWith('/api/local-image?') ? resolveLocalImage(new URL(target, 'http://x').searchParams.get('path')) : null;
+    let open = picture?.file || '';
+    if (!open) { try { const u = new URL(target); if (u.protocol === 'http:' || u.protocol === 'https:') open = u.href; } catch {} }
+    if (!open) return json(res, 400, { error: 'That is not a link that can be opened.' });
+    const child = spawn('xdg-open', [open], { detached: true, stdio: 'ignore' });
+    child.on('error', () => {});
+    child.unref();
+    return json(res, 200, { ok: true });
+  }
+
+  // A screenshot path in an agent's message opens as the picture (signed-in only).
+  if (url.pathname === '/api/local-image' && req.method === 'GET') {
+    const image = resolveLocalImage(url.searchParams.get('path'));
+    if (!image) return json(res, 404, { error: 'That picture is not available.' });
+    res.writeHead(200, { 'content-type': image.type, 'content-length': image.size, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' });
+    return fs.createReadStream(image.file).pipe(res);
+  }
+
     return liveSessionIds()
       .then((ids) => json(res, 200, { live: [...ids] }))
       .catch((e) => json(res, 200, { live: [], error: String(e.message || e) }));

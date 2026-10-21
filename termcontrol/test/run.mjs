@@ -835,8 +835,8 @@ async function main() {
 
   await check('message text is escaped, not injected', () => {
     const html = fs.readFileSync(path.join(here, '..', 'app', 'index.html'), 'utf8');
-    // Message bodies go through richText → inlineRich, which escapes before formatting.
-    ok(/const inlineRich = \(s\) => esc\(s\)/.test(html), 'message bodies must be escaped');
+    // Message bodies go through richText → inlineRich, which escapes every piece around the links it finds.
+    ok(/const inlineRich = \(s\) => \{[\s\S]*?esc\(src\.slice\(at, m\.index\)\)[\s\S]*?esc\(src\.slice\(at\)\)/.test(html), 'message bodies must be escaped');
     ok(html.includes('esc(p.project)'), 'project names must be escaped');
   });
 

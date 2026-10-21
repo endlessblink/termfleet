@@ -21,7 +21,7 @@ export function currentUser(req) {
 
 const clientIp = (req) => clientKey(req);
 
-function isLocalRecoveryRequest(req, url) {
+export function isLocalRecoveryRequest(req, url) {
   const remote = String(req.socket.remoteAddress || '');
   const localRemote = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
   const localHost = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname);

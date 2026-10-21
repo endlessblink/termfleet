@@ -1144,6 +1144,21 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .pane-more{display:none;flex:none;align-items:center;justify-content:center;width:24px;height:20px;border-radius:6px;color:var(--muted);font-size:15px;line-height:1}
 @media (hover:hover) and (pointer:fine){.pane:hover .pane-more,.pane:focus-visible .pane-more{display:inline-flex}.pane-more:hover{background:var(--control);color:var(--text)}}
 .pane-menu{position:fixed;z-index:60;min-width:200px;max-width:calc(100vw - 24px);padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 8px 24px rgba(0,0,0,.28)}
+/* Links in messages: tappable, copyable, and kept left-to-right inside Hebrew text. */
+.msg-link{color:var(--accent);text-decoration:underline;text-underline-offset:2px;unicode-bidi:isolate;direction:ltr;overflow-wrap:anywhere;-webkit-touch-callout:none}
+.msg-link code{color:inherit}
+.link-copy{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;width:28px;height:28px;margin-inline:2px;padding:0;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer;position:relative}
+.link-copy::after{content:'';position:absolute;inset:-8px}
+.link-copy:hover,.link-copy:focus-visible{background:var(--bg);color:var(--text)}
+.link-copy svg{width:15px;height:15px}
+.link-toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translate(-50%,12px);padding:9px 16px;border-radius:999px;background:var(--text);color:var(--surface);font:14px var(--ui);opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;z-index:1000}
+.link-toast.show{opacity:1;transform:translate(-50%,0)}
+.link-menu{position:fixed;z-index:1001;min-width:200px;max-width:min(360px,calc(100vw - 16px));padding:6px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--text);box-shadow:0 8px 28px rgba(0,0,0,.22);display:flex;flex-direction:column;gap:2px}
+.link-menu.centered{left:50%;top:40%;transform:translate(-50%,-50%)}
+.link-menu-url{padding:6px 10px 8px;font:12px/1.4 var(--mono);color:var(--muted);overflow-wrap:anywhere;text-align:left;border-bottom:1px solid var(--line);margin-bottom:2px}
+.link-menu a,.link-menu button{display:flex;align-items:center;min-height:44px;padding:0 12px;border:0;border-radius:10px;background:none;color:var(--text);font:15px var(--ui);text-decoration:none;text-align:start;cursor:pointer}
+.link-menu a:hover,.link-menu button:hover,.link-menu a:focus-visible,.link-menu button:focus-visible{background:var(--bg)}
+.link-menu input{margin:6px;padding:8px;border:1px solid var(--control);border-radius:8px;background:var(--bg);color:var(--text);font:13px var(--mono)}
 .pane-menu button{display:flex;width:100%;min-height:44px;align-items:center;padding:0 12px;border:0;border-radius:8px;background:none;color:var(--text);font:inherit;text-align:start;cursor:pointer}
 .pane-menu button:hover,.pane-menu button:focus-visible{background:var(--control)}
 .pane-menu .danger{color:#e5484d}
@@ -1652,7 +1667,8 @@ const BOX_RULE = /^[\s─━═┌┐└┘├┤┬┴┼╭╮╰╯╞╡╪+
 // A line reads right-to-left only when it is mostly Hebrew/Arabic. Going by the
 // first letter flips an English line that merely starts with a Hebrew name.
 const dirOf = (s) => {
-  const text = String(s || '');
+  // A link's letters are not words: "הריפו ב-https://github.com/…" is still a Hebrew line.
+  const text = String(s || '').replace(/\]\([^)\s]*\)/g, ']').replace(/(?:https?:\/\/|www\.)\S+|(?:^|\s)~?\/\S+|[\w-]+(?:\.[\w-]+)+\/\S*|[a-z0-9-]+\.(?:com|org|net|io|dev|app|ai)\b/gi, ' ');
   const rtl = (text.match(/[֐-׿؀-ۿ]/g) || []).length;
   const ltr = (text.match(/[A-Za-zÀ-ɏ]/g) || []).length;
   // Most letters win, not the first letter: "TermFleet צריך לעבוד טוב" is a Hebrew line (2026-10-20).
@@ -1693,10 +1709,61 @@ if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') 
   }
 }).observe(document.body, { childList: true, subtree: true, characterData: true });
 if (typeof document !== 'undefined' && document.body) settleAll(document.body);
-const inlineRich = (s) => esc(s)
-  .replace(/`([^`]+)`/g, '<code>$1</code>')
-  .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-  .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s"]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+// Links an agent writes are tappable (Noam: "שהלינקים שהסוכנים נותנים יהיו לחיצים") and easy to
+// copy ("ושיהיה קל להעתיק אותם"): each one gets a copy button. Only http(s) ever becomes a link;
+// a screenshot path opens through the bridge's picture preview. Everything else stays text.
+const LINK_TLD = 'com|org|net|io|dev|app|ai|co|il|me|gg|xyz|info|tv|edu|gov|cloud|tech|site|link|ly';
+const LINK_FIND = new RegExp(String.raw`\[([^\]\n]+)\]\(\s*<?([^)\s>]+)>?\s*\)|\x60([^\x60\n]+)\x60|((?:https?:\/\/|www\.)[^\s<>"'\x60‎‏‪-‮⁦-⁩]+|(?<![\w@./:-])(?:localhost|127\.0\.0\.1):\d{2,5}(?:\/[^\s<>"'\x60]*)?|(?<![\w@./:-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:${LINK_TLD})(?![\w-])(?::\d{2,5})?(?:\/[^\s<>"'\x60‎‏]*)?)|((?<![\w.])~?\/(?:[\w.@+-]+\/)+[\w.@+-]+\.(?:png|jpe?g|webp|gif))(?![\w])`, 'gi');
+const LINK_ONLY = new RegExp(String.raw`^(?:https?:\/\/|www\.)\S+$|^(?:localhost|127\.0\.0\.1):\d{2,5}(?:\/\S*)?$|^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:${LINK_TLD})(?::\d{2,5})?(?:\/\S*)?$`, 'i');
+const IMAGE_PATH = /^~?\/(?:[\w.@+-]+\/)+[\w.@+-]+\.(?:png|jpe?g|webp|gif)$/i;
+// Sentence punctuation (Hebrew too) after a link is not part of it; a ")" stays when the link opened one.
+const trimLink = (raw) => {
+  let url = raw;
+  for (;;) {
+    const last = url.slice(-1);
+    if (/[.,;:!?…'"»״׳\]}>־]/.test(last)) { url = url.slice(0, -1); continue; }
+    if (last === ')' && (url.match(/\(/g) || []).length < (url.match(/\)/g) || []).length) { url = url.slice(0, -1); continue; }
+    return url;
+  }
+};
+// The address a link opens, or '' when it must stay plain text (javascript:, data:, relative…).
+const linkTarget = (raw) => {
+  const url = String(raw || '').trim();
+  if (/^https?:\/\/[^\s/]/i.test(url)) return url;
+  if (/^(?:localhost|127\.0\.0\.1):/i.test(url)) return ['http', url].join('://');
+  // A bare name needs a lowercase ending, so "ASP.NET" stays a word.
+  if (/^www\./i.test(url) || (LINK_ONLY.test(url) && /\.[a-z]{2,}$/.test(url.split(/[/:]/)[0]))) return ['https', url].join('://');
+  if (IMAGE_PATH.test(url)) return `/api/local-image?path=${encodeURIComponent(url)}`;
+  return '';
+};
+const linkWord = (en, he) => (typeof ui === 'function' ? ui(en, he) : en);
+const linkHtml = (raw, label) => {
+  const href = linkTarget(raw);
+  if (!href) return label;
+  const file = href.startsWith('/api/local-image');
+  // Copying gives the full address (a bare "github.com/x" pastes as a working link); a file keeps its path.
+  const copy = file ? raw : href;
+  return `<a class="msg-link${file ? ' local-file' : ''}" href="${esc(href)}" target="_blank" rel="noopener noreferrer" dir="ltr" data-link="${esc(copy)}">${label}</a>`
+    + `<button type="button" class="link-copy" data-link="${esc(copy)}" aria-label="${esc(linkWord('Copy link', 'העתקת הקישור'))}" title="${esc(linkWord('Copy link', 'העתקת הקישור'))}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7h10v14H9z M5 17V3h10"/></svg></button>`;
+};
+const inlineRich = (s) => {
+  const src = String(s);
+  let out = '', at = 0;
+  for (const m of src.matchAll(LINK_FIND)) {
+    let whole = m[0], piece;
+    if (m[1] !== undefined) piece = linkTarget(m[2]) ? linkHtml(m[2], esc(m[1])) : esc(whole);
+    else if (m[3] !== undefined) piece = linkTarget(m[3]) && (LINK_ONLY.test(m[3]) || IMAGE_PATH.test(m[3])) ? linkHtml(m[3], `<code>${esc(m[3])}</code>`) : `<code>${esc(m[3])}</code>`;
+    else {
+      const url = trimLink(m[4] || m[5]);
+      whole = url;
+      piece = linkHtml(url, esc(url));
+    }
+    out += esc(src.slice(at, m.index)) + piece;
+    at = m.index + whole.length;
+  }
+  out += esc(src.slice(at));
+  return out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+};
 const tableHtml = (rows, header) => {
   rows = rows.filter(row => row.some(cell => String(cell).trim()));
   if (!rows.length) return '';
@@ -1881,6 +1948,71 @@ function speakableText(text){
 main.addEventListener('click',event=>{
   const button=event.target.closest('.speak-message');if(!button)return;
   event.stopPropagation();
+// Links in a message: the small button copies, and a long press (phone) or right click (PC)
+// offers "Open link" / "Copy link". A short "Copied" note confirms either way.
+function linkToast(text){
+  let el=document.querySelector('.link-toast');
+  if(!el){el=document.createElement('div');el.className='link-toast';el.setAttribute('role','status');el.setAttribute('aria-live','polite');document.body.append(el);}
+  el.textContent=text;el.classList.add('show');clearTimeout(el.hideTimer);el.hideTimer=setTimeout(()=>el.classList.remove('show'),1600);
+}
+async function copyLink(text){
+  try{if(!navigator.clipboard?.writeText)throw new Error('unavailable');await navigator.clipboard.writeText(text);}
+  catch{
+    // A phone on plain http has no clipboard API; the old copy command still works there.
+    const area=document.createElement('textarea');area.value=text;area.setAttribute('readonly','');area.style.cssText='position:fixed;top:0;left:0;opacity:0;';
+    document.body.append(area);area.select();area.setSelectionRange(0,text.length);let done=false;try{done=document.execCommand('copy');}catch{}area.remove();
+    if(!done){linkMenuFor(null,text,true);return;}
+  }
+  linkToast(ui('Link copied','הקישור הועתק'));
+}
+function closeLinkMenu(){document.querySelector('.link-menu')?.remove();}
+function linkMenuFor(link,text,manual=false,x=0,y=0){
+  closeLinkMenu();
+  const menu=document.createElement('div');menu.className='link-menu';menu.setAttribute('role','menu');
+  const href=link?.getAttribute('href') || '';
+  menu.innerHTML=`<div class="link-menu-url" dir="ltr">${esc(text)}</div>${manual?`<input readonly dir="ltr" aria-label="${esc(ui('Link to copy','הקישור להעתקה'))}">`:''}${href?`<a role="menuitem" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${ui('Open link','פתיחת הקישור')}</a>`:''}${manual?'':`<button type="button" role="menuitem" data-copy>${ui('Copy link','העתקת הקישור')}</button>`}`;
+  document.body.append(menu);
+  const box=menu.getBoundingClientRect(),w=innerWidth,h=innerHeight;
+  if(x || y){menu.style.left=Math.max(8,Math.min(x,w-box.width-8))+'px';menu.style.top=Math.max(8,Math.min(y+8,h-box.height-8))+'px';}else menu.classList.add('centered');
+  menu.querySelector('a')?.addEventListener('click',()=>setTimeout(closeLinkMenu));
+  menu.querySelector('[data-copy]')?.addEventListener('click',()=>{closeLinkMenu();copyLink(text);});
+  const field=menu.querySelector('input');if(field){field.value=text;field.focus();field.select();linkToast(ui('Select the link and copy it','סמנו את הקישור והעתיקו'));}
+  else menu.querySelector('[role=menuitem]')?.focus({preventScroll:true});
+}
+document.addEventListener('click',event=>{
+  const button=event.target.closest?.('.link-copy');
+  if(button){event.preventDefault();event.stopPropagation();copyLink(button.dataset.link || '');}
+},true);
+document.addEventListener('pointerdown',event=>{if(!event.target.closest?.('.link-menu'))closeLinkMenu();},true);
+// Inside the PC app this page sits in a frame that silently drops "open in a new tab"
+// (Noam: "ללחוץ על זה לא פותח את הלינקים בפועל"), so the PC's own browser opens the link.
+const insidePcApp=(()=>{try{return window.top!==window && ['127.0.0.1','localhost'].includes(location.hostname);}catch{return true;}})();
+document.addEventListener('click',event=>{
+  const link=event.target.closest?.('a.msg-link, .link-menu a');
+  if(!link || !insidePcApp || event.defaultPrevented)return;
+  event.preventDefault();
+  const href=link.getAttribute('href');
+  fetch('/api/open-link',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url:href.startsWith('/')?href:link.href}),signal:AbortSignal.timeout(6000)})
+    .then(r=>{if(!r.ok)throw new Error();linkToast(ui('Opening in your browser…','נפתח בדפדפן…'));})
+    .catch(()=>{window.open(link.href,'_blank','noopener');});
+});
+document.addEventListener('contextmenu',event=>{
+  const link=event.target.closest?.('a.msg-link');if(!link)return;
+  event.preventDefault();linkMenuFor(link,link.dataset.link || link.href,false,event.clientX,event.clientY);
+});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeLinkMenu();});
+document.addEventListener('scroll',closeLinkMenu,true);
+// iPhones never send contextmenu for a long press, so time the press here too.
+{let press=null,swallow=false;
+  document.addEventListener('pointerdown',event=>{
+    swallow=false;const link=event.pointerType==='touch' && event.target.closest?.('a.msg-link');if(!link)return;
+    press={link,x:event.clientX,y:event.clientY,timer:setTimeout(()=>{swallow=true;linkMenuFor(link,link.dataset.link || link.href,false,press.x,press.y);press=null;},550)};
+  });
+  const cancel=()=>{if(press){clearTimeout(press.timer);press=null;}};
+  document.addEventListener('pointermove',event=>{if(press && Math.hypot(event.clientX-press.x,event.clientY-press.y)>10)cancel();});
+  document.addEventListener('pointerup',cancel);document.addEventListener('pointercancel',cancel);
+  document.addEventListener('click',event=>{if(swallow && event.target.closest?.('a.msg-link')){event.preventDefault();event.stopPropagation();}swallow=false;},true);
+}
   const status=button.closest('.msg')?.querySelector('.copy-status');
   if(!('speechSynthesis' in window)){if(status)status.textContent=ui('Reading aloud is not available on this device.','הקראה אינה זמינה במכשיר הזה.');return;}
   if(speechSynthesis.speaking && button.dataset.speaking==='true'){speechSynthesis.cancel();return;}
