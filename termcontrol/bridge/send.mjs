@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { requestDaemon, defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { visibleScreenOf, observedScreenOf } from './screen.mjs';
+import { isSleeping, wakePane } from './sleep.mjs';
 
 /**
  * Every keystroke this bridge puts into a live terminal is recorded. Without
@@ -58,6 +59,12 @@ export async function sendToPane(pane, text, { force = false } = {}) {
   if (body.length > MAX_MESSAGE_CHARS) return { error: 'That message is over 2 million characters. Send it as a file instead.' };
 
   if (inFlight.has(pane.id)) return { error: 'Still sending your last message.' };
+
+  // A sleeping terminal is woken first (its conversation resumes), then the message goes in.
+  if (isSleeping(pane.id)) {
+    const woke = await wakePane(pane.id, { ask: (request) => requestDaemon(request, defaultDaemonSocket()) });
+    if (!woke.ok) return { error: `That terminal is asleep and could not be woken: ${woke.error}` };
+  }
 
   const live = await liveSessionIds();
   if (!live.has(pane.id)) {

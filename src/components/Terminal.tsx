@@ -1,6 +1,8 @@
 import {ptySessionEnvelope} from "../lib/sessionProcessEvents";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { AgentSleepPanel, KeepAwakeToggle, useAgentSleep } from "./AgentSleepPanel";
+import { readSleepRecord } from "../lib/agentSleep";
 import { RequestsRail } from "./RequestsRail";
 import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -2649,6 +2651,26 @@ export function TerminalComponent({
     nativePane.attached,
   ]);
 
+  // Sleep (idle agents free their memory, termcontrol/bridge/sleep.mjs): while asleep the
+  // card shows a Sleeping panel and does not reattach, because reattaching is what wakes it.
+  const sleepSessionId = attachToPtyId ?? runtimeSessionId;
+  const isAgentPane = Boolean(paneAgentProvider && paneAgentProvider !== "shell");
+  const agentSleep = useAgentSleep(
+    sleepSessionId,
+    canvasMode,
+    activePaneId === paneId && (standalone || activeTabId === tabId),
+  );
+  const markAsleep = agentSleep.markAsleep;
+  const handleExitOrSleep = useCallback(
+    (details: { id: string; code: number; success: boolean }) => {
+      void readSleepRecord(details.id).then((found) => {
+        if (found) markAsleep(found);
+        else handleExit(details);
+      });
+    },
+    [handleExit, markAsleep],
+  );
+
   const focusWebTerminal = useCallback(() => {
     if (!canvasMode && !nativePane.attached) {
       terminal?.focus();
@@ -2711,7 +2733,13 @@ export function TerminalComponent({
         <span className="terminal-block-marker" />
         <span className="terminal-block-context-dot" />
       </div>
-      {canvasMode ? (
+      {canvasMode && agentSleep.state !== "awake" ? (
+        <AgentSleepPanel
+          record={agentSleep.record}
+          pending={agentSleep.state === "unknown"}
+          onWake={() => void agentSleep.wake()}
+        />
+      ) : canvasMode ? (
         <div className="terminal-container" data-terminal-renderer="canvas2d">
           <TerminalCanvas
             sessionId={attachToPtyId ?? runtimeSessionId}
@@ -2729,7 +2757,7 @@ export function TerminalComponent({
             onStatus={handleStatus}
             onOutput={handleOutput}
             onInputData={captureSubmittedInput}
-            onExit={handleExit}
+            onExit={handleExitOrSleep}
             onSnapshot={handleSnapshot}
             queuedInput={queuedInput}
             onQueuedInputSent={onQueuedInputSent}
@@ -2746,6 +2774,12 @@ export function TerminalComponent({
           title={nativePane.unavailableReason ?? undefined}
         />
       )}
+      {canvasMode && isAgentPane && agentSleep.state === "awake" ? (
+        <KeepAwakeToggle
+          on={agentSleep.keepAwake}
+          onToggle={() => void agentSleep.toggleKeepAwake()}
+        />
+      ) : null}
       <RequestsRail sessionId={attachToPtyId ?? runtimeSessionId} />
     </div>
   );

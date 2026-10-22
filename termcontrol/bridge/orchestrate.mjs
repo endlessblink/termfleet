@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listPanes, reconcileLivePanes, readWorkspace } from './inventory.mjs';
+import { withSleepingLives } from './sleep.mjs';
 import { liveness } from './liveness.mjs';
 import { readSessionStatus, applyVendorStatus } from './session-status.mjs';
 import { readFeed } from './feed.mjs';
@@ -48,6 +49,8 @@ export async function fleetPanes({ workspace = readWorkspace() } = {}) {
   const { reachable, byId } = await liveness();
   const parents = parentsByPane(workspace);
   const named = profiles.all();
+  // Sleeping terminals stay reachable: sending to one wakes it (sleep.mjs).
+  if (reachable) withSleepingLives(byId);
   const base = reachable ? reconcileLivePanes(panes, byId, workspace) : panes;
   return base.map((p) => {
     const pane = applyVendorStatus({ ...p, ...readSessionStatus(p) });
@@ -57,6 +60,7 @@ export async function fleetPanes({ workspace = readWorkspace() } = {}) {
       ...pane,
       alive: Boolean(life),
       producing: life?.producing ?? false,
+      ...(life?.sleeping ? { sleeping: true, turn: 'idle' } : {}),
       goal: pane.operatorGoal?.text || side.declaredGoal || side.statedGoal || null,
       statedTask: side.statedTask || null,
       now: side.now || null,

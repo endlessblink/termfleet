@@ -1051,6 +1051,9 @@ main .fleet-content{padding:0 10px}
 .pane[data-state=stalled] .state-dot{background:var(--waiting)}
 .pane[data-state=stalled] .state{color:var(--waiting)}
 .pane[data-state=exited]{opacity:.6}
+/* Sleeping: its programs ended to free memory; opening or messaging it wakes the same conversation. */
+.pane[data-state=sleeping]{opacity:.78}
+.pane[data-state=sleeping] .state-dot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--dim)}
 @media(prefers-reduced-motion:reduce){.pane .state-dot{animation:none!important}}
 /* Row states, shared by bot and terminal rows: mark + colour + words. */
 .row-state{flex:none;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;line-height:16px;white-space:nowrap;color:var(--rs,var(--dim))}
@@ -1543,7 +1546,7 @@ function setTheme(theme){document.documentElement.dataset.theme=theme;localStora
 setTheme(localStorage.getItem('termcontrol-theme')==='light'?'light':'dark');
 themeButton.onclick=()=>setTheme(document.documentElement.dataset.theme==='light'?'dark':'light');
 const groupColor=color=>/^#[0-9a-f]{3,8}$/i.test(String(color || ''))?color:'var(--muted)';
-const avatarState=p=>p.turn==='waiting' || p.attention?'needs-you':p.alive===false || ['exited','ended','crashed','completed','finished'].includes(p.turn)?'exited':p.producing?'producing':p.turn==='working'?'working':'idle';
+const avatarState=p=>p.sleeping?'sleeping':p.turn==='waiting' || p.attention?'needs-you':p.alive===false || ['exited','ended','crashed','completed','finished'].includes(p.turn)?'exited':p.producing?'producing':p.turn==='working'?'working':'idle';
 // Blob family: soft silhouettes in one project colour, white pill eyes. The shape is chosen from a stable hash of
 // the agent id (never list position); the eyes carry the state. Inline SVG, no network.
 const blobHues=['#e8457f','#7c5ce6','#3b7ae8','#0b9fc4','#0f9f74','#c93fd0','#5b5fd6','#0e9a98'];
@@ -3796,7 +3799,7 @@ function paneHeadline(p){
 }
 function card(p) {
   const session=p.sessionAuthority?p.sessionViewV2:null;
-  const state=avatarState(p),stalled=state==='working' && p.stalledForMs,label=stalled?ui(`No activity ${stallAge(p.stalledForMs)}`,`ללא פעילות ${stallAge(p.stalledForMs)}`):({producing:ui('Working','עובד'),working:ui('Working','עובד'),'needs-you':ui('Needs you','נדרש מענה'),idle:ui('Idle','פנוי'),exited:ui('Exited','הסתיים')})[state];
+  const state=avatarState(p),stalled=state==='working' && p.stalledForMs,label=stalled?ui(`No activity ${stallAge(p.stalledForMs)}`,`ללא פעילות ${stallAge(p.stalledForMs)}`):({producing:ui('Working','עובד'),working:ui('Working','עובד'),'needs-you':ui('Needs you','נדרש מענה'),idle:ui('Idle','פנוי'),exited:ui('Exited','הסתיים'),sleeping:ui('Sleeping','ישן')})[state];
   const task=session?(session.task?.label || session.now?.label || ''):technicalTask(p.task)?ui('Continuing from a handoff','ממשיך מהעברה'):shortTask(p.task) || '';
   const named=p.profile?.name || p.title || p.name || '',projectName=projectLabel(p.project);
   // The project is the group heading, so the row is named by what this chat is about.
@@ -3819,12 +3822,19 @@ function openPaneMenu(row,x,y){
   closePaneMenu();
   const id=row.dataset.id,name=row.querySelector('.project')?.textContent || ui('this terminal','המסוף הזה');
   const menu=document.createElement('div');menu.className='pane-menu';menu.setAttribute('role','menu');
-  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button><button type="button" role="menuitem" class="danger" data-close>${ui('Close terminal…','סגירת המסוף…')}</button>`;
+  const rec=fleetPaneRecords.get(id),agent=['claude','codex','opencode'].includes(rec?.provider);
+  const sleepItems=agent?`${rec.sleeping?`<button type="button" role="menuitem" data-wake>${ui('Wake now','להעיר עכשיו')}</button>`:''}<button type="button" role="menuitem" data-keep-awake>${rec.keepAwake?ui('Let it sleep when idle','לאפשר שינה כשפנוי'):ui('Keep awake','להשאיר ער')}</button>`:'';
+  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button>${sleepItems}<button type="button" role="menuitem" class="danger" data-close>${ui('Close terminal…','סגירת המסוף…')}</button>`;
   document.body.append(menu);
   const r=menu.getBoundingClientRect();
   menu.style.left=Math.max(12,Math.min(x,innerWidth-r.width-12))+'px';menu.style.top=Math.max(12,Math.min(y,innerHeight-r.height-12))+'px';
   menu.querySelector('[data-open]').onclick=()=>{closePaneMenu();row.click();};
   menu.querySelector('[data-close]').onclick=()=>{closePaneMenu();confirmClose(id,name,row);};
+  const sleepCall=(path,body)=>fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)}).then(async r=>{const out=await r.json().catch(()=>({}));if(!r.ok)throw new Error(out.error || 'failed');return out;});
+  const keep=menu.querySelector('[data-keep-awake]');
+  if(keep)keep.onclick=()=>{closePaneMenu();sleepCall('/api/sleep/keep-awake',{pane:id,on:!rec.keepAwake}).then(out=>{rec.keepAwake=out.keepAwake;}).catch(()=>{});};
+  const wake=menu.querySelector('[data-wake]');
+  if(wake)wake.onclick=()=>{closePaneMenu();row.querySelector('.state') && (row.querySelector('.state').textContent=ui('Waking up…','מתעורר…'));sleepCall('/api/sleep/wake',{pane:id}).catch(()=>{});};
   menu.querySelector('button').focus();
 }
 function confirmClose(id,name,returnFocus){

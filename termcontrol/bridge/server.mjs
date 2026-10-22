@@ -34,6 +34,7 @@ import { readSessionStatus, subscribeSessionEventHeads, applyVendorStatus, stall
 import { readUsageLimits } from './usage-limits.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
+import { withSleepingLives, sweepSleep, sleepPane, wakePane, workProcesses, treeRss, readSettings, writeSettings, listSleeping, isSleeping as sleepMarked, setKeepAwake, isKeepAwake, sleepVerdict } from './sleep.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { resolveLocalImage } from './local-image.mjs';
 import { projectCatalog, resolveProject, projectLaunchArgs, projectLaunchReady, projectLaunchCapabilityPath, PROJECT_PROVIDERS, legacyProjectChoice } from './projects.mjs';
@@ -165,6 +166,8 @@ async function currentPanes() {
     };
   }
 
+  // Sleeping terminals (their programs ended to free memory) keep their card and row.
+  withSleepingLives(byId);
   const withLife = reconcileLivePanes(panes, byId, workspace)
     .map((p) => {
       const life = byId.get(p.id);
@@ -192,6 +195,8 @@ async function currentPanes() {
         // The fleet only needs enough information to lead the operator to the
         // right terminal. The full prompt and choices stay in /api/feed.
         attention: ask ? { kind: ask.kind, title: ask.title } : null,
+        ...(life.sleeping ? { sleeping: true, sleptAt: life.sleptAt, live: 'sleeping', turn: 'idle', producing: false } : {}),
+        keepAwake: isKeepAwake(p.id),
       };
     });
 
@@ -259,6 +264,38 @@ if (!process.env.TC_CONFIG_DIR && !process.env.TC_NO_AUTO_CLEANUP) {
     sweeping = true;
     sweepFinishedHelpers().catch((error) => console.error('[auto-cleanup]', error.message)).finally(() => { sweeping = false; });
   }, 5 * 60_000).unref();
+}
+
+// Sleep for idle agents (Noam 2026-10-22: 'שהם לא יגנבו הרבה זיכרון במצב idle'). Every minute,
+// an agent terminal idle past the setting (20 minutes by default) that is not working, not
+// waiting for Noam, not in front of him and runs nothing of its own goes to sleep; a quiet line
+// in its activity log says so. Test bridges (their own config folder) never sleep anything.
+const daemonAsk = (request) => requestDaemon(request, defaultDaemonSocket());
+function lastVisitAt(id) {
+  try { const all = JSON.parse(fs.readFileSync(visits.file, 'utf8')); return Math.max(0, ...Object.values(all).map((v) => Number(v?.[id]) || 0)); } catch { return 0; }
+}
+export async function sweepIdleAgents() {
+  const { panes, daemon } = await currentPanes();
+  if (!daemon) return { slept: [], freedBytes: 0 };
+  const table = processTable();
+  return sweepSleep({
+    panes, visitedAt: lastVisitAt,
+    processes: (p) => workProcesses(p.pid, table),
+    sleep: (p) => sleepPane(p, { ask: daemonAsk, rssOf: (x) => treeRss(x.pid, table) }),
+    log: (pane, r) => {
+      const mb = Math.round((r.freedBytes || 0) / 1048576);
+      try { appendAction(paneLogFile(pane.id), { at: Date.now(), actor: 'termfleet', kind: 'terminal', text: `Went to sleep while idle; freed about ${mb} MB. It wakes when opened or sent a message.`, auto: true, paneId: pane.id }); } catch { /* the sleep itself succeeded */ }
+      console.log('[sleep]', pane.id, `${mb} MB`);
+    },
+  });
+}
+if (!process.env.TC_CONFIG_DIR && !process.env.TC_NO_AUTO_SLEEP) {
+  let sleeping = false;
+  setInterval(() => {
+    if (sleeping) return;
+    sleeping = true;
+    sweepIdleAgents().catch((error) => console.error('[sleep]', error.message)).finally(() => { sleeping = false; });
+  }, 60_000).unref();
 }
 
 const sendOnce = createSendOnce();
@@ -689,9 +726,34 @@ const handle = async (req, res) => {
 
   if (url.pathname === '/api/rooms' || url.pathname.startsWith('/api/rooms/') || url.pathname === '/api/room' || url.pathname.startsWith('/api/room/')) return handleRooms(req, res, url);
 
+  if (url.pathname.startsWith('/api/sleep')) {
+    let body = {};
+    if (req.method === 'POST') {
+      let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 4096) return json(res, 413, { error: 'Request too large.' }); }
+      try { body = raw ? JSON.parse(raw) : {}; } catch { return json(res, 400, { error: 'Invalid request.' }); }
+    }
+    if (url.pathname === '/api/sleep' && req.method === 'GET') {
+      const { panes } = await currentPanes();
+      const table = processTable();
+      const why = Object.fromEntries(panes.filter((p) => !p.sleeping).map((p) => [p.id, sleepVerdict(p, { visitedAt: lastVisitAt, processes: (x) => workProcesses(x.pid, table) })]));
+      return json(res, 200, { settings: readSettings(), sleeping: listSleeping(), awakeBecause: why });
+    }
+    if (url.pathname === '/api/sleep/settings' && req.method === 'POST') return json(res, 200, { settings: writeSettings(undefined, body) });
+    const id = String(body.pane || '');
+    if (!id.startsWith('terminal-')) return json(res, 400, { error: 'That is not a terminal.' });
+    if (url.pathname === '/api/sleep/keep-awake' && req.method === 'POST') return json(res, 200, { ok: true, keepAwake: setKeepAwake(id, Boolean(body.on)) });
+    if (url.pathname === '/api/sleep/wake' && req.method === 'POST') {
+      const r = await wakePane(id, { ask: daemonAsk });
+      return json(res, r.ok ? 200 : 502, r.ok ? r : { error: r.error });
+    }
+    return json(res, 404, { error: 'Not found' });
+  }
+
   if (url.pathname === '/api/visit' && req.method === 'POST') {
     let raw='';for await (const chunk of req){raw+=chunk;if(raw.length>1024)return json(res,413,{error:'Request too large.'});}
     let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'Invalid visit.'});}
+    // Opening a sleeping terminal on the phone wakes it; its conversation shows meanwhile.
+    if (sleepMarked(String(body?.pane || ''))) wakePane(String(body.pane), { ask: daemonAsk }).catch(() => {});
     const {panes}=await currentPanes();if(!panes.some(p=>p.id===body.pane))return json(res,409,{error:'That conversation is no longer available.'});
     try{return json(res,200,{ok:true,lastUsedAt:visits.record(currentUser(req).id,body.pane)});}catch{return json(res,503,{error:'Recent conversation history could not be saved.'});}
   }
