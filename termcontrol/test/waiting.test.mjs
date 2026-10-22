@@ -90,3 +90,27 @@ test('a mark takes only its own note, and every chained mark counts', async () =
   assert.deepEqual(parseMarks('termfleet-asks ready 5 open the bots list; echo x'), [{ status: 'ready', nums: [5], note: 'open the bots list' }]);
   assert.deepEqual(parseMarks('grep -n "termfleet-asks ready 5" file; termfleet-asks --help'), []);
 });
+
+// TF-099, Noam 2026-10-22: "every so often I see a Waiting for you list at the top, then it resets
+// and disappears". Recorded live: the terminal service was out of reach for ~3 s, the bridge then
+// read every old status record (1351 terminals, closed ones too), the list jumped from 1 real item
+// to 9 ghosts, notified, and reset 8 s later. While the terminals cannot be seen, what they were
+// waiting for stays exactly as last seen; bot items are still read fresh.
+test('the list stays as it was while the terminals cannot be seen, then follows them again', () => {
+  const real = { id: 'p1', project: 'termfleet', attention: { kind: 'question', title: 'Test question' } };
+  const ghosts = Array.from({ length: 8 }, (_, i) => ({ id: `old${i}`, project: `old${i}`, attention: { kind: 'permission', title: 'This agent is asking permission to continue.' } }));
+  const seen = collectWaiting({ panes: [real], bots: [], daemon: true });
+  assert.equal(seen.length, 1);
+  const blind = collectWaiting({ panes: [real, ...ghosts], bots: [{ id: 'b4', name: 'pc-helper', blocked: { ask: 'Which drive?' } }], daemon: false, previous: seen });
+  assert.deepEqual(blind.map((i) => i.key).sort(), [seen[0].key, blind.find((i) => i.source === 'bot').key].sort(), 'no ghosts, the real item kept, bots still fresh');
+  const back = collectWaiting({ panes: [], bots: [], daemon: true, previous: blind });
+  assert.deepEqual(back, [], 'once the terminals are seen again an answered item drops');
+});
+
+test('the phone keeps the list last seen when one read of it fails', () => {
+  const page = fs.readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
+  assert.match(page, /const waitingData=\(await waitingRequest\) \|\| lastFleetData\?\.waiting \|\| null/);
+  const server = fs.readFileSync(new URL('../bridge/server.mjs', import.meta.url), 'utf8');
+  assert.match(server, /collectWaiting\(\{ panes, bots: bots\.list\(\), asksOf, daemon, previous: waitingNow \}\)/);
+  assert.match(server, /!waitingLooked \? await refreshWaiting\(\)/, 'a fresh bridge looks before saying nothing waits');
+});

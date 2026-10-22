@@ -414,7 +414,7 @@ const handle = async (req, res) => {
   }
 
   if (url.pathname === '/api/waiting' && req.method === 'GET') {
-    const items = url.searchParams.get('fresh') === '1' ? await refreshWaiting() : waitingNow;
+    const items = url.searchParams.get('fresh') === '1' || !waitingLooked ? await refreshWaiting() : waitingNow;
     return json(res, 200, { items });
   }
   // Bots (TF-096). Same sign-in gate as every route below it.
@@ -1098,6 +1098,8 @@ const notifyWaiting = !process.env.TC_CONFIG_DIR && process.env.TC_NO_WAITING_NO
   ? createWaitingNotifier({ file: path.join(os.homedir(), '.config', 'termcontrol', 'waiting-seen.json'), push: (note) => push.notify(note) })
   : null;
 let waitingBusy = false;
+// Until the first look a fresh bridge knows nothing; it must not answer "nothing waits" (TF-099).
+let waitingLooked = false;
 // The desktop app's side list reads the same list from its status folder (Noam: "this must be
 // reachable on the computer too"), written only when it changes.
 let waitingWritten = '';
@@ -1115,14 +1117,15 @@ async function refreshWaiting() {
   if (waitingBusy) return waitingNow;
   waitingBusy = true;
   try {
-    const { panes } = await currentPanes();
+    const { panes, daemon } = await currentPanes();
     const byId = new Map(panes.map((p) => [p.id, p]));
     const asksOf = ({ kind, id }) => {
       if (kind === 'terminal') return asksForTranscript(adapterFor(byId.get(id))?.transcriptPath(byId.get(id)));
       const raw = bots.read(id);
       return raw?.sessions?.claude?.started ? asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id)) : null;
     };
-    waitingNow = collectWaiting({ panes, bots: bots.list(), asksOf });
+    waitingNow = collectWaiting({ panes, bots: bots.list(), asksOf, daemon, previous: waitingNow });
+    if (daemon !== false) waitingLooked = true;
     if (notifyWaiting) { await notifyWaiting(waitingNow); writeWaitingSidecar(waitingNow); }
   } catch (error) { console.error('[waiting]', error.message); } finally { waitingBusy = false; }
   return waitingNow;

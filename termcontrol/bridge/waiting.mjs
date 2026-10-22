@@ -29,7 +29,11 @@ export function plainAsk(text) {
  */
 // Only what blocks work until Noam acts. Things built and ready to try are NOT listed
 // (Noam 2026-10-20, pointing at the Try rows: "this shouldn't be in the list at all").
-export function collectWaiting({ panes = [], bots = [] }) {
+// `daemon: false` means the terminal service could not be reached, so the panes handed in are
+// only old status records (every terminal ever, closed ones too). Then what the terminals were
+// waiting for stays exactly as last seen in `previous` (TF-099: the list jumped to old ghosts
+// and reset seconds later). Bot items do not depend on it and are always read fresh.
+export function collectWaiting({ panes = [], bots = [], daemon = true, previous = [] }) {
   const items = [];
   for (const b of bots) {
     if (b.hidden) continue;
@@ -40,7 +44,8 @@ export function collectWaiting({ panes = [], bots = [] }) {
   const ownerOf = new Map();
   for (const b of bots) for (const h of b.helpers || []) if (h?.paneId) ownerOf.set(h.paneId, b);
   const seen = new Set();
-  for (let p of panes) {
+  if (daemon === false) items.push(...previous.filter((i) => i.source === 'terminal'));
+  else for (let p of panes) {
     if (p.alive === false) continue;
     const owner = ownerOf.get(p.id);
     if (owner?.hidden) continue;

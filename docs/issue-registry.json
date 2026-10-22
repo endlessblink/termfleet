@@ -10188,6 +10188,85 @@
           "note": "Ordinary-choice correction deployed under existing authorization; synthetic browser/HTTP and installed-source checks pass. Owner retries the actual marked choice and final review; no live provider action was performed for testing. Custom answers remain disabled."
         }
       ]
+    },
+    {
+      "id": "TF-099",
+      "title": "Waiting for you list jumps to old ghost items then resets when the terminal service is briefly unreachable",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Noam: every so often a Waiting for you list appears at the top, then resets and disappears. Live recording 09:28:15-09:28:56: real list 1 item, daemon unreachable 3.3s, list became 9 (ghosts from 1351 old status records), then back to 1.",
+      "rootCause": "",
+      "guard": "termcontrol/test/waiting.test.mjs keeps terminal items when the daemon is unreachable; phone keeps last list on a failed read",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-22T06:55:18.475Z",
+          "note": "termcontrol/test/waiting.test.mjs: ghost-jump test failed before fix, 8/8 pass after"
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-22T06:55:21.971Z",
+          "note": "waiting.mjs collectWaiting daemon/previous; server.mjs refreshWaiting passes them + first-look gate; index.html keeps last list on failed read. Live 09:43-09:48 after fix: 4 daemon blackouts, list stayed at the 1 real item"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Keep last known terminal items while the daemon is unreachable; keep last list on failed fetch",
+      "history": [
+        {
+          "at": "2026-10-22T06:29:47.811Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-22T06:55:16.772Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Root cause: daemon unreachable -> bridge reads all 1351 old status records -> ghost asks"
+        },
+        {
+          "at": "2026-10-22T06:55:17.525Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Live recorder caught 1->9->1 at 09:28:45, 09:32:29, 09:32:41"
+        },
+        {
+          "at": "2026-10-22T06:55:18.476Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "termcontrol/test/waiting.test.mjs: ghost-jump test failed before fix, 8/8 pass after"
+        },
+        {
+          "at": "2026-10-22T06:55:19.695Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": null
+        },
+        {
+          "at": "2026-10-22T06:55:21.111Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": null
+        },
+        {
+          "at": "2026-10-22T06:55:21.972Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "waiting.mjs collectWaiting daemon/previous; server.mjs refreshWaiting passes them + first-look gate; index.html keeps last list on failed read. Live 09:43-09:48 after fix: 4 daemon blackouts, list stayed at the 1 real item"
+        },
+        {
+          "at": "2026-10-22T06:55:22.561Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": null
+        }
+      ]
     }
   ]
 }

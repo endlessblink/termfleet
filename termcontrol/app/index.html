@@ -2373,7 +2373,8 @@ async function fleet(background=false,{fromCache=false}={}) {
   fleetPaneRecords=new Map(r.panes.map(p=>[p.id,p]));
   const roomsData=await roomsRequest;
   const botsData=await botsRequest;
-  const waitingData=await waitingRequest,waitingItems=waitingData?.items || [];
+  // A failed read keeps the list last seen; only the bridge's own answer changes it (TF-099).
+  const waitingData=(await waitingRequest) || lastFleetData?.waiting || null,waitingItems=waitingData?.items || [];
   if (mine !== view || request !== fleetRequest) return;
   if(!kept)lastFleetData={r,rooms:roomsData,bots:botsData,waiting:waitingData};
   const sortBy = localStorage.getItem('termcontrol-sort') || 'map';
