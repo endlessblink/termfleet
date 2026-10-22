@@ -281,8 +281,17 @@ if [[ "${1:-}" == "--child" ]]; then
   [[ -S "$daemon_socket" ]] && restore_before_app=1
   if [[ ! -S "$daemon_socket" && -n "${TERMFLEET_CMD:-}" ]] && command -v systemd-run >/dev/null 2>&1; then
     daemon_unit="termfleet-daemon-prestart-$$"
+    # Agents yield CPU/disk to Noam's own apps (2026-10-22): every agent terminal
+    # lives in this unit, so it runs at the low agent weight from his setting
+    # (default 20; his apps are 100, this window 1000). Urgent terminals move out
+    # into their own scope at 100 (termfleet-priority). Nothing is capped or killed.
+    agent_weight="$(sed -n 's/.*"agentWeight"[[:space:]]*:[[:space:]]*\([0-9]\{1,3\}\).*/\1/p' \
+      "${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/cpu-priority/settings.json" 2>/dev/null | head -n1)"
+    [[ "$agent_weight" =~ ^[0-9]+$ ]] && (( agent_weight >= 1 && agent_weight <= 100 )) || agent_weight=20
     if ! systemd-run --user --collect --same-dir --unit="$daemon_unit" \
       -p KillMode=mixed \
+      -p CPUWeight="$agent_weight" \
+      -p IOWeight="$agent_weight" \
       --setenv="XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}" \
       --setenv="XDG_DATA_HOME=${XDG_DATA_HOME:-}" \
       --setenv="XDG_STATE_HOME=${XDG_STATE_HOME:-}" \

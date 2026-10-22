@@ -2,6 +2,7 @@ mod cockpit_health;
 mod agent_connect;
 mod agent_lifecycle;
 mod bidi;
+mod cpu_priority;
 mod commands;
 pub mod daemon;
 mod daemon_ipc;
@@ -64,6 +65,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             agent_connect::agents_connect,
+            cpu_priority::terminal_priority,
+            cpu_priority::agent_cpu_share,
             commands::exit_application,
             commands::daemon_status,
             commands::agent_status_read_sidecar,

@@ -47,6 +47,8 @@ Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=$RUNTIME_DIR/bus
 ExecStart=$NODE $REPO/scripts/termfleet-guardrail-ensure.mjs
 # 2) reap idle exited-agent leftover tool servers (never touches live agents).
 ExecStart=$NODE $REPO/scripts/termfleet-reaper.mjs --apply
+# 3) keep agent terminals at the low CPU/IO share and re-apply Urgent marks (never kills).
+ExecStart=$NODE $REPO/scripts/termfleet-priority.mjs apply
 EOF
 
 cat >"$TIMER" <<EOF

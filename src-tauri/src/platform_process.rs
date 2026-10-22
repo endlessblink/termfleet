@@ -69,6 +69,27 @@ fn daemon_tasks_max() -> String {
         .unwrap_or_else(|| "20000".to_string())
 }
 
+/// The CPU/IO weight every agent terminal runs at, from the operator's setting
+/// (`terminal-workspace/cpu-priority/settings.json`, written by
+/// `termfleet-priority weight` and the phone). Default 20; valid range 1–100.
+pub fn agent_weight() -> u32 {
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".local/share")));
+    data.map(|dir| dir.join("terminal-workspace/cpu-priority/settings.json"))
+        .and_then(|file| std::fs::read_to_string(file).ok())
+        .and_then(|text| parse_agent_weight(&text))
+        .unwrap_or(DEFAULT_AGENT_WEIGHT)
+}
+
+pub const DEFAULT_AGENT_WEIGHT: u32 = 20;
+
+fn parse_agent_weight(text: &str) -> Option<u32> {
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let weight = value.get("agentWeight")?.as_u64()?;
+    (1..=100).contains(&weight).then_some(weight as u32)
+}
+
 pub fn daemon_spawn_argv(exe: &str, arg: &str, unit_suffix: &str) -> Vec<String> {
     if !systemd_run_available() {
         return vec![exe.to_string(), arg.to_string()];
@@ -90,10 +111,13 @@ pub fn daemon_spawn_argv(exe: &str, arg: &str, unit_suffix: &str) -> Vec<String>
         // env-overridable (TERMFLEET_DAEMON_MEMORY_HIGH / _TASKS_MAX) — no rebuild.
         format!("--property=MemoryHigh={}", daemon_memory_high()),
         format!("--property=TasksMax={}", daemon_tasks_max()),
-        // Keep the terminal keeper responsive when user builds and browsers
-        // compete for the same storage and CPU, without starving them.
-        "--property=CPUWeight=200".to_string(),
-        "--property=IOWeight=200".to_string(),
+        // Agents yield to the operator's own apps (Noam 2026-10-22): the daemon
+        // unit — and so every agent terminal and its builds — runs at a LOW
+        // CPU/IO weight (default 20 vs 100 for his apps). Weights only share CPU
+        // under contention, so idle CPU is still used and nothing is capped,
+        // paused or killed. One terminal can be made Urgent (termfleet-priority).
+        format!("--property=CPUWeight={}", agent_weight()),
+        format!("--property=IOWeight={}", agent_weight()),
         "--quiet".to_string(),
     ];
     for key in DAEMON_ENV_PASSTHROUGH {
@@ -264,6 +288,23 @@ mod tests {
         assert!(argv.iter().any(|a| a.starts_with("--property=TasksMax=")));
         // A hard MemoryMax would OOM-kill agents (silent conversation loss) — never.
         assert!(!argv.iter().any(|a| a.starts_with("--property=MemoryMax=")));
+    }
+
+    #[test]
+    fn daemon_runs_agents_at_the_low_agent_weight() {
+        assert_eq!(parse_agent_weight(r#"{"agentWeight":35}"#), Some(35));
+        assert_eq!(parse_agent_weight(r#"{"agentWeight":0}"#), None);
+        assert_eq!(parse_agent_weight(r#"{"agentWeight":500}"#), None);
+        assert_eq!(parse_agent_weight("not json"), None);
+        if !systemd_run_available() {
+            return;
+        }
+        let argv = daemon_spawn_argv("/opt/tw/terminal-workspace", "--terminal-workspace-daemon", "42");
+        let weight = agent_weight();
+        assert!(weight <= 100);
+        assert!(argv.iter().any(|a| *a == format!("--property=CPUWeight={weight}")));
+        assert!(argv.iter().any(|a| *a == format!("--property=IOWeight={weight}")));
+        assert!(!argv.iter().any(|a| a == "--property=CPUWeight=200"));
     }
 
     #[test]

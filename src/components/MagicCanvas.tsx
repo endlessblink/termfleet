@@ -45,6 +45,8 @@ import {
   Eraser,
   X,
 } from "lucide-react";
+import { UrgentMenuItem } from "./UrgentMenuItem";
+import { priorityPaneId } from "../lib/cpuPriority";
 import type { CanvasNode } from "../lib/types";
 import {
   masterPlanPath,
@@ -10479,6 +10481,10 @@ export function MagicCanvas() {
               border: "1px solid var(--border-strong)",
             }}
           >
+            <UrgentMenuItem
+              paneId={priorityPaneId(labelMenuTab?.id, labelMenuTab?.activePaneId ?? labelMenuTab?.terminals[0]?.paneId)}
+              onDone={() => setLabelMenu(null)}
+            />
             {resolvedLabelMenuReconnectProvider && (
               <>
                 <div
