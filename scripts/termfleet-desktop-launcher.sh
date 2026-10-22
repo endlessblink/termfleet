@@ -286,7 +286,7 @@ if [[ "${1:-}" == "--child" ]]; then
     # (default 20; his apps are 100, this window 1000). Urgent terminals move out
     # into their own scope at 100 (termfleet-priority). Nothing is capped or killed.
     agent_weight="$(sed -n 's/.*"agentWeight"[[:space:]]*:[[:space:]]*\([0-9]\{1,3\}\).*/\1/p' \
-      "${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/cpu-priority/settings.json" 2>/dev/null | head -n1)"
+      "${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/cpu-priority/settings.json" 2>/dev/null | head -n1 || true)"
     [[ "$agent_weight" =~ ^[0-9]+$ ]] && (( agent_weight >= 1 && agent_weight <= 100 )) || agent_weight=20
     if ! systemd-run --user --collect --same-dir --unit="$daemon_unit" \
       -p KillMode=mixed \
