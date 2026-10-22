@@ -1,3 +1,4 @@
+import { gentleCommand } from '../../scripts/lib/cpu-priority.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -340,7 +341,11 @@ export function brainEnv(bot, env = process.env) {
 
 /** Runs one brain turn as a child process and reports events as they come. */
 export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = process.env, timeoutMs = 30 * 60 * 1000, idleMs = 10 * 60 * 1000, logPath = null } = {}) {
-  const { bin, args } = brainCommand(bot, text, { bins, extras });
+  const command = brainCommand(bot, text, { bins, extras });
+  // Brains (and every test suite they run) yield CPU and disk to Noam's own apps: their own
+  // gentle scope beside the bridge, idle disk class (Agent-Manager 2026-10-22, PC unusable).
+  const { bin, args } = env.TERMFLEET_GENTLE_BRAINS === '0' ? command
+    : gentleCommand(command.bin, command.args, { unit: `termfleet-bot-${String(bot.id).replace(/[^A-Za-z0-9]/g, '')}-${Date.now()}` });
   return new Promise((resolve) => {
     let child;
     try {

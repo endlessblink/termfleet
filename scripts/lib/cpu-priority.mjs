@@ -54,6 +54,13 @@ export function readPrioritySettings(paths = defaults()) {
   return { agentWeight: validWeight(weight) ? weight : DEFAULT_AGENT_WEIGHT };
 }
 
+/** Background services whose programs (bot brains, test runs) are gentle like agent terminals. */
+export const DEFAULT_GENTLE_SERVICES = ['freelance-desk-home.service', 'jellyfin-importer.service'];
+export function readGentleServices(paths = defaults()) {
+  const list = readJson(paths.settings)?.gentleServices;
+  return Array.isArray(list) ? list.filter((u) => /^[A-Za-z0-9@._-]+\.service$/.test(u)) : DEFAULT_GENTLE_SERVICES;
+}
+
 export function writePrioritySettings(paths = defaults(), patch = {}) {
   const now = readPrioritySettings(paths);
   const weight = typeof patch.agentWeight === 'number' ? Math.round(patch.agentWeight) : NaN;
@@ -256,4 +263,140 @@ export function selfRequestAllowed({ noamSaid = '', ownerWords = null, verify = 
   const said = String(noamSaid || '').trim();
   if (!said) return { ok: false, error: 'An agent can make its own terminal urgent only when Noam asked for it: pass his words.' };
   return { ok: true, reason: `Noam said: ${said}` };
+}
+
+// --- disk priority ---------------------------------------------------------------------------
+// cgroup IOWeight does nothing on this PC: the user manager has no io controller and the disks
+// use none/mq-deadline. mq-deadline honours per-process I/O classes (inherited by children), so
+// disk gentleness is the idle class for Gentle, lowest best-effort for Medium, none for Normal.
+export function ioClassFor(weight) {
+  if (weight <= 20) return ['-c3'];
+  if (weight <= 50) return ['-c2', '-n7'];
+  return null;
+}
+const URGENT_IO = ['-c2', '-n4'];
+const BOT_CGROUP = /\/termfleet-bot-[^/]+\.scope$/;
+const PANE_GROUP = /\/termfleet-daemon-[^/]+\.service\/termfleet-pane-[^/]+$/;
+
+systemd.ionice = (cls, pids) => {
+  let ok = true;
+  for (const pid of pids) { try { execFileSync('ionice', [...cls, '-p', String(pid)], { stdio: 'ignore', timeout: 5000 }); } catch { ok = false; } }
+  return ok;
+};
+
+const hasSystemdRunDefault = () => fs.existsSync('/usr/bin/systemd-run') || fs.existsSync('/bin/systemd-run');
+
+/** How a bot brain is started: its own gentle scope (sibling of the bridge), idle disk class,
+ * same pid and pipes (systemd-run --scope and ionice both exec in place). */
+export function gentleCommand(bin, args, { paths = defaults(), unit, hasSystemdRun = hasSystemdRunDefault() } = {}) {
+  const { agentWeight } = readPrioritySettings(paths);
+  const io = ioClassFor(agentWeight);
+  const inner = io ? { bin: 'ionice', args: [...io, bin, ...args] } : { bin, args };
+  if (!hasSystemdRun) return inner;
+  return {
+    bin: 'systemd-run',
+    args: ['--user', '--scope', '--quiet', '--collect', '--slice=app.slice', `--unit=${unit}`,
+      '-p', `CPUWeight=${agentWeight}`, '-p', 'MemoryHigh=3G', '--', inner.bin, ...inner.args],
+  };
+}
+
+/** Marks every terminal program and bot brain with the disk class of the share choice (urgent
+ * terminals get normal). `cache` (pid -> class) avoids re-marking. Never touches the daemon. */
+export function applyIoPriority({ paths = defaults(), procRoot = '/proc', sys = systemd, cache = new Map(), gentleServices = [] } = {}) {
+  const gentle = ioClassFor(readPrioritySettings(paths).agentWeight);
+  // Other background services that run bot brains and test suites (e.g. Freelance Desk): all
+  // their programs are gentle except the service's own main process, which serves its UI.
+  const mainPids = new Map(gentleServices.map((svc) => [svc, sys.mainPid ? sys.mainPid(svc) : null]));
+  const groups = new Map();
+  const live = new Set();
+  for (const p of readProc(procRoot)) {
+    const service = gentleServices.find((svc) => p.cgroup.endsWith(`/${svc}`));
+    const cls = URGENT_CGROUP.test(p.cgroup) ? URGENT_IO
+      : PANE_GROUP.test(p.cgroup) || BOT_CGROUP.test(p.cgroup) || (service && p.pid !== mainPids.get(service)) ? gentle : undefined;
+    if (cls === undefined) continue;
+    live.add(p.pid);
+    const key = cls ? cls.join(' ') : '-c0';
+    if (cache.get(p.pid) === key) continue;
+    cache.set(p.pid, key);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p.pid);
+  }
+  for (const pid of cache.keys()) if (!live.has(pid)) cache.delete(pid);
+  for (const [key, pids] of groups) if (pids.length) sys.ionice(key.split(' '), pids);
+  return Object.fromEntries(groups);
+}
+
+// --- pressure guard ----------------------------------------------------------------------------
+// Noam 2026-10-22: 'אבל לחכות ללא הגבלה לא יכול להיות הפתרון כאן'. When disk pressure stays high
+// for 15 s, the heaviest BACKGROUND disk users get the idle disk class (never killed, never
+// paused); after a full calm minute they get back exactly the class they had.
+const GUARD_HIGH = 20;        // /proc/pressure/io "some" avg10, percent
+const GUARD_CALM = 5;
+const GUARD_AFTER_MS = 15_000;
+const GUARD_CALM_MS = 60_000;
+const GUARD_MIN_BYTES = 20e6; // per sample window
+const GUARD_MAX = 4;
+const STICKY_MS = 30 * 60_000;
+
+/** Services the guard lowered recently: their new programs start gentle until the time runs out. */
+export function stickyGentleServices(state, now = Date.now()) {
+  const out = [];
+  for (const [unit, until] of state.sticky || []) { if (until > now) out.push(unit); else state.sticky.delete(unit); }
+  return out;
+}
+
+/** Background = services and terminal programs, never his desktop apps or the TermFleet window. */
+export function isBackgroundCgroup(cgroup = '') {
+  if (!cgroup.includes('/user@')) return false;
+  if (/\/session\.slice\//.test(cgroup) || /\/app-[^/]*\.scope$/.test(cgroup)) return false;
+  if (/\/termfleet-desktop-[^/]*\.service/.test(cgroup) || URGENT_CGROUP.test(cgroup)) return false;
+  return /\/app\.slice\/[^/]+\.(service|scope)(\/|$)/.test(cgroup);
+}
+
+systemd.mainPid = (unit) => {
+  try { const pid = sh('systemctl', ['--user', 'show', unit, '-p', 'MainPID', '--value']).trim(); return pid && pid !== '0' ? pid : null; } catch { return null; }
+};
+
+systemd.ioClassOf = (pid) => {
+  try {
+    const out = execFileSync('ionice', ['-p', String(pid)], { encoding: 'utf8', timeout: 5000 }).trim();
+    if (out.startsWith('idle')) return '-c3';
+    const level = out.match(/prio (\d)/)?.[1];
+    return out.startsWith('best-effort') ? `-c2 -n${level ?? 4}` : '-c0';
+  } catch { return '-c0'; }
+};
+
+export function pressureGuardStep({ now = Date.now(), ioSome, hogs = [], state, sys = systemd, log = () => {} }) {
+  if (ioSome >= GUARD_HIGH) {
+    state.calmSince = null;
+    state.highSince ??= now;
+    if (now - state.highSince >= GUARD_AFTER_MS) {
+      const pick = hogs.filter((h) => h.bytes >= GUARD_MIN_BYTES && isBackgroundCgroup(h.cgroup) && !state.lowered.has(h.pid))
+        .sort((a, b) => b.bytes - a.bytes).slice(0, GUARD_MAX);
+      for (const h of pick) {
+        const before = sys.ioClassOf(h.pid);
+        if (before === '-c3') continue;
+        sys.ionice(['-c3'], [h.pid]);
+        state.lowered.set(h.pid, before);
+        // Remember the service, so its NEXT programs start gentle instead of hogging for 15 s.
+        const unit = h.cgroup.match(/\/app\.slice\/([^/]+\.service)$/)?.[1];
+        if (unit) (state.sticky ??= new Map()).set(unit, now + STICKY_MS);
+        log({ at: now, action: 'lowered', pid: h.pid, cmd: h.cmd, mb: Math.round(h.bytes / 1e6), ioSome, before });
+      }
+    }
+  } else {
+    state.highSince = null;
+    if (ioSome <= GUARD_CALM && state.lowered.size) {
+      state.calmSince ??= now;
+      if (now - state.calmSince >= GUARD_CALM_MS) {
+        for (const [pid, before] of state.lowered) {
+          sys.ionice(before.split(' '), [pid]);
+          log({ at: now, action: 'restored', pid, to: before });
+        }
+        state.lowered.clear();
+        state.calmSince = null;
+      }
+    } else if (ioSome > GUARD_CALM) state.calmSince = null;
+  }
+  return state;
 }

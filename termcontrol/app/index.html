@@ -1177,6 +1177,7 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 /* Close a terminal (Noam 2026-10-20: "צריך להיות מסוגל להרוג טרמינל מהתצוגה הזו בפלאפון ובמחשב"). */
 .pane-more{display:none;flex:none;align-items:center;justify-content:center;width:24px;height:20px;border-radius:6px;color:var(--muted);font-size:15px;line-height:1}
 @media (hover:hover) and (pointer:fine){.pane:hover .pane-more,.pane:focus-visible .pane-more{display:inline-flex}.pane-more:hover{background:var(--control);color:var(--text)}}
+.pane-menu-share{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:2px 12px 8px;font-size:12px;opacity:.9}.pane-menu-share span{margin-inline-end:4px}.pane-menu .pane-menu-share button{width:auto;min-height:34px;padding:0 10px;border:1px solid var(--line);font-size:12px}.pane-menu .pane-menu-share button[aria-pressed=true]{background:var(--control);font-weight:500}
 .pane-menu{position:fixed;z-index:60;min-width:200px;max-width:calc(100vw - 24px);padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 8px 24px rgba(0,0,0,.28)}
 /* Links in messages: tappable, copyable, and kept left-to-right inside Hebrew text. */
 .msg-link{color:var(--accent);text-decoration:underline;text-underline-offset:2px;unicode-bidi:isolate;direction:ltr;overflow-wrap:anywhere;-webkit-touch-callout:none}
@@ -3825,12 +3826,19 @@ function openPaneMenu(row,x,y){
   const menu=document.createElement('div');menu.className='pane-menu';menu.setAttribute('role','menu');
   const rec=fleetPaneRecords.get(id),agent=['claude','codex','opencode'].includes(rec?.provider);
   const sleepItems=agent?`${rec.sleeping?`<button type="button" role="menuitem" data-wake>${ui('Wake now','להעיר עכשיו')}</button>`:''}<button type="button" role="menuitem" data-keep-awake>${rec.keepAwake?ui('Let it sleep when idle','לאפשר שינה כשפנוי'):ui('Keep awake','להשאיר ער')}</button>`:'';
-  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button>${sleepItems}<button type="button" role="menuitem" class="danger" data-close>${ui('Close terminal…','סגירת המסוף…')}</button>`;
+  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button>${sleepItems}<button type="button" role="menuitem" data-urgent>${ui('Make urgent','להפוך לדחוף')}</button><div class="pane-menu-share" data-share><span>${ui('Agents when busy','סוכנים כשעמוס')}</span><button type="button" data-w="20">${ui('Gentle','עדין')}</button><button type="button" data-w="50">${ui('Medium','בינוני')}</button><button type="button" data-w="100">${ui('Normal','רגיל')}</button></div><button type="button" role="menuitem" class="danger" data-close>${ui('Close terminal…','סגירת המסוף…')}</button>`;
   document.body.append(menu);
   const r=menu.getBoundingClientRect();
   menu.style.left=Math.max(12,Math.min(x,innerWidth-r.width-12))+'px';menu.style.top=Math.max(12,Math.min(y,innerHeight-r.height-12))+'px';
   menu.querySelector('[data-open]').onclick=()=>{closePaneMenu();row.click();};
   menu.querySelector('[data-close]').onclick=()=>{closePaneMenu();confirmClose(id,name,row);};
+  // Urgent: this terminal at full speed while other agents stay gentle (Noam 2026-10-22).
+  const urgentBtn=menu.querySelector('[data-urgent]'),shareRow=menu.querySelector('[data-share]');
+  const prio=(path,body)=>fetch(path,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)}:{signal:AbortSignal.timeout(20000)}).then(async r=>{const out=await r.json().catch(()=>({}));if(!r.ok)throw new Error(out.error || 'failed');return out;});
+  const showPrio=(st)=>{const on=(st.urgent||[]).includes(id);urgentBtn.textContent=on?ui('Urgent is on — turn off','דחוף פעיל — לכבות'):ui('Make urgent','להפוך לדחוף');urgentBtn.dataset.on=on?'1':'';const w=st.agentWeight,pick=w>=75?100:w>=35?50:20;shareRow.querySelectorAll('[data-w]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.w)===pick)));};
+  prio('/api/priority').then(showPrio).catch(()=>{});
+  urgentBtn.onclick=()=>{const on=!urgentBtn.dataset.on;prio('/api/priority/urgent',{pane:id,on}).then(()=>closePaneMenu()).catch(e=>{urgentBtn.textContent=e.message;});};
+  shareRow.querySelectorAll('[data-w]').forEach(b=>{b.onclick=()=>prio('/api/priority/settings',{agentWeight:Number(b.dataset.w)}).then(showPrio).catch(()=>{});});
   const sleepCall=(path,body)=>fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)}).then(async r=>{const out=await r.json().catch(()=>({}));if(!r.ok)throw new Error(out.error || 'failed');return out;});
   const keep=menu.querySelector('[data-keep-awake]');
   if(keep)keep.onclick=()=>{closePaneMenu();sleepCall('/api/sleep/keep-awake',{pane:id,on:!rec.keepAwake}).then(out=>{rec.keepAwake=out.keepAwake;}).catch(()=>{});};

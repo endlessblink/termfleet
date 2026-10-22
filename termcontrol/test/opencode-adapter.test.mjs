@@ -77,3 +77,28 @@ test('an OpenCode session with no history reads as empty, never as an error', { 
   const { readFeed } = await import('../bridge/adapters/opencode.mjs');
   assert.deepEqual(readFeed({ sessionId: 'ses_missing' }, { limit: 60 }), { events: [], pending: [] });
 });
+
+// Agent-Manager 2026-10-22: the bridge re-read hundreds of OpenCode messages every poll (~7 MB/s).
+test('an unchanged OpenCode conversation is not read again; a new or updated part is', { skip: !sqlite }, async () => {
+  const cdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-opencode-cache-'));
+  const file = path.join(cdir, 'opencode.db');
+  const w = new sqlite.DatabaseSync(file);
+  w.exec('CREATE TABLE session (id TEXT PRIMARY KEY)');
+  w.exec('CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)');
+  w.exec('CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)');
+  w.prepare('INSERT INTO message VALUES (?,?,?,?,?)').run('m1', 's1', 1, 1, JSON.stringify({ role: 'assistant' }));
+  w.prepare('INSERT INTO part VALUES (?,?,?,?,?,?)').run('p1', 'm1', 's1', 1, 1, JSON.stringify({ type: 'text', text: 'first words' }));
+  const { PATHS } = await import('../bridge/paths.mjs');
+  const before = PATHS.opencodeDb;
+  PATHS.opencodeDb = file;
+  const adapter = await import(`../bridge/adapters/opencode.mjs?cache=${Date.now()}`);
+  try {
+    assert.equal(adapter.readFeed({ sessionId: 's1' }).events.at(-1).text, 'first words');
+    // A change with an unchanged key would be invisible: proves the second read is the cached one.
+    w.prepare('UPDATE part SET data = ? WHERE id = ?').run(JSON.stringify({ type: 'text', text: 'sneaky' }), 'p1');
+    assert.equal(adapter.readFeed({ sessionId: 's1' }).events.at(-1).text, 'first words');
+    // Streaming updates the part's time: read again.
+    w.prepare('UPDATE part SET data = ?, time_updated = 2 WHERE id = ?').run(JSON.stringify({ type: 'text', text: 'first words, more' }), 'p1');
+    assert.equal(adapter.readFeed({ sessionId: 's1' }).events.at(-1).text, 'first words, more');
+  } finally { PATHS.opencodeDb = before; }
+});

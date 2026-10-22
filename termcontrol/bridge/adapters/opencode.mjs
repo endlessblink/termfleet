@@ -86,8 +86,38 @@ function summariseTool(tool, input) {
  * short one, then reverse into reading order. Only `text` and `tool` parts are
  * conversation; reasoning, step markers and patches are machinery.
  */
-export function readFeed(pane, { limit = 60 } = {}) {
+// The phone polls often and the feed asks for hundreds of messages, so reading every part each
+// time cost ~7 MB/s of the 3 GB database (Agent-Manager 2026-10-22: the PC was unusable). A
+// one-row check of the newest message and its parts says whether anything changed; only then is
+// the conversation read again. A database without time_updated columns is simply not cached.
+const feedCache = new Map();   // `${session}|${limit}` -> { key, value }
+function changeKey(sessionId) {
+  const d = db();
+  if (!d) return null;
+  try {
+    const newest = d.prepare(`SELECT id, time_created, time_updated FROM message
+      WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 1`).get(sessionId);
+    if (!newest) return 'empty';
+    const parts = d.prepare('SELECT count(*) AS n, max(time_updated) AS t FROM part WHERE message_id = ?').get(newest.id);
+    return `${newest.id}|${newest.time_updated}|${parts?.n}|${parts?.t}`;
+  } catch { return null; }
+}
+
+export function readFeed(pane, opts = {}) {
   if (!pane?.sessionId) return { events: [], pending: [] };
+  const key = changeKey(pane.sessionId);
+  const slot = `${pane.sessionId}|${opts.limit ?? 60}`;
+  const hit = key && feedCache.get(slot);
+  if (hit && hit.key === key) return { events: [...hit.value.events], pending: [] };
+  const value = readFeedUncached(pane, opts);
+  if (key) {
+    feedCache.set(slot, { key, value });
+    if (feedCache.size > 32) feedCache.delete(feedCache.keys().next().value);
+  }
+  return value;
+}
+
+function readFeedUncached(pane, { limit = 60 } = {}) {
 
   const messages = query(
     `SELECT id, time_created, data FROM message

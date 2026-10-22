@@ -1,0 +1,14 @@
+[Unit]
+Description=TermFleet priority guard (agents and bot brains yield CPU and disk; never kills)
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env node %h/.local/share/termfleet/priority-guard/termfleet-priority-guard.mjs
+Restart=always
+RestartSec=5
+# The guard itself must stay responsive.
+CPUWeight=200
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

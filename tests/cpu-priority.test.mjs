@@ -194,3 +194,92 @@ test('an agent may make itself urgent only with Noam\'s words attached', () => {
   assert.equal(selfRequestAllowed({ ownerWords: 'm1', verify: () => null }).ok, false);
   assert.equal(selfRequestAllowed({ ownerWords: 'm1', verify: () => ({ text: 'urgent please' }) }).ok, true);
 });
+
+// Agent-Manager 2026-10-22 (Noam: PC still unusable): bot brains run under the phone bridge at
+// full priority, and disk weights have no effect here (no io controller for user programs;
+// SATA uses mq-deadline, which honours the idle disk class). So brains start in their own
+// gentle scope with idle disk priority, and terminal programs get the idle disk class too.
+test('disk priority follows the share choice: Gentle idle, Medium lowest normal, Normal untouched', async () => {
+  const { ioClassFor } = await import('../scripts/lib/cpu-priority.mjs');
+  assert.deepEqual(ioClassFor(20), ['-c3']);
+  assert.deepEqual(ioClassFor(50), ['-c2', '-n7']);
+  assert.equal(ioClassFor(100), null);
+});
+
+test('a bot brain starts in its own gentle scope with idle disk priority, same pid and pipes', async () => {
+  const { gentleCommand } = await import('../scripts/lib/cpu-priority.mjs');
+  const w = world();
+  const { bin, args } = gentleCommand('/usr/bin/claude', ['-p', 'hi'], { paths: w.paths, unit: 'termfleet-bot-abc-1', hasSystemdRun: true });
+  assert.equal(bin, 'systemd-run');
+  assert.deepEqual(args.slice(0, 5), ['--user', '--scope', '--quiet', '--collect', '--slice=app.slice']);
+  assert.ok(args.includes('--unit=termfleet-bot-abc-1'));
+  assert.ok(args.includes('CPUWeight=20'));
+  assert.ok(args.some((a) => a.startsWith('MemoryHigh=')));
+  assert.deepEqual(args.slice(args.indexOf('--') + 1), ['ionice', '-c3', '/usr/bin/claude', '-p', 'hi']);
+  const plain = gentleCommand('/usr/bin/claude', ['-p'], { paths: w.paths, unit: 'u', hasSystemdRun: false });
+  assert.deepEqual(plain, { bin: 'ionice', args: ['-c3', '/usr/bin/claude', '-p'] });
+  writePrioritySettings(w.paths, { agentWeight: 100 });
+  assert.deepEqual(gentleCommand('/usr/bin/claude', ['-p'], { paths: w.paths, unit: 'u', hasSystemdRun: false }), { bin: '/usr/bin/claude', args: ['-p'] });
+});
+
+test('the disk sweep marks terminal programs and brains, never the daemon, and urgent ones normal', async () => {
+  const { applyIoPriority } = await import('../scripts/lib/cpu-priority.mjs');
+  const w = world();
+  w.proc(10, 1, SERVICE, {}, 'termfleet');
+  w.proc(100, 10, DAEMON, { TERMFLEET_PANE_ID: PANE });
+  w.proc(300, 1, `/${APP}/termfleet-bot-abc-1.scope`, {}, 'claude');
+  w.proc(400, 1, `/${APP}/${paneScopeName('terminal-x-y')}`, {}, 'cargo');
+  w.proc(500, 1, `/${APP}/termcontrol.service`, {}, 'node');   // the bridge itself stays normal
+  w.proc(600, 1, `/${APP}/freelance-desk-home.service`, {}, 'python3');  // its main process serves its UI
+  w.proc(601, 600, `/${APP}/freelance-desk-home.service`, {}, 'claude'); // its bot brain
+  const seen = [];
+  const sys = { ...w.sys, mainPid: () => '600', ionice(cls, pids) { seen.push([cls.join(' '), [...pids].sort()]); return true; } };
+  const cache = new Map();
+  const gentleServices = ['freelance-desk-home.service'];
+  applyIoPriority({ ...w.opts, sys, cache, gentleServices });
+  assert.deepEqual(seen, [['-c3', ['100', '300', '601']], ['-c2 -n4', ['400']]]);
+  seen.length = 0;
+  applyIoPriority({ ...w.opts, sys, cache, gentleServices });
+  assert.deepEqual(seen, [], 'already marked programs are not touched again');
+});
+
+// Noam 2026-10-22: 'אבל לחכות ללא הגבלה לא יכול להיות הפתרון כאן'. A guard lowers (never kills)
+// the heaviest background disk users after 15 s of high disk pressure and restores them when calm.
+test('the pressure guard lowers background disk hogs after 15 s, never foreground apps, and restores when calm', async () => {
+  const { pressureGuardStep, isBackgroundCgroup } = await import('../scripts/lib/cpu-priority.mjs');
+  assert.equal(isBackgroundCgroup(`/${APP}/freelance-desk-home.service`), true);
+  assert.equal(isBackgroundCgroup(`/${APP}/termcontrol.service`), true);
+  assert.equal(isBackgroundCgroup(DAEMON), true);
+  assert.equal(isBackgroundCgroup(`/${APP}/app-flatpak-app.zen_browser.zen-1.scope`), false, 'his browser');
+  assert.equal(isBackgroundCgroup(`/${APP}/termfleet-desktop-1.service`), false, 'the TermFleet window');
+  assert.equal(isBackgroundCgroup(`/${APP}/${paneScopeName(PANE)}`), false, 'an urgent terminal');
+  assert.equal(isBackgroundCgroup('/user.slice/user-1000.slice/user@1000.service/session.slice/plasma-plasmashell.service'), false);
+
+  const calls = [];
+  const sys = { ionice(cls, pids) { calls.push([cls.join(' '), [...pids]]); return true; }, ioClassOf: () => '-c2 -n4' };
+  const state = { highSince: null, calmSince: null, lowered: new Map() };
+  const hogs = [{ pid: '7', bytes: 300e6, cgroup: `/${APP}/freelance-desk-home.service`, cmd: 'git' }, { pid: '8', bytes: 2e6, cgroup: `/${APP}/x.service`, cmd: 'small' }];
+  const step = (t, io) => pressureGuardStep({ now: t, ioSome: io, hogs, state, sys, log: () => {} });
+  step(0, 40);
+  assert.deepEqual(calls, [], 'not before 15 s');
+  step(16_000, 45);
+  assert.deepEqual(calls, [['-c3', ['7']]], 'only the heavy one is lowered');
+  step(20_000, 2);
+  step(50_000, 2);
+  assert.equal(calls.length, 1, 'not restored before a full minute of calm');
+  step(81_000, 2);
+  assert.deepEqual(calls[1], ['-c2 -n4', ['7']], 'restored to what it had');
+  assert.equal(state.lowered.size, 0);
+});
+
+test('a service the guard had to lower starts its next programs gentle for 30 minutes', async () => {
+  const { pressureGuardStep, stickyGentleServices } = await import('../scripts/lib/cpu-priority.mjs');
+  const sys = { ionice() { return true; }, ioClassOf: () => '-c0' };
+  const state = { highSince: null, calmSince: null, lowered: new Map(), sticky: new Map() };
+  const hogs = [{ pid: '9', bytes: 900e6, cgroup: `/${APP}/jellyfin-importer.service`, cmd: 'worker' },
+    { pid: '10', bytes: 900e6, cgroup: DAEMON, cmd: 'cargo' }];
+  pressureGuardStep({ now: 0, ioSome: 50, hogs, state, sys });
+  pressureGuardStep({ now: 16_000, ioSome: 50, hogs, state, sys });
+  assert.deepEqual(stickyGentleServices(state, 16_000 + 29 * 60_000), ['jellyfin-importer.service']);
+  assert.deepEqual(stickyGentleServices(state, 16_000 + 31 * 60_000), []);
+});

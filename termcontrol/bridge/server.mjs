@@ -44,6 +44,7 @@ import { transcribe, prepareTranscriber, recentTranscriptionTimings, MAX_AUDIO_B
 import { readWordFixes, addWordFix, removeWordFix, applyWordFixes, wordFixHint } from './word-fixes.mjs';
 import { safeUrl, crossSiteWrite } from './guard.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
+import { handlePriority } from './priority.mjs';
 import { Rooms } from './rooms.mjs';
 import { createSendOnce } from './send-once.mjs';
 import { contextFill } from './context-fill.mjs';
@@ -725,6 +726,9 @@ const handle = async (req, res) => {
   }
 
   if (url.pathname === '/api/rooms' || url.pathname.startsWith('/api/rooms/') || url.pathname === '/api/room' || url.pathname.startsWith('/api/room/')) return handleRooms(req, res, url);
+
+  // Urgent toggle + agents' CPU share (Noam 2026-10-22); the work is in priority.mjs.
+  if (await handlePriority(req, res, url, json)) return;
 
   if (url.pathname.startsWith('/api/sleep')) {
     let body = {};
