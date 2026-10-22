@@ -128,18 +128,22 @@ export function lastReply(pane, { since = 0 } = {}) {
  * The receiving agent has to know the message came from another agent and
  * where its answer goes, or it treats the text as the operator's own words.
  */
-export function framedMessage(text, from, { ownerWords = null } = {}) {
+export function framedMessage(text, from, { ownerWords = null, requirements = null, delivery = null } = {}) {
   const who = from?.bot ? `the bot "${from.bot}" (${from.id})`
     : from ? `the agent in "${from.profile?.name || from.project || 'another'}" terminal (${from.id})` : 'an orchestrating agent';
   // Noam's own words travel as their own checkable block, apart from the sender's text.
   const owner = ownerWords ? `\n\n${ownerWordsBlock(ownerWords)}` : '';
-  return `[Message from ${who}, sent through TermFleet.] ${String(text).trim()}${owner}\n\n` +
-    '(Answer in this conversation as usual; the sender reads your reply here. Ask the operator before anything risky or public.)';
+  // TF-102: the items this work is for, in his exact words (requirements.mjs briefBlock).
+  const reqs = requirements ? `\n\n${requirements}` : '';
+  // The receipt mark: the sender confirms delivery by finding it in this agent's record.
+  const mark = delivery && !String(requirements || '').includes(`[delivery ${delivery}]`) ? `\n[delivery ${delivery}]` : '';
+  return `[Message from ${who}, sent through TermFleet.] ${String(text).trim()}${owner}${reqs}\n\n` +
+    `(Answer in this conversation as usual; the sender reads your reply here. Ask the operator before anything risky or public.)${mark}`;
 }
 
-export async function delegate(target, text, { from = null, ownerWords = null } = {}) {
+export async function delegate(target, text, { from = null, ownerWords = null, requirements = null, delivery = null, send = sendToPane } = {}) {
   if (!target.alive) return { error: 'That terminal is not running any more.' };
-  return sendToPane(target, framedMessage(text, from, { ownerWords }));
+  return send(target, framedMessage(text, from, { ownerWords, requirements, delivery }));
 }
 
 /**

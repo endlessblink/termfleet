@@ -314,7 +314,7 @@ async function spawnCommand(options) {
   }
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
   if (!parentPaneId && !options.separate && (handover === true || options.replace === true)) {
-    fail("cannot identify your TermFleet card; the handover was not started. Do NOT retry with --separate: it leaves your old card running and adds a second one. Tell Noam this card could not be identified.", 2);
+    fail("cannot identify your TermFleet card; the handover was not started. Do NOT retry with --separate: it leaves your old card running and adds a second one. Do NOT stop either: keep working on your task right here in this terminal (TF-102: a failed handover used to halt the work until someone noticed). Mention in your final reply that the handover could not start.", 2);
   }
   if (handover && handoffFile) {
     // TF-076: Noam's own recent words, copied verbatim, so the dying agent cannot drop them.

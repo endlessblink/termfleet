@@ -16,6 +16,7 @@ import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bo
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
+import { captureMessage as captureRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject } from './requirements.mjs';
 import { BotGroups } from './bot-groups.mjs';
 import { checkFolder } from './bot-folders.mjs';
 import { classifyTool, appendAction, readActions, paneLogFile, botApproval, paneApproval, foldFiles, approvalText } from './action-log.mjs';
@@ -134,6 +135,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- `termfleet-memory search "<words>"` finds anything said in your past conversations with Noam, word for word. Use it before guessing what was decided.',
     '- `termfleet-memory propose "<one or two sentences>" --kind preference|decision|fact|lesson` suggests something to remember; it counts only after Noam approves it.',
     '- `termfleet-asks done|ready|partial|dropped <n> "<proof or note>"` marks his numbered requests. Use `ready` (not `partial`) when it is built and live but Noam has not tried it yet; the note says exactly what he should try, in a few words (e.g. "open a bot chat on the phone and tap 25/30"). It stays quiet: no notification, and it is NOT in his "Waiting for you" list (that list is only for approvals and questions that block work until he acts); untried work goes into one quiet "try later" task, never a ping. When he says it works, mark it `done`.',
+    '- Every message from Noam is also split into items with ids (R-12), each in his exact words (`termfleet-asks items` lists them). You cannot end a turn while one is untaken. Take each one: hand it to a terminal with `termfleet-team send <who> --req R-12,R-13 "<task>"` (his words for those items, his open words on the same topic and the ones he already approved go with it automatically; the send fails loudly if the terminal did not really receive it), answer it (`termfleet-asks answered R-12 "<answer>"`), ask him (`termfleet-asks waiting R-12 "<question>"`) or mark it background (`termfleet-asks context R-12 "<why>"`). Give items a topic (`termfleet-asks topic R-12 title-strip`). Before you tell him an item is ready, check the agent\'s per-item table against his words; ready/done needs evidence per item (`--evidence "<screenshot or test output>"`). When he says an item works, lock it (`termfleet-asks lock R-12 --owner-words <his message id>`): later work on that topic must re-check it first.',
     '- You wake up by yourself on schedules (`termfleet-team routine add --time 09:00 --days weekdays --message "<what to do>"`), when a terminal agent you started finishes, and when new code lands in a folder you watch (`termfleet-team watch add <folder>`). Messages starting with [Event] come from these, not from Noam.',
     '- Skills: Noam\'s shared skill library holds tested ways of doing recurring jobs; when he says "Use the <name> skill" or types /<name>, follow it. `termfleet-skill list` shows them, and his own skills in ~/.claude/skills, ~/.codex/skills and ~/.config/opencode/skills work the same way (read <folder>/<name>/SKILL.md and follow it). Never say a bot cannot run a skill. When a process worked and will recur, offer to save it: `termfleet-skill save <name-with-dashes> --description "<when to use it>" --body "<the steps, what to check, what needs Noam\'s approval>"`. It is only a suggestion until he approves it.',
     '- The bots\' browser: Chrome on Noam\'s PC that only bots use, with shared sign-ins. Use the browser tools for web tasks that need clicking or signing in (plain reading can use web search). You get your own window there: you see only your own pages, other bots browse at the same time in theirs, and your window closes when your task ends. If the browser tools cannot connect, run `termfleet-browser start` once. Never type passwords, codes or card numbers. When a step needs Noam (signing in, a code, a choice), run `termfleet-browser ask-noam "<exactly what he should do in your window>"`, tell him the same in one line, and stop: your window stays open, and when he hands it back his note arrives as a message; then look at the page and carry on. If a browser tool says Noam has taken over, stop and wait for his note. Before anything that pays, sends, posts or deletes, ask him first.',
@@ -896,6 +898,8 @@ export class Bots {
     // Typed by Noam in the app (not a routine, an event or another agent): keep a signed
     // copy so the bot can pass his exact words on and the receiver can check them.
     if (owner) { try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text: said0 }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ } }
+    // TF-102: his message, split into items (R-n) the bot cannot end its turn without taking.
+    if (owner) this.captureRequirements(id, bot, msg, said0);
     const said = skillPrompt(said0) || said0;   // "/grill-me" etc. carry the skill's steps
     const quoted = replied ? `[Noam is replying to ${replied.role === 'bot' ? 'your' : 'his own'} earlier message in this chat (message ${replied.id}), quoted as context only, not as a new request or approval:\n"${replied.text}"]\n` : '';
     const answered = quoted + (asked ? `[Noam's answer to your question "${asked.question.text}"]\n${said}` : said);
@@ -943,11 +947,23 @@ export class Bots {
    * chat too (marked where it came from), is recorded as his own words so approvals in it
    * count, and the bot's next answer is also posted back where he tagged it.
    */
+  /** Noam's bot message into the requirements ledger, keyed by his real message id. */
+  captureRequirements(id, bot, msg, text) {
+    try {
+      // A Bots made for a test (its own folder) keeps its ledger there, never in Noam's real one.
+      const dir = this.requirementsDir || (this.ownerWordsBase ? path.join(this.ownerWordsBase, 'requirements')
+        : this.dir && path.resolve(this.dir) !== path.resolve(defaultDir()) ? path.join(this.dir, 'requirements') : requirementsLedgerDir());
+      const project = bot.project || (path.dirname(bot.cwd || '') === path.resolve(BOTS_HOME()) ? String(bot.name || id).toLowerCase() : requirementsProject(bot.cwd));
+      return captureRequirements({ text, msgId: msg.id, at: msg.at, project, source: `bot:${id}` }, { dir });
+    } catch { return []; }
+  }
+
   ask(id, { text, origin, context = '', pictures = [] } = {}) {
     const bot = this.read(id);
     if (!bot || !origin?.id) return null;
     const msg = this.append(id, { role: 'operator', text, from: { kind: origin.kind, id: origin.id, name: origin.name }, ...(pictures.length ? { images: pictures.length } : {}) });
     try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ }
+    this.captureRequirements(id, bot, msg, text);
     const where = origin.kind === 'group' ? `the group chat "${origin.name}"` : `his chat with the bot "${origin.name}"`;
     const brain = [
       `[Noam tagged you (@${bot.name}) in ${where}. He typed this himself: treat it as his own message to you, approvals included. Your answer is shown there under your name and here in your own chat. Answer only your part. Never message other bots or that chat yourself; if another bot should help, tell Noam to tag it.]`,

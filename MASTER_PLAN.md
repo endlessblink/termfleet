@@ -1,3 +1,13 @@
+## 2026-10-23 — TF-102: Owner requirements ledger: nothing Noam says can be missed, every part delivered end to end (BUILT, live)
+
+Noam: 'ותבנה מערכת שתבטיח ב100% שאתה לא יכול לפספס דברים שאני אומר ושמחייבת אותך ליישם אותם מקצה לקצה' ('Go ahead', verified owner words 1f62a93b9544). Spec docs/specs/owner-requirements-ledger.md; design docs/specs/owner-requirements-ledger-design.md.
+- Every message of his (terminal prompt or bot chat) is split into items with ids (R-12) in his exact words: numbered parts, Hebrew letters, bullets, lines, sentences, picture notes. Per project, with topics.
+- Stop hook blocks every time (capped, then escalated into his list) while an item is untaken; a hand-off must name item ids (`termfleet-team send --req`), which carries his words plus his open and approved words on the same topic.
+- Sends and starts are confirmed by a delivery mark in the receiver's own record (exit 3 otherwise); Codex "Hooks need review" is answered for TermFleet's own hooks only; Codex's 40% handover rule disabled like Claude's; a failed handover now says keep working.
+- Ready/done need evidence per item; partial lists what is open; a "finished" reply needs a row per item; approved items lock and must be re-checked before anything on their topic is ready. Phone and desktop request lists show each part.
+- Proof: `node --test termcontrol/test/requirements-ledger.test.mjs` 14/14 (one test per failure from 2026-10-22, each reproduced then blocked); asks/owner-words/orchestrate/bots/follows/sidecar/team-close/action-log 118/118 together; verify-map-terminals passes; bridge restarted live.
+- Not yet tried by Noam. Pre-existing unrelated browser test failures (close-terminal, recent-mobile, experience-mobile, issues registry) fail the same without this change.
+
 ## 2026-10-22 — TF-101: Agents yield CPU and disk to Noam's own apps; Urgent per terminal; pressure guard (BUILT, live)
 
 Noam: 'אין דרך להגביל את מידת השימוש במעבד לכל הסוכנים האלו אלא אם זה משהו דחוף?' then, via Agent-Manager (PC still unusable): 'אבל לחכות ללא הגבלה לא יכול להיות הפתרון כאן'.

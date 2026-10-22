@@ -11,11 +11,17 @@
 //                                            --owner-words latest|<id> attaches Noam's own
 //                                            message (as TermFleet recorded it) so the
 //                                            receiver can act on his approval without asking again
+//                                            --req R-12,R-13 names Noam's items (TF-102): his exact words for
+//                                            them, plus his open and approved words on the same topic, go
+//                                            with it (required inside a bot; --no-req "<why>" for a plain
+//                                            question). It fails (exit 3) unless the agent really received it.
 //   termfleet-team verify [<id>]             check a "Noam's own words" record (no id: list recent)
 //   termfleet-team ask <who> <text>          send, wait for the answer, print it
 //   termfleet-team wait <who>                wait for its current turn to finish
 //   termfleet-team start --provider P --task T [--cwd D] [--title X]
-//                                            a new helper terminal (termfleet-child)
+//                                            a new helper terminal (termfleet-child); takes --req too,
+//                                            answers Codex's hook review for TermFleet's own hooks, and
+//                                            fails unless the agent really started its task (--no-wait skips)
 //   termfleet-team routine add --time 09:00 --days daily|weekdays|sun-thu|0,1,2
 //                          --message T [--for <who>]   a scheduled message (default: you)
 //   termfleet-team routine list [--for <who>] | routine remove <id>
@@ -68,6 +74,54 @@ export function recordHelper(helper, env = process.env) {
   try { writeFile(file, JSON.stringify(list.slice(-50), null, 1), { mode: 0o600 }); return true; } catch { return false; }
 }
 import { requestDaemon, defaultDaemonSocket } from './termfleetctl.mjs';
+import { briefItems, briefBlock, newDeliveryId, normId, idsIn, record as recordRequirement, loadLedger } from '../termcontrol/bridge/requirements.mjs';
+import { confirmReceipt, confirmStarted } from '../termcontrol/bridge/delivery.mjs';
+import { adapterFor } from '../termcontrol/bridge/feed.mjs';
+import { PATHS } from '../termcontrol/bridge/paths.mjs';
+import { mkdirSync } from 'node:fs';
+
+/** How the receipt checks see the fleet (real daemon and records; tests pass their own). */
+export const receiptDeps = () => ({
+  panes: fleetPanes,
+  screen: (id) => screenOf(id, 40),
+  transcript: (p) => { try { return adapterFor(p)?.transcriptPath(p) || null; } catch { return null; } },
+  write: (id, data) => requestDaemon({ type: 'writeSession', id, data }, defaultDaemonSocket()),
+});
+
+/** Noam's items in the sender's own conversation that nobody has taken yet (TF-102). */
+export function untakenItems({ env = process.env, selfId = null } = {}) {
+  let items;
+  try { items = [...loadLedger().items.values()]; } catch { return []; }
+  if (/^[0-9a-f]{12}$/.test(String(env.TERMFLEET_BOT_ID || ''))) return items.filter((it) => it.source === `bot:${env.TERMFLEET_BOT_ID}` && it.status === 'new');
+  if (!selfId) return [];
+  let session = '';
+  try { session = String(JSON.parse(readFileSync(join(PATHS.agentStatus, `pane-${selfId}.json`), 'utf8'))?.sessionId || ''); } catch { session = ''; }
+  return session ? items.filter((it) => it.status === 'new' && String(it.source).includes(session)) : [];
+}
+
+/**
+ * Which of Noam's items a hand-off is for: --req R-1,R-2 and any R-n named in the text.
+ * A bot must always name them (or say why not with --no-req); so must an agent that holds
+ * untaken items. Returns { ids } or { error }.
+ */
+export function requirementIds(flags, text, { env = process.env, selfId = null, untaken = untakenItems, ownerWords = null, itemsOf = (msgId) => { try { return [...loadLedger().items.values()].filter((it) => it.msgId === msgId).map((it) => it.id); } catch { return []; } } } = {}) {
+  const listed = typeof flags.req === 'string' ? flags.req.split(',').map((x) => normId(x)) : [];
+  if (listed.some((x) => !x)) return { error: '--req takes item ids like R-12,R-13 (termfleet-asks items shows them).' };
+  // Passing his own message on (--owner-words) carries the items that message was split into.
+  const fromOwner = ownerWords?.id ? itemsOf(ownerWords.id) : [];
+  const ids = [...new Set([...listed, ...idsIn(text), ...fromOwner])];
+  if (ids.length) return { ids };
+  if (ownerWords) return { ids: [] };   // a message from before the ledger: his words still travel
+  if (flags['no-req'] === true) return { error: '--no-req needs a reason, e.g. --no-req "only asking whether it is free".' };
+  if (typeof flags['no-req'] === 'string') return { ids: [] };
+  const open = untaken({ env, selfId });
+  const inBot = /^[0-9a-f]{12}$/.test(String(env.TERMFLEET_BOT_ID || ''));
+  if (inBot || open.length) {
+    const hint = open.length ? ` Noam's items not taken yet: ${open.slice(0, 6).map((it) => `${it.id} "${String(it.words).slice(0, 60)}"`).join('; ')}.` : '';
+    return { error: `Name the items of Noam's this hand-off is for, so his exact words go with it: --req R-<n>[,R-<n>].${hint} If it is not work on his items (a plain question), add --no-req "<why>".` };
+  }
+  return { ids: [] };
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const out = (text) => writeSync(1, `${text}\n`);
@@ -75,7 +129,7 @@ const fail = (text, code = 1) => { writeSync(2, `${text}\n`); process.exit(code)
 
 // On/off switches never take the next word: `--dry-run "text"` once swallowed the text,
 // so the switch was off and a test message went to a real terminal (2026-10-21).
-const SWITCHES = new Set(['interrupt', 'json', 'all', 'dry-run']);
+const SWITCHES = new Set(['interrupt', 'json', 'all', 'dry-run', 'no-wait']);
 
 export function parseArgs(argv) {
   const positional = [];
@@ -158,10 +212,21 @@ async function main(argv) {
     }
     const text = textArg(words, flags) || (ownerWords ? 'Noam\'s message below is for you.' : '');
     if (!text.trim()) fail('Nothing to send.');
+    // TF-102: the hand-off names Noam's items, and his exact words for them (plus his open and
+    // approved words on the same topic) are attached; the receipt mark proves it arrived.
+    const reqs = requirementIds(flags, text, { selfId, ownerWords });
+    if (reqs.error) fail(reqs.error);
+    const delivery = newDeliveryId();
+    let requirements = null;
+    if (reqs.ids.length) {
+      const brief = briefItems(reqs.ids);
+      if (brief.error) fail(brief.error);
+      requirements = briefBlock(brief, { delivery });
+    }
     // --dry-run: print exactly what the receiver would get, send nothing.
     if (flags['dry-run'] === true) {
       const sender = process.env.TERMFLEET_BOT_NAME ? { id: `bot:${process.env.TERMFLEET_BOT_ID || ''}`, bot: process.env.TERMFLEET_BOT_NAME } : (selfId ? { id: selfId } : null);
-      return out(framedMessage(text, sender, { ownerWords }));
+      return out(framedMessage(text, sender, { ownerWords, requirements, delivery }));
     }
     const { pane, panes } = await target(who, selfId);
     // A bot runs outside the terminals; its messages say which bot sent them.
@@ -174,10 +239,24 @@ async function main(argv) {
       await new Promise((r) => setTimeout(r, 600));
     }
     const since = Date.now();
-    const sent = await delegate(pane, text, { from, ownerWords });
+    const wasBusy = pane.turn === 'working' || pane.producing === true;
+    const sent = await delegate(pane, text, { from, ownerWords, requirements, delivery });
     if (sent.error) fail(sent.message || sent.error);
-    recordInBot({ role: 'handoff', pane: pane.id, to: pane.profile?.name || pane.project, text: text.trim().slice(0, 600) });
-    if (command === 'send') return out(json ? JSON.stringify({ ok: true, id: pane.id, delivered: sent.delivered }) : `Sent to ${pane.project} (${pane.id})${sent.delivered ? '' : ' — not yet visible on its screen; check with read'}.`);
+    // Delivered means received: the mark is in its conversation, or it started a turn.
+    const receipt = await confirmReceipt(pane, { token: `[delivery ${delivery}]`, wasBusy, timeoutMs: (Number(flags['receipt-timeout']) || 25) * 1000, deps: receiptDeps() });
+    for (const note of receipt.notes) out(note);
+    const name = pane.profile?.name || pane.project;
+    if (!receipt.received && !receipt.queued) {
+      recordInBot({ role: 'handoff', pane: pane.id, to: name, text: `NOT delivered: ${receipt.message}`.slice(0, 600) });
+      fail(`NOT delivered to ${name} (${pane.id}). ${receipt.message}`, 3);
+    }
+    if (reqs.ids.length) recordRequirement(reqs.ids.map((id) => ({ e: 'assign', id, pane: pane.id, delivery: receipt.queued ? `${delivery}:queued` : delivery, by: from?.id || selfId || null })));
+    recordInBot({ role: 'handoff', pane: pane.id, to: name, text: text.trim().slice(0, 600) });
+    if (receipt.queued && botFolder()) recordHelper({ paneId: pane.id, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
+    const items = reqs.ids.length ? ` with Noam's items ${reqs.ids.join(', ')}` : '';
+    if (command === 'send') return out(json ? JSON.stringify({ ok: true, id: pane.id, received: receipt.received, queued: Boolean(receipt.queued), delivery, items: reqs.ids }) : receipt.received
+      ? `Sent to ${name} (${pane.id})${items}; it received it.`
+      : `Typed into ${name} (${pane.id})${items}, NOT read yet: ${receipt.message}${botFolder() ? ' You are following it and will be woken when its turn ends.' : ''}`);
     // A bot that waits silently looks stuck (paper-bot_dev sat 10 minutes on "Checking
     // something"): inside a bot, wait at most 2 minutes, then follow the agent instead.
     const inBot = Boolean(botFolder());
@@ -208,17 +287,43 @@ async function main(argv) {
   }
 
   if (command === 'start') {
+    // TF-102: the task carries Noam's items in his words and a receipt mark, so the start is
+    // confirmed only once the new agent has really begun (not stuck on a startup prompt).
+    let taskText = typeof flags['task-file'] === 'string' ? readFileSync(flags['task-file'], 'utf8') : typeof flags.task === 'string' ? flags.task : '';
+    const reqs = taskText ? requirementIds(flags, taskText, { selfId }) : { ids: [] };
+    if (reqs.error) fail(reqs.error);
+    const delivery = taskText ? newDeliveryId() : null;
+    if (taskText) {
+      if (reqs.ids.length) { const brief = briefItems(reqs.ids); if (brief.error) fail(brief.error); taskText = `${taskText.trim()}\n\n${briefBlock(brief, { delivery })}`; }
+      else taskText = `${taskText.trim()}\n\n[delivery ${delivery}]`;
+    }
     const args = ['spawn'];
-    for (const key of ['provider', 'task', 'task-file', 'cwd', 'title', 'goal', 'near']) if (typeof flags[key] === 'string') args.push(`--${key}`, flags[key]);
+    for (const key of ['provider', 'cwd', 'title', 'goal', 'near']) if (typeof flags[key] === 'string') args.push(`--${key}`, flags[key]);
+    if (taskText) {
+      const dir = join(os.homedir(), '.cache', 'termfleet', 'tasks');
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      const file = join(dir, `${delivery}.md`);
+      writeFile(file, taskText, { mode: 0o600 });
+      args.push('--task-file', file);
+    }
     const run = spawnSync(process.execPath, [join(here, 'termfleet-child.mjs'), ...args], { stdio: ['inherit', 'pipe', 'inherit'], encoding: 'utf8' });
     process.stdout.write(run.stdout || '');
-    try {
-      const made = JSON.parse(String(run.stdout || '').trim().split('\n').filter((l) => l.startsWith('{')).pop() || '{}');
-      if (made.childPaneId) {
-        recordHelper({ paneId: made.childPaneId, provider: flags.provider || null, task: String(flags.task || flags.title || '').slice(0, 300), cwd: flags.cwd || null });
-        recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: String(flags.task || flags.title || '').slice(0, 600) });
+    let made = {};
+    try { made = JSON.parse(String(run.stdout || '').trim().split('\n').filter((l) => l.startsWith('{')).pop() || '{}'); } catch { made = {}; }
+    if (made.childPaneId) {
+      recordHelper({ paneId: made.childPaneId, provider: flags.provider || null, task: String(flags.task || flags.title || '').slice(0, 300), cwd: flags.cwd || null });
+      recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: String(flags.task || flags.title || '').slice(0, 600) });
+      if (taskText && flags['no-wait'] !== true) {
+        const started = await confirmStarted(made.childPaneId, { token: `[delivery ${delivery}]`, timeoutMs: (Number(flags['start-timeout']) || 90) * 1000, deps: receiptDeps() });
+        for (const note of started.notes) out(note);
+        if (!started.started) {
+          recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: `NOT started: ${started.message}`.slice(0, 600) });
+          fail(`The new terminal (${made.childPaneId}) did NOT start its task. ${started.message}`, 3);
+        }
+        if (reqs.ids.length) recordRequirement(reqs.ids.map((id) => ({ e: 'assign', id, pane: made.childPaneId, delivery, by: selfId || null })));
+        out(`It started its task${reqs.ids.length ? ` with Noam's items ${reqs.ids.join(', ')}` : ''}.`);
       }
-    } catch { /* the helper still started; only the record is missing */ }
+    }
     process.exit(run.status ?? 1);
   }
 

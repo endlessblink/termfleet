@@ -62,6 +62,7 @@ import { createDockIcon } from './dock-icon.mjs';
 import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest, askTitle, dismissAsk } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
+import { itemsView } from './requirements.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
@@ -345,6 +346,23 @@ setInterval(() => { try { bots.retryDue(); } catch (error) { console.error('[bot
  * TF-096 part 2: the operator's requests in one conversation, in his words, with
  * done / partial / open. Read from the conversation record (the last 8 MB).
  */
+/**
+ * TF-102: Noam's items (R-n) for one conversation, for the phone and the desktop panel:
+ * his exact words, their status (locked = he confirmed it works), and what is still open.
+ */
+function requirementsFor(source, { project = null } = {}) {
+  if (!source) return null;
+  try {
+    const list = itemsView({ source, project, includeClosed: true }).items.slice(0, 60);
+    return list.length ? list.map((it) => ({ id: it.id, askN: it.askN, words: String(it.words).slice(0, 400), status: it.locked ? 'locked' : it.status, topics: it.topics, open: it.open, note: String(it.note || '').slice(0, 200) })) : null;
+  } catch { return null; }
+}
+const partsLine = (items) => {
+  const doneish = items.filter((it) => ['done', 'ready', 'locked', 'answered', 'context', 'dropped'].includes(it.status)).length;
+  const open = items.filter((it) => !['done', 'ready', 'locked', 'answered', 'context', 'dropped'].includes(it.status)).map((it) => it.id);
+  return `Parts ${doneish} of ${items.length} done${open.length ? `, open ${open.join(' ')}` : ''}`;
+};
+
 function asksForTranscript(file) {
   // Only chat logs (.jsonl). An OpenCode pane's record is OpenCode's whole database
   // (GBs of binary); reading it every 4 s froze the bridge, so the phone app sat on
@@ -353,7 +371,13 @@ function asksForTranscript(file) {
   try {
     // Removed by Noam (dismissAsk) and short follow-ups (isRealRequest) are left out; numbers stay.
     const asks = asksForFile(file).filter((a) => isRealRequest(a.text) && !a.dismissed);
-    return asks.length ? asks.slice(-30).map((a) => ({ n: a.n, text: a.text.slice(0, 600), title: askTitle(a.text).slice(0, 300), status: a.status, note: String(a.note || '').slice(0, 200) })) : null;
+    const items = requirementsFor(file) || [];
+    return asks.length ? asks.slice(-30).map((a) => {
+      // A request with several parts shows each part (his words) and how many are done.
+      const parts = items.filter((it) => it.askN === a.n);
+      const note = String(a.note || '').slice(0, 200);
+      return { n: a.n, text: a.text.slice(0, 600), title: askTitle(a.text).slice(0, 300), status: a.status, note: parts.length > 1 ? `${partsLine(parts)}${note ? ` · ${note}` : ''}` : note, ...(parts.length ? { items: parts } : {}) };
+    }) : null;
   } catch { return null; }
 }
 
@@ -650,6 +674,7 @@ const handle = async (req, res) => {
       const raw = bots.read(view.bot.id);
       if (raw?.sessions?.claude?.started) view.asks = asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id));
     }
+    if (view) view.requirements = requirementsFor(`bot:${view.bot.id}`);
     return json(res, view ? 200 : 404, view || { error: 'That bot no longer exists.' });
   }
   // A bot's Activity (TF-098): what it and its terminal agents did, who approved it. Record only.
@@ -678,6 +703,13 @@ const handle = async (req, res) => {
   }
   // Noam removes a request from a bot's or terminal's list himself (2026-10-20). The agent then
   // sees it as dropped; the number stays, so its other marks still land right.
+  // TF-102: Noam's items by project and topic (phone and desktop; read only).
+  if (url.pathname === '/api/requirements' && req.method === 'GET') {
+    try {
+      const view = itemsView({ project: url.searchParams.get('project') || null, topic: url.searchParams.get('topic') || null, includeClosed: url.searchParams.get('closed') === '1' });
+      return json(res, 200, { items: view.items.slice(0, 300), escalations: view.escalations.slice(-20) });
+    } catch (error) { return json(res, 500, { error: error.message || 'The list could not be read.' }); }
+  }
   if (url.pathname === '/api/asks/dismiss' && req.method === 'POST') {
     let body = {};
     try { body = await readJson(req, 1024); } catch { body = {}; }

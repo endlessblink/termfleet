@@ -23,6 +23,11 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  captureMessage, ownerTextOf, projectOf, stopProblem, escalate, briefedIds, briefItems, briefBlock, ledgerDir,
+  markItem, record, addTopic, normId, itemsView, itemsText, evidenceProblem, loadLedger, clip as clipItem,
+} from '../termcontrol/bridge/requirements.mjs';
+import { findOwnerWords } from '../termcontrol/bridge/owner-words.mjs';
 
 const TAIL_BYTES = 8 * 1024 * 1024;
 // ready = built and live, waiting for Noam to try it (Noam 2026-10-20: "how will I know what
@@ -329,7 +334,8 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
       newest = { n: asks.length + 1, text: prompt, status: 'open', note: '' };
       asks.push(newest);
     }
-    const text = ledgerText(asks, { newest });
+    const items = newest && ledgerOn(env, readLines) ? captureItems(payload, prompt, newest.n, env) : '';
+    const text = [ledgerText(asks, { newest }), items].filter(Boolean).join('\n\n');
     return text ? { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } } : null;
   }
   if (/^SessionStart$/i.test(event) || event === 'session_start') {
@@ -340,8 +346,13 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
     return text ? { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: `After ${source || 'a restart'}: ${text}` } } : null;
   }
   if (/^Stop$/i.test(event) || event === 'stop') {
-    if (payload.stop_hook_active || payload.stopHookActive) return null;   // reminder mode: once per finish
     const last = String(payload.last_assistant_message || '') || lastAssistantText(lines);
+    // The requirements gate (TF-102) is not a reminder: it blocks every time until each of
+    // Noam's items is taken, capped so a stuck agent cannot loop forever (then it is escalated
+    // into Noam's own list instead of being dropped).
+    const gate = ledgerOn(env, readLines) ? itemsGate(payload, lines, asks, last, env) : null;
+    if (gate) return gate;
+    if (payload.stop_hook_active || payload.stopHookActive) return null;   // reminder mode: once per finish
     // Noam 2026-10-17: "they say that they will do something and just never do it".
     // Nothing runs after an agent stops, so a promised next step must happen now.
     const promise = promisedStep(last);
@@ -355,7 +366,176 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
   return null;
 }
 
-export function cli(args) {
+// ---------------------------------------------------------------------------------------
+// TF-102 owner requirements ledger: every message split into items (R-n) that must each be
+// taken, carried in his words, delivered with evidence and re-checked once he approved it.
+
+/** Whose conversation this is: a bot's brain, or one terminal's conversation record. */
+export function sourceOf(payload, env = process.env) {
+  if (/^[0-9a-f]{12}$/.test(String(env.TERMFLEET_BOT_ID || ''))) return `bot:${env.TERMFLEET_BOT_ID}`;
+  if (payload?.transcript_path) return payload.transcript_path;
+  return payload?.session_id ? `session:${payload.session_id}` : null;
+}
+const projectFor = (payload, env = process.env) => env.TERMFLEET_PROJECT || projectOf(payload?.cwd || process.cwd());
+const reqDir = (env) => ledgerDir(env);
+// An in-memory hook call (tests pass readLines) only touches a ledger it was given explicitly.
+const ledgerOn = (env, readLines) => env.TERMFLEET_REQUIREMENTS !== 'off' && (!readLines || Boolean(env.TERMFLEET_REQ_DIR));
+
+/** Splits his new message into items and says so; returns the text the agent is shown. */
+export function captureItems(payload, prompt, askN, env = process.env) {
+  const source = sourceOf(payload, env);
+  if (!source) return '';
+  const dir = reqDir(env);
+  let items = [];
+  // A bot's messages are captured by the bridge with his real message id (bots.mjs); the
+  // brain's hook only shows them, so nothing is recorded twice.
+  if (!source.startsWith('bot:')) {
+    const own = ownerTextOf(prompt);
+    if (!own) return '';
+    try { items = captureMessage({ text: own.text, msgId: own.msgId, project: projectFor(payload, env), source, askN }, { dir }); } catch { return ''; }
+  } else {
+    try { items = [...loadLedger({ dir }).items.values()].filter((it) => it.source === source && it.status === 'new'); } catch { return ''; }
+  }
+  if (!items.length) return '';
+  const lines = [`Noam's message, split into ${items.length} item${items.length === 1 ? '' : 's'} (his exact words). Each one must be taken before you stop: done/ready with its own evidence, handed over with termfleet-team send --req <id>, answered, waiting for him, or marked background.`];
+  for (const it of items) lines.push(`- ${it.id}${it.topics.length ? ` (${it.topics.join(', ')})` : ''}: "${clipItem(it.words, 300)}"`);
+  // His earlier words on the same screen travel with the new ones (the "it's empty" failure).
+  try {
+    const related = briefItems(items.map((it) => it.id), { dir });
+    if (!related.error) {
+      if (related.open.length) lines.push('Still open on the same topic:', ...related.open.slice(0, 10).map((it) => `- ${it.id}: "${clipItem(it.words, 200)}"`));
+      if (related.locked.length) lines.push('Locked (Noam confirmed these work; re-check each before marking this topic ready):', ...related.locked.slice(0, 10).map((it) => `- ${it.id}: "${clipItem(it.words, 200)}"`));
+    }
+  } catch { /* the items themselves are shown */ }
+  lines.push('Give an item a topic so his later words on the same screen find it: termfleet-asks topic <id[,id]> <topic-name>.');
+  return lines.join('\n');
+}
+
+const userTextsOf = (lines) => {
+  const out = [];
+  for (const line of lines) {
+    if (!line.includes('"user"')) continue;
+    let o; try { o = JSON.parse(line); } catch { continue; }
+    if (o?.type === 'user') out.push(textOf(o.message?.content));
+    else if (o?.type === 'response_item' && o.payload?.role === 'user') out.push(textOf(o.payload.content));
+  }
+  return out;
+};
+
+const MAX_BLOCKS = 4;
+function blockCount(dir, source, change) {
+  const file = join(dir, 'stop-blocks.json');
+  let all = {};
+  try { all = JSON.parse(readFileSync(file, 'utf8')) || {}; } catch { all = {}; }
+  const now = Date.now();
+  const prev = all[source] && now - all[source].at < 30 * 60 * 1000 ? all[source].count : 0;
+  const count = change === 'reset' ? 0 : prev + 1;
+  if (count) all[source] = { count, at: now }; else delete all[source];
+  try { mkdirSync(dir, { recursive: true, mode: 0o700 }); writeFileSync(file, JSON.stringify(all), { mode: 0o600 }); } catch { /* counting only */ }
+  return count;
+}
+
+export function itemsGate(payload, lines, asks, last, env = process.env) {
+  const source = sourceOf(payload, env);
+  if (!source) return null;
+  const dir = reqDir(env);
+  let problem = null;
+  try {
+    const pane = env.TERMFLEET_PANE_ID || '';
+    const assignedHere = pane ? [...loadLedger({ dir }).items.values()].filter((it) => it.assigned.some((a) => a.pane === pane)).map((it) => it.id) : [];
+    const briefed = [...new Set([...briefedIds(userTextsOf(lines)), ...assignedHere])];
+    const askMarks = asks.filter((a) => a.status === 'done' || a.status === 'ready').map((a) => ({ status: a.status, n: a.n }));
+    problem = stopProblem({ source, briefed, lastMessage: last, askMarks }, { dir });
+  } catch { return null; }
+  if (!problem) { blockCount(dir, source, 'reset'); return null; }
+  const count = blockCount(dir, source, 'add');
+  if (count > MAX_BLOCKS) {
+    try { escalate({ source, reason: problem }, { dir }); } catch { /* best effort */ }
+    blockCount(dir, source, 'reset');
+    return null;
+  }
+  return { decision: 'block', reason: problem };
+}
+
+function flagsOf(args) {
+  const flags = {}, rest = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith('--')) { const k = a.slice(2); const v = args[i + 1]; if (v === undefined || v.startsWith('--')) flags[k] = true; else { flags[k] = v; i++; } }
+    else rest.push(a);
+  }
+  return { flags, rest };
+}
+
+/** termfleet-asks <status|topic|lock|reverify|items> R-n …  (the item half of the command) */
+export function itemsCli(args, env = process.env) {
+  const dir = reqDir(env);
+  const [command, idText = '', ...tail] = args;
+  const { flags, rest } = flagsOf(tail);
+  const by = env.TERMFLEET_PANE_ID || (env.TERMFLEET_BOT_ID ? `bot:${env.TERMFLEET_BOT_ID}` : null);
+  if (command === 'items') {
+    const { flags: f } = flagsOf(args.slice(1));
+    const project = f['all-projects'] === true ? null : typeof f.project === 'string' ? f.project : projectOf(process.cwd());
+    const view = itemsView({ project, topic: typeof f.topic === 'string' ? f.topic : null, includeClosed: f.closed === true }, { dir });
+    return { ok: true, message: f.json === true ? JSON.stringify(view, null, 2) : itemsText(view) };
+  }
+  const ids = idText.split(',').map(normId);
+  if (!ids.length || ids.some((id) => !id)) return { ok: false, message: 'Give item ids like R-12 or R-12,R-13.' };
+  const note = rest.join(' ').trim();
+  try {
+    if (command === 'topic') {
+      const [topic] = rest;
+      const aliases = typeof flags.alias === 'string' ? flags.alias.split(',').map((s) => s.trim()) : [];
+      const t = addTopic(ids, topic, { aliases, dir });
+      return { ok: true, message: `${ids.join(', ')} now on topic ${t}.` };
+    }
+    if (command === 'lock') {
+      let said = typeof flags['noam-said'] === 'string' ? flags['noam-said'].trim() : '';
+      if (typeof flags['owner-words'] === 'string') {
+        const ow = findOwnerWords(flags['owner-words']);
+        if (!ow) return { ok: false, message: `No genuine message from Noam with id ${flags['owner-words']}.` };
+        said = `${ow.text} (message ${ow.id})`;
+      }
+      if (said.length < 2) return { ok: false, message: 'A lock is Noam confirming it works: add --noam-said "<his words>" or --owner-words <message id>.' };
+      const { items } = loadLedger({ dir });
+      const notDelivered = ids.filter((id) => !['done', 'ready'].includes(items.get(id)?.status));
+      if (notDelivered.length) return { ok: false, message: `${notDelivered.join(', ')} ${notDelivered.length === 1 ? 'is' : 'are'} not marked ready or done with evidence yet; only delivered items can be locked.` };
+      record(ids.map((id) => ({ e: 'lock', id, by: said })), { dir });
+      record(ids.map((id) => ({ e: 'status', id, status: 'done', note: `Noam confirmed: ${clipItem(said, 160)}`, evidence: `Noam: ${said}`, by })), { dir });
+      return { ok: true, message: `Locked ${ids.join(', ')}: any later change on the same topic must re-check ${ids.length === 1 ? 'it' : 'them'} first.` };
+    }
+    if (command === 'reverify') {
+      if (ids.length !== 1) return { ok: false, message: 'Re-check one locked item at a time, each with its own evidence.' };
+      const problem = evidenceProblem(flags.evidence);
+      if (problem) return { ok: false, message: `${ids[0]} ${problem}.` };
+      const forId = typeof flags.for === 'string' ? normId(flags.for) : null;
+      const { items } = loadLedger({ dir });
+      if (!items.get(ids[0])?.locked) return { ok: false, message: `${ids[0]} is not locked; nothing to re-check.` };
+      record([{ e: 'reverify', id: ids[0], evidence: flags.evidence, forId, by }], { dir });
+      return { ok: true, message: `${ids[0]} re-checked${forId ? ` for ${forId}` : ''}.` };
+    }
+    if (command === 'assign') {
+      const pane = rest[0];
+      if (!pane) return { ok: false, message: 'Say which terminal: termfleet-asks assign R-12 <terminal id>.' };
+      record(ids.map((id) => ({ e: 'assign', id, pane, by })), { dir });
+      return { ok: true, message: `${ids.join(', ')} assigned to ${pane}.` };
+    }
+    if ((command === 'done' || command === 'ready' || command === 'partial') && ids.length !== 1) return { ok: false, message: `Mark ${command} one item at a time, each with its own evidence.` };
+    const events = [];
+    for (const id of ids) {
+      const result = markItem({ status: command, id, note: note || (typeof flags.note === 'string' ? flags.note : ''), evidence: typeof flags.evidence === 'string' ? flags.evidence : '', open: typeof flags.open === 'string' ? flags.open.split(/\s*;\s*/) : [], by }, { dir });
+      if (result.error) return { ok: false, message: result.error };
+      events.push(...result.events);
+    }
+    record(events, { dir });
+    return { ok: true, message: `Marked ${ids.join(', ')} ${command}.` };
+  } catch (error) {
+    return { ok: false, message: String(error.message || error) };
+  }
+}
+
+export function cli(args, env = process.env) {
+  if (args[0] === 'items' || ['topic', 'lock', 'reverify', 'assign'].includes(args[0]) || normId(String(args[1] || '').split(',')[0])) return itemsCli(args, env);
   const [status, nums, ...rest] = args;
   if (!STATUSES.includes(status)) return { ok: false, message: 'Use: termfleet-asks done|ready|partial|dropped <n[,n]> "<proof or note>"' };
   const list = String(nums || '').split(',').map(Number);
