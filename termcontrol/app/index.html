@@ -1248,7 +1248,7 @@ let visitNotice=null,focusedPane=null;
 let fleetPaneRecords=new Map(),chatOrder=[],chatNavigationBusy=false,saveChatView=null;
 const chatMemories=new Map();
 const chatBinding=p=>String(p?.instanceId || p?.sessionId || '');
-const chatMemoryKey=id=>{const p=chatOrder.find(p=>p.id===id)||fleetPaneRecords.get(id);return id+':'+chatBinding(p);};
+const chatMemoryKey=id=>{if(otherView==='bot' && botOrder.some(b=>b.id===id))return 'bot:'+id;const p=chatOrder.find(p=>p.id===id)||fleetPaneRecords.get(id);return id+':'+chatBinding(p);};
 const chatMemory=id=>{const key=chatMemoryKey(id);if(!chatMemories.has(key))chatMemories.set(key,{});return chatMemories.get(key);};
 // TF-096: Grok Bot marks a bot with a new result since you last looked. "Seen" is
 // this viewer's own mark, set on opening and on leaving a chat (it never reorders
@@ -1262,6 +1262,7 @@ function hasNewAnswer(p,active){
   return looked>0 && Number(p.lastActiveAt || 0)>looked+5000;
 }
 function rememberCurrentChat(){
+  if(otherView==='bot' && openBotId && main.querySelector('.bot-feed')){const snapshot=main.cloneNode(true);snapshot.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));const memory=chatMemory(openBotId);memory.previewMarkup=snapshot.innerHTML;delete memory.scrollTop;}
   document.body.classList.remove('bot-view');document.querySelector('.bot-head-actions')?.remove();document.querySelector('.bot-menu-sheet')?.remove();
   if(!focusedPane)return;markSeen(focusedPane);document.querySelector('.composer')?.saveDraft?.();saveChatView?.();
   // Capture once when leaving; never serialize the conversation on drag frames.
@@ -1273,7 +1274,25 @@ function freezeChatOrder(id,container){
   if(!ids.includes(id))ids.unshift(id);
   chatOrder=[...new Set(ids)].map(id=>({...fleetPaneRecords.get(id),id}));
 }
-function chatNeighbor(step){const at=chatOrder.findIndex(p=>p.id===focusedPane);return at<0?null:chatOrder[at+step]||null;}
+// Bot chats swipe too (Noam 2026-10-22), through the bots list order frozen when one is opened.
+let botOrder=[],openBotId=null,fleetLanding=null;
+function freezeBotOrder(id){
+  const rows=[...document.querySelectorAll('.fleet-content .bots-list .bot-row[data-bot]')];
+  if(rows.length){botOrder=rows.map(el=>({id:el.dataset.bot,name:el.querySelector('.room-name')?.textContent || '',kind:'bot'}));if(botOrder.some(b=>b.id===id))return;}
+  botOrder=[];fetch('/api/bots',{signal:AbortSignal.timeout(8000)}).then(r=>r.json()).then(d=>{if(openBotId===id && !botOrder.length)botOrder=(d.bots || []).filter(b=>!b.hidden).map(b=>({id:b.id,name:b.name,kind:'bot'}));}).catch(()=>{});
+}
+function chatNeighbor(step){
+  if(otherView==='bot'){const at=botOrder.findIndex(b=>b.id===openBotId);return at<0?null:botOrder[at+step]||null;}
+  const at=chatOrder.findIndex(p=>p.id===focusedPane);return at<0?null:chatOrder[at+step]||null;
+}
+// Where the list should land on Back: the card that was tapped, or the agent a swipe ended on.
+function rememberFleetReturn(el,id,origin){
+  fleetLanding=null;
+  if(!main.contains(el))return;
+  const state={...(history.state || {})};delete state.pane;delete state.bot;
+  state.fleetReturn={id,origin,offset:el.getBoundingClientRect().top-main.getBoundingClientRect().top,scrollTop:main.scrollTop};
+  history.replaceState(state,'',location.href);
+}
 const chatName=p=>p?.title || p?.name || p?.mapGroupName || p?.project || ui('Agent','סוכן');
 const chatNavigationBlocked=()=>Boolean(document.querySelector('.composer[data-sending="true"],.composer[data-preparing="true"],.mic.rec,.mic.busy,.custom-answer:not([hidden])'));
 function paintChatNavigation(){
@@ -1291,7 +1310,30 @@ function chatNavigationNotice(text){
   const notice=document.createElement('div');notice.className='chat-navigation-notice';notice.setAttribute('role','status');notice.textContent=text;document.body.append(notice);
   setTimeout(()=>notice.remove(),6500);
 }
+async function navigateBot(step,motion){
+  const target=motion?.target || chatNeighbor(step),from=openBotId,fromView=view;
+  if(!target || chatNavigationBusy || chatNavigationBlocked() || window.getSelection()?.toString())return;
+  chatNavigationBusy=true;
+  const settling=motion?settleChatGesture(motion,true):Promise.resolve(true);
+  try{
+    const response=await fetch('/api/bots',{signal:AbortSignal.timeout(12000)});
+    if(!response.ok)throw new Error(ui('Could not check the next bot. Try again when connected.','לא ניתן לבדוק את הבוט הבא. נסו שוב לאחר החיבור.'));
+    const bots=(await response.json()).bots || [];
+    if(openBotId!==from || view!==fromView || (motion && chatGesture!==motion))return;
+    if(!bots.some(b=>b.id===target.id))throw new Error(ui('This bot is no longer available. Return to the list to refresh it.','הבוט הזה כבר לא זמין. חזרו לרשימה לרענון.'));
+    if(!await settling || (motion && chatGesture!==motion))return;
+    if(openBotId!==from || view!==fromView || chatNavigationBlocked() || window.getSelection()?.toString())return;
+    document.querySelector('.chat-navigation-notice')?.remove();
+    history.replaceState({...history.state,bot:target.id},'','#bot:'+target.id);
+    fleetLanding={id:target.id,origin:'bot'};
+    await openBot(target.id,{motion});
+  }catch(error){
+    if(motion && chatGesture===motion)await settleChatGesture(motion,false);
+    if(openBotId===from && view===fromView)chatNavigationNotice(error.message);
+  }finally{if(motion && chatGesture===motion)clearChatGesture();chatNavigationBusy=false;}
+}
 async function navigateChat(step,motion=null){
+  if(otherView==='bot')return navigateBot(step,motion);
   if(!motion)clearChatGesture();
   const target=motion?.target || chatNeighbor(step),from=focusedPane,fromView=view;
   if(!target || chatNavigationBusy || chatNavigationBlocked() || window.getSelection()?.toString())return;
@@ -1311,7 +1353,7 @@ async function navigateChat(step,motion=null){
     if(focusedPane!==from || view!==fromView || chatNavigationBlocked() || window.getSelection()?.toString())return;
     document.querySelector('.chat-navigation-notice')?.remove();
     history.replaceState({...history.state,pane:target.id},'', '#'+target.id);
-    recordVisit(target.id);
+    recordVisit(target.id);fleetLanding={id:target.id,origin:'pane'};
     await chat(target.id,{motion,initialFeed});
   }catch(error){
     if(motion && chatGesture===motion)await settleChatGesture(motion,false);
@@ -1392,12 +1434,13 @@ function showChatPreview(gesture,target,step){
   const preview=document.createElement('section');chatPreview=preview;preview.className='chat-navigation-preview'+(gesture.reduced?' reduced':'');
   preview.setAttribute('aria-hidden','true');preview.inert=true;
   Object.assign(preview.style,{left:gesture.rect.left+'px',top:gesture.rect.top+'px',width:gesture.width+'px',height:gesture.rect.height+'px',transformOrigin:gesture.side===1?'left center':'right center'});
-  preview.innerHTML=`<div class="chat-preview-heading"><span aria-hidden="true">${blobSvg(target,36)}</span><div><small>${step===1?ui('Next chat','השיחה הבאה'):ui('Previous chat','השיחה הקודמת')}</small><strong dir="auto">${esc(chatName(target))}</strong></div></div><main class="chat-preview-body" aria-hidden="true"></main>`;
+  preview.innerHTML=`<div class="chat-preview-heading"><span aria-hidden="true">${target.kind==='bot'?blobSvg({id:'bot:'+target.id,project:target.name},36):blobSvg(target,36)}</span><div><small>${step===1?ui('Next chat','השיחה הבאה'):ui('Previous chat','השיחה הקודמת')}</small><strong dir="auto">${esc(chatName(target))}</strong></div></div><main class="chat-preview-body" aria-hidden="true"></main>`;
   const body=preview.querySelector('.chat-preview-body'),memory=chatMemory(target.id);
   body.style.padding=gesture.padding;
   body.innerHTML=memory.previewMarkup || `<div class="empty">${ui('Release to open this conversation.','שחררו לפתיחת השיחה.')}</div>`;
   document.body.append(preview);body.scrollTop=Number.isFinite(memory.scrollTop)?memory.scrollTop:body.scrollHeight;drawChatGesture(gesture);
   const abort=new AbortController();gesture.abort=abort;
+  if(target.kind==='bot'){gesture.feedPromise=Promise.resolve(null);return;}
   // Preload the destination once during intent. Reuse it at handoff instead of flashing a spinner.
   gesture.feedPromise=fetch(`/api/feed?pane=${encodeURIComponent(target.id)}&limit=${memory.shown || 60}`,{signal:AbortSignal.any([abort.signal,AbortSignal.timeout(12000)])}).then(async response=>{
     if(!response.ok)return null;const feed=await response.json();
@@ -1409,7 +1452,7 @@ function showChatPreview(gesture,target,step){
 }
 main.addEventListener('pointerdown',event=>{
   const interrupted=Boolean(chatGesture);clearChatGesture();
-  if(interrupted || !focusedPane || chatNavigationBusy || chatNavigationBlocked() || event.pointerType!=='touch' || !event.isPrimary || event.button!==0 || event.clientX<24 || event.clientX>innerWidth-24 || chatGestureExcluded(event.target) || window.getSelection()?.toString())return;
+  if(interrupted || !(focusedPane || (otherView==='bot' && openBotId)) || chatNavigationBusy || chatNavigationBlocked() || event.pointerType!=='touch' || !event.isPrimary || event.button!==0 || event.clientX<24 || event.clientX>innerWidth-24 || chatGestureExcluded(event.target) || window.getSelection()?.toString())return;
   const rect=main.getBoundingClientRect();
   chatGesture={pointer:event.pointerId,x:event.clientX,y:event.clientY,pane:focusedPane,view,rtl:document.documentElement.dir==='rtl',rect,width:rect.width,padding:getComputedStyle(main).padding,offset:0,phase:'possible',reduced:chatReducedMotion.matches,scrollTop:main.scrollTop,samples:[{x:0,t:event.timeStamp}]};
   if(!chatGesture.reduced)main.classList.add('chat-swipe-ready');
@@ -2141,7 +2184,7 @@ const rememberApproval = (id, entry) => {
 
 function openFleetPane(el) {
   const id = el.dataset.id;
-  rememberCurrentChat();
+  rememberCurrentChat();fleetLanding=null;
   freezeChatOrder(id,el.closest('.fleet-content') || main);
   recordVisit(id);
   const mainRect = main.getBoundingClientRect();
@@ -2159,24 +2202,28 @@ function openFleetPane(el) {
   chat(id);
 }
 
-function restoreFleetReturn() {
+// keep=true: place the kept copy of the list at once on Back (no jump), then again after it refreshes.
+function restoreFleetReturn(keep = false) {
   const restore = history.state?.fleetReturn;
   if (!restore) return;
-
+  const landing = fleetLanding || restore;
+  const place = () => {
+    const card = landing.origin === 'bot'
+      ? main.querySelector(`.bots-list .bot-row[data-bot="${CSS.escape(landing.id)}"]`)
+      : [...main.querySelectorAll(landing === restore && restore.origin === 'review' ? '.attention-review' : '.pane')]
+        .find((candidate) => candidate.dataset.id === landing.id);
+    if (!card) return;
+    main.scrollTop += card.getBoundingClientRect().top
+      - main.getBoundingClientRect().top
+      - Number(restore.offset || 0);
+  };
   main.scrollTop = Number(restore.scrollTop) || 0;
+  if (keep) { place(); return; }
+  fleetLanding = null;
   const state = { ...(history.state || {}) };
   delete state.fleetReturn;
   history.replaceState(state, '', location.href);
-
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    const preferred = restore.origin === 'review' ? '.attention-review' : '.pane';
-    const pane = [...main.querySelectorAll(preferred)]
-      .find((candidate) => candidate.dataset.id === restore.id);
-    if (!pane) return;
-    main.scrollTop += pane.getBoundingClientRect().top
-      - main.getBoundingClientRect().top
-      - Number(restore.offset || 0);
-  }));
+  requestAnimationFrame(() => requestAnimationFrame(place));
 }
 
 function failedRead(response, route) {
@@ -2247,8 +2294,9 @@ async function fleet(background=false,{fromCache=false}={}) {
   document.querySelector('.askbox')?.remove();
   document.querySelector('.sendstate')?.remove();
   nav.innerHTML = '';
-  title.textContent = 'TermControl';
+  title.textContent = 'TermControl';sub.textContent = '';
   chatStatus.innerHTML = '';routinesLine.innerHTML = '';
+  if(cached)restoreFleetReturn(true);
   }
   let r;
   const kept=fromCache?lastFleetData:null;
@@ -2351,7 +2399,7 @@ async function fleet(background=false,{fromCache=false}={}) {
   const waitingDetails=container.querySelector('.waiting-panel');waitingDetails?.querySelector('summary')?.addEventListener('click',()=>{try{sessionStorage.setItem('termcontrol-waiting-open',waitingDetails.open?'closed':'open');}catch{}},{once:true});
   const inboxButton=container.querySelector('.open-inbox');if(inboxButton)inboxButton.onclick=event=>{event.preventDefault();event.stopPropagation();history.pushState({inbox:true},'','#inbox');openInbox();};
   const newRoomButton=container.querySelector('.new-room:not(.new-bot)');if(newRoomButton)newRoomButton.onclick=()=>newRoom(roomsData?.agents || []);
-  container.querySelectorAll('[data-bot]').forEach(el=>{el.onclick=()=>{history.pushState({bot:el.dataset.bot},'','#bot:'+el.dataset.bot);openBot(el.dataset.bot);};});
+  container.querySelectorAll('[data-bot]').forEach(el=>{el.onclick=()=>{const fromList=el.matches('.bot-row') && main.contains(el);if(fromList)rememberFleetReturn(el,el.dataset.bot,'bot');history.pushState({bot:el.dataset.bot,openedFromAgents:fromList||undefined},'','#bot:'+el.dataset.bot);openBot(el.dataset.bot);};});
   const newBotButton=container.querySelector('.new-bot');if(newBotButton)newBotButton.onclick=()=>botDialog(null,botsData);
   container.querySelectorAll('[data-group]').forEach(el=>{el.onclick=()=>{history.pushState({group:el.dataset.group},'','#group:'+el.dataset.group);openGroup(el.dataset.group);};});
   const newGroupButton=container.querySelector('.new-group');if(newGroupButton)newGroupButton.onclick=()=>groupDialog(null);
@@ -3019,9 +3067,11 @@ async function botMemoryDialog(id,name){
   await render();
 }
 
-async function openBot(id){
+async function openBot(id,{motion=null}={}){
   loadBotModels();paintOpenBot();clearSideAsks();
-  rememberCurrentChat();saveChatView=null;clearChatGesture();otherView='bot';
+  rememberCurrentChat();saveChatView=null;clearChatGesture(Boolean(motion && chatGesture===motion));
+  if(!motion || !botOrder.some(b=>b.id===id))freezeBotOrder(id);
+  otherView='bot';openBotId=id;
   document.querySelector('.composer')?.releaseDraft?.();document.querySelector('.composer')?.remove();document.querySelector('.askbox')?.remove();document.querySelector('.room-dialog')?.remove();
   const cached=main.querySelector('.fleet-content');if(cached)sideContent.replaceChildren(cached);
   sideContent.querySelectorAll('.pane').forEach(el=>el.classList.remove('selected'));
@@ -3039,7 +3089,8 @@ async function openBot(id){
   headActions.querySelector('.bot-menu-button').onclick=()=>botMenu(id,current,headState);
   headActions.querySelector('.bot-asks-chip').onclick=()=>botMenu(id,current,headState,'asks');
   nav.innerHTML=`<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
-  nav.querySelector('.back').onclick=()=>{history.pushState({},'',location.pathname);fleet();};
+  // Opened from the list: step back to it, so the list returns to where the bot was.
+  nav.querySelector('.back').onclick=()=>{if(history.state?.openedFromAgents){history.back();}else{history.pushState({},'',location.pathname);fleet();}};
   main.innerHTML='<div class="spin">loading…</div>';chatStatus.innerHTML='';routinesLine.innerHTML='';title.textContent=ui('Bot','בוט');sub.textContent='';
   let following=true,signature='',current=null;
   const pendingSends=[];   // {text, state:'sending'|'failed'} until the server shows it
@@ -3188,6 +3239,7 @@ async function openBot(id){
     const active=helpers.filter(h=>h.state==='working' || h.state==='needs-you').length;
     const helpersMarkup=helpers.length?`<details class="helpers-chip"><summary>${esc(ui(`Terminal agents it started: ${helpers.length}${active?` (${active} working)`:''}`,`סוכני מסוף שהפעיל: ${helpers.length}${active?` (${active} עובדים)`:''}`))} ▾</summary><ul>${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul></details>`:'';
     let schedules=[];try{const r=await fetch(`/api/routines?pane=${encodeURIComponent('bot:'+id)}`,{signal:AbortSignal.timeout(6000)});if(r.ok)schedules=(await r.json()).routines || [];}catch{}
+    if(mine!==view)return;   // left this chat while the schedules loaded: never paint over the list
     const schedulesMarkup=`<span class="routinesline">${schedules.map(r=>`<span class="routine-pill">${icon('clock')}<span dir="auto">${esc(r.label)} ${esc(r.time)} · ${esc(r.text.length>40?r.text.slice(0,38)+'…':r.text)}</span></span>`).join('')}<button type="button" class="bot-schedule routine-pill">${icon('clock')}${ui('Schedule','תזמון')}</button></span>`;
     const lastTalk=data.messages.filter(m=>m.role==='activity' || m.role==='operator').pop(),busyHelper=helpers.filter(h=>h.state==='working').pop(),helperLive=busyHelper?`${busyHelper.title || ui('Terminal agent','סוכן מסוף')}: ${busyHelper.live || shortTask(busyHelper.task) || ui('working','עובד')}`:'',botLive=helperLive || (bot.state==='working' && lastTalk?.role==='activity'?String(lastTalk.text).split(':')[0]:'');
     const asksMarkup=asksHtml(data.asks,bot.state==='working' || Boolean(busyHelper),botLive,schedules.map(r=>r.text))+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
@@ -3230,6 +3282,7 @@ async function openBot(id){
     }
   };
   await render();
+  requestAnimationFrame(()=>{chatHandoff?.remove();chatHandoff=null;});
   if(mine===view)timer=setInterval(render,2000);
 }
 
