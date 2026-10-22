@@ -279,7 +279,7 @@ export function ledgerText(allAsks, { newest = null, maxChars = 6000 } = {}) {
   if (!asks.length) return '';
   const unfinished = asks.filter((a) => a.status === 'open' || a.status === 'partial' || a.status === 'ready');
   const lines = [`Noam's requests, his words (${summaryLine(asks)}):`];
-  for (const a of unfinished.slice(-15)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 80)}` : ''}] "${clip(askTitle(a.text), 200)}"`);
+  for (const a of unfinished.slice(-15)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 80)}` : ''}]${a.itemIds?.length ? ` (items ${a.itemIds.join(', ')})` : ''} "${clip(askTitle(a.text), 200)}"`);
   if (unfinished.length > 15) lines.push(`(${unfinished.length - 15} older unfinished requests not shown)`);
   if (newest) lines.push(`#${newest.n} is new. If it is a new or unclear request, first read it back in his words; ask at most 2 questions about real gaps.`);
   lines.push('Mark them: termfleet-asks done|ready|partial|dropped <n> "<proof or note>". Use ready (not partial) when it is built and live but Noam has not tried it yet; the note says exactly what he should try, in a few words. It stays quiet (no notification, not in his "Waiting for you" list, which is only for approvals and questions that block work). When he says it works, mark it done.');
@@ -334,7 +334,17 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
       newest = { n: asks.length + 1, text: prompt, status: 'open', note: '' };
       asks.push(newest);
     }
-    const items = newest && ledgerOn(env, readLines) ? captureItems(payload, prompt, newest.n, env) : '';
+    const inBotChat = String(sourceOf(payload, env) || '').startsWith('bot:');
+    const items = ledgerOn(env, readLines) && (newest || inBotChat) ? captureItems(payload, prompt, newest?.n ?? null, env) : '';
+    // Each request line names the item ids it was split into.
+    if (ledgerOn(env, readLines) && !inBotChat) {
+      try {
+        const source = sourceOf(payload, env);
+        const byAsk = new Map();
+        for (const it of loadLedger({ dir: reqDir(env) }).items.values()) if (it.source === source && it.askN) byAsk.set(it.askN, [...(byAsk.get(it.askN) || []), it.id]);
+        for (const a of asks) if (byAsk.has(a.n)) a.itemIds = byAsk.get(a.n);
+      } catch { /* the requests still show */ }
+    }
     const text = [ledgerText(asks, { newest }), items].filter(Boolean).join('\n\n');
     return text ? { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } } : null;
   }
@@ -394,11 +404,15 @@ export function captureItems(payload, prompt, askN, env = process.env) {
     if (!own) return '';
     try { items = captureMessage({ text: own.text, msgId: own.msgId, project: projectFor(payload, env), source, askN }, { dir }); } catch { return ''; }
   } else {
-    try { items = [...loadLedger({ dir }).items.values()].filter((it) => it.source === source && it.status === 'new'); } catch { return ''; }
+    // A bot sees every unfinished item of its chat on every turn, with the ids its hand-offs must name.
+    try { items = [...loadLedger({ dir }).items.values()].filter((it) => it.source === source && !it.locked && !['done', 'dropped', 'context', 'answered'].includes(it.status)).sort((a, b) => a.n - b.n).slice(-25); } catch { return ''; }
   }
   if (!items.length) return '';
-  const lines = [`Noam's message, split into ${items.length} item${items.length === 1 ? '' : 's'} (his exact words). Each one must be taken before you stop: done/ready with its own evidence, handed over with termfleet-team send --req <id>, answered, waiting for him, or marked background.`];
-  for (const it of items) lines.push(`- ${it.id}${it.topics.length ? ` (${it.topics.join(', ')})` : ''}: "${clipItem(it.words, 300)}"`);
+  const bot = source.startsWith('bot:');
+  const lines = [bot
+    ? `Noam's unfinished items in this chat, his exact words (name them in hand-offs: termfleet-team send <who> --req <id,id> "..."; full list: termfleet-asks items; one item: termfleet-asks show <id>). Every "new" one must be taken before you stop.`
+    : `Noam's message, split into ${items.length} item${items.length === 1 ? '' : 's'} (his exact words). Each one must be taken before you stop: done/ready with its own evidence, handed over with termfleet-team send --req <id>, answered, waiting for him, or marked background.`];
+  for (const it of items) lines.push(`- ${it.id}${bot ? ` [${it.status}]` : ''}${it.topics.length ? ` (${it.topics.join(', ')})` : ''}: "${clipItem(it.words, 300)}"`);
   // His earlier words on the same screen travel with the new ones (the "it's empty" failure).
   try {
     const related = briefItems(items.map((it) => it.id), { dir });
@@ -473,11 +487,29 @@ export function itemsCli(args, env = process.env) {
   const [command, idText = '', ...tail] = args;
   const { flags, rest } = flagsOf(tail);
   const by = env.TERMFLEET_PANE_ID || (env.TERMFLEET_BOT_ID ? `bot:${env.TERMFLEET_BOT_ID}` : null);
-  if (command === 'items') {
+  if (command === 'items' || command === 'list') {
+    // Inside a bot: its own chat's items by default (the ids it must name in --req).
     const { flags: f } = flagsOf(args.slice(1));
-    const project = f['all-projects'] === true ? null : typeof f.project === 'string' ? f.project : projectOf(process.cwd());
-    const view = itemsView({ project, topic: typeof f.topic === 'string' ? f.topic : null, includeClosed: f.closed === true }, { dir });
+    const botSource = /^[0-9a-f]{12}$/.test(String(env.TERMFLEET_BOT_ID || '')) ? `bot:${env.TERMFLEET_BOT_ID}` : null;
+    const wide = f['all-projects'] === true || typeof f.project === 'string';
+    const project = f['all-projects'] === true ? null : typeof f.project === 'string' ? f.project : botSource ? null : projectOf(process.cwd());
+    const view = itemsView({ project, source: wide ? null : botSource, topic: typeof f.topic === 'string' ? f.topic : null, includeClosed: f.closed === true }, { dir });
     return { ok: true, message: f.json === true ? JSON.stringify(view, null, 2) : itemsText(view) };
+  }
+  if (command === 'show') {
+    const { items } = loadLedger({ dir });
+    const found = String(args[1] || '').split(',').map(normId).filter(Boolean).map((id) => items.get(id) || id);
+    if (!found.length) return { ok: false, message: 'Give item ids like R-12 or R-12,R-13.' };
+    const lines = found.map((it) => typeof it === 'string' ? `${it}: not in Noam's list.` : [
+      `${it.id} [${it.locked ? 'locked' : it.status}] project ${it.project}${it.topics.length ? `, topic ${it.topics.join(', ')}` : ''}, part ${it.part} of ${it.of} of message ${it.msgId}`,
+      `  Noam's words: "${it.words}"`,
+      it.note ? `  Note: ${it.note}` : null,
+      it.open.length ? `  Still open: ${it.open.join('; ')}` : null,
+      ...it.evidence.map((e) => `  Evidence: ${e.what}`),
+      ...it.assigned.map((a) => `  Handed to ${a.pane}${a.delivery ? ` (delivery ${a.delivery})` : ''}`),
+      ...it.reverified.map((r) => `  Re-checked${r.forId ? ` for ${r.forId}` : ''}: ${r.evidence}`),
+    ].filter(Boolean).join('\n'));
+    return { ok: !found.some((it) => typeof it === 'string'), message: lines.join('\n') };
   }
   const ids = idText.split(',').map(normId);
   if (!ids.length || ids.some((id) => !id)) return { ok: false, message: 'Give item ids like R-12 or R-12,R-13.' };
@@ -535,7 +567,7 @@ export function itemsCli(args, env = process.env) {
 }
 
 export function cli(args, env = process.env) {
-  if (args[0] === 'items' || ['topic', 'lock', 'reverify', 'assign'].includes(args[0]) || normId(String(args[1] || '').split(',')[0])) return itemsCli(args, env);
+  if (['items', 'list', 'show'].includes(args[0]) || ['topic', 'lock', 'reverify', 'assign'].includes(args[0]) || normId(String(args[1] || '').split(',')[0])) return itemsCli(args, env);
   const [status, nums, ...rest] = args;
   if (!STATUSES.includes(status)) return { ok: false, message: 'Use: termfleet-asks done|ready|partial|dropped <n[,n]> "<proof or note>"' };
   const list = String(nums || '').split(',').map(Number);

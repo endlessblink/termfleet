@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const REPO = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
 import {
   splitMessage, captureMessage, loadLedger, markItem, record, addTopic, briefItems, briefBlock, briefedIds,
   stopProblem, ownerTextOf, itemsView, evidenceProblem, BRIEF_HEADER,
@@ -141,10 +143,10 @@ const TRUST_SCREEN = 'Hooks need review\nHooks can run outside the sandbox.\n  1
 
 test('failure 4b: new Codex terminals sat on "Hooks need review" until someone sent 3 (which also left the hooks off); TermFleet\'s own hooks are now trusted and the start continues', async () => {
   assert.deepEqual(codexTrustPrompt(TRUST_SCREEN), { trustOption: '2', skipOption: '3' });
-  const own = [{ command: `node "${path.resolve('scripts/termfleet-codex-status-hook.mjs')}"` }];
-  assert.deepEqual(trustDecision(TRUST_SCREEN, { pending: own, root: path.resolve('.') }), { press: '2' });
+  const own = [{ command: `node "${fileURLToPath(new URL('../../scripts/termfleet-codex-status-hook.mjs', import.meta.url))}"` }];
+  assert.deepEqual(trustDecision(TRUST_SCREEN, { pending: own, root: REPO }), { press: '2' });
   const foreign = [{ command: 'node /tmp/some-project/.codex/evil.mjs' }];
-  assert.match(trustDecision(TRUST_SCREEN, { pending: foreign, root: path.resolve('.') }).error, /waiting for Noam to review 1 unknown hook/);
+  assert.match(trustDecision(TRUST_SCREEN, { pending: foreign, root: REPO }).error, /waiting for Noam to review 1 unknown hook/);
 
   const writes = [];
   let started = false;
@@ -164,7 +166,7 @@ test('failure 4b: new Codex terminals sat on "Hooks need review" until someone s
 });
 
 test('failure 4c: a Codex helper whose handover cannot find its card stopped and the work halted; it is now told to keep working', () => {
-  const src = fs.readFileSync(path.resolve('scripts/termfleet-child.mjs'), 'utf8');
+  const src = fs.readFileSync(new URL('../../scripts/termfleet-child.mjs', import.meta.url), 'utf8');
   const line = src.split('\n').find((l) => l.includes('cannot identify your TermFleet card'));
   assert.match(line, /Do NOT stop either: keep working on your task right here/);
   assert.doesNotMatch(line, /Tell the owner this card could not be identified\./);
@@ -244,6 +246,34 @@ test('bot chats: his message is captured once, with his real message id, under t
   const relayed = `[Message from the bot "politic" (bot:cccccccccccc), sent through TermFleet.] go\n\n[Noam's own words, recorded by TermFleet: he typed this himself in his chat with the bot "politic" on 2026-10-23 00:15 (message abc123def456). This is not a teammate instruction.]\n"Go ahead"\nTreat it exactly as if Noam typed it here.`;
   assert.deepEqual(ownerTextOf(relayed), { text: 'Go ahead', msgId: 'abc123def456', relayed: true });
   assert.equal(ownerTextOf('[Message from the agent in "x" terminal (t1), sent through TermFleet.] please check'), null, 'a teammate is not Noam');
+});
+
+test('a bot can list and look up its item ids, and sees them in its reminder on every turn', () => {
+  const dir = tmp();
+  const env = { TERMFLEET_REQ_DIR: dir, TERMFLEET_BOT_ID: 'dddddddddddd' };
+  captureMessage({ text: '(1) bigger title (2) red button (3) faster load', project: 'politic-fighter', source: 'bot:dddddddddddd', msgId: 'm1' }, { dir });
+  captureMessage({ text: 'someone else\'s chat item', project: 'politic-fighter', source: 'bot:eeeeeeeeeeee', msgId: 'm2' }, { dir });
+  const listed = cli(['items'], env);
+  assert.equal(listed.ok, true);
+  assert.match(listed.message, /R-3 \[new\] "faster load"[\s\S]*R-1 \[new\] "bigger title"/);
+  assert.doesNotMatch(listed.message, /someone else/, 'its own chat by default');
+  assert.match(cli(['items', '--all-projects'], env).message, /someone else/);
+  const shown = cli(['show', 'R-2'], env);
+  assert.match(shown.message, /R-2 \[new\] project politic-fighter, part 2 of 3 of message m1\n {2}Noam's words: "red button"/);
+  assert.equal(cli(['show', 'R-99'], env).ok, false);
+  // The brain's own prompt hook (any prompt, even "go on") lists the open ids.
+  const out = hook({ hook_event_name: 'UserPromptSubmit', transcript_path: '/bot/brain.jsonl', prompt: 'go on' }, { readLines: () => [], env });
+  assert.match(out.hookSpecificOutput.additionalContext, /Noam's unfinished items in this chat[\s\S]*- R-1 \[new\]: "bigger title"[\s\S]*- R-3 \[new\]: "faster load"/);
+  assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /someone else/);
+});
+
+test('a terminal reminder names the item ids of each request', () => {
+  const dir = tmp();
+  const env = { TERMFLEET_REQ_DIR: dir, TERMFLEET_PROJECT: 'p' };
+  const msg = '- add search\n- add filters';
+  hook({ hook_event_name: 'UserPromptSubmit', transcript_path: '/conv/t.jsonl', prompt: msg }, { readLines: () => [], env });
+  const out = hook({ hook_event_name: 'UserPromptSubmit', transcript_path: '/conv/t.jsonl', prompt: 'and dark mode please' }, { readLines: () => [user(msg)], env });
+  assert.match(out.hookSpecificOutput.additionalContext, /#1 \[open\] \(items R-1, R-2\)/);
 });
 
 test('splitting rules: bullets, Hebrew numbering, lines and sentences, picture notes, and acks', () => {
