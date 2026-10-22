@@ -11,6 +11,7 @@ import { asksForFile } from '../../scripts/termfleet-asks.mjs';
 import { uploadDir } from './uploads.mjs';
 import { skillPrompt } from './skills.mjs';
 import { parseQuestion, QUESTION_RULE, markRepeatedQuestions } from './bot-questions.mjs';
+import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bot-checklist.mjs';
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
@@ -126,6 +127,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- Never spend money, post publicly, send messages to people, or delete things without Noam\'s explicit yes.',
     '- Write to Noam in short, plain, everyday sentences: no code, file paths or jargon unless he asks.',
     QUESTION_RULE,
+    CHECKLIST_RULE,
     '',
     'Your memory:',
     '- `termfleet-memory search "<words>"` finds anything said in your past conversations with Noam, word for word. Use it before guessing what was decided.',
@@ -306,8 +308,11 @@ export function parseBrainLine(provider, line) {
   }
   if (o.type === 'assistant') {
     const uses = (o.message?.content || []).filter((b) => b?.type === 'tool_use');
-    if (uses.length) return { activity: activityLine(uses[0].name, uses[0].input) };
-    return null;
+    // What the bot wrote along the way: only the final text is its reply, but a list or
+    // question card written earlier is carried into it (carryCard).
+    const said = (o.message?.content || []).filter((b) => b?.type === 'text' && b.text).map((b) => b.text).join('\n\n');
+    if (uses.length) return { activity: activityLine(uses[0].name, uses[0].input), ...(said ? { said } : {}) };
+    return said ? { said } : null;
   }
   if (o.type === 'result') {
     if (limitFrom(o.result)) return { ...limitFrom(o.result), error: String(o.result), final: true };
@@ -346,6 +351,7 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
       });
     } catch (error) { resolve({ error: String(error.message || error) }); return; }
     let buffer = '', stderr = '', finalText = '', error = null, lastText = '', limit = null, completed = false, stopped = false, ownKill = false;
+    const spoken = [];
     const calls = new Map();   // tool calls waiting for their result (action log)
     // Noam closing the bot stops this reply the way the timeout does: a polite SIGTERM.
     onStart?.(() => { stopped = true; child.kill('SIGTERM'); });
@@ -372,7 +378,8 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
         const ev = parseBrainLine(bot.provider, line);
         if (!ev) continue;
         if (ev.limit) { limit = limit || ev.limit; if (!ev.final) { ownKill = true; child.kill('SIGTERM'); } }
-        if (ev.text) { lastText = ev.text; if (ev.final) finalText = ev.text; }
+        if (ev.text) { lastText = ev.text; if (ev.final) finalText = ev.text; else spoken.push(ev.text); }
+        if (ev.said) spoken.push(ev.said);
         if (ev.completed) completed = true;
         if (ev.error) error = ev.error;
         onEvent?.(ev);
@@ -395,7 +402,7 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
       // the answer. Without a completed turn the run stopped partway: say so.
       const unfinished = bot.provider === 'codex' && !completed;
       if (unfinished && !error) error = `The bot stopped partway through (${(stderr.trim().split('\n').pop() || `exit ${code}`).slice(0, 300)}).`;
-      const text = unfinished ? '' : (finalText || lastText);
+      const text = unfinished ? '' : carryCard(finalText || lastText, spoken);
       if (!text && !error && code !== 0) error = (stderr.trim().split('\n').pop() || `The brain stopped (exit ${code}).`).slice(0, 400);
       resolve({ text, error: text ? null : error, code });
     });
@@ -841,7 +848,7 @@ export class Bots {
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */
-  send(id, text, { images = [], owner = false, answerTo = null, replyTo = null } = {}) {
+  send(id, text, { images = [], owner = false, answerTo = null, replyTo = null, listTo = null, choices = null } = {}) {
     const bot = this.read(id);
     if (!bot) return { error: 'That bot no longer exists.' };
     // Pictures come from the app's own upload folder only (never any path on the PC).
@@ -863,11 +870,28 @@ export class Bots {
       if (!target) return { error: 'The message you are replying to is no longer in this chat. Your reply was not sent.' };
       replied = { id: target.id, role: target.role, text: target.text.length > 300 ? `${target.text.slice(0, 299)}…` : target.text };
     }
-    const msg = this.append(id, { role: 'operator', text: body, ...(pictures.length ? { images: pictures.length } : {}), ...(asked ? { answerTo: asked.id } : {}), ...(replied ? { replyTo: replied } : {}) });
+    // His choices on one of the bot's lists ([checklist]): tied to that list, which then
+    // locks; a second send on the same list is refused (one answer per list).
+    let list = null;
+    if (listTo) {
+      const chat = this.messages(id);
+      list = chat.find((m) => m.id === String(listTo) && m.role === 'bot' && m.checklist);
+      if (!list) return { error: 'That list is no longer in this chat. Your choices were not sent.' };
+      if (chat.some((m) => m.role === 'operator' && m.listTo === list.id)) return { error: 'You already sent your choices on this list.' };
+    }
+    // The ticks and notes he sent, kept with his message so the locked card shows them on any device.
+    const n = list?.checklist.rows.length || 0;
+    const listChoices = list && choices && Array.isArray(choices.checked) ? {
+      checked: Array.from({ length: n }, (_, i) => Boolean(choices.checked[i])),
+      notes: Array.from({ length: n }, (_, i) => clean(String(choices.notes?.[i] || ''), 300)),
+      note: clean(String(choices.note || ''), 1000),
+    } : null;
+    const said0 = listChoices ? checklistAnswer(list.checklist, listChoices) : body;
+    const msg = this.append(id, { role: 'operator', text: said0, ...(pictures.length ? { images: pictures.length } : {}), ...(asked ? { answerTo: asked.id } : {}), ...(replied ? { replyTo: replied } : {}), ...(list ? { listTo: list.id } : {}), ...(listChoices ? { listChoices } : {}) });
     // Typed by Noam in the app (not a routine, an event or another agent): keep a signed
     // copy so the bot can pass his exact words on and the receiver can check them.
-    if (owner) { try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text: body }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ } }
-    const said = skillPrompt(body) || body;   // "/grill-me" etc. carry the skill's steps
+    if (owner) { try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text: said0 }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ } }
+    const said = skillPrompt(said0) || said0;   // "/grill-me" etc. carry the skill's steps
     const quoted = replied ? `[Noam is replying to ${replied.role === 'bot' ? 'your' : 'his own'} earlier message in this chat (message ${replied.id}), quoted as context only, not as a new request or approval:\n"${replied.text}"]\n` : '';
     const answered = quoted + (asked ? `[Noam's answer to your question "${asked.question.text}"]\n${said}` : said);
     let forBrain = pictures.length ? `${answered}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : answered;
@@ -1042,16 +1066,19 @@ export class Bots {
         this.write(bot);
       }
       // A [question] block becomes a card the chat can answer with one tap.
+      // A [checklist] block becomes a list he can tick, note and send back.
       const asked = result.error ? null : parseQuestion(result.text || '');
+      const listed = asked ? parseChecklist(asked.text) : null;
+      if (listed) asked.text = listed.text;
       if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.' });
-      else if (bot) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}) });
+      else if (bot) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question || listed.checklist ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}) });
       // Tagged elsewhere: the same answer also shows there, under this bot's name.
       if (bot && echo.length && !result.stopped) {
-        this.postEcho(id, echo, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: [asked.text, asked.question?.text].filter(Boolean).join('\n\n') || 'Done, with nothing to add.' });
+        this.postEcho(id, echo, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: [asked.text, asked.question?.text, listed?.checklist ? `${listed.checklist.title || 'A list for you'} (tick it in my own chat):\n${listed.checklist.rows.map((r) => `- ${r.label}`).join('\n')}` : ''].filter(Boolean).join('\n\n') || 'Done, with nothing to add.' });
       }
       const [echoKind, echoAt] = (echo[0] || '').split(':');
       if (bot && bot.notify !== false && !result.stopped) {
-        try { this.notify({ title: result.error ? `${bot.name} could not answer` : bot.name, body: String(result.error || (asked?.question ? asked.question.text : result.text) || '').replace(/\s+/g, ' ').slice(0, 200), url: echoAt ? `/#${echoKind}:${echoAt}` : `/#bot:${id}` }); } catch { /* never block a bot on a notification */ }
+        try { this.notify({ title: result.error ? `${bot.name} could not answer` : bot.name, body: String(result.error || (asked?.question ? asked.question.text : listed?.checklist ? `${listed.checklist.title || 'A list for you'} (${listed.checklist.rows.length} rows to tick)` : result.text) || '').replace(/\s+/g, ' ').slice(0, 200), url: echoAt ? `/#${echoKind}:${echoAt}` : `/#bot:${id}` }); } catch { /* never block a bot on a notification */ }
       }
       this.running.delete(id);
     }
