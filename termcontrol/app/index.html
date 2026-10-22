@@ -947,6 +947,13 @@ body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:va
 .room-mentions button{flex:none;min-height:44px;padding:0 10px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);font:inherit;font-size:13px}
 .room-dialog{width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 48px);border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);padding:20px}
 .room-dialog::backdrop{background:rgba(0,0,0,.5)}
+.folder-pick{margin:4px 0 8px;border:1px solid var(--line);border-radius:12px}.folder-pick>summary{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 14px;cursor:pointer;list-style:none;font-size:14px;color:var(--muted)}.folder-pick>summary::-webkit-details-marker{display:none}.folder-pick>summary::after{content:'+';margin-inline-start:auto;font-size:18px}.folder-pick[open]>summary::after{content:'−'}.folder-pick[open]>summary{color:var(--text)}.folder-now{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.folder-body{display:flex;flex-direction:column;gap:10px;padding:0 12px 12px}.folder-hint{margin:0;color:var(--muted);font-size:13px;line-height:1.45}.folder-chosen{display:flex;gap:8px}.folder-chosen input,.folder-new input{flex:1;min-width:0;min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:15px}
+.folder-body button{min-height:40px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font:inherit;font-size:14px;cursor:pointer}.folder-body button:disabled{opacity:.4;cursor:default}
+.folder-label{margin:0;font-size:12px;color:var(--muted)}.folder-recent{display:flex;flex-wrap:wrap;gap:6px}.folder-recent button{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.folder-browser{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:10px}.folder-path{display:flex;align-items:center;gap:8px;min-width:0}.folder-here{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;font-size:13px;color:var(--muted)}
+.folder-list{display:flex;flex-direction:column;max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:10px}.folder-list button{border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;text-align:start;display:flex;gap:8px;align-items:center}.folder-list button:last-child{border-bottom:0}.folder-list .folder-none{padding:10px 12px;color:var(--muted);font-size:13px;margin:0}
+.folder-actions{display:flex;gap:8px;flex-wrap:wrap}.folder-actions .folder-use{border-color:var(--accent);color:var(--accent)}.folder-new{display:flex;gap:8px}.folder-new[hidden]{display:none}.folder-error{margin:0;color:var(--accent);font-size:13px;min-height:0}.folder-error:empty{display:none}
 .room-dialog h2{margin:0 0 16px;font-size:20px;font-weight:500}
 .room-field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
 .room-field input{min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;font-size:16px}
@@ -2862,6 +2869,14 @@ function botDialog(existing,data,{only=null}={}){
     <fieldset class="brain-pick"><legend>${ui('Thinks with','חושב עם')}</legend><div class="brain-cards">${providers.map(p=>`<label class="brain-card"><input type="radio" name="provider" value="${esc(p)}"><span class="brain-mark brain-${esc(p)}" aria-hidden="true">${p==='claude'?'✳':'◎'}</span><span class="brain-text"><b>${p==='claude'?'Claude':'Codex'}</b><small>${p==='claude'?ui('Your Claude plan','תוכנית Claude שלך'):ui('Your ChatGPT plan','תוכנית ChatGPT שלך')}</small></span></label>`).join('')}</div></fieldset>
     <label class="room-field model-field"><span>${ui('Model','מודל')}</span><select name="model"></select></label>
     <fieldset class="brain-pick"><legend>${ui('If it runs out of credits, switch to','כשנגמר הקרדיט, לעבור אל')}</legend><div class="backup-pills">${providers.map(p=>`<label class="backup-pill"><input type="radio" name="fallback" value="${esc(p)}"><span>${p==='claude'?'Claude':'Codex'}</span></label>`).join('')}<label class="backup-pill"><input type="radio" name="fallback" value="none"><span>${ui('Just wait','רק לחכות')}</span></label></div></fieldset>
+    <details class="folder-pick"><summary><span>${ui('Project folder (optional)','תיקיית פרויקט (לא חובה)')}</span><bdi class="folder-now" dir="auto"></bdi></summary><div class="folder-body">
+      <p class="folder-hint">${existing?ui('Leave it empty to keep the bot in its own folder. Changing it starts a fresh conversation there; your open requests and latest messages carry over.','השאירו ריק כדי שהבוט יישאר בתיקייה משלו. שינוי פותח שיחה חדשה שם; הבקשות הפתוחות וההודעות האחרונות עוברות איתו.'):ui('Leave it empty and the bot gets its own new, empty folder.','השאירו ריק והבוט יקבל תיקייה חדשה וריקה משלו.')}</p>
+      <div class="folder-chosen"><input name="cwd" dir="ltr" autocomplete="off" spellcheck="false" placeholder="${ui('Its own new folder','תיקייה חדשה משלו')}"><button type="button" class="folder-clear">${ui('Clear','ניקוי')}</button></div>
+      <p class="folder-label folder-recent-label" hidden>${ui('Recent projects','פרויקטים אחרונים')}</p><div class="folder-recent"></div>
+      <div class="folder-browser"><p class="folder-label">${ui('Browse the PC','עיון במחשב')}</p><div class="folder-path"><button type="button" class="folder-up" aria-label="${ui('Up one folder','תיקייה אחת למעלה')}">↑ ${ui('Up','למעלה')}</button><span class="folder-here" dir="ltr"></span></div><div class="folder-list"></div>
+        <div class="folder-actions"><button type="button" class="folder-use">${ui('Use this folder','להשתמש בתיקייה הזו')}</button><button type="button" class="folder-new-open">${ui('New folder here','תיקייה חדשה כאן')}</button></div>
+        <div class="folder-new" hidden><input name="newfolder" dir="auto" maxlength="120" autocomplete="off" placeholder="${ui('New folder name','שם התיקייה החדשה')}"><button type="button" class="folder-make">${ui('Make it','יצירה')}</button></div></div>
+      <p class="folder-error" role="alert"></p></div></details>
 
     <p class="room-error" role="alert"></p>
     <div class="room-actions"><button type="button" class="room-cancel">${ui('Cancel','ביטול')}</button><button type="submit" class="room-create">${existing?ui('Save','שמירה'):ui('Create bot','יצירת בוט')}</button></div></form>`;
@@ -2880,11 +2895,58 @@ function botDialog(existing,data,{only=null}={}){
   if(existing){form.elements.name.value=existing.name || '';form.elements.job.value=existing.job || '';form.elements.rules.value=existing.rules || '';pick('provider',existing.provider || 'claude');pick('fallback',existing.fallback || 'none');}
   syncBackup();fillModels(existing?.provider===(value('provider') || 'claude')?existing?.model:'');
   loadBotModels().then(()=>{if(dialog.isConnected)fillModels(form.elements.model.value || (existing?.provider===(value('provider') || 'claude')?existing?.model:''));});
+  // Where the bot works (Noam 2026-10-22): folded away until tapped; recent projects, browsing
+  // the PC, and one empty new folder, all inside this window. Empty = its own new folder.
+  const folderBox=form.querySelector('.folder-pick'),cwdInput=form.elements.cwd,folderErr=folderBox.querySelector('.folder-error');
+  const startCwd=existing && !existing.ownFolder?existing.cwd || '':'';cwdInput.value=startCwd;
+  if(only==='model')folderBox.hidden=true;
+  const showChosen=()=>{const v=cwdInput.value.trim();folderBox.querySelector('.folder-now').textContent=v?v.replace(/\/+$/,'').split('/').pop() || v:'';};
+  let browsing=null;
+  const folderCall=async(url,options)=>{const r=await fetch(url,{...options,signal:AbortSignal.timeout(10000)});const d=await r.json();if(!r.ok)throw new Error(d.error || ui('That did not work.','זה לא עבד.'));return d;};
+  const showFolder=view=>{
+    browsing=view;folderErr.textContent='';
+    folderBox.querySelector('.folder-here').textContent=view.path;folderBox.querySelector('.folder-here').title=view.path;
+    folderBox.querySelector('.folder-up').disabled=!view.parent;
+    const list=folderBox.querySelector('.folder-list');
+    list.innerHTML=view.dirs.length?view.dirs.map(d=>`<button type="button" data-cwd="${esc(d.cwd)}"><span aria-hidden="true">▸</span><bdi dir="auto">${esc(d.name)}</bdi></button>`).join(''):`<p class="folder-none">${ui('No folders inside.','אין תיקיות בפנים.')}</p>`;
+    list.querySelectorAll('button').forEach(b=>{b.onclick=()=>openFolder(b.dataset.cwd);});
+  };
+  const openFolder=async under=>{try{showFolder(await folderCall('/api/bot/folders?under='+encodeURIComponent(under)));}catch(e){folderErr.textContent=e.message;}};
+  const pickFolder=cwd=>{cwdInput.value=cwd;showChosen();openFolder(cwd);};
+  let folderLoaded=false;
+  folderBox.addEventListener('toggle',async()=>{
+    if(!folderBox.open || folderLoaded)return;folderLoaded=true;
+    try{
+      const data=await folderCall('/api/bot/folders');
+      const recent=folderBox.querySelector('.folder-recent');
+      recent.innerHTML=data.known.slice(0,12).map(k=>`<button type="button" data-cwd="${esc(k.cwd)}" title="${esc(k.cwd)}"><bdi dir="auto">${esc(k.name)}</bdi></button>`).join('');
+      folderBox.querySelector('.folder-recent-label').hidden=!data.known.length;
+      recent.querySelectorAll('button').forEach(b=>{b.onclick=()=>pickFolder(b.dataset.cwd);});
+      if(startCwd)await openFolder(startCwd);else showFolder(data);
+    }catch(e){folderErr.textContent=e.message;folderLoaded=false;}
+  });
+  cwdInput.oninput=showChosen;
+  folderBox.querySelector('.folder-clear').onclick=()=>{cwdInput.value='';showChosen();};
+  folderBox.querySelector('.folder-up').onclick=()=>{if(browsing?.parent)openFolder(browsing.parent);};
+  folderBox.querySelector('.folder-use').onclick=()=>{if(browsing){cwdInput.value=browsing.path;showChosen();}};
+  const newBox=folderBox.querySelector('.folder-new');
+  folderBox.querySelector('.folder-new-open').onclick=()=>{newBox.hidden=!newBox.hidden;if(!newBox.hidden)form.elements.newfolder.focus();};
+  const makeNew=async()=>{
+    const name=form.elements.newfolder.value.trim();if(!name || !browsing)return;
+    try{const made=await folderCall('/api/bot/folder/new',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({under:browsing.path,name})});form.elements.newfolder.value='';newBox.hidden=true;cwdInput.value=made.folder;showChosen();showFolder(made);}
+    catch(e){folderErr.textContent=e.message;}
+  };
+  folderBox.querySelector('.folder-make').onclick=makeNew;
+  form.elements.newfolder.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();makeNew();}});
+  cwdInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(cwdInput.value.trim())openFolder(cwdInput.value.trim());}});
+  showChosen();
   dialog.querySelector('.room-cancel').onclick=()=>{dialog.close();dialog.remove();};
   form.onsubmit=async event=>{
     event.preventDefault();
     const button=form.querySelector('.room-create');button.disabled=true;error.textContent='';
     const body={name:form.elements.name.value,provider:value('provider') || 'claude',fallback:value('fallback') || 'none',model:form.elements.model.value};
+    if(!existing)body.cwd=cwdInput.value.trim();
+    else if(only!=='model' && cwdInput.value.trim()!==startCwd)body.cwd=cwdInput.value.trim();
     if(existing){body.id=existing.id;body.job=form.elements.job.value;body.rules=form.elements.rules.value;}
     try{
       const response=await fetch(existing?'/api/bot/update':'/api/bots',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});

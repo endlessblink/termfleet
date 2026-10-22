@@ -15,6 +15,7 @@ import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 import { BotGroups } from './bot-groups.mjs';
+import { checkFolder } from './bot-folders.mjs';
 import { classifyTool, appendAction, readActions, paneLogFile, botApproval, paneApproval, foldFiles, approvalText } from './action-log.mjs';
 
 /**
@@ -55,6 +56,7 @@ const MAX_CHAT_RETURNED = 300;
 const UNREAD_ROLES = new Set(['bot', 'error', 'needs-you']);
 
 const clean = (v, max) => String(v ?? '').trim().slice(0, max);
+const ownHome = (name) => path.join(BOTS_HOME(), name.replace(/[^\p{L}\p{N}._-]+/gu, '-'));
 const newId = () => crypto.randomBytes(6).toString('hex');
 
 /**
@@ -508,7 +510,7 @@ export class Bots {
       proposedProfile: bot.proposedProfile || null,
       helpers: this.helpers(id),
       mainResetsAt: (bot.active && bot.active !== bot.provider) ? (this.health()[bot.provider]?.limitedUntil || null) : null,
-      id: bot.id, name: bot.name, job: bot.job, provider: bot.provider, model: bot.model || null, fallback: bot.fallback || null, active: bot.active || bot.provider, cwd: bot.cwd, createdAt: bot.createdAt,
+      id: bot.id, name: bot.name, job: bot.job, provider: bot.provider, model: bot.model || null, fallback: bot.fallback || null, active: bot.active || bot.provider, cwd: bot.cwd, ownFolder: path.dirname(bot.cwd || '') === path.resolve(BOTS_HOME()), createdAt: bot.createdAt,
       state: working ? 'working' : bot.blocked ? 'needs-you' : last?.role === 'error' ? 'failed' : 'idle',
       blocked: bot.blocked ? { ask: bot.blocked.ask, at: bot.blocked.at } : null,
       waitingForReset: bot.retry ? bot.retry.at : null,
@@ -533,12 +535,14 @@ export class Bots {
     if (this.list().some((b) => b.name.toLowerCase() === n.toLowerCase())) return { error: 'Another bot already has that name.' };
     const p = PROVIDERS.includes(provider) ? provider : 'claude';
     // Bots live side by side in one place unless a folder is given on purpose.
-    let folder = clean(cwd, 1000);
+    // A picked project folder is only checked, never made (Noam 2026-10-22).
+    const picked = checkFolder(cwd);
+    if (picked.error) return { error: picked.error };
+    let folder = picked.folder;
     if (!folder) {
-      folder = path.join(BOTS_HOME(), n.replace(/[^\p{L}\p{N}._-]+/gu, '-'));
+      folder = ownHome(n);
       try { fs.mkdirSync(folder, { recursive: true }); } catch { return { error: 'Could not make the bot\'s folder.' }; }
     }
-    try { if (!fs.statSync(folder).isDirectory()) return { error: 'That home folder does not exist.' }; } catch { return { error: 'That home folder does not exist.' }; }
     const bot = {
       id: newId(), name: n, job: clean(job, LIMITS.job), rules: clean(rules, LIMITS.rules), provider: p,
       fallback: fallback === 'none' ? null : PROVIDERS.includes(fallback) && fallback !== p ? fallback : PROVIDERS.find((x) => x !== p), active: p, cwd: folder, createdAt: this.now(),
@@ -570,7 +574,26 @@ export class Bots {
       next.model = wanted || null;
     }
     if ('fallback' in patch) next.fallback = PROVIDERS.includes(patch.fallback) && patch.fallback !== next.provider ? patch.fallback : null;
+    // A new folder (Noam 2026-10-22): empty means back to its own home folder. The brain's
+    // conversation belongs to the old folder, so it starts fresh there with a handover.
+    let moved = null;
+    if ('cwd' in patch) {
+      const picked = checkFolder(patch.cwd);
+      if (picked.error) return { error: picked.error };
+      const folder = picked.folder || ownHome(next.name);
+      if (folder !== bot.cwd) {
+        if (this.running.has(id)) return { error: `Wait until ${bot.name} finishes its reply, then change the folder.` };
+        if (!picked.folder) { try { fs.mkdirSync(folder, { recursive: true }); } catch { return { error: 'Could not make the bot\'s folder.' }; } }
+        let asks = [];
+        try { const file = bot.sessions?.claude?.started ? claudeTranscript(bot.cwd, bot.sessions.claude.id) : null; if (file) asks = asksForFile(file); } catch { asks = []; }
+        next.handover = handoverText(bot, this.messages(id), { asks });
+        next.sessions = { ...bot.sessions, claude: { id: crypto.randomUUID(), started: false }, codex: null };
+        next.cwd = folder;
+        moved = folder;
+      }
+    }
     this.write(next);
+    if (moved) this.append(id, { role: 'system', text: `${next.name} now works in ${moved}. It started a fresh conversation there and kept your open requests and the latest messages.` });
     return { ok: true, bot: this.summary(id) };
   }
 

@@ -44,6 +44,7 @@ import { contextFill } from './context-fill.mjs';
 import { Routines, describeDays } from './routines.mjs';
 import { profiles, rulesMessage } from './profiles.mjs';
 import { Bots, PROVIDERS as BOT_PROVIDERS, modelChoices } from './bots.mjs';
+import { knownFolders, startFolder, subfolders, makeFolder } from './bot-folders.mjs';
 import { listSkills, approveSkill, rejectSkill, suggestSkill, checkSkill } from './skills.mjs';
 import { BotBrowser, BROWSER_PORT } from './bot-browser.mjs';
 import { sweepWindows, setTakeover, clearTakeover, handBackText, readWindows } from './bot-windows.mjs';
@@ -400,6 +401,25 @@ const handle = async (req, res) => {
   if (url.pathname === '/api/bots' && req.method === 'GET') {
     const livePanes = await currentPanes().then((r) => r.panes || []).catch(() => []);
     return json(res, 200, { bots: bots.list().map((b) => ({ ...b, ...helperState(b, livePanes) })), groups: bots.groups.list(), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
+  }
+  // Where a bot works (Noam 2026-10-22): folders the fleet knows, browsing, and one empty new folder.
+  if (url.pathname === '/api/bot/folders' && req.method === 'GET') {
+    const under = url.searchParams.get('under');
+    let known = [];
+    if (!under) {
+      const panes = await currentPanes().then((r) => r.panes || []).catch(() => []);
+      known = knownFolders({ projects: projectCatalog(readWorkspace()), panes, bots: bots.list().filter((b) => !b.ownFolder) });
+    }
+    const view = subfolders(under || startFolder(known));
+    if (view.error) return json(res, 400, view);
+    return json(res, 200, { known, ...view, home: os.homedir() });
+  }
+  if (url.pathname === '/api/bot/folder/new' && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 8 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+    const made = makeFolder(body.under, body.name);
+    if (made.error) return json(res, 400, made);
+    return json(res, 200, { ok: true, ...made, ...subfolders(made.folder) });
   }
   // Phone notifications (TF-096 part 7).
   if (url.pathname === '/api/push/key' && req.method === 'GET') return json(res, 200, { publicKey: push.keys().publicKey });
