@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { OPEN_BOT_EVENT, takePendingBot } from "../lib/botsDirectory";
+import { OPEN_BOT_EVENT, OPEN_CLEANUP_EVENT, takePendingBot, takePendingCleanup } from "../lib/botsDirectory";
 // The agent list and chat, built into TermFleet. It is the same page the phone
 // uses, so both always look and behave alike. It signs itself in (this machine
 // only) and needs no address to type.
@@ -15,15 +15,27 @@ function agentsUrl(bot: string | null) {
 }
 
 export function AgentsView() {
-  const [src, setSrc] = useState(() => agentsUrl(takePendingBot()));
+  const [src, setSrc] = useState(() => {
+    const cleanup = takePendingCleanup();
+    return cleanup ? `${AGENTS_URL}#${cleanup}` : agentsUrl(takePendingBot());
+  });
   useEffect(() => {
     const onOpen = (event: Event) => {
       const id = (event as CustomEvent<string | null>).detail;
       takePendingBot();
       if (id) setSrc(agentsUrl(id));
     };
+    const onCleanup = (event: Event) => {
+      const token = (event as CustomEvent<string>).detail;
+      takePendingCleanup();
+      if (token) setSrc(`${AGENTS_URL}#${token}`);
+    };
     window.addEventListener(OPEN_BOT_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_BOT_EVENT, onOpen);
+    window.addEventListener(OPEN_CLEANUP_EVENT, onCleanup);
+    return () => {
+      window.removeEventListener(OPEN_BOT_EVENT, onOpen);
+      window.removeEventListener(OPEN_CLEANUP_EVENT, onCleanup);
+    };
   }, []);
   // Ctrl+V is claimed at window level for whichever terminal last held the keyboard
   // (gtk_keys.rs). Leaving a terminal for this view never released it, so every paste

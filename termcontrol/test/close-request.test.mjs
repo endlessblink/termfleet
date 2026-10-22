@@ -22,8 +22,8 @@ test('the app answers: closed, or refused with a plain reason', async () => {
     }
   }, 5);
   try {
-    assert.deepEqual(await requestClose('terminal-tab-a-p1', { by: 'phone:owner', dir, pause: fastPause }), { ok: true, title: 'Fix the photo upload' });
-    const refused = await requestClose('terminal-tab-b-p2', { by: 'phone:owner', dir, pause: fastPause });
+    assert.deepEqual(await requestClose('terminal-tab-a-p1', { by: 'phone:owner', dir, pause: fastPause, running: async () => false }), { ok: true, title: 'Fix the photo upload' });
+    const refused = await requestClose('terminal-tab-b-p2', { by: 'phone:owner', dir, pause: fastPause, running: async () => false });
     assert.equal(refused.ok, false);
     assert.match(refused.error, /several terminals/);
     assert.deepEqual(fs.readdirSync(dir), [], 'nothing left behind');
@@ -75,4 +75,24 @@ test('no answer (TermFleet not updated or closed): the request is taken back and
   assert.match(r.error, /Nothing was closed/);
   assert.deepEqual(fs.readdirSync(dir), []);
   assert.equal((await requestClose('not-a-terminal', { dir })).ok, false);
+});
+
+test('closing ends the processes too: if the terminal still runs after the app closed its card, it is stopped', async () => {
+  // Noam 2026-10-22: cleaning up idle terminals must also end what runs in them.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-close-'));
+  const app = setInterval(() => {
+    for (const name of fs.readdirSync(dir).filter((n) => n.endsWith('.request.json'))) {
+      const req = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+      fs.rmSync(path.join(dir, name));
+      fs.writeFileSync(path.join(dir, `${req.requestId}.result.json`), JSON.stringify({ requestId: req.requestId, ok: true, title: 'Old job' }));
+    }
+  }, 5);
+  try {
+    const stopped = [];
+    const r = await requestClose('terminal-tab-a-p1', { dir, pause: fastPause, running: async () => true, stop: async (id) => { stopped.push(id); return true; } });
+    assert.deepEqual([r.ok, stopped], [true, ['terminal-tab-a-p1']]);
+    const unknown = await requestClose('terminal-tab-a-p1', { dir, pause: fastPause, running: async () => true, stop: async () => false });
+    assert.equal(unknown.ok, false);
+    assert.match(unknown.error, /still running/);
+  } finally { clearInterval(app); }
 });

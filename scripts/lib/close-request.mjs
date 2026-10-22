@@ -65,7 +65,12 @@ export async function requestClose(paneId, { by = 'unknown', timeoutMs = 10_000,
           : { ok: false, reason: 'app-outdated', error: 'TermFleet on the PC needs one relaunch before it can close terminals. Nothing was closed; the terminal keeps running.' };
       }
     }
-    return result.ok ? { ok: true, title: result.title || null } : { ok: false, reason: result.reason, error: REASONS[result.reason] || 'TermFleet did not close it.' };
+    if (!result.ok) return { ok: false, reason: result.reason, error: REASONS[result.reason] || 'TermFleet did not close it.' };
+    // The card is gone; make sure what ran in it ended too (Noam 2026-10-22: closing must end the
+    // processes). Give the app's own close a moment, then stop it in the daemon if still running.
+    for (let i = 0; i < 8 && (await running(paneId)) === true; i++) await pause(250);
+    if ((await running(paneId)) === true && !(await stop(paneId))) return { ok: false, reason: 'still-running', error: 'The card closed but its programs are still running. Check the PC.' };
+    return { ok: true, title: result.title || null };
   }
   // Not picked up: take the request back so it can never fire later by surprise.
   let taken = false;

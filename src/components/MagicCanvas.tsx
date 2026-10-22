@@ -45,6 +45,7 @@ import {
   X,
 } from "lucide-react";
 import type { CanvasNode } from "../lib/types";
+  Eraser,
 import {
   masterPlanPath,
   taskStatusColor,
@@ -61,6 +62,7 @@ import { createNewTab, useWorkspaceStore } from "../stores/workspace";
 import { projectEmojiFor } from "../lib/projectEmoji";
 import {
   CANVAS_UNFILED_PROJECT_ID,
+import { openCleanupInAgents } from "../lib/botsDirectory";
   MAP_REVEAL_PROJECT_EVENT,
   countCanvasLanes,
   resolveCanvasNodeProjects,
@@ -7876,6 +7878,19 @@ export function MagicCanvas() {
               transform: toolbarOpen ? "rotate(180deg)" : "none",
               transition: "transform var(--motion-med)",
             }}
+            <button
+              className="magic-canvas-button"
+              style={styles.toolButton}
+              title="Close the terminals that are idle and safe to close"
+              aria-label="Clean up idle terminals"
+              onClick={() => {
+                openCleanupInAgents();
+                useWorkspaceStore.getState().setWorkspaceMode("agents");
+              }}
+            >
+              <Eraser size={14} strokeWidth={1.8} />
+              Clean up
+            </button>
           />
         </button>
         {toolbarOpen && (

@@ -98,3 +98,67 @@ test('a busy plain shell is seen as working: the close looks twice before decidi
   assert.equal(r.ok, false);
   assert.match(r.text, /still working/);
 });
+
+test('work the agent already committed is not unsaved: only edits after its last commit count', async () => {
+  // Agent-Manager 2026-10-22 for Noam: a finished agent could not close because MASTER_PLAN.md
+  // still held other agents' edits after it had committed its own part.
+  const { filesTheAgentChanged, changedByAgent } = await import('../../scripts/lib/team-close.mjs');
+  const use = (name, input) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } });
+  const record = [
+    use('Edit', { file_path: '/repo/MASTER_PLAN.md' }),
+    use('Bash', { command: 'git add src/a.js MASTER_PLAN.md && git commit -m "done"' }),
+    use('Edit', { file_path: '/repo/src/after.js' }),
+  ].join('\n');
+  const changes = filesTheAgentChanged({ provider: 'claude', sessionId: 's' }, { transcriptOf: () => '/x.jsonl', read: () => record });
+  assert.equal(changedByAgent('MASTER_PLAN.md', '/repo', changes), false, 'committed, then others edited it');
+  assert.equal(changedByAgent('src/after.js', '/repo', changes), true, 'edited after its commit: really its own unsaved work');
+});
+
+test('a plain shell only owns files changed while it was in use', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-shell-'));
+  const run = (args) => args[0] === 'status' ? { status: 0, stdout: ' M early.txt\n M during.txt\n M later.txt\n' } : { status: 0, stdout: dir + '\n' };
+  const at = (name, ms) => { fs.writeFileSync(path.join(dir, name), name); fs.utimesSync(path.join(dir, name), ms / 1000, ms / 1000); };
+  const now = Date.now();
+  at('early.txt', now - 10_000_000); at('during.txt', now - 5_000_000); at('later.txt', now - 1_000_000);
+  assert.deepEqual(unsavedWork(dir, now - 6_000_000, run, null, now - 4_000_000), ['during.txt'], 'later edits are another agent\'s, the shell was quiet');
+});
+
+test('an agent can close its own terminal: refused with a plain reason, otherwise closed after its last reply is saved', async () => {
+  const { closeSelf } = await import('../../scripts/lib/team-close.mjs');
+  const me = { id: 'terminal-me', alive: true, turn: 'working', provider: 'claude', cwd: '/repo', startedAt: 1 };
+  const scheduled = [];
+  const base = { pane: me, unsaved: () => [], changes: () => null, schedule: (id) => { scheduled.push(id); return { ok: true }; } };
+  assert.match((await closeSelf({ ...base, pane: null })).text, /cannot tell which terminal/);
+  assert.match((await closeSelf({ ...base, pane: { ...me, attention: { kind: 'question' } } })).text, /waiting for Noam/);
+  assert.match((await closeSelf({ ...base, unsaved: () => ['src/x.js'] })).text, /unsaved work \(src\/x\.js\)/);
+  assert.deepEqual(scheduled, [], 'refusals close nothing');
+  const ok = await closeSelf(base);
+  assert.deepEqual([ok.ok, scheduled], [true, ['terminal-me']]);
+  assert.match(ok.text, /closes as soon as this reply is saved/);
+});
+
+test('the self-close waits until the reply is finished, and gives up if Noam is asked something', async () => {
+  const { closeWhenIdle } = await import('../../scripts/lib/team-close.mjs');
+  const turns = ['working', 'working', 'idle', 'idle'];
+  const closed = [];
+  const r = await closeWhenIdle('terminal-me', { look: async () => [{ id: 'terminal-me', alive: true, turn: turns.shift() || 'idle', producing: false }], pause: async () => {}, request: async (id) => { closed.push(id); return { ok: true }; }, stateOf });
+  assert.deepEqual([r.ok, closed], [true, ['terminal-me']]);
+  const asked = await closeWhenIdle('terminal-me', { look: async () => [{ id: 'terminal-me', alive: true, turn: 'waiting' }], pause: async () => {}, request: async () => { throw new Error('must not close'); }, stateOf });
+  assert.equal(asked.ok, false);
+  assert.match(asked.text, /waiting for Noam/);
+});
+
+test('an agent may close a terminal it started itself (its child), not anyone else\'s', async () => {
+  const { ownedChildren } = await import('../../scripts/lib/team-close.mjs');
+  const panes = [{ id: 'terminal-kid', parentPaneId: 'terminal-me', startedAt: 5, statedTask: 'run tests' }, { id: 'terminal-other', parentPaneId: 'terminal-x' }];
+  assert.deepEqual(ownedChildren(panes, 'terminal-me'), [{ paneId: 'terminal-kid', task: 'run tests', at: 5 }]);
+});
+
+test('every agent is told to close its own terminal once its work is done, checked and saved', () => {
+  const home = os.homedir();
+  for (const file of [path.join(home, '.claude/CLAUDE.md'), path.join(home, '.codex/AGENTS.md')]) {
+    if (!fs.existsSync(file)) continue;
+    assert.match(fs.readFileSync(file, 'utf8'), /Close your own terminal once your work is done, checked and saved \(committed\): `termfleet-team close self`/);
+  }
+  assert.match(fs.readFileSync(new URL('../../scripts/termfleet-team.mjs', import.meta.url), 'utf8'), /termfleet-team close self/);
+});

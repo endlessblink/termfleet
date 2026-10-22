@@ -39,6 +39,10 @@ export function parentsByPane(workspace = readWorkspace()) {
 }
 
 /** Every terminal with its state, its declared Goal/Task, and who started it. */
+function processStart(pid) {
+  try { return fs.statSync(`/proc/${pid}`).ctimeMs; } catch { return null; }
+}
+
 export async function fleetPanes({ workspace = readWorkspace() } = {}) {
   const panes = listPanes({ maxAgeMs: null, workspace });
   const { reachable, byId } = await liveness();
@@ -58,6 +62,8 @@ export async function fleetPanes({ workspace = readWorkspace() } = {}) {
       now: side.now || null,
       parentPaneId: parents.get(p.id) || null,
       profile: named[p.id] || null,
+      // When its terminal process started: the unsaved-work check counts only files changed since.
+      startedAt: life?.pid ? processStart(life.pid) : null,
     };
   });
 }

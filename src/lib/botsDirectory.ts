@@ -44,3 +44,17 @@ export function takePendingBot(): string | null {
   pendingBot = null;
   return id;
 }
+
+// The map's "Clean up idle terminals" opens the cleanup list in the Agents view
+// (Noam 2026-10-22). A fresh token each time so a second click opens it again.
+export const OPEN_CLEANUP_EVENT = "termfleet:open-cleanup";
+let pendingCleanup: string | null = null;
+export function openCleanupInAgents() {
+  pendingCleanup = `cleanup-${Date.now()}`;
+  window.dispatchEvent(new CustomEvent(OPEN_CLEANUP_EVENT, { detail: pendingCleanup }));
+}
+export function takePendingCleanup(): string | null {
+  const token = pendingCleanup;
+  pendingCleanup = null;
+  return token;
+}

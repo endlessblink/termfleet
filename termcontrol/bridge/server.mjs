@@ -17,6 +17,8 @@ import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } fr
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
+import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable } from './idle-cleanup.mjs';
+import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, moveInOrder } from './prefs.mjs';
 import { liveness, lastLine, screenOf } from './liveness.mjs';
@@ -172,6 +174,8 @@ async function currentPanes() {
         ...pane,
         alive: true,
         lastActiveAt,
+        pid: life.pid ?? null,
+        startedAt: startedAt(life.pid) || null,
         // "Working" with no output and no conversation change for a long time is
         // how a hung run looks; say so instead of showing a calm "working".
         stalledForMs: stalledFor(pane, life, lastActiveAt),
@@ -190,6 +194,22 @@ async function currentPanes() {
 
   const named = profiles.all();
   return { panes: withLife.map((p) => (named[p.id] ? { ...p, profile: named[p.id] } : p)), daemon: true, ...snapshot };
+}
+
+/** What "Clean up idle terminals" offers, judged now. */
+async function idleCleanupPlan() {
+  const { panes } = await currentPanes();
+  const table = processTable();
+  const followers = new Map();
+  for (const b of bots.list()) for (const h of b.helpers || []) if (h?.followed && h.paneId) followers.set(h.paneId, b.name);
+  return cleanupPlan({
+    panes,
+    processes: (p) => descendantsOf(p.pid, table),
+    followedByBot: (p) => followers.get(p.id) || null,
+    // Only work the terminal itself made: an agent's own record, or for a plain shell the
+    // files changed while it was in use. Others' edits in a shared folder never count.
+    unsaved: (p) => unsavedWork(p.cwd, Number(p.startedAt) || 0, undefined, filesTheAgentChanged(p), (Number(p.lastActiveAt) || Date.now()) + 60_000),
+  });
 }
 
 const sendOnce = createSendOnce();
@@ -750,6 +770,17 @@ const handle = async (req, res) => {
     const plan = botClosePlan({ bot, panes: (await currentPanes()).panes, routines: routines.forPane(`bot:${bot.id}`), watches: bots.watches(bot.id) });
     const result = await removeBot({ bot, plan, bots, routines, requestClose, confirmManager: body.confirmManager === true });
     return json(res, result.ok ? 200 : 409, result);
+  }
+
+  // "Clean up idle terminals" (Noam 2026-10-22): GET lists what is safe to close and why the
+  // rest stays; POST closes the ticked ones after a fresh look, never one that became unsafe.
+  if (url.pathname === '/api/cleanup' && (req.method === 'GET' || req.method === 'POST')) {
+    let body = {};
+    if (req.method === 'POST') { try { body = await readJson(req, 64 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); } }
+    const plan = await idleCleanupPlan();
+    if (req.method === 'GET') return json(res, 200, plan);
+    const result = await closeIdleTerminals({ ids: Array.isArray(body.items) ? body.items : [], plan, requestClose, by: `phone:cleanup:${currentUser(req).id}` });
+    return json(res, 200, result);
   }
 
   if (url.pathname === '/api/close' && req.method === 'POST') {

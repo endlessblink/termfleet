@@ -1221,6 +1221,10 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .close-sheet .bot-remove-list b{font-weight:500;overflow-wrap:anywhere}
 .close-sheet .bot-remove-list small{color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
 .close-sheet .bot-remove-list .loses{color:#e5484d}
+.cleanup-idle{display:block;width:100%;min-height:44px;margin:0 0 12px;padding:0 14px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:14px;cursor:pointer}.cleanup-idle:hover{background:var(--control)}
+.cleanup-sheet .sheet{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto}
+.cleanup-sheet .cleanup-kept-head{margin-top:4px}
+.cleanup-sheet .cleanup-kept .keep-reason{color:var(--text)}
 .close-sheet .bot-remove-ack{display:flex;gap:10px;align-items:flex-start;padding:10px 4px;cursor:pointer;line-height:1.4}
 .close-sheet .bot-remove-ack input{width:20px;height:20px;margin:0;flex:none;accent-color:#b3261e}
 .removed-bots{margin-top:6px}.removed-bots summary{color:var(--muted);font-size:13px;padding:6px 8px;cursor:pointer;list-style:none}
@@ -2404,7 +2408,7 @@ async function fleet(background=false,{fromCache=false}={}) {
     </details>` : '';
 
   const options=(current,list)=>list.map(([value,en,he])=>`<option value="${value}"${current===value?' selected':''}>${ui(en,he)}</option>`).join('');
-  const bar=`<div class="fleetbar" data-key="controls"><label><span>${ui('Sort','מיון')}</span><select data-pref="sort" aria-label="${ui('Sort agents','מיון סוכנים')}">${options(sortBy,[['map','Map order','סדר המפה'],['recent','Last used','בשימוש לאחרונה'],['needs','Needs you','דורשים מענה']])}</select></label><label><span>${ui('Live','פעילות')}</span><select data-pref="window" aria-label="${ui('Activity window','טווח פעילות')}">${options(windowKey,[['today','Today','היום'],['3d','3 days','3 ימים'],['week','Week','שבוע'],['all','All','הכול']])}</select></label><button type="button" class="new-room icon-button" aria-label="${ui('New room: several agents in one chat','חדר חדש: כמה סוכנים בשיחה אחת')}" title="${ui('New room','חדר חדש')}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 6h16v10H9l-5 4z M9 11h6"/></svg></button><button type="button" class="addagent global-new-agent" aria-label="${ui('New agent','סוכן חדש')}" title="${ui('New agent','סוכן חדש')}">+</button></div>`;
+  const bar=`<div class="fleetbar" data-key="controls"><label><span>${ui('Sort','מיון')}</span><select data-pref="sort" aria-label="${ui('Sort agents','מיון סוכנים')}">${options(sortBy,[['map','Map order','סדר המפה'],['recent','Last used','בשימוש לאחרונה'],['needs','Needs you','דורשים מענה']])}</select></label><label><span>${ui('Live','פעילות')}</span><select data-pref="window" aria-label="${ui('Activity window','טווח פעילות')}">${options(windowKey,[['today','Today','היום'],['3d','3 days','3 ימים'],['week','Week','שבוע'],['all','All','הכול']])}</select></label><button type="button" class="new-room icon-button" aria-label="${ui('New room: several agents in one chat','חדר חדש: כמה סוכנים בשיחה אחת')}" title="${ui('New room','חדר חדש')}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 6h16v10H9l-5 4z M9 11h6"/></svg></button><button type="button" class="addagent global-new-agent" aria-label="${ui('New agent','סוכן חדש')}" title="${ui('New agent','סוכן חדש')}">+</button></div><button type="button" class="cleanup-idle" data-key="cleanup">${ui('Clean up idle terminals','ניקוי מסופים לא פעילים')}</button>`;
   const hidden = everything.length - panes.length;
   const none = panes.length ? '' : '<div class="empty">Nothing was live in this period.</div>';
   const footer = hidden > 0 ? `<div class="empty" style="padding:8px 0 24px">${hidden} older terminal${hidden === 1 ? '' : 's'} hidden</div>` : '';
@@ -2448,6 +2452,7 @@ async function fleet(background=false,{fromCache=false}={}) {
   const waitingDetails=container.querySelector('.waiting-panel');waitingDetails?.querySelector('summary')?.addEventListener('click',()=>{try{sessionStorage.setItem('termcontrol-waiting-open',waitingDetails.open?'closed':'open');}catch{}},{once:true});
   const inboxButton=container.querySelector('.open-inbox');if(inboxButton)inboxButton.onclick=event=>{event.preventDefault();event.stopPropagation();history.pushState({inbox:true},'','#inbox');openInbox();};
   const newRoomButton=container.querySelector('.new-room:not(.new-bot)');if(newRoomButton)newRoomButton.onclick=()=>newRoom(roomsData?.agents || []);
+  const cleanupButton=container.querySelector('.cleanup-idle');if(cleanupButton)cleanupButton.onclick=()=>openCleanup(cleanupButton);
   container.querySelectorAll('[data-bot]').forEach(el=>{el.onclick=()=>{const fromList=el.matches('.bot-row') && main.contains(el);if(fromList)rememberFleetReturn(el,el.dataset.bot,'bot');history.pushState({bot:el.dataset.bot,openedFromAgents:fromList||undefined},'','#bot:'+el.dataset.bot);openBot(el.dataset.bot);};});
   const newBotButton=container.querySelector('.new-bot');if(newBotButton)newBotButton.onclick=()=>botDialog(null,botsData);
   container.querySelectorAll('[data-group]').forEach(el=>{el.onclick=()=>{history.pushState({group:el.dataset.group},'','#group:'+el.dataset.group);openGroup(el.dataset.group);};});
@@ -3899,6 +3904,43 @@ document.addEventListener('click',async event=>{
   if(r.ok){note(ui(`${b.dataset.name} is back in your list.`,`${b.dataset.name} חזר לרשימה.`));fleet(Boolean(focusedPane));}else{note(r.error || ui('It could not be brought back.','לא ניתן להחזיר אותו.'),true);b.disabled=false;}
 });
 async function confirmBotClose(id,name,returnFocus){
+// "Clean up idle terminals" (Noam 2026-10-22: "למה הם לא נוקו?"). Lists the terminals that are
+// safe to close, all ticked; Noam unticks any to keep and closes the rest with one tap. The rest
+// are shown with the plain reason they stay and can never be ticked.
+async function openCleanup(returnFocus){
+  document.querySelector('.close-sheet')?.remove();
+  const wrap=document.createElement('div');wrap.className='close-sheet cleanup-sheet';
+  const title=ui('Clean up idle terminals','ניקוי מסופים לא פעילים');
+  wrap.innerHTML=`<div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="close-sheet-title"><h2 id="close-sheet-title">${title}</h2><p>${ui('Checking your terminals…','בודק את המסופים…')}</p></div>`;
+  document.body.append(wrap);
+  const done=()=>{wrap.remove();returnFocus?.focus?.();};
+  wrap.onclick=e=>{if(e.target===wrap && !wrap.dataset.busy)done();};
+  wrap.onkeydown=e=>{if(e.key==='Escape' && !wrap.dataset.busy){e.preventDefault();done();}};
+  let plan;try{const r=await fetch('/api/cleanup',{signal:AbortSignal.timeout(20000)});plan=await r.json();if(!r.ok)throw new Error(plan.error);}catch{plan={error:ui('Could not check the terminals. Try again in a moment.','לא ניתן לבדוק את המסופים. נסו שוב בעוד רגע.')}}
+  if(!wrap.isConnected)return;
+  const offer=plan.offer || [],keep=plan.keep || [];
+  const list=offer.map(o=>`<li><label><input type="checkbox" value="${esc(o.id)}" checked><b dir="auto">${esc(o.name)}</b><small dir="auto">${esc(o.folder)} · ${esc(o.idleText)}</small></label></li>`).join('');
+  const kept=keep.map(k=>`<li data-keep="${esc(k.id)}"><b dir="auto">${esc(k.name)}</b><small dir="auto">${esc(k.folder)} · <span class="keep-reason">${esc(k.reason)}</span></small></li>`).join('');
+  const keptBlock=keep.length?`<p class="cleanup-kept-head">${ui(`Staying open (${keep.length}), never closed here:`,`נשארים פתוחים (${keep.length}), לא ייסגרו כאן:`)}</p><ul class="bot-remove-list cleanup-kept">${kept}</ul>`:'';
+  wrap.querySelector('.sheet').innerHTML=`<h2 id="close-sheet-title">${title}</h2>${plan.error?`<p role="alert">${esc(plan.error)}</p>`:offer.length?`<p>${ui('These are idle and safe to close. Untick any you want to keep. Closing stops them.','אלה לא פעילים ובטוחים לסגירה. הורידו סימון ממה שרוצים להשאיר. הסגירה עוצרת אותם.')}</p><ul class="bot-close-list cleanup-offer">${list}</ul>`:`<p>${ui('No terminal is safe to close right now.','אין כרגע מסוף שבטוח לסגור.')}</p>`}${plan.error?'':keptBlock}<p class="sheet-result" role="status" aria-live="polite"></p><div class="sheet-actions"><button type="button" data-cancel>${offer.length?ui('Cancel','ביטול'):ui('OK','אישור')}</button>${offer.length?`<button type="button" class="danger" data-confirm></button>`:''}</div>`;
+  const cancel=wrap.querySelector('[data-cancel]'),go=wrap.querySelector('[data-confirm]'),out=wrap.querySelector('.sheet-result');
+  cancel.onclick=done;cancel.focus();
+  if(!go)return;
+  const sync=()=>{const n=wrap.querySelectorAll('.cleanup-offer input:checked').length;go.disabled=!n;go.textContent=n===1?ui('Close 1 terminal','סגירת מסוף אחד'):ui(`Close ${n} terminals`,`סגירת ${n} מסופים`);};
+  wrap.querySelectorAll('.cleanup-offer input').forEach(b=>b.onchange=sync);sync();
+  go.onclick=async()=>{
+    const ids=[...wrap.querySelectorAll('.cleanup-offer input:checked')].map(b=>b.value);
+    wrap.dataset.busy='1';go.disabled=cancel.disabled=true;out.textContent=ui('Closing…','סוגר…');
+    let r;try{const sent=await fetch('/api/cleanup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({items:ids}),signal:AbortSignal.timeout(Math.max(30000,ids.length*15000))});r=await sent.json();}
+    catch{r={error:ui('No answer from the PC. Check before trying again.','אין תשובה מהמחשב. בדקו לפני ניסיון נוסף.')}}
+    delete wrap.dataset.busy;
+    for(const x of (r.results || []).filter(x=>x.ok))document.querySelectorAll(`.pane[data-id="${CSS.escape(x.id)}"]`).forEach(el=>el.remove());
+    if(r.ok){done();note(r.closed===1?ui('Closed 1 terminal.','מסוף אחד נסגר.'):ui(`Closed ${r.closed} terminals.`,`${r.closed} מסופים נסגרו.`));fleet(Boolean(focusedPane));return;}
+    const failed=(r.results || []).filter(x=>!x.ok);
+    out.textContent=r.error || ((r.closed?ui(`Closed ${r.closed}. `,`${r.closed} נסגרו. `):'')+failed.map(x=>`${x.name}: ${x.error}`).join(' · '));
+    cancel.disabled=false;cancel.textContent=ui('Done','סיום');fleet(Boolean(focusedPane));
+  };
+}
   document.querySelector('.close-sheet')?.remove();
   const wrap=document.createElement('div');wrap.className='close-sheet';
   wrap.innerHTML=`<div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="close-sheet-title"><h2 id="close-sheet-title" dir="auto">${esc(ui(`Close ${name}?`,`לסגור את ${name}?`))}</h2><p>${ui('Checking what it is running…','בודק מה הוא מריץ…')}</p></div>`;
@@ -4967,6 +5009,7 @@ window.addEventListener('popstate', (e) => {
 // the hash — no navigation, no popstate — so listen for that too.
 window.addEventListener('hashchange', () => {
   if(location.hash==='#inbox'){openInbox();return;}
+  if(location.hash.startsWith('#cleanup')){history.replaceState({},'',location.pathname);fleet();openCleanup();return;}
   if(location.hash.startsWith('#room:')){openRoom(location.hash.slice(6));return;}
   if(location.hash.startsWith('#bot:')){openBot(location.hash.slice(5));return;}
   if(location.hash.startsWith('#group:')){openGroup(location.hash.slice(7));return;}
@@ -4975,6 +5018,8 @@ window.addEventListener('hashchange', () => {
 });
 
 const opening = location.hash.startsWith('#room:') || location.hash.startsWith('#bot:') || location.hash.startsWith('#group:') || location.hash==='#inbox' ? '' : location.hash.slice(1);
+// The PC map's "Clean up idle terminals" opens this page at #cleanup.
+const cleanupOnOpen=location.hash.startsWith('#cleanup');if(cleanupOnOpen)history.replaceState({},'',location.pathname);
 if(location.hash==='#inbox'){history.replaceState({inbox:true},'',location.hash);openInbox();}
 else if(location.hash.startsWith('#room:')){history.replaceState({room:location.hash.slice(6)},'',location.hash);openRoom(location.hash.slice(6));}
 else if(location.hash.startsWith('#bot:')){history.replaceState({bot:location.hash.slice(5)},'',location.hash);openBot(location.hash.slice(5));}
@@ -4983,5 +5028,6 @@ else if(opening && performance.getEntriesByType('navigation')[0]?.type==='naviga
 if (opening) { history.replaceState({ pane: opening }, '', location.hash); chat(opening); }
 else if(!location.hash.startsWith('#room:') && !location.hash.startsWith('#bot:') && !location.hash.startsWith('#group:') && location.hash!=='#inbox') fleet();
 </script>
+if(cleanupOnOpen)openCleanup();
 </body>
 </html>

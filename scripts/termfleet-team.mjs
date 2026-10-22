@@ -22,13 +22,16 @@
 //   termfleet-team watch add|remove|list <folder>   (inside a bot) new code there wakes it
 //   termfleet-team follow <who> [--why T]  (inside a bot) wake me once when that agent finishes its turn
 //   termfleet-team unfollow <who> | --all  (inside a bot) stop being woken by that agent (or by every one I follow)
-//   termfleet-team close <who>             (inside a bot) close a terminal YOU started, once it is done;
-//                                          refused while it works, waits for Noam, or has unsaved work
+//   termfleet-team close <who>             close a terminal YOU started (a bot's helper, or your own child
+//                                          terminal), once it is done; refused while it works, waits
+//                                          for Noam, or has unsaved work of its own
+//   termfleet-team close self              close YOUR OWN terminal once your work is done, checked and
+//                                          saved; it closes right after this reply is saved
 //
 // <who> is a teammate's name, a terminal id, a unique part of one, or a project name.
 // Add --json for machine-readable output; --file F reads the text from a file.
 import { readFileSync, realpathSync, writeSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
@@ -253,16 +256,30 @@ async function main(argv) {
   }
 
   if (command === 'close') {
-    // Only inside a bot, and only a terminal that bot started, once it is done.
+    // A bot closes terminals it started; a terminal agent closes its own children, or itself
+    // ("close self") once its work is done. Never anyone else's: Noam closes those.
     const dir = botFolder();
-    if (!dir) fail('Only a bot can close terminals this way, and only ones it started. Noam closes the others.');
-    let owned = [];
-    try { owned = JSON.parse(readFileSync(join(dir, 'helpers.json'), 'utf8')).filter((h) => h?.paneId && !h.followed); } catch { owned = []; }
-    const { closeOwnTerminal, panesAfterTwoLooks } = await import('./lib/team-close.mjs');
+    const { closeOwnTerminal, panesAfterTwoLooks, closeSelf, ownedChildren } = await import('./lib/team-close.mjs');
     const { requestClose } = await import('./lib/close-request.mjs');
+    const query = positional.join(' ').trim();
+    if (!dir && /^(self|me|myself)$/i.test(query)) {
+      const me = caller.paneId ? (await fleetPanes()).find((p) => p.id === caller.paneId) : null;
+      const r = await closeSelf({ pane: me, schedule: async (paneId) => {
+        // A separate waiter, outside this terminal's process group, closes it once this reply is saved.
+        const child = spawn(process.execPath, [join(here, 'termfleet-close-self.mjs'), paneId], { detached: true, stdio: 'ignore' });
+        child.unref();
+        return { ok: Boolean(child.pid) };
+      } });
+      if (json) return out(JSON.stringify(r));
+      return r.ok ? out(r.text) : fail(r.text, 2);
+    }
+    const panes = await panesAfterTwoLooks(fleetPanes);
+    let owned = [];
+    if (dir) { try { owned = JSON.parse(readFileSync(join(dir, 'helpers.json'), 'utf8')).filter((h) => h?.paneId && !h.followed); } catch { owned = []; } }
+    else owned = ownedChildren(panes, caller.paneId);
     const r = await closeOwnTerminal({
-      query: positional.join(' '), panes: await panesAfterTwoLooks(fleetPanes), owned, resolvePane, stateOf,
-      request: requestClose, record: (entry) => recordInBot(entry), by: `bot:${process.env.TERMFLEET_BOT_NAME || process.env.TERMFLEET_BOT_ID}`,
+      query, panes, owned, resolvePane, stateOf,
+      request: requestClose, record: (entry) => (dir ? recordInBot(entry) : undefined), by: dir ? `bot:${process.env.TERMFLEET_BOT_NAME || process.env.TERMFLEET_BOT_ID}` : `agent:${caller.paneId || 'unknown'}`,
     });
     if (json) return out(JSON.stringify(r));
     return r.ok ? out(r.text) : fail(r.text, 2);

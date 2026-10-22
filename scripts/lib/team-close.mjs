@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { claudeTranscript as claudeTranscriptPath } from '../../termcontrol/bridge/paths.mjs';
 import { transcriptPath as codexTranscriptPath } from '../../termcontrol/bridge/adapters/codex.mjs';
 
+const COMMIT = /\bgit\s+(?:-C\s+\S+\s+)?commit\b/;
 const WRITES = /\bsed\s+-i|>>?|\btee\b|\bcp\b|\bmv\b|\bpatch\b|\bgit\s+(?:apply|checkout|restore|stash)\b|\bperl\s+-[a-z]*i/;
 
 /**
@@ -29,11 +30,19 @@ export function filesTheAgentChanged(pane, { transcriptOf = defaultTranscript, r
     for (const part of entry?.message?.content || []) {
       if (part?.type !== 'tool_use') continue;
       const input = part.input || {};
+      // A commit saves what came before it: whatever is still uncommitted in those files
+      // afterwards is someone else's (Agent-Manager for Noam 2026-10-22: a finished agent
+      // was refused over MASTER_PLAN.md after committing its own part).
+      if (part.name === 'Bash' && COMMIT.test(String(input.command || ''))) { paths.clear(); commands.length = 0; continue; }
       if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(part.name) && (input.file_path || input.notebook_path)) paths.add(String(input.file_path || input.notebook_path));
       if (part.name === 'Bash' && WRITES.test(String(input.command || ''))) commands.push(String(input.command));
     }
     for (const m of line.matchAll(/\*\*\* (?:Update|Add|Delete) File: ([^\\\n"]+)/g)) paths.add(m[1].trim());
-    if (/exec_command|"shell"/.test(line)) { const cmd = JSON.stringify(entry?.payload || entry); if (WRITES.test(cmd)) commands.push(cmd); }
+    if (/exec_command|"shell"/.test(line)) {
+      const cmd = JSON.stringify(entry?.payload || entry);
+      if (COMMIT.test(cmd)) { paths.clear(); commands.length = 0; continue; }
+      if (WRITES.test(cmd)) commands.push(cmd);
+    }
   }
   return { paths, commands };
 }
@@ -74,7 +83,7 @@ export function changedByAgent(file, top, changes) {
 }
 
 /** Files changed but not committed in that folder since the terminal started (and, when its record is known, made by that terminal's agent). */
-export function unsavedWork(cwd, since, run = (args) => spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', timeout: 5000 }), changes = null) {
+export function unsavedWork(cwd, since, run = (args) => spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', timeout: 5000 }), changes = null, until = Infinity) {
   if (!cwd) return [];
   const status = run(['status', '--porcelain', '--untracked-files=normal']);
   if (status.status !== 0) return []; // not a git folder: nothing to protect here
@@ -82,7 +91,9 @@ export function unsavedWork(cwd, since, run = (args) => spawnSync('git', ['-C', 
   const files = String(status.stdout || '').split('\n').filter(Boolean).map((line) => line.slice(3).replace(/^.* -> /, '').replace(/^"|"$/g, ''));
   // A shared folder often holds other people's unfinished edits; only what changed after
   // this terminal started can be its own.
-  const recent = files.filter((file) => { try { return statSync(join(top, file)).mtimeMs >= since; } catch { return true; } });
+  // With no record of what it changed (a plain shell), a file changed after the terminal
+  // went quiet cannot be its own either.
+  const recent = files.filter((file) => { try { const t = statSync(join(top, file)).mtimeMs; return t >= since && (changes || t <= until); } catch { return true; } });
   return changes ? recent.filter((file) => changedByAgent(file, top, changes)) : recent;
 }
 
@@ -116,4 +127,48 @@ export async function closeOwnTerminal({ query, panes, owned, resolvePane, state
   if (!result.ok) return { ok: false, text: `Not closed: ${result.error}` };
   record({ role: 'note', text: `Closed the "${name}" terminal; its work was finished.` });
   return { ok: true, text: `Closed "${name}".` };
+}
+
+/** Terminals this agent started itself (its children on the map), as the owned list closeOwnTerminal takes. */
+export function ownedChildren(panes, selfId) {
+  if (!selfId) return [];
+  return panes.filter((p) => p.parentPaneId === selfId).map((p) => ({ paneId: p.id, task: p.statedTask || p.profile?.name || p.title || null, at: Number(p.startedAt) || 0 }));
+}
+
+/**
+ * `termfleet-team close self` (Agent-Manager for Noam 2026-10-22: agents know best when their
+ * own work is finished). Refuses while the terminal waits for Noam or holds unsaved work of its
+ * own; otherwise hands the close to a separate waiter that closes it once this reply is saved.
+ */
+export async function closeSelf({ pane, unsaved = unsavedWork, changes = filesTheAgentChanged, schedule }) {
+  if (!pane) return { ok: false, text: 'Not closed: TermFleet cannot tell which terminal you are in.' };
+  if (pane.turn === 'waiting' || pane.attention) return { ok: false, text: 'Not closed: this terminal is waiting for Noam to answer a prompt.' };
+  const files = unsaved(pane.cwd, Number(pane.startedAt) || 0, undefined, changes(pane));
+  if (files.length) return { ok: false, text: `Not closed: you have unsaved work (${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}). Commit it or hand it over first.` };
+  const r = await schedule(pane.id);
+  if (!r?.ok) return { ok: false, text: `Not closed: ${r?.error || 'the close could not be started.'}` };
+  return { ok: true, text: 'Closing: this terminal closes as soon as this reply is saved. Finish your reply now; do not start new work.' };
+}
+
+/**
+ * The waiter behind `close self`: look until the agent's turn has ended (two idle looks in a
+ * row, so the final reply is written), then close. Gives up if Noam is asked something.
+ */
+export async function closeWhenIdle(paneId, { look, request, stateOf, pause = (ms) => new Promise((r) => setTimeout(r, ms)), timeoutMs = 15 * 60_000, now = Date.now }) {
+  const until = now() + timeoutMs;
+  let idleLooks = 0;
+  while (now() < until) {
+    await pause(2000);
+    const pane = (await look()).find((p) => p.id === paneId);
+    if (!pane || pane.alive === false) return { ok: true, text: 'Already closed.' };
+    if (pane.attention) return { ok: false, text: 'Not closed: it is waiting for Noam.' };
+    const state = stateOf(pane);
+    if (state === 'waiting') return { ok: false, text: 'Not closed: it is waiting for Noam.' };
+    idleLooks = state === 'idle' ? idleLooks + 1 : 0;
+    if (idleLooks >= 2) {
+      const r = await request(paneId, { by: 'self' });
+      return r.ok ? { ok: true, text: 'Closed.' } : { ok: false, text: `Not closed: ${r.error}` };
+    }
+  }
+  return { ok: false, text: 'Not closed: it was still busy after 15 minutes.' };
 }
