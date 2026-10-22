@@ -38,14 +38,14 @@ test('working, waiting, recently used, unsaved work, running something, bot-foll
     processes: (p) => (p.pid === 200 ? [{ pid: 201, comm: 'vite', cmd: 'node vite' }] : p.pid === 300 ? [{ pid: 301, comm: 'node', cmd: 'node termcontrol/bridge/server.mjs' }] : []),
     followedByBot: (p) => (p.id === 'terminal-followed' ? 'Agent-Manager' : null),
   });
-  assert.deepEqual(plan.offer.map((o) => o.id), ['terminal-ok']);
+  // Noam 2026-10-22 (Q4): 'Show it to me to decide' — offered unticked with the reason, never auto-closed.
+  assert.deepEqual(plan.offer.map((o) => [o.id, o.checked, o.warning || '']), [['terminal-dirty', false, 'Unsaved work: src/app.ts, README.md'], ['terminal-ok', true, '']]);
   assert.deepEqual(Object.fromEntries(plan.keep.map((k) => [k.id, k.reason])), {
     'terminal-work': 'Working right now',
     'terminal-print': 'Working right now',
     'terminal-ask': 'Waiting for you',
     'terminal-ask2': 'Waiting for you',
     'terminal-fresh': 'Used in the last few minutes',
-    'terminal-dirty': 'Unsaved work: src/app.ts, README.md',
     'terminal-shell': 'Something is still running in it (vite)',
     'terminal-service': 'Runs the Agents service',
     'terminal-followed': 'Agent-Manager is following it',
@@ -60,7 +60,7 @@ test('an agent terminal may have its own helpers running; the Agents service ins
 
 test('closed terminals are not listed at all, and the idle limit is fifteen minutes', () => {
   assert.equal(IDLE_MIN_MS, 15 * 60_000);
-  const plan = cleanupPlan({ panes: [pane('terminal-gone', { alive: false }), pane('terminal-16m', { lastActiveAt: NOW - 16 * 60_000 })], now: NOW, ...quiet });
+  const plan = cleanupPlan({ panes: [pane('terminal-gone', { alive: false }), pane('terminal-16m', { lastActiveAt: NOW - 16 * 60_000 })], now: NOW, ...quiet, startedBy: () => 'Quill' });
   assert.deepEqual([plan.offer.map((o) => o.id), plan.keep], [['terminal-16m'], []]);
 });
 
@@ -89,4 +89,55 @@ test('the process tree under a terminal is read from the process table', () => {
   const table = [{ pid: 10, ppid: 1, comm: 'bash', cmd: 'bash' }, { pid: 11, ppid: 10, comm: 'node', cmd: 'node vite' }, { pid: 12, ppid: 11, comm: 'esbuild', cmd: 'esbuild' }, { pid: 13, ppid: 1, comm: 'x', cmd: 'x' }];
   assert.deepEqual(descendantsOf(10, table).map((p) => p.pid), [11, 12]);
   assert.deepEqual(descendantsOf(null, table), []);
+});
+
+// Noam 2026-10-22 (via Agent-Manager, his words): 'בוטים שהסוכן פתח בוודאות. טרמינלים שלי - רק לאחר
+// הצגתם לי אם הם לא פעילים הרבה זמן ובאישור ישיר שלי', and for his own: '2 hours'.
+test('his own terminals are offered only after two hours idle; agent-started ones after fifteen minutes', async () => {
+  const { OWN_IDLE_MIN_MS } = await import('../bridge/idle-cleanup.mjs');
+  assert.equal(OWN_IDLE_MIN_MS, 2 * H);
+  const plan = cleanupPlan({ now: NOW, ...quiet,
+    startedBy: (p) => (p.id.startsWith('terminal-helper') ? 'Agent-Manager' : null),
+    panes: [pane('terminal-mine-1h', { lastActiveAt: NOW - H }), pane('terminal-mine-3h'), pane('terminal-helper-20m', { lastActiveAt: NOW - 20 * 60_000 })] });
+  assert.deepEqual(plan.offer.map((o) => [o.id, o.startedBy]), [['terminal-mine-3h', null], ['terminal-helper-20m', 'Agent-Manager']]);
+  assert.deepEqual(plan.keep.map((k) => [k.id, k.reason]), [['terminal-mine-1h', 'Yours, used in the last 2 hours']]);
+});
+
+test('the automatic sweep closes only finished terminals an agent or bot started, never Noam\'s own', async () => {
+  const { autoCloseFinished } = await import('../bridge/idle-cleanup.mjs');
+  const closed = [], notes = [];
+  const plan = { offer: [{ id: 'terminal-helper', name: 'Run tests', startedBy: 'Quill' }, { id: 'terminal-mine', name: 'My shell', startedBy: null }], keep: [{ id: 'terminal-busy', name: 'Build', startedBy: 'Quill', reason: 'Working right now' }] };
+  const r = await autoCloseFinished({ plan, requestClose: async (id, { by }) => { closed.push([id, by]); return { ok: true }; }, log: (t) => notes.push(t) });
+  assert.deepEqual(closed, [['terminal-helper', 'auto-cleanup']]);
+  assert.equal(r.closed, 1);
+  assert.match(notes[0], /Closed "Run tests" \(started by Quill\)/);
+});
+
+// Agent-Manager 2026-10-22: 23 terminals were still running with no card on the map (~12 GB),
+// invisible to Noam. They join the cleanup like any other terminal.
+test('terminals running with no card on the map are found, with their state, and judged by the same rules', async () => {
+  const { cardlessSessions } = await import('../bridge/idle-cleanup.mjs');
+  const live = new Map([
+    ['terminal-card', { pid: 1, producing: false, quietForMs: 3 * H }],
+    ['terminal-hidden-helper', { pid: 2, producing: false, quietForMs: null, initialCwd: '/w/termfleet' }],
+    ['terminal-hidden-busy', { pid: 3, producing: false, quietForMs: 5 * H, initialCwd: '/w/x' }],
+    ['terminal-hidden-unknown', { pid: 4, producing: false, quietForMs: null, initialCwd: '/w/y' }],
+    ['terminal-ended', { pid: 5, exited: true }],
+  ]);
+  const panes = cardlessSessions({ liveById: live, ownedIds: new Set(['terminal-card']), now: NOW,
+    agents: new Map([['terminal-hidden-busy', { provider: 'codex', vendorStatus: { status: 'busy' } }], ['terminal-hidden-helper', { provider: 'claude', sessionId: 's1' }]]),
+    lastUsed: (p) => (p.id === 'terminal-hidden-helper' ? NOW - 20 * H : 0),
+    commandOf: (pid) => (pid === 2 ? "bash -lc claude 'Read /home/x/.local/share/terminal-workspace/child-tasks/abc.md and carry out'" : 'bash') });
+  assert.deepEqual(panes.map((p) => [p.id, p.provider, p.turn, p.cardless]), [
+    ['terminal-hidden-helper', 'claude', 'idle', true], ['terminal-hidden-busy', 'codex', 'working', true], ['terminal-hidden-unknown', 'shell', 'idle', true]]);
+  const plan = cleanupPlan({ panes, now: NOW, ...quiet, startedBy: (p) => p.startedBy || null });
+  assert.deepEqual(plan.offer.map((o) => [o.id, o.startedBy, o.name]), [['terminal-hidden-helper', 'an agent', 'Hidden terminal in termfleet (no card on the map)']]);
+  assert.deepEqual(Object.fromEntries(plan.keep.map((k) => [k.id, k.reason])), { 'terminal-hidden-busy': 'Working right now', 'terminal-hidden-unknown': 'Cannot tell when it was last used' });
+});
+
+test('a finished agent terminal with unsaved work of its own is never closed automatically', async () => {
+  const { autoCloseFinished } = await import('../bridge/idle-cleanup.mjs');
+  const closed = [];
+  await autoCloseFinished({ plan: { offer: [{ id: 'terminal-dirty', name: 'D', startedBy: 'Quill', checked: false, warning: 'Unsaved work: a.js' }], keep: [] }, requestClose: async (id) => { closed.push(id); return { ok: true }; } });
+  assert.deepEqual(closed, []);
 });

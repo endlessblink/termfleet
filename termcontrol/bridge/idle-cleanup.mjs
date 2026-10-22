@@ -7,6 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const IDLE_MIN_MS = 15 * 60_000;
+// Noam 2026-10-22: his own terminals only 'לאחר הצגתם לי אם הם לא פעילים הרבה זמן', '2 hours'.
+export const OWN_IDLE_MIN_MS = 2 * 60 * 60_000;
 const AGENTS_SERVICE = /termcontrol\/bridge\/server\.mjs/;
 const AGENT_PROVIDERS = new Set(['claude', 'codex', 'opencode']);
 
@@ -61,11 +63,13 @@ export function processTable() {
  * `processes(pane)` lists what runs under it; `unsaved(pane)` its own unsaved files;
  * `followedByBot(pane)` the name of a bot following it.
  */
-function reasonToKeep(pane, { now, unsaved, processes, followedByBot }) {
+function reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter }) {
   if (pane.turn === 'waiting' || pane.attention) return 'Waiting for you';
   if (pane.turn === 'working' || pane.producing || pane.live === 'producing') return 'Working right now';
   const lastActive = Number(pane.lastActiveAt) || 0;
+  if (!lastActive && pane.cardless) return 'Cannot tell when it was last used';
   if (lastActive && now - lastActive < IDLE_MIN_MS) return 'Used in the last few minutes';
+  if (!starter && lastActive && now - lastActive < OWN_IDLE_MIN_MS) return 'Yours, used in the last 2 hours';
   const running = processes(pane);
   if (running.some((p) => AGENTS_SERVICE.test(p.cmd))) return 'Runs the Agents service';
   // A plain shell with a program under it is running something (a server, a watcher):
@@ -73,20 +77,28 @@ function reasonToKeep(pane, { now, unsaved, processes, followedByBot }) {
   if (!AGENT_PROVIDERS.has(pane.provider) && running.length) return `Something is still running in it (${running[0].comm})`;
   const bot = followedByBot(pane);
   if (bot) return `${bot} is following it`;
-  const files = unsaved(pane);
-  if (files.length) return `Unsaved work: ${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}`;
   return null;
 }
 
-export function cleanupPlan({ panes, now = Date.now(), unsaved = () => [], processes = () => [], followedByBot = () => null }) {
+/** Its own unsaved work, said plainly; null when there is none. Noam decides these himself (Q4). */
+function unsavedWarning(pane, unsaved) {
+  const files = unsaved(pane);
+  return files.length ? `Unsaved work: ${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}` : null;
+}
+
+export function cleanupPlan({ panes, now = Date.now(), unsaved = () => [], processes = () => [], followedByBot = () => null, startedBy = () => null, isSleeping = () => false }) {
   const offer = [], keep = [];
   for (const pane of panes) {
-    if (pane.alive === false) continue;
-    const base = { id: pane.id, name: terminalName(pane), folder: pane.cwd ? path.basename(pane.cwd) : clip(pane.project || ''), provider: pane.provider || 'shell' };
-    const reason = reasonToKeep(pane, { now, unsaved, processes, followedByBot });
+    // A sleeping terminal (its programs ended, card kept to wake later) is never a candidate.
+    if (pane.alive === false || isSleeping(pane.id)) continue;
+    // Who started it: an agent (its parent on the map) or a bot; null when Noam opened it himself.
+    const starter = startedBy(pane) || null;
+    const base = { id: pane.id, name: terminalName(pane), folder: pane.cwd ? path.basename(pane.cwd) : clip(pane.project || ''), provider: pane.provider || 'shell', startedBy: starter };
+    const reason = reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter });
     if (reason) { keep.push({ ...base, reason }); continue; }
     const idleMs = Math.max(0, now - (Number(pane.lastActiveAt) || Number(pane.startedAt) || now));
-    offer.push({ ...base, idleMs, idleText: idleText(idleMs) });
+    const warning = unsavedWarning(pane, unsaved);
+    offer.push({ ...base, idleMs, idleText: idleText(idleMs), checked: !warning, ...(warning ? { warning } : {}) });
   }
   offer.sort((a, b) => b.idleMs - a.idleMs);
   return { offer, keep, checkedAt: now };
@@ -111,4 +123,46 @@ export async function closeIdleTerminals({ ids, plan, requestClose, by = 'cleanu
   }
   const closed = results.filter((r) => r.ok).length;
   return { ok: results.length > 0 && closed === results.length, closed, results };
+}
+
+/**
+ * Noam 2026-10-22: terminals an agent or bot started close by themselves once finished and
+ * safe ('בוטים שהסוכן פתח בוודאות'). Only those: his own terminals wait for his tap.
+ */
+export async function autoCloseFinished({ plan, requestClose, log = () => {} }) {
+  let closed = 0;
+  // Only finished helpers with nothing unsaved; one with unsaved work waits for Noam (Q4).
+  for (const o of plan.offer.filter((x) => x.startedBy && !x.warning)) {
+    let r;
+    try { r = await requestClose(o.id, { by: 'auto-cleanup' }); } catch (error) { r = { ok: false, error: error.message }; }
+    if (r.ok) closed++;
+    log(r.ok ? `Closed "${o.name}" (started by ${o.startedBy}); it was finished${o.idleText ? ` and ${o.idleText}` : ''}.` : `Not closed "${o.name}": ${r.error}`, o, r.ok);
+  }
+  return { closed };
+}
+
+/**
+ * Terminals the daemon still runs that no card on the map owns (their card was lost or closed
+ * without ending them). Noam cannot see them, so the cleanup lists them too. Built from the
+ * daemon's own list; `lastUsed(pane)` is when its conversation last changed (0 when unknown).
+ */
+export function cardlessSessions({ liveById, ownedIds, agents = new Map(), now = Date.now(), lastUsed = () => 0, commandOf = () => '', isSleeping = () => false }) {
+  const out = [];
+  for (const [id, life] of liveById) {
+    if (life?.exited || ownedIds.has(id) || isSleeping(id)) continue;
+    const agent = agents.get(id) || {};
+    const cwd = life.initialCwd || null;
+    const status = agent.vendorStatus?.status;
+    const pane = {
+      id, alive: true, cardless: true, provider: agent.provider || 'shell', sessionId: agent.sessionId || null, cwd,
+      project: cwd ? path.basename(cwd) : 'unknown', pid: life.pid ?? null, producing: Boolean(life.producing),
+      turn: status === 'busy' ? 'working' : status === 'waiting' ? 'waiting' : 'idle',
+    };
+    pane.title = `Hidden terminal in ${pane.project} (no card on the map)`;
+    pane.lastActiveAt = Math.max(Number(lastUsed(pane)) || 0, life.quietForMs != null ? now - life.quietForMs : 0);
+    // Started by an agent: termfleet-child gives every helper a task file to read.
+    if (/terminal-workspace\/child-tasks\//.test(commandOf(life.pid))) pane.startedBy = 'an agent';
+    out.push(pane);
+  }
+  return out;
 }

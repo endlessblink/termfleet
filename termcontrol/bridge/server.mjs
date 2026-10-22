@@ -17,7 +17,10 @@ import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } fr
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
-import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable } from './idle-cleanup.mjs';
+import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished } from './idle-cleanup.mjs';
+import { appendAction, paneLogFile } from './action-log.mjs';
+import { parentsByPane } from './orchestrate.mjs';
+import { agentsByPane } from './inventory.mjs';
 import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, moveInOrder } from './prefs.mjs';
@@ -196,20 +199,66 @@ async function currentPanes() {
   return { panes: withLife.map((p) => (named[p.id] ? { ...p, profile: named[p.id] } : p)), daemon: true, ...snapshot };
 }
 
-/** What "Clean up idle terminals" offers, judged now. */
+const sleepingDir = path.join(os.homedir(), '.local', 'share', 'terminal-workspace', 'sleeping');
+const isSleeping = (id) => fs.existsSync(path.join(sleepingDir, `${String(id).replace(/[^A-Za-z0-9._-]/g, '_')}.json`));
+
+/** What "Clean up idle terminals" offers, judged now; `starters` says who started each terminal. */
 async function idleCleanupPlan() {
-  const { panes } = await currentPanes();
+  const { panes: onMap } = await currentPanes();
   const table = processTable();
-  const followers = new Map();
-  for (const b of bots.list()) for (const h of b.helpers || []) if (h?.followed && h.paneId) followers.set(h.paneId, b.name);
-  return cleanupPlan({
-    panes,
+  const followers = new Map(), helperOf = new Map();
+  for (const b of bots.list()) for (const h of b.helpers || []) if (h?.paneId) (h.followed ? followers : helperOf).set(h.paneId, b);
+  const workspace = readWorkspace();
+  const parents = parentsByPane(workspace);
+  // Terminals still running with no card on the map: invisible to Noam, so listed too.
+  const owned = new Set();
+  for (const tab of workspace?.tabs || []) for (const t of tab.terminals || []) if (t?.id) owned.add(t.id);
+  const { byId } = await liveness();
+  const cardless = owned.size ? cardlessSessions({ liveById: byId, ownedIds: owned, agents: agentsByPane(), isSleeping,
+    lastUsed: (p) => conversationMtime(p), commandOf: (pid) => table.find((x) => x.pid === pid)?.cmd || '' }) : [];
+  const panes = [...onMap, ...cardless.map((p) => ({ ...p, startedAt: startedAt(p.pid) || null }))];
+  const starters = new Map();
+  for (const p of panes) {
+    const bot = helperOf.get(p.id);
+    if (bot) starters.set(p.id, { name: bot.name, botId: bot.id });
+    else if (parents.get(p.id)) starters.set(p.id, { name: 'an agent', paneId: parents.get(p.id) });
+    else if (p.startedBy) starters.set(p.id, { name: p.startedBy });
+  }
+  const plan = cleanupPlan({
+    panes, isSleeping,
+    startedBy: (p) => starters.get(p.id)?.name || null,
     processes: (p) => descendantsOf(p.pid, table),
-    followedByBot: (p) => followers.get(p.id) || null,
+    followedByBot: (p) => followers.get(p.id)?.name || null,
     // Only work the terminal itself made: an agent's own record, or for a plain shell the
     // files changed while it was in use. Others' edits in a shared folder never count.
     unsaved: (p) => unsavedWork(p.cwd, Number(p.startedAt) || 0, undefined, filesTheAgentChanged(p), (Number(p.lastActiveAt) || Date.now()) + 60_000),
   });
+  return { ...plan, starters };
+}
+
+// Noam 2026-10-22 (Q1): terminals an agent or bot started close by themselves once finished and
+// safe; (Q3) each close is a quiet line in the starter's activity log, never a notification.
+// Only the real service sweeps: test bridges (their own config folder) never close anything.
+async function sweepFinishedHelpers() {
+  const plan = await idleCleanupPlan();
+  return autoCloseFinished({ plan, requestClose, log: (text, item, ok) => {
+    if (!ok) return;
+    const who = plan.starters.get(item.id) || {};
+    const entry = { at: Date.now(), actor: 'termfleet', kind: 'terminal', text, auto: true, paneId: item.id };
+    try {
+      if (who.botId) appendAction(path.join(bots.folder(who.botId), 'actions.jsonl'), entry);
+      else appendAction(paneLogFile(who.paneId || item.id), entry);
+    } catch (error) { console.error('[auto-cleanup]', error.message); }
+    console.log('[auto-cleanup]', text);
+  } });
+}
+if (!process.env.TC_CONFIG_DIR && !process.env.TC_NO_AUTO_CLEANUP) {
+  let sweeping = false;
+  setInterval(() => {
+    if (sweeping) return;
+    sweeping = true;
+    sweepFinishedHelpers().catch((error) => console.error('[auto-cleanup]', error.message)).finally(() => { sweeping = false; });
+  }, 5 * 60_000).unref();
 }
 
 const sendOnce = createSendOnce();
@@ -778,7 +827,7 @@ const handle = async (req, res) => {
     let body = {};
     if (req.method === 'POST') { try { body = await readJson(req, 64 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); } }
     const plan = await idleCleanupPlan();
-    if (req.method === 'GET') return json(res, 200, plan);
+    if (req.method === 'GET') return json(res, 200, { offer: plan.offer, keep: plan.keep, checkedAt: plan.checkedAt });
     const result = await closeIdleTerminals({ ids: Array.isArray(body.items) ? body.items : [], plan, requestClose, by: `phone:cleanup:${currentUser(req).id}` });
     return json(res, 200, result);
   }

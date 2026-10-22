@@ -11,7 +11,7 @@ import path from 'node:path';
 const repo = path.resolve('.');
 const pane = (id, title, turn = 'idle') => ({ id, title, provider: 'claude', project: 'demo', groupName: 'demo', cwd: '/tmp/demo', turn, updatedAt: Date.now(), lastActiveAt: Date.now() - 3 * 3600_000, alive: true, todos: [] });
 const plan = {
-  offer: [{ id: 'terminal-a', name: 'Render the intro', folder: 'rough-cut', idleText: 'idle 2 days' }, { id: 'terminal-b', name: 'Fix the photo upload', folder: 'botson', idleText: 'idle 3 hours' }, { id: 'terminal-c', name: 'Old test run', folder: 'termfleet', idleText: 'idle 40 minutes' }],
+  offer: [{ id: 'terminal-a', name: 'Render the intro', folder: 'rough-cut', idleText: 'idle 2 days' }, { id: 'terminal-b', name: 'Fix the photo upload', folder: 'botson', idleText: 'idle 3 hours' }, { id: 'terminal-c', name: 'Old test run', folder: 'termfleet', idleText: 'idle 40 minutes', startedBy: 'Quill' }, { id: 'terminal-g', name: 'Half-done fix', folder: 'botson', idleText: 'idle 5 hours', checked: false, warning: 'Unsaved work: src/app.ts' }],
   keep: [{ id: 'terminal-d', name: 'Build the release', folder: 'termfleet', reason: 'Working right now' }, { id: 'terminal-e', name: 'Pick a colour', folder: 'design', reason: 'Waiting for you' }, { id: 'terminal-f', name: 'Health app', folder: 'health-app', reason: 'Unsaved work: MASTER_PLAN.md' }],
 };
 test('clean up idle terminals: ticked list, untick to keep, one tap closes the rest; kept ones show why', { timeout: 120000 }, async () => {
@@ -42,6 +42,9 @@ test('clean up idle terminals: ticked list, untick to keep, one tap closes the r
       const sheet = p.locator('.cleanup-sheet .sheet');
       await sheet.locator('.cleanup-offer').waitFor({ timeout: 10000 });
       assert.equal(await sheet.locator('.cleanup-offer input:checked').count(), 3, 'safe ones start ticked');
+      assert.equal(await sheet.locator('.cleanup-offer input[value="terminal-g"]').isChecked(), false, 'unsaved work: Noam decides');
+      assert.match(await sheet.locator('.cleanup-offer li', { hasText: 'Half-done fix' }).innerText(), /Unsaved work: src\/app\.ts/);
+      assert.match(await sheet.locator('.cleanup-offer li', { hasText: 'Old test run' }).innerText(), /started by Quill/);
       assert.match(await sheet.innerText(), /Render the intro[\s\S]*rough-cut · idle 2 days/);
       const kept = await sheet.locator('.cleanup-kept').innerText();
       assert.match(kept, /Build the release[\s\S]*Working right now/);

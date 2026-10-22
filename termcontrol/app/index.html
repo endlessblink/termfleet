@@ -2452,8 +2452,8 @@ async function fleet(background=false,{fromCache=false}={}) {
   container.querySelectorAll('.waiting-row[data-go]').forEach(el=>{el.onclick=()=>{const go=el.dataset.go;if(go.startsWith('#bot:')){const id=go.slice(5);history.pushState({bot:id},'',go);openBot(id);}else{const id=go.slice(1);history.pushState({pane:id,openedFromAgents:true},'',go);chat(id);}};});
   const waitingDetails=container.querySelector('.waiting-panel');waitingDetails?.querySelector('summary')?.addEventListener('click',()=>{try{sessionStorage.setItem('termcontrol-waiting-open',waitingDetails.open?'closed':'open');}catch{}},{once:true});
   const inboxButton=container.querySelector('.open-inbox');if(inboxButton)inboxButton.onclick=event=>{event.preventDefault();event.stopPropagation();history.pushState({inbox:true},'','#inbox');openInbox();};
-  const newRoomButton=container.querySelector('.new-room:not(.new-bot)');if(newRoomButton)newRoomButton.onclick=()=>newRoom(roomsData?.agents || []);
   const cleanupButton=container.querySelector('.cleanup-idle');if(cleanupButton)cleanupButton.onclick=()=>openCleanup(cleanupButton);
+  const newRoomButton=container.querySelector('.new-room:not(.new-bot)');if(newRoomButton)newRoomButton.onclick=()=>newRoom(roomsData?.agents || []);
   container.querySelectorAll('[data-bot]').forEach(el=>{el.onclick=()=>{const fromList=el.matches('.bot-row') && main.contains(el);if(fromList)rememberFleetReturn(el,el.dataset.bot,'bot');history.pushState({bot:el.dataset.bot,openedFromAgents:fromList||undefined},'','#bot:'+el.dataset.bot);openBot(el.dataset.bot);};});
   const newBotButton=container.querySelector('.new-bot');if(newBotButton)newBotButton.onclick=()=>botDialog(null,botsData);
   container.querySelectorAll('[data-group]').forEach(el=>{el.onclick=()=>{history.pushState({group:el.dataset.group},'','#group:'+el.dataset.group);openGroup(el.dataset.group);};});
@@ -3904,7 +3904,6 @@ document.addEventListener('click',async event=>{
   let r;try{r=await (await fetch('/api/bot/restore',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.restore}),signal:AbortSignal.timeout(10000)})).json();}catch{r={error:ui('No answer from the PC.','אין תשובה מהמחשב.')}}
   if(r.ok){note(ui(`${b.dataset.name} is back in your list.`,`${b.dataset.name} חזר לרשימה.`));fleet(Boolean(focusedPane));}else{note(r.error || ui('It could not be brought back.','לא ניתן להחזיר אותו.'),true);b.disabled=false;}
 });
-async function confirmBotClose(id,name,returnFocus){
 // "Clean up idle terminals" (Noam 2026-10-22: "למה הם לא נוקו?"). Lists the terminals that are
 // safe to close, all ticked; Noam unticks any to keep and closes the rest with one tap. The rest
 // are shown with the plain reason they stay and can never be ticked.
@@ -3920,12 +3919,13 @@ async function openCleanup(returnFocus){
   let plan;try{const r=await fetch('/api/cleanup',{signal:AbortSignal.timeout(20000)});plan=await r.json();if(!r.ok)throw new Error(plan.error);}catch{plan={error:ui('Could not check the terminals. Try again in a moment.','לא ניתן לבדוק את המסופים. נסו שוב בעוד רגע.')}}
   if(!wrap.isConnected)return;
   const offer=plan.offer || [],keep=plan.keep || [];
-  const list=offer.map(o=>`<li><label><input type="checkbox" value="${esc(o.id)}" checked><b dir="auto">${esc(o.name)}</b><small dir="auto">${esc(o.folder)} · ${esc(o.idleText)}</small></label></li>`).join('');
+  // One with unsaved work of its own starts unticked and says so: Noam decides (2026-10-22, Q4).
+  const list=offer.map(o=>`<li><label><input type="checkbox" value="${esc(o.id)}"${o.checked!==false?' checked':''}><b dir="auto">${esc(o.name)}</b><small dir="auto">${esc(o.folder)} · ${esc(o.idleText)}${o.startedBy?' · '+esc(ui(`started by ${o.startedBy}`,`נפתח על ידי ${o.startedBy}`)):''}</small>${o.warning?`<small class="loses" dir="auto">${esc(o.warning)}</small>`:''}</label></li>`).join('');
   const kept=keep.map(k=>`<li data-keep="${esc(k.id)}"><b dir="auto">${esc(k.name)}</b><small dir="auto">${esc(k.folder)} · <span class="keep-reason">${esc(k.reason)}</span></small></li>`).join('');
   const keptBlock=keep.length?`<p class="cleanup-kept-head">${ui(`Staying open (${keep.length}), never closed here:`,`נשארים פתוחים (${keep.length}), לא ייסגרו כאן:`)}</p><ul class="bot-remove-list cleanup-kept">${kept}</ul>`:'';
   wrap.querySelector('.sheet').innerHTML=`<h2 id="close-sheet-title">${title}</h2>${plan.error?`<p role="alert">${esc(plan.error)}</p>`:offer.length?`<p>${ui('These are idle and safe to close. Untick any you want to keep. Closing stops them.','אלה לא פעילים ובטוחים לסגירה. הורידו סימון ממה שרוצים להשאיר. הסגירה עוצרת אותם.')}</p><ul class="bot-close-list cleanup-offer">${list}</ul>`:`<p>${ui('No terminal is safe to close right now.','אין כרגע מסוף שבטוח לסגור.')}</p>`}${plan.error?'':keptBlock}<p class="sheet-result" role="status" aria-live="polite"></p><div class="sheet-actions"><button type="button" data-cancel>${offer.length?ui('Cancel','ביטול'):ui('OK','אישור')}</button>${offer.length?`<button type="button" class="danger" data-confirm></button>`:''}</div>`;
   const cancel=wrap.querySelector('[data-cancel]'),go=wrap.querySelector('[data-confirm]'),out=wrap.querySelector('.sheet-result');
-  cancel.onclick=done;cancel.focus();
+  cancel.onclick=done;cancel.focus({preventScroll:true});wrap.querySelector('.sheet').scrollTop=0;
   if(!go)return;
   const sync=()=>{const n=wrap.querySelectorAll('.cleanup-offer input:checked').length;go.disabled=!n;go.textContent=n===1?ui('Close 1 terminal','סגירת מסוף אחד'):ui(`Close ${n} terminals`,`סגירת ${n} מסופים`);};
   wrap.querySelectorAll('.cleanup-offer input').forEach(b=>b.onchange=sync);sync();
@@ -3942,6 +3942,7 @@ async function openCleanup(returnFocus){
     cancel.disabled=false;cancel.textContent=ui('Done','סיום');fleet(Boolean(focusedPane));
   };
 }
+async function confirmBotClose(id,name,returnFocus){
   document.querySelector('.close-sheet')?.remove();
   const wrap=document.createElement('div');wrap.className='close-sheet';
   wrap.innerHTML=`<div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="close-sheet-title"><h2 id="close-sheet-title" dir="auto">${esc(ui(`Close ${name}?`,`לסגור את ${name}?`))}</h2><p>${ui('Checking what it is running…','בודק מה הוא מריץ…')}</p></div>`;
@@ -5009,8 +5010,8 @@ window.addEventListener('popstate', (e) => {
 // Following a link to #<terminal> while the app is already open changes only
 // the hash — no navigation, no popstate — so listen for that too.
 window.addEventListener('hashchange', () => {
-  if(location.hash==='#inbox'){openInbox();return;}
   if(location.hash.startsWith('#cleanup')){history.replaceState({},'',location.pathname);fleet();openCleanup();return;}
+  if(location.hash==='#inbox'){openInbox();return;}
   if(location.hash.startsWith('#room:')){openRoom(location.hash.slice(6));return;}
   if(location.hash.startsWith('#bot:')){openBot(location.hash.slice(5));return;}
   if(location.hash.startsWith('#group:')){openGroup(location.hash.slice(7));return;}
@@ -5018,9 +5019,9 @@ window.addEventListener('hashchange', () => {
   if(id){if(id!==focusedPane)recordVisit(id);chat(id);}else fleet();
 });
 
-const opening = location.hash.startsWith('#room:') || location.hash.startsWith('#bot:') || location.hash.startsWith('#group:') || location.hash==='#inbox' ? '' : location.hash.slice(1);
 // The PC map's "Clean up idle terminals" opens this page at #cleanup.
 const cleanupOnOpen=location.hash.startsWith('#cleanup');if(cleanupOnOpen)history.replaceState({},'',location.pathname);
+const opening = location.hash.startsWith('#room:') || location.hash.startsWith('#bot:') || location.hash.startsWith('#group:') || location.hash==='#inbox' ? '' : location.hash.slice(1);
 if(location.hash==='#inbox'){history.replaceState({inbox:true},'',location.hash);openInbox();}
 else if(location.hash.startsWith('#room:')){history.replaceState({room:location.hash.slice(6)},'',location.hash);openRoom(location.hash.slice(6));}
 else if(location.hash.startsWith('#bot:')){history.replaceState({bot:location.hash.slice(5)},'',location.hash);openBot(location.hash.slice(5));}
@@ -5028,7 +5029,7 @@ else if(location.hash.startsWith('#group:')){history.replaceState({group:locatio
 else if(opening && performance.getEntriesByType('navigation')[0]?.type==='navigate')recordVisit(opening);
 if (opening) { history.replaceState({ pane: opening }, '', location.hash); chat(opening); }
 else if(!location.hash.startsWith('#room:') && !location.hash.startsWith('#bot:') && !location.hash.startsWith('#group:') && location.hash!=='#inbox') fleet();
-</script>
 if(cleanupOnOpen)openCleanup();
+</script>
 </body>
 </html>
