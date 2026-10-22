@@ -72,6 +72,24 @@ export function markRepeatedQuestions(messages) {
   });
 }
 
+/**
+ * The same terminal prompt posted twice before Noam replied (Noam 2026-10-22: "אין צורך
+ * בהודעות כפולות") shows once, the newest card; the "is waiting for Noam" note repeated
+ * with it shows once too.
+ */
+export function markRepeatedTerminalAsks(messages) {
+  const key = (m) => m.role === 'terminal-ask' ? `ask|${m.pane}|${m.text}|${(m.options || []).map((o) => o.label).join('|')}` : m.role === 'event' ? `event|${m.text}` : null;
+  return messages.map((m, i) => {
+    const k = key(m);
+    if (!k) return m;
+    for (const later of messages.slice(i + 1)) {
+      if (later.role === 'operator') break;
+      if (key(later) === k) return { ...m, repeated: true };
+    }
+    return m;
+  });
+}
+
 /** The rule every bot gets, so any question to Noam arrives as a card, in English. */
 export const QUESTION_RULE = [
   '- Your question tool: every time you ask Noam something (a choice, a yes/no, a clarification, each question in a skill such as grill-me), ask it in English as a question card; the chat turns it into tap buttons. This card IS the bots\' question tool: when Noam says "use the question tool" (in Hebrew: "כלי השאלות"), he means this card. You have no other question tool (no AskUserQuestion), so never tell him bots cannot ask with buttons. Put the question at the END of your message in exactly this form, one question per message, then stop and wait:',

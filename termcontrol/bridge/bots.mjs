@@ -10,7 +10,7 @@ import { claudeTranscript } from './paths.mjs';
 import { asksForFile } from '../../scripts/termfleet-asks.mjs';
 import { uploadDir } from './uploads.mjs';
 import { skillPrompt } from './skills.mjs';
-import { parseQuestion, QUESTION_RULE, markRepeatedQuestions } from './bot-questions.mjs';
+import { parseQuestion, QUESTION_RULE, markRepeatedQuestions, markRepeatedTerminalAsks } from './bot-questions.mjs';
 import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bot-checklist.mjs';
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
@@ -844,7 +844,7 @@ export class Bots {
     const bot = this.read(id);
     if (!bot) return null;
     const chat = this.messages(id).slice(-MAX_CHAT_RETURNED);
-    return { bot: { ...this.summary(id), rules: bot.rules }, messages: markRepeatedQuestions(chat) };
+    return { bot: { ...this.summary(id), rules: bot.rules }, messages: markRepeatedTerminalAsks(markRepeatedQuestions(chat)) };
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */

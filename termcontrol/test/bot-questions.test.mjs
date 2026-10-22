@@ -98,3 +98,14 @@ test('a card written in a Hebrew conversation still becomes buttons', () => {
   assert.equal(fenced.text, 'טקסט');
   assert.deepEqual(fenced.question.options, ['Yes', 'No']);
 });
+
+// Noam 2026-10-22: cards already posted twice for the same terminal prompt show once, the newest.
+test('identical terminal prompt cards collapse to the newest; a different one and one after his reply stay', async () => {
+  const { markRepeatedTerminalAsks } = await import('../bridge/bot-questions.mjs');
+  const card = (id, text = 'Push it?') => ({ id, role: 'terminal-ask', pane: 'terminal-h', text, options: [{ key: '1', label: 'Yes' }] });
+  const note = (id) => ({ id, role: 'event', text: 'Your terminal agent for "x" is waiting for Noam: "Push it?".' });
+  const out = markRepeatedTerminalAsks([card('1'), note('n1'), { id: 'b1', role: 'bot', text: 'still waiting' }, card('2'), note('n2'), card('3', 'Other?')]);
+  assert.deepEqual(out.filter((m) => !m.repeated).map((m) => m.id), ['b1', '2', 'n2', '3']);
+  const after = markRepeatedTerminalAsks([card('1'), { id: 'o', role: 'operator', text: 'ok' }, card('2')]);
+  assert.equal(after.filter((m) => m.repeated).length, 0);
+});

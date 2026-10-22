@@ -3360,6 +3360,7 @@ async function openBot(id,{motion=null}={}){
     Object.assign(headState,{asks:visibleAsks(data.asks,schedules.map(r=>r.text)),helpers,schedules});paintBotHead(headState);
     const html=data.messages.map(m=>{
       const when=m.at?ago(m.at):'';
+      if(m.repeated && (m.role==='terminal-ask' || m.role==='event'))return '';
       if(m.guest)return guestReplyHtml(m,when);
       if(m.role==='operator' && m.from)return `<div class="tagged-from" dir="auto"><a href="#${m.from.kind==='group'?'group':'bot'}:${esc(m.from.id)}">↪ ${esc(m.from.kind==='group'?ui(`You tagged ${bot.name} in the group ${m.from.name}`,`תייגת את ${bot.name} בקבוצה ${m.from.name}`):ui(`You tagged ${bot.name} in your chat with ${m.from.name}`,`תייגת את ${bot.name} בשיחה עם ${m.from.name}`))}</a></div>`+messageHtml('user',m.text,ui('You','אתה'),when);
       if(m.role==='operator')return messageHtml('user',m.images?`${m.text}\n📷 ${ui(m.images===1?'1 picture':`${m.images} pictures`,m.images===1?'תמונה אחת':`${m.images} תמונות`)}`:m.text,ui('You','אתה'),when,'','','',{mid:m.id,of:m.replyTo?{who:m.replyTo.role==='bot'?bot.name:ui('You','אתה'),text:m.replyTo.text}:null});

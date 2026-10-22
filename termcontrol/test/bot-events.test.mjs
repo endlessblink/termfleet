@@ -117,3 +117,37 @@ test('a bot row counts its busy terminal agents, once each, and only recent hand
   assert.deepEqual(helperState(bot, panes, now), { waitingOn: 0, helpersAsking: 1 }, 'drops as they finish');
   assert.deepEqual(helperState({}, panes, now), { waitingOn: 0, helpersAsking: 0 });
 });
+
+// Noam 2026-10-22: "אין צורך בהודעות כפולות עם שאלות כפולות. פשוט להשאיר את אותה אחת עד שאני אענה".
+// The same unanswered prompt, seen again with a new id (re-detection), after a restart (a fresh
+// `seen`) or after a short flicker out of "waiting", keeps its one card: no new card, note or wake.
+test('the same unanswered terminal prompt keeps one card across re-detection, restart and flicker', async () => {
+  const { bots, bot, woke } = setup();
+  const ask = { id: 'ask-1', kind: 'question', title: "Should I push the fix online so tomorrow's nightly check uses it?", options: [{ key: '1', label: 'Push it now (Recommended)' }, { key: '2', label: 'Keep it local' }] };
+  const at = (turn, a = ask, seen) => checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn }], readAsk: async () => a });
+  const seen = new Map();
+  await at('waiting', ask, seen);
+  await at('waiting', { ...ask, id: 'ask-1b' }, seen);           // re-detected with a new id
+  await at('waiting', { ...ask, id: 'ask-1c' }, new Map());      // the bridge restarted
+  await at('working', ask, seen);                                // one-check flicker
+  await at('waiting', { ...ask, id: 'ask-1d' }, seen);
+  const cards = bots.messages(bot.id).filter((m) => m.role === 'terminal-ask');
+  assert.equal(cards.length, 1, 'one card while the same prompt waits');
+  assert.equal(cards[0].askId, 'ask-1d', 'the kept card answers the prompt as it is now, so its buttons still work');
+  assert.equal(bots.messages(bot.id).filter((m) => m.role === 'event').length, 0, 'no repeated event note');
+  assert.equal(woke.length, 1, 'the bot is woken once');
+  await at('waiting', { ...ask, id: 'ask-2', title: 'Allow the next step?' }, seen);
+  assert.equal(bots.messages(bot.id).filter((m) => m.role === 'terminal-ask').length, 2, 'a different prompt still shows');
+  assert.equal(woke.length, 2);
+});
+
+test('once the prompt was answered (the terminal moved on), the same question asked again is a new card', async () => {
+  const { bots, bot } = setup();
+  const ask = { id: 'a', kind: 'question', title: 'Push it?', options: [{ key: '1', label: 'Yes' }, { key: '2', label: 'No' }] };
+  const seen = new Map();
+  const at = (turn, id = 'a') => checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn }], readAsk: async () => ({ ...ask, id }) });
+  await at('waiting');
+  await at('working'); await at('working');                     // answered: the terminal worked on
+  await at('waiting', 'b');
+  assert.equal(bots.messages(bot.id).filter((m) => m.role === 'terminal-ask').length, 2);
+});

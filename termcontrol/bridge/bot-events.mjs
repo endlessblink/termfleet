@@ -54,6 +54,29 @@ export function terminalAskMessage(paneId, label, ask) {
   };
 }
 
+const promptKey = (m) => [m.kind || '', String(m.text ?? m.title ?? '').trim(), ...(m.options || []).map((o) => o.label)].join('\u0001');
+const samePrompt = (card, ask) => promptKey(card) === promptKey({ ...ask, text: String(ask.title || 'The terminal agent is asking you something.').slice(0, 300) });
+
+/** The card still waiting for Noam's answer for this terminal, if any. */
+function openTerminalAsk(bots, botId, paneId) {
+  const card = bots.messages(botId).filter((m) => m.role === 'terminal-ask' && m.pane === paneId).at(-1);
+  return card && !card.settled ? card : null;
+}
+
+/** Updates one card in place: closes it once answered, or follows the prompt's new id. */
+function settleTerminalAsk(bots, botId, cardId, patch, settled = true) {
+  const file = path.join(bots.folder(botId), 'chat.jsonl');
+  try {
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    const at = lines.findIndex((l) => l.includes(`"id":"${cardId}"`));
+    if (at < 0) return;
+    lines[at] = JSON.stringify({ ...JSON.parse(lines[at]), ...patch, ...(settled ? { settled: true } : {}) });
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, lines.join('\n'), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch { /* best effort: at worst the card stays as it was */ }
+}
+
 export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, head = gitHead }) {
   for (const b of bots.list()) {
     // One entry per terminal: a bot that followed the same agent twice is woken once.
@@ -73,17 +96,24 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
           ? `The terminal agent you followed ("${label}") has finished its turn, and the follow has now ended. Read its result (termfleet-team read ${h.paneId}) and, only if it is the job you told Noam you would report on, tell him in plain words. Follow it again only if Noam asked you to keep watching it.`
           : `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words. Then close it (termfleet-team close ${h.paneId}) unless you are sending it more work now.`);
       }
-      let posted = state === 'waiting' ? before.posted || null : null;
+      // One card per prompt until Noam answers it (Noam 2026-10-22: "להשאיר את אותה אחת עד
+      // שאני אענה"). The open card lives in the chat itself, so a restart or a re-detected
+      // prompt with a new id finds it; it closes only once the terminal has moved on.
+      const open = openTerminalAsk(bots, b.id, h.paneId);
+      const away = state === 'waiting' ? 0 : (before.away || 0) + 1;
+      if (open && away >= 2) settleTerminalAsk(bots, b.id, open.id, {});
       if (state === 'waiting') {
         const ask = await readAsk(pane);
-        if (ask?.id && ask.id !== posted) {
-          posted = ask.id;
+        if (ask?.id && open && samePrompt(open, ask)) {
+          if (open.askId !== ask.id) settleTerminalAsk(bots, b.id, open.id, { askId: ask.id }, false);
+        } else if (ask?.id) {
+          if (open) settleTerminalAsk(bots, b.id, open.id, {});
           bots.append(b.id, terminalAskMessage(h.paneId, label, ask));
           bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are already shown to Noam in this chat; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
         }
       }
-      if (state === 'closed') seen.delete(key);
-      else seen.set(key, { state, posted });
+      if (state === 'closed' && away >= 2) seen.delete(key);
+      else seen.set(key, { state, away });
     }
     for (const w of bots.watches(b.id)) {
       if (w.paused) continue; // paused when Noam closed the bot; kept so it can be turned back on
