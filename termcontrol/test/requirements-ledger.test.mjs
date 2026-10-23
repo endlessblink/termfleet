@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const REPO = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
 import {
   splitMessage, captureMessage, loadLedger, markItem, record, addTopic, briefItems, briefBlock, briefedIds,
-  stopProblem, ownerTextOf, itemsView, evidenceProblem, BRIEF_HEADER,
+  stopProblem, ownerTextOf, itemsView, evidenceProblem, BRIEF_HEADER, replyDetails,
 } from '../bridge/requirements.mjs';
 import { confirmReceipt, confirmStarted, codexTrustPrompt, trustDecision, pendingCodexHooks, freshRecordsHave, claudeFolderTrustPrompt, trustedFolderRoots } from '../bridge/delivery.mjs';
 import { framedMessage } from '../bridge/orchestrate.mjs';
@@ -277,7 +277,7 @@ test('failure 5 through the command: lock needs Noam\'s confirmation and a deliv
   assert.equal(loadLedger({ dir }).items.get('R-1').locked, true);
 });
 
-test('failure 6: agents said "done" and it was relayed unchecked; now each item needs its own evidence and the final reply a row per item', () => {
+test('failure 6: agents said "done" and it was relayed unchecked; now each item needs its own evidence in the ledger, and the reply stays plain', () => {
   const dir = tmp();
   const env = { TERMFLEET_REQ_DIR: dir };
   captureMessage({ text: '(1) strip fills (2) portraits in colour', project: 'pf', source: 'bot:bbbbbbbbbbbb', msgId: 'd' }, { dir });
@@ -297,9 +297,47 @@ test('failure 6: agents said "done" and it was relayed unchecked; now each item 
   const shot = path.join(dir, 'strip.png'); fs.writeFileSync(shot, 'png');
   assert.equal(cli(['ready', 'R-1', '--evidence', shot], env).ok, true);
   assert.equal(cli(['partial', 'R-2', '--open', 'two portraits still grey'], env).ok, true);
-  assert.match(stopProblem({ source: 'worker-conv', briefed: handed, lastMessage: 'All done!' }, { dir }), /needs one table row per item[\s\S]*Missing rows: R-1, R-2/);
+  // Noam 2026-10-23 (R-353): the per-item table in replies "does not help". Evidence lives in the
+  // ledger; the reply is a few plain sentences with no item ids and no table.
+  const plain = 'The strip now fills the width. Ten of twelve portraits are in colour; two are still grey. Try the strip on the phone.';
+  assert.equal(stopProblem({ source: 'worker-conv', briefed: handed, lastMessage: plain }, { dir }), null);
   const table = 'Finished the work.\n| id | Noam\'s words | what I did | evidence |\n|---|---|---|---|\n| R-1 | strip fills | widened | strip.png |\n| R-2 | portraits in colour | 10 of 12 | two still grey |';
-  assert.equal(stopProblem({ source: 'worker-conv', briefed: handed, lastMessage: table }, { dir }), null);
+  assert.match(stopProblem({ source: 'worker-conv', briefed: handed, lastMessage: table }, { dir }), /without item ids or a table[\s\S]*Details/);
+  assert.match(stopProblem({ source: 'worker-conv', briefed: handed, lastMessage: 'Done: R-1 is ready, R-2 partial.' }, { dir }), /without item ids/);
+  assert.doesNotMatch(briefBlock(briefItems(['R-1'], { dir })), /must contain a table|row per item/);
+  assert.match(briefBlock(briefItems(['R-1'], { dir })), /1-3 plain sentences/);
+});
+
+test('a finished item without evidence in the ledger still blocks a "done" reply', () => {
+  const dir = tmp();
+  captureMessage({ text: 'make the menu sticky', project: 'pf', source: 'bot:eeeeeeeeeeee', msgId: 'e' }, { dir });
+  record([{ e: 'status', id: 'R-1', status: 'done' }], { dir }); // written around the command, no evidence
+  assert.match(stopProblem({ source: 'bot:eeeeeeeeeeee', lastMessage: 'The menu is fixed.' }, { dir }), /no evidence attached[\s\S]*--evidence/);
+  record([{ e: 'status', id: 'R-1', status: 'done', evidence: 'menu-sticky.png shows the menu stays on scroll' }], { dir });
+  assert.equal(stopProblem({ source: 'bot:eeeeeeeeeeee', lastMessage: 'The menu is fixed.' }, { dir }), null);
+});
+
+test('Details under a finished bot reply: his words, what was done, the evidence; only items reported in that turn', () => {
+  const dir = tmp();
+  captureMessage({ text: '(1) sticky menu (2) dark mode', project: 'pf', source: 'bot:ffffffffffff', msgId: 'm1', at: 100 }, { dir });
+  record([{ e: 'status', id: 'R-1', status: 'ready', note: 'menu stays on top', evidence: 'menu.png shows it on scroll', at: 300 }], { dir });
+  record([{ e: 'status', id: 'R-2', status: 'partial', note: 'works on the PC', open: ['dark mode on the phone'], at: 600 }], { dir });
+  const items = [...loadLedger({ dir }).items.values()];
+  const messages = [
+    { id: 'm1', role: 'operator', at: 100, text: 'sticky menu, dark mode' },
+    { id: 'b1', role: 'bot', at: 200, text: 'On it.' },
+    { id: 'b2', role: 'bot', at: 400, text: 'The menu is done and stays on top.' },
+    { id: 'b3', role: 'bot', at: 500, text: 'Still working on dark mode.' },
+    { id: 'b4', role: 'bot', at: 700, text: 'Dark mode is finished on the PC; the phone is still open.' },
+  ];
+  const d = replyDetails(messages, items);
+  assert.deepEqual(Object.keys(d).sort(), ['b2', 'b4']);
+  assert.deepEqual(d.b2, [{ id: 'R-1', words: 'sticky menu', status: 'ready', did: 'menu stays on top', evidence: 'menu.png shows it on scroll' }]);
+  assert.deepEqual(d.b4, [{ id: 'R-2', words: 'dark mode', status: 'partial', did: 'works on the PC. Still open: dark mode on the phone', evidence: '' }]);
+  // No finished-sounding reply after the mark: it goes under the newest reply instead of being lost.
+  const d2 = replyDetails(messages.slice(0, 4), items);
+  assert.deepEqual(Object.keys(d2).sort(), ['b2']);
+  assert.deepEqual(replyDetails([...messages.slice(0, 4), { id: 'b5', role: 'bot', at: 650, text: 'Working.' }], items).b5.map((x) => x.id), ['R-2']);
 });
 
 test('bot chats: his message is captured once, with his real message id, under the bot', () => {

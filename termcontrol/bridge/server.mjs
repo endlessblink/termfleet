@@ -62,7 +62,7 @@ import { createDockIcon } from './dock-icon.mjs';
 import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest, askTitle, dismissAsk } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
-import { itemsView } from './requirements.mjs';
+import { itemsView, replyDetails } from './requirements.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
@@ -675,6 +675,8 @@ const handle = async (req, res) => {
       if (raw?.sessions?.claude?.started) view.asks = asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id));
     }
     if (view) view.requirements = requirementsFor(`bot:${view.bot.id}`);
+    // Noam 2026-10-23: the per-item list sits under a finished reply's Details toggle, not in its text.
+    if (view) { try { view.details = replyDetails(view.messages, itemsView({ source: `bot:${view.bot.id}`, includeClosed: true }).items); } catch { view.details = {}; } }
     return json(res, view ? 200 : 404, view || { error: 'That bot no longer exists.' });
   }
   // A bot's Activity (TF-098): what it and its terminal agents did, who approved it. Record only.

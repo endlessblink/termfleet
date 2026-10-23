@@ -191,7 +191,7 @@ export function loadLedger({ dir = ledgerDir() } = {}) {
     it.updatedAt = e.at;
     if (e.e === 'topic') { it.topics = [...new Set([...(e.replace ? [] : it.topics), ...(e.topics || [])])]; for (const t of e.topics || []) if (!topics.has(t)) topics.set(t, new Set()); }
     else if (e.e === 'assign') { it.assigned.push({ pane: e.pane, delivery: e.delivery || null, at: e.at, by: e.by || null }); if (!['ready', 'done', 'dropped'].includes(it.status)) it.status = 'assigned'; }
-    else if (e.e === 'status') { it.status = e.status; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
+    else if (e.e === 'status') { it.statusAt = e.at; it.status = e.status; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
     else if (e.e === 'lock') { it.locked = true; it.lockedAt = e.at; it.lockedBy = e.by || null; }
     else if (e.e === 'unlock') { it.locked = false; }
     else if (e.e === 'reverify') it.reverified.push({ at: e.at, evidence: e.evidence, forId: e.forId || null });
@@ -351,7 +351,7 @@ const itemLine = (it) => `- ${it.id}${it.topics.length ? ` (${it.topics.join(', 
 
 export function briefBlock({ named, open, locked }, { delivery = null } = {}) {
   const out = [
-    `${BRIEF_HEADER} Work through EVERY item below. Your final reply must contain a table with one row per item: id | Noam's words | what you did | evidence.]`,
+    `${BRIEF_HEADER} Work through EVERY item below. Attach the evidence to each item in the list (below); your final reply is 1-3 plain sentences: what is now true, what is not done yet, what to try. No item ids, no quoted words, no table: the chat shows the per-item list under Details.]`,
     ...named.map(itemLine),
   ];
   if (open.length) out.push('Still open on the same topic (his earlier words, keep them in mind):', ...open.map(itemLine));
@@ -386,7 +386,9 @@ const CLAIMS = /\b(done|fixed|finished|completed?|works now|is live|all set|read
  *  - an item Noam said in this conversation that nobody has taken (new);
  *  - an item this agent was handed that it has not marked;
  *  - an old-style "#n done" over a message whose parts are not all resolved;
- *  - a reply that claims it is finished without a table row per delivered item.
+ *  - a reply that claims it is finished while a delivered item has no evidence in the ledger;
+ *  - a reply that lists item ids or a per-item table (Noam 2026-10-23: "המסך הזה לא כלכך עוזר לי").
+ *    He reads 1-3 plain sentences; the per-item list is under the reply's Details toggle.
  */
 export function stopProblem({ source, briefed = [], lastMessage = '', askMarks = [] }, { dir = ledgerDir() } = {}) {
   const { items } = loadLedger({ dir });
@@ -409,11 +411,37 @@ export function stopProblem({ source, briefed = [], lastMessage = '', askMarks =
   }
   const delivered = [...new Map([...mine, ...handed].map((it) => [it.id, it])).values()].filter((it) => ['done', 'ready', 'partial'].includes(it.status));
   if (delivered.length && CLAIMS.test(lastMessage)) {
-    const rows = String(lastMessage).split('\n').filter((l) => l.includes('|'));
-    const missing = delivered.filter((it) => !rows.some((r) => new RegExp(`\\b${it.id}\\b`).test(r)));
-    if (missing.length) return `Your reply says the work is finished; it needs one table row per item (id | Noam's words | what was done | evidence). Missing rows: ${missing.map((it) => it.id).join(', ')}.`;
+    const bare = delivered.filter((it) => ['done', 'ready'].includes(it.status) && !it.evidence.length);
+    if (bare.length) return `Your reply says the work is finished, but ${bare.map((it) => it.id).join(', ')} ${bare.length === 1 ? 'has' : 'have'} no evidence attached. Mark each again with it: termfleet-asks ready|done <id> --evidence "<screenshot path or test output>".`;
+  }
+  if (delivered.length && (idsIn(lastMessage).length || /^\s*\|.*\|\s*$/m.test(String(lastMessage)))) {
+    return 'Noam reads this reply: write it again in 1-3 plain sentences without item ids or a table (what is now true, what is not done yet, what to try). The per-item list with his words and the evidence already shows under the reply\'s Details toggle.';
   }
   return null;
+}
+
+const REPORTED = new Set(['done', 'ready', 'partial', 'answered', 'waiting', 'dropped']);
+
+/**
+ * The Details toggle under a bot reply (Noam 2026-10-23): the items reported during that turn,
+ * each with his words, what was done and the evidence. An item marked after reply A goes under the
+ * first later reply that says the work is finished, else under the newest reply after the mark.
+ * Returns { [botMessageId]: [{ id, words, status, did, evidence }] }.
+ */
+export function replyDetails(messages, items) {
+  const replies = (messages || []).filter((m) => m.role === 'bot' && m.text && m.id && Number(m.at)).sort((a, b) => a.at - b.at);
+  const out = {};
+  for (const it of items || []) {
+    if (!REPORTED.has(it.status) || !it.statusAt) continue;
+    const after = replies.filter((m) => m.at >= it.statusAt);
+    const home = after.find((m) => CLAIMS.test(m.text)) || after[after.length - 1];
+    if (!home) continue;
+    const last = it.evidence[it.evidence.length - 1];
+    const did = clip([it.note, it.open.length ? `Still open: ${it.open.join('; ')}` : ''].filter(Boolean).join('. '), 300);
+    (out[home.id] ||= []).push({ id: it.id, words: clip(it.words, 300), status: it.locked ? 'locked' : it.status, did, evidence: last ? clip(last.what, 300) : '' });
+  }
+  for (const k of Object.keys(out)) out[k].sort((a, b) => Number(a.id.slice(2)) - Number(b.id.slice(2)));
+  return out;
 }
 
 /** When the gate gives up after repeated blocks it is never silent: it shows in Noam's list. */
