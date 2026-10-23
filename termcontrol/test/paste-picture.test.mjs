@@ -218,3 +218,113 @@ test('desktop engine: an EMPTY paste event still brings a copied picture in (bot
     await page.close();
   } finally { await browser.close(); }
 });
+
+// Noam 2026-10-23: "לא יכול להדביק תמונות בctrl+v". A picture FILE copied in the file
+// manager reaches the page only as its address (text/uri-list, often repeated as
+// text/plain); the desktop engine never hands over the file. The page loads each copied
+// picture through the PC's own server, so it attaches exactly like the paperclip.
+const uriPaste = (page, selector, uris, { plain = true } = {}) => page.evaluate(({ selector, uris, plain }) => {
+  const dt = new DataTransfer();
+  dt.setData('text/uri-list', uris.join('\r\n'));
+  if (plain) dt.setData('text/plain', uris.join('\n'));
+  const event = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+  document.querySelector(selector).dispatchEvent(event);
+  return event.defaultPrevented;
+}, { selector, uris, plain });
+async function servePictures(page, asked) {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  await page.route('**/api/local-image*', (route) => {
+    const url = new URL(route.request().url());
+    asked.push({ path: url.searchParams.get('path'), paste: url.searchParams.get('paste') });
+    return route.fulfill({ status: 200, contentType: 'image/png', body: png });
+  });
+}
+
+test('bot chat: Ctrl+V of copied picture files attaches every one as a tile, and text paste is unchanged', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await botFixture(browser);
+    const asked = [];
+    await servePictures(page, asked);
+    const prevented = await uriPaste(page, '.bot-composer textarea', ['file:///home/noam/Pictures/Screenshot%20one.png', 'file:///media/data/shot-2.JPG']);
+    assert.equal(prevented, true, 'the address is not pasted as text');
+    await page.waitForFunction(() => document.querySelectorAll('.bot-pic').length === 2, null, { timeout: 5000 });
+    assert.deepEqual(asked.map((a) => a.path), ['/home/noam/Pictures/Screenshot one.png', '/media/data/shot-2.JPG']);
+    assert.ok(asked.every((a) => a.paste === '1'));
+    assert.equal(await page.inputValue('.bot-composer textarea'), '');
+    // Each tile can be removed, like the paperclip's.
+    await page.locator('.bot-pic button').first().click();
+    assert.equal(await page.locator('.bot-pic').count(), 1);
+    // A copied file that is not a picture, or ordinary words, stays a normal text paste.
+    assert.equal(await uriPaste(page, '.bot-composer textarea', ['file:///home/noam/notes.txt']), false);
+    assert.equal(await pasteEvent(page, '.bot-composer textarea', { withText: true, withPicture: false }), false);
+    assert.equal(await page.locator('.bot-pic').count(), 1);
+    await page.close();
+  } finally { await browser.close(); }
+});
+
+test('terminal chat: Ctrl+V of a copied picture file attaches it', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await fixture(browser, 'text');
+    await servePictures(page, []);
+    assert.equal(await uriPaste(page, '.composer textarea', ['file:///home/noam/Pictures/shot.png'], { plain: false }), true);
+    await page.locator('.attached .name').filter({ hasText: 'shot.png' }).waitFor({ timeout: 8000 });
+    await page.close();
+  } finally { await browser.close(); }
+});
+
+test('desktop engine: an EMPTY paste event brings in copied picture files and several pictures at once', async () => {
+  const browser = await chromium.launch();
+  try {
+    // The clipboard holds copied files (addresses only).
+    let page = await engineFixture(browser, { chat: 'bot', clipboardTypes: ['text/uri-list'] });
+    await page.evaluate(() => {
+      const read = async () => [{ types: ['text/uri-list', 'text/plain'], getType: async () => new Blob(['file:///home/noam/a.png\r\nfile:///home/noam/b.webp'], { type: 'text/plain' }) }];
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read, writeText: async () => {} } });
+    });
+    await servePictures(page, []);
+    await emptyPaste(page, '.bot-composer textarea');
+    await page.waitForFunction(() => document.querySelectorAll('.bot-pic').length === 2, null, { timeout: 5000 });
+    await page.close();
+    // Two pictures on the clipboard: both arrive.
+    page = await engineFixture(browser, { chat: 'bot', clipboardTypes: ['image/png'] });
+    await page.evaluate(() => {
+      const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+      const item = { types: ['image/png'], getType: async () => new Blob([png], { type: 'image/png' }) };
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read: async () => [item, item], writeText: async () => {} } });
+    });
+    await emptyPaste(page, '.bot-composer textarea');
+    await page.waitForFunction(() => document.querySelectorAll('.bot-pic').length === 2, null, { timeout: 5000 });
+    await page.close();
+  } finally { await browser.close(); }
+});
+
+// The desktop engine says "a file address is on the clipboard" but blanks the address
+// itself (file links are hidden from web pages). The PC's own server then reads the
+// copied files from the system clipboard.
+const hiddenAddressPaste = (page, selector) => page.evaluate((selector) => {
+  const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: { types: ['text/uri-list'], items: [], files: [], getData: () => '' } });
+  document.querySelector(selector).dispatchEvent(event);
+}, selector);
+
+test('desktop engine: copied picture files whose addresses the engine hides still attach, through the PC server', async () => {
+  const browser = await chromium.launch();
+  try {
+    let page = await botFixture(browser);
+    const asked = [];
+    await servePictures(page, asked);
+    await page.route('**/api/clipboard-files', (route) => route.fulfill({ json: { paths: ['/home/noam/Pictures/a.png', '/media/data/b.png'] } }));
+    await hiddenAddressPaste(page, '.bot-composer textarea');
+    await page.waitForFunction(() => document.querySelectorAll('.bot-pic').length === 2, null, { timeout: 5000 });
+    assert.deepEqual(asked.map((a) => a.path), ['/home/noam/Pictures/a.png', '/media/data/b.png']);
+    await page.close();
+    page = await fixture(browser, 'text');
+    await servePictures(page, []);
+    await page.route('**/api/clipboard-files', (route) => route.fulfill({ json: { paths: ['/home/noam/Pictures/shot.png'] } }));
+    await hiddenAddressPaste(page, '.composer textarea');
+    await page.locator('.attached .name').filter({ hasText: 'shot.png' }).waitFor({ timeout: 8000 });
+    await page.close();
+  } finally { await browser.close(); }
+});

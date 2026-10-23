@@ -3332,7 +3332,7 @@ async function openBot(id,{motion=null}={}){
     }
   };
   filesInput.onchange=()=>{addPics([...(filesInput.files || [])]);filesInput.value='';};
-  field.addEventListener('paste',e=>{if(clipboardHasText(e.clipboardData))return;const imgs=[...(e.clipboardData?.items || [])].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);if(imgs.length){e.preventDefault();addPics(imgs);return;}if(pasteEventIsEmpty(e.clipboardData))readClipboardPicture().then(f=>{if(f)addPics([f]);});});
+  field.addEventListener('paste',e=>{const copied=pastedPicturePaths(e.clipboardData);if(copied.length){e.preventDefault();loadCopiedPictures(copied).then(f=>{if(f.length)addPics(f);});return;}if(pasteHidesAddresses(e.clipboardData)){e.preventDefault();copiedPicturesFromPc().then(f=>{if(f.length)addPics(f);});return;}if(clipboardHasText(e.clipboardData))return;const imgs=[...(e.clipboardData?.items || [])].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);if(imgs.length){e.preventDefault();addPics(imgs);return;}if(pasteEventIsEmpty(e.clipboardData))readClipboardPictures().then(f=>{if(f.length)addPics(f);});});
   // Voice typing: same engine as Freelance Desk (Hebrew, English and mixed).
   const micButton=bar.querySelector('.bot-mic');let rec=null,micStream=null;
   micButton.onclick=async()=>{
@@ -3468,16 +3468,49 @@ async function openBot(id,{motion=null}={}){
 // WebKitGTK (the TermFleet desktop app's engine) fires the paste event for a copied
 // picture with NO data in it. Asking the clipboard directly from inside that event works.
 const pasteEventIsEmpty=cd=>!cd || (![...(cd.types || [])].length && !(cd.files && cd.files.length));
-async function readClipboardPicture(){
+// A picture FILE copied in the file manager arrives only as its address (text/uri-list,
+// often repeated as text/plain); the desktop engine never hands over the file itself
+// (Noam 2026-10-23: "לא יכול להדביק תמונות בctrl+v"). Only a list made entirely of
+// file:// addresses of pictures counts; any other words stay a text paste.
+const copiedPicturePaths=text=>{
+  const lines=String(text || '').split(/\r?\n/).map(l=>l.trim()).filter(l=>l && !l.startsWith('#'));
+  const paths=lines.map(l=>{if(!l.startsWith('file://'))return '';try{return decodeURIComponent(new URL(l).pathname);}catch{return '';}});
+  return paths.length && paths.every(p=>/\.(png|jpe?g|webp|gif)$/i.test(p))?paths.slice(0,10):[];
+};
+// The desktop engine says a file address is on the clipboard but blanks it; the PC's
+// own server reads which picture files were copied.
+const pasteHidesAddresses=cd=>{try{const types=[...(cd?.types || [])];return types.includes('text/uri-list') && !cd.getData('text/uri-list') && !cd.getData('text/plain');}catch{return false;}};
+async function copiedPicturesFromPc(){try{const r=await fetch('/api/clipboard-files');if(!r.ok)return [];const {paths=[]}=await r.json();return paths.length?loadCopiedPictures(paths):[];}catch{return [];}}
+const pastedPicturePaths=cd=>{try{return copiedPicturePaths(cd?.getData('text/uri-list')).length?copiedPicturePaths(cd.getData('text/uri-list')):copiedPicturePaths(cd?.getData('text/plain'));}catch{return [];}};
+// The PC's own server reads the copied file (the page cannot open file:// itself).
+async function loadCopiedPictures(paths){
+  const files=[];
+  for(const p of paths){
+    try{const r=await fetch('/api/local-image?paste=1&path='+encodeURIComponent(p));if(!r.ok)continue;const blob=await r.blob();files.push(new File([blob],p.split('/').pop() || 'pasted image',{type:blob.type || 'image/png'}));}catch{}
+  }
+  if(paths.length && !files.length)note(ui('That copied picture could not be read. Use the paperclip instead.','לא ניתן לקרוא את התמונה שהועתקה. השתמשו בכפתור הצירוף.'),true);
+  return files;
+}
+// Every picture on the clipboard, asked directly (the empty-paste-event case).
+async function readClipboardPictures(){
+  const files=[];
   try{
-    if(!navigator.clipboard?.read)return null;
+    if(!navigator.clipboard?.read)return files;
     for(const item of await navigator.clipboard.read()){
-      if(item.types.includes('text/plain'))return null;   // text wins
+      const address=item.types.includes('text/uri-list')?'text/uri-list':item.types.includes('text/plain')?'text/plain':'';
+      if(address){
+        const words=await (await item.getType(address)).text();
+        if(!words && address==='text/uri-list'){files.push(...await copiedPicturesFromPc());continue;}
+        const paths=copiedPicturePaths(words);
+        if(!paths.length)return [];   // text wins
+        files.push(...await loadCopiedPictures(paths));
+        continue;
+      }
       const type=item.types.find(t=>t.startsWith('image/'));
-      if(type){const blob=await item.getType(type);return new File([blob],'pasted image.'+(type.split('/')[1] || 'png'),{type});}
+      if(type){const blob=await item.getType(type);files.push(new File([blob],'pasted image.'+(type.split('/')[1] || 'png'),{type}));}
     }
   }catch{}
-  return null;
+  return files;
 }
 const clipboardHasText=cd=>{try{return Boolean(cd && [...(cd.types || [])].includes('text/plain') && cd.getData('text/plain').length);}catch{return false;}};
 // No picture on the clipboard (a screenshot is in the gallery, not on the clipboard) or
@@ -4883,10 +4916,18 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
   };
 
   // Pasting a screenshot straight into the box.
+  const showPasted = (files) => {
+    if (!files.length) return;
+    showImage(files[0], files[0].name.startsWith('pasted image') ? 'pasted image' : files[0].name).catch(() => { clearImage(); note('That image could not be read.', true); });
+    if (files.length > 1) note(ui('Only the first picture can go to a terminal agent chat.', 'רק התמונה הראשונה יכולה להישלח לצ׳אט של סוכן מסוף.'), true);
+  };
   box.addEventListener('paste', (e) => {
+    const copied = pastedPicturePaths(e.clipboardData);   // picture files copied in the file manager
+    if (copied.length) { e.preventDefault(); loadCopiedPictures(copied).then(showPasted); return; }
+    if (pasteHidesAddresses(e.clipboardData)) { e.preventDefault(); copiedPicturesFromPc().then(showPasted); return; }
     if (clipboardHasText(e.clipboardData)) return;   // text wins; only a picture-only clipboard becomes a picture
     const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
-    if (!item) { if (pasteEventIsEmpty(e.clipboardData)) readClipboardPicture().then((f) => { if (f) showImage(f, 'pasted image').catch(() => { clearImage(); note('That image could not be read.', true); }); }); return; }
+    if (!item) { if (pasteEventIsEmpty(e.clipboardData)) readClipboardPictures().then(showPasted); return; }
     const blob = item.getAsFile();
     if (blob) { e.preventDefault(); showImage(blob, 'pasted image').catch(() => { clearImage(); note('That image could not be read.', true); }); }
   });

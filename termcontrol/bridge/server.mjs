@@ -37,6 +37,7 @@ import { visits } from './visits.mjs';
 import { withSleepingLives, sweepSleep, sleepPane, wakePane, workProcesses, treeRss, readSettings, writeSettings, listSleeping, isSleeping as sleepMarked, setKeepAwake, isKeepAwake, sleepVerdict } from './sleep.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { resolveLocalImage } from './local-image.mjs';
+import { PASTE_ROOTS, readCopiedPictureFiles } from './clipboard-files.mjs';
 import { projectCatalog, resolveProject, projectLaunchArgs, projectLaunchReady, projectLaunchCapabilityPath, PROJECT_PROVIDERS, legacyProjectChoice } from './projects.mjs';
 import { spawnArgs } from './spawn.mjs';
 import { applyEnglishTerms } from './english-terms.mjs';
@@ -1161,11 +1162,21 @@ const handle = async (req, res) => {
   }
 
   // A screenshot path in an agent's message opens as the picture (signed-in only).
+  // A picture file copied on the PC and pasted with Ctrl+V in the PC app may also come
+  // from the data drives, since the person pasting already has it in hand.
   if (url.pathname === '/api/local-image' && req.method === 'GET') {
-    const image = resolveLocalImage(url.searchParams.get('path'));
+    const pastedOnPc = url.searchParams.get('paste') === '1' && isLocalRecoveryRequest(req, url);
+    const image = resolveLocalImage(url.searchParams.get('path'), pastedOnPc ? { roots: PASTE_ROOTS() } : undefined);
     if (!image) return json(res, 404, { error: 'That picture is not available.' });
     res.writeHead(200, { 'content-type': image.type, 'content-length': image.size, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' });
     return fs.createReadStream(image.file).pipe(res);
+  }
+
+  // Ctrl+V of picture files copied on the PC: the engine hides their addresses from the
+  // page, so the page asks here. Only from the PC itself.
+  if (url.pathname === '/api/clipboard-files' && req.method === 'GET') {
+    if (!isLocalRecoveryRequest(req, url)) return json(res, 403, { error: 'Only from the PC app.' });
+    return json(res, 200, { paths: await readCopiedPictureFiles() });
   }
 
   if (url.pathname === '/api/live') {
