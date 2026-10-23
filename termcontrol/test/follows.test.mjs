@@ -51,7 +51,8 @@ test('following the same agent twice wakes once', async () => {
 test('an agent the bot started still wakes it each time it finishes', async () => {
   const { bots, woke } = setup([{ paneId: 'terminal-h', task: 'run tests', at: Date.now() }]);
   const seen = new Map();
-  for (const t of ['working', 'idle', 'working', 'idle']) await turn(bots, seen, 'terminal-h', t);
+  // Each real job: a one-look busy flicker is not a job (bot-events.test: "once per job").
+  for (const t of ['working', 'idle', 'working', 'working', 'idle']) await turn(bots, seen, 'terminal-h', t);
   assert.equal(woke.length, 2);
 });
 

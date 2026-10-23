@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { followActive } from './follows.mjs';
+import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
+import { readFeed } from './feed.mjs';
 
 /**
  * TF-096 part 7: things that wake a bot without Noam writing (Grok Bot's event
@@ -77,7 +79,17 @@ function settleTerminalAsk(bots, botId, cardId, patch, settled = true) {
   } catch { /* best effort: at worst the card stays as it was */ }
 }
 
-export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, head = gitHead }) {
+/** The terminal's own unsaved files (what blocks `termfleet-team close`), [] when it can be closed. */
+export function unsavedFor(pane, helper) {
+  try { return unsavedWork(pane.cwd, Number(helper.at) || 0, undefined, filesTheAgentChanged(pane)); } catch { return []; }
+}
+
+/** Did the terminal get a new message (new work) after this moment? Its own record says. */
+export function newPromptSince(pane, since) {
+  try { return (readFeed(pane, { limit: 20 }).events || []).some((e) => e.kind === 'user' && Date.parse(e.at) > since); } catch { return false; }
+}
+
+export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince }) {
   for (const b of bots.list()) {
     // One entry per terminal: a bot that followed the same agent twice is woken once.
     const live = new Map();
@@ -89,12 +101,30 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
       const before = seen.get(key) || {};
       const state = stateOf(pane);
       const label = h.task || h.paneId;
+      // "Finished, close it" goes out once per job (politic bot 2026-10-23: two finished terminals
+      // that could not be closed woke it ~15 times each, every time every terminal briefly read
+      // as busy at once). A new job is the agent's own status saying "working" on two looks in a
+      // row, a new message in its own record, or the bot handing it more work; a flicker is none.
+      let { finishedAt = 0, blocked = false } = before;
+      const workRun = pane?.turn === 'working' ? (before.workRun || 0) + 1 : 0;
+      if (finishedAt && state !== 'idle' && (workRun >= 2 || (bots.messages?.(b.id) || []).some((m) => m.role === 'handoff' && m.pane === h.paneId && Number(m.at) > finishedAt) || (pane && prompted(pane, finishedAt)))) { finishedAt = 0; blocked = false; }
       if (before.state === 'working' && state === 'idle') {
         // A follow is for one job: this finished turn ends it, so later turns of that agent stay quiet.
-        if (h.followed) bots.endFollow?.(b.id, h.paneId);
-        bots.wake(b.id, h.followed
-          ? `The terminal agent you followed ("${label}") has finished its turn, and the follow has now ended. Read its result (termfleet-team read ${h.paneId}) and, only if it is the job you told Noam you would report on, tell him in plain words. Follow it again only if Noam asked you to keep watching it.`
-          : `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words. Then close it (termfleet-team close ${h.paneId}) unless you are sending it more work now.`);
+        if (h.followed) {
+          bots.endFollow?.(b.id, h.paneId);
+          bots.wake(b.id, `The terminal agent you followed ("${label}") has finished its turn, and the follow has now ended. Read its result (termfleet-team read ${h.paneId}) and, only if it is the job you told Noam you would report on, tell him in plain words. Follow it again only if Noam asked you to keep watching it.`);
+        } else if (!finishedAt) {
+          const files = closeCheck(pane, h);
+          blocked = files.length > 0;
+          finishedAt = now;
+          bots.wake(b.id, `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words. ` + (blocked
+            ? `It cannot be closed yet: it has unsaved work (${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}). Have it commit, or leave it; you will be told once, when it can be closed. Do not try to close it before that.`
+            : `Then close it (termfleet-team close ${h.paneId}) unless you are sending it more work now.`));
+        }
+      } else if (finishedAt && blocked && state === 'idle' && !closeCheck(pane, h).length) {
+        // The one reminder after that: closing has become possible.
+        blocked = false;
+        bots.wake(b.id, `The finished terminal agent for "${label}" has no unsaved work any more, so it can be closed now: termfleet-team close ${h.paneId} (unless you are sending it more work).`);
       }
       // One card per prompt until Noam answers it (Noam 2026-10-22: "להשאיר את אותה אחת עד
       // שאני אענה"). The open card lives in the chat itself, so a restart or a re-detected
@@ -113,7 +143,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
         }
       }
       if (state === 'closed' && away >= 2) seen.delete(key);
-      else seen.set(key, { state, away });
+      else seen.set(key, { state, away, finishedAt, blocked, workRun });
     }
     for (const w of bots.watches(b.id)) {
       if (w.paused) continue; // paused when Noam closed the bot; kept so it can be turned back on

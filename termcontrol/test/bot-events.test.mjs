@@ -151,3 +151,37 @@ test('once the prompt was answered (the terminal moved on), the same question as
   await at('waiting', 'b');
   assert.equal(bots.messages(bot.id).filter((m) => m.role === 'terminal-ask').length, 2);
 });
+
+// politic bot 2026-10-23: two finished terminals that could not be closed (unsaved files in a
+// shared folder) woke the bot "finished, close it" ~15 times each, every time all terminals
+// briefly read as busy at once. Now: once per job, plus one reminder when closing becomes possible.
+test('"finished, close it" is sent once per job, then only once more when closing becomes possible', async () => {
+  const { bots, bot, woke } = setup();
+  const seen = new Map();
+  let unsaved = ['src/strip.ts'];
+  let t = 1000;
+  const tick = (pane) => checkBotEvents({ bots, seen, now: (t += 30_000), panes: [{ id: 'terminal-h', ...pane }], readAsk: async () => null, closeCheck: () => unsaved });
+  await tick({ turn: 'working' }); await tick({ turn: 'working' });
+  await tick({ turn: 'idle' });
+  assert.equal(woke.length, 1);
+  assert.match(woke[0], /has finished[\s\S]*cannot be closed yet: it has unsaved work \(src\/strip\.ts\)[\s\S]*you will be told once, when it can be closed/);
+  // The old storm: the screen flickers busy (or the status reads working for one look) and back, again and again.
+  for (let i = 0; i < 15; i++) { await tick({ turn: 'idle', producing: true }); await tick({ turn: 'idle' }); await tick({ turn: 'working' }); await tick({ turn: 'idle' }); }
+  assert.equal(woke.length, 1, 'no repeats while nothing changed');
+  // The other agent commits: the folder is clean, so one reminder that it can be closed now.
+  unsaved = [];
+  await tick({ turn: 'idle' });
+  assert.equal(woke.length, 2);
+  assert.match(woke[1], /can be closed now: termfleet-team close terminal-h/);
+  await tick({ turn: 'idle' }); await tick({ turn: 'idle', producing: true }); await tick({ turn: 'idle' });
+  assert.equal(woke.length, 2, 'and never again for this job');
+  // A real new job (its own status says working on two looks) finishing is reported again.
+  await tick({ turn: 'working' }); await tick({ turn: 'working' }); await tick({ turn: 'idle' });
+  assert.equal(woke.length, 3);
+  assert.match(woke[2], /has finished\. [\s\S]*Then close it \(termfleet-team close terminal-h\)/);
+  // So is one after the bot hands it more work, even if its status never said working twice.
+  bots.append(bot.id, { role: 'handoff', pane: 'terminal-h', to: 'x', text: 'one more thing' });
+  t = Date.now() + 60_000;
+  await tick({ turn: 'idle', producing: true }); await tick({ turn: 'idle' });
+  assert.equal(woke.length, 4);
+});

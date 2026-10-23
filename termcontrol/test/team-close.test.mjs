@@ -62,7 +62,7 @@ test('bots are told to close a finished terminal they started, in the brief and 
   const brief = fs.readFileSync(new URL('../bridge/bots.mjs', import.meta.url), 'utf8');
   assert.match(brief, /Always close a terminal you started once its work is done/);
   const events = fs.readFileSync(new URL('../bridge/bot-events.mjs', import.meta.url), 'utf8');
-  assert.match(events, /has finished\. Read its result[^`]*Then close it \(termfleet-team close \$\{h\.paneId\}\) unless you are sending it more work now/);
+  assert.match(events, /has finished\. Read its result[\s\S]{0,400}Then close it \(termfleet-team close \$\{h\.paneId\}\) unless you are sending it more work now/);
 });
 
 test('only unsaved work the agent made itself blocks its close, not a stranger\'s files in the same folder', async () => {
