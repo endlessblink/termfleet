@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { multiSelectState, toggleMultiChoice, typeMultiCustomAnswer, submitMultiChoice, sendCustomAnswer } from '../bridge/send.mjs';
+import { multiSelectState, toggleMultiChoice, typeMultiCustomAnswer, submitMultiChoice, sendCustomAnswer, answerMultiChoice } from '../bridge/send.mjs';
 
 // Owner report 2026-10-11: "Can't type custom answers" on a pick-several question. The
 // phone could not answer those at all. This fake follows the installed Claude form's key
@@ -101,8 +101,39 @@ test('Submit refuses an empty answer and a question that is gone', async () => {
 test('the phone offers ticks, an own answer and Submit on pick-several questions', () => {
   const html = fs.readFileSync(path.join(import.meta.dirname, '../app/index.html'), 'utf8');
   const server = fs.readFileSync(path.join(import.meta.dirname, '../bridge/server.mjs'), 'utf8');
-  assert.match(html, /aria-pressed="\$\{\(ask\.checked\|\|\[\]\)\.includes\(option\.key\)\}"/);
-  assert.match(html, /data-submit-multi/);
+  // Ticks are local (no wait per tap) and Submit sends the whole pick (Noam 2026-10-23).
+  assert.match(html, /role="checkbox" aria-checked="\$\{st\.picks\.has\(o\.key\)\}"/);
+  assert.match(html, /choice:'submit-multi',multi:true,choices:\[\.\.\.st\.picks\],customText:words/);
+  assert.match(server, /answerMultiChoice\(fresh, freshAsk, \{ choices: payload\.choices/);
   assert.doesNotMatch(html, /customAnswerSupported!==false && !ask\.multiSelect/);
   assert.doesNotMatch(server, /pane\.provider==='claude' && !ask\.multiSelect/);
+});
+
+// Noam 2026-10-23: "also make sure that multiple selection works better on mobile than it
+// is now". The phone ticks locally (no round trip per tap) and sends the whole pick in one
+// go; the bridge brings the terminal's ticks to exactly that set, types an own answer, submits.
+test('one-go answer: ticks exactly the chosen set, types an own answer, submits once', async () => {
+  const form = fakeForm({ focus: 2 });
+  form.checked.add(3); // ticked earlier at the PC, not chosen on the phone: it gets unticked
+  const result = await answerMultiChoice(pane, question, { choices: ['1', '4'], customText: 'resistance bands' }, form.deps);
+  assert.equal(result.ok, true, result.error);
+  assert.deepEqual(form.submitted, { checked: [1, 4], text: 'resistance bands' });
+  assert.equal(form.keys.filter((k) => k === '\r').length, 1, 'Enter is pressed once, on Submit');
+});
+
+test('one-go answer keeps an own answer already typed at the PC and refuses a different one', async () => {
+  const same = fakeForm(); same.text = 'bands';
+  assert.equal((await answerMultiChoice(pane, question, { choices: [], customText: 'bands' }, same.deps)).ok, true);
+  assert.deepEqual(same.submitted, { checked: [], text: 'bands' });
+  const other = fakeForm(); other.text = 'bands';
+  const refused = await answerMultiChoice(pane, question, { choices: ['1'], customText: 'kettlebell' }, other.deps);
+  assert.equal(refused.notSent, true);
+  assert.equal(other.submitted, null);
+});
+
+test('one-go answer refuses nothing chosen, unknown choices and a question that is gone', async () => {
+  assert.equal((await answerMultiChoice(pane, question, { choices: [] }, fakeForm().deps)).notSent, true);
+  assert.equal((await answerMultiChoice(pane, question, { choices: ['9'] }, fakeForm().deps)).notSent, true);
+  const gone = { ...fakeForm().deps, screen: async () => 'something else' };
+  assert.equal((await answerMultiChoice(pane, question, { choices: ['1'] }, gone)).notSent, true);
 });

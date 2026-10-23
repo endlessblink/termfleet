@@ -14,7 +14,7 @@ import { transcriptPath as codexTranscript } from './adapters/codex.mjs';
 import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } from './auth.mjs';
-import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice } from './send.mjs';
+import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice, answerMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
 import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished } from './idle-cleanup.mjs';
@@ -748,7 +748,7 @@ const handle = async (req, res) => {
       const ask = pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen);
       items.push({
         pane: { id: pane.id, title: pane.title || pane.name || pane.project, project: pane.project, provider: pane.provider, color: pane.color, lastActiveAt: pane.lastActiveAt },
-        ask: ask ? { id: ask.id, kind: ask.kind, title: ask.title, header: ask.header, options: ask.options || [], multiSelect: Boolean(ask.multiSelect), stage: ask.stage || null } : null,
+        ask: ask ? { id: ask.id, kind: ask.kind, title: ask.title, header: ask.header, detail: ask.detail || '', options: ask.options || [], multiSelect: Boolean(ask.multiSelect), stage: ask.stage || null, checked: ask.checked || [], customText: ask.customText || '', questionIndex: ask.questionIndex ?? 0, questionCount: ask.questionCount ?? 1, questions: ask.questions || [], reviewAnswers: ask.reviewAnswers || [], customAnswerSupported: customAnswersVerified && pane.provider==='claude' && ask.kind==='question' && ask.stage!=='review' } : null,
         receipt: ask ? choiceReceipts.get(pane.id, ask.id) : null,
       });
     }
@@ -1007,7 +1007,12 @@ const handle = async (req, res) => {
           if (questionScreen===null || !showsQuestion(questionScreen)) return json(res,409,{error:'This question is not visible in TermFleet right now. Check the terminal before answering.',notSent:true});
           const screenFn = questionScreenFn;
           if (payload.choice === 'submit-multi') {
-            const result = await choiceReceipts.send(fresh.id, freshAsk.id, 'submit', () => submitMultiChoice(fresh, freshAsk, { screen: screenFn }));
+            // The whole pick from a card (chat, Needs you, bot chat): ticks, own answer, Submit, once.
+            const whole = Array.isArray(payload.choices);
+            if (whole && typeof payload.customText === 'string' && !customAnswersVerified && payload.customText.trim()) return json(res,409,{error:'Custom answers are disabled until this terminal form has been verified. Use its choices or the terminal.',notSent:true});
+            const result = await choiceReceipts.send(fresh.id, freshAsk.id, 'submit', () => whole
+              ? answerMultiChoice(fresh, freshAsk, { choices: payload.choices.slice(0, 9), customText: String(payload.customText || '').slice(0, 2000) }, { screen: screenFn })
+              : submitMultiChoice(fresh, freshAsk, { screen: screenFn }));
             return json(res, result.error ? 400 : 200, result);
           }
           const result = typeof payload.answer === 'string'

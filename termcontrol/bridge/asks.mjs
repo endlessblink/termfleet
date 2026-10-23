@@ -77,6 +77,39 @@ export function pendingAsk(pane, {
   return null;
 }
 
+/**
+ * Which question of a several-question prompt the terminal shows now. Its earlier
+ * questions stay on screen above, and the raw screen copy can drop letters, so the
+ * terminal's own tab bar ("☒ Tools  ☐ Days") decides first: the question drawn below the
+ * last bar, else the first tab not yet answered. Otherwise the latest title on screen.
+ */
+export function currentQuestion(questions, screen = '') {
+  const text = String(screen || ''), squash = (value) => String(value || '').replace(/[\u2500-\u257f\s]+/g, '');
+  if (questions.length > 1) {
+    const bar = [...text.matchAll(/^.*[☐☒].*$/gm)].at(-1);
+    if (bar) {
+      const below = squash(text.slice(bar.index));
+      const drawn = questions.find((item) => item.question && below.includes(squash(item.question)));
+      if (drawn) return drawn;
+      const open = [...bar[0].matchAll(/([☐☒])\s*([^☐☒✔→←]+)/g)].find((cell) => cell[1] === '☐')?.[2].trim();
+      const byTab = open && questions.find((item) => { const h = String(item.header || '').trim(); return h && (h === open || open.startsWith(h) || h.startsWith(open)); });
+      if (byTab) return byTab;
+    }
+  }
+  const flat = squash(text);
+  let best = null, at = -1;
+  for (const item of questions) { const i = item.question ? flat.lastIndexOf(squash(item.question)) : -1; if (i > at) { at = i; best = item; } }
+  return best || questions[0];
+}
+
+/** Every question of a several-question prompt, so a card shows the whole prompt up front. */
+export function questionList(questions) {
+  return (questions || []).slice(0, 8).map((q) => ({
+    title: String(q.question || '').slice(0, 400), header: String(q.header || '').slice(0, 40), multiSelect: Boolean(q.multiSelect),
+    options: (q.options || []).slice(0, 9).map((o) => ({ label: String(o.label || '').slice(0, 160), detail: String(o.description || '').slice(0, 600) })),
+  }));
+}
+
 function askId(pane, ask) {
   const source = ask.sourceId ? [ask.sourceId, ask.questionIndex ?? ''] : [pane.updatedAt, pane.turnReason];
   return [pane.provider, pane.sessionId, ...source, ask.kind, ask.title]
@@ -243,12 +276,12 @@ export function questionFromRecords(pane, lines, screen = '') {
         const ask={kind:'question',stage:'review',sourceId:b.id,questionIndex:questions.length,questionCount:questions.length,title:'Review your answers',header:'Review answers',reviewAnswers,options:/You have not answered all questions/.test(screen)?[]:[{key:'submit',label:'Submit answers',detail:'Confirm these answers and let the agent continue'}]};
         return {...ask,id:askId(pane,ask)};
       }
-      const q = questions.find((item) => item.question && String(screen).includes(item.question)) || questions[0];
+      const q = currentQuestion(questions, screen);
       if (!q) continue;
       const options = (q.options || []).slice(0, 4).map((opt, index) => ({
         key: String(index + 1),
-        label: String(opt.label || '').slice(0, 60),
-        detail: String(opt.description || '').slice(0, 140),
+        label: String(opt.label || '').slice(0, 160),
+        detail: String(opt.description || '').slice(0, 600),
       }));
 
       const picked = q.multiSelect ? multiSelectState(screen, options.length) : null;
@@ -257,9 +290,10 @@ export function questionFromRecords(pane, lines, screen = '') {
         sourceId: b.id,
         ...(picked ? { checked: picked.checked, customText: picked.customText } : {}),
         questionIndex: questions.indexOf(q), questionCount: questions.length, multiSelect: Boolean(q.multiSelect),
-        title: String(q.question || 'The agent is asking you something.').slice(0, 200),
+        title: String(q.question || 'The agent is asking you something.').slice(0, 400),
         header: String(q.header || '').slice(0, 40),
         options,
+        ...(questions.length > 1 ? { questions: questionList(questions) } : {}),
       };
       return { ...ask, id: askId(pane, ask) };
     }

@@ -1167,6 +1167,51 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .waiting-what{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .waiting-todo{font-size:13px;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 @media(prefers-reduced-motion:reduce){.waiting-panel>summary::after{transition:none}}
+
+/* One question card (Noam 2026-10-23): every choice whole and tappable, big rows for the phone,
+   a tick you can see at a glance, an own answer, and Submit that stays on screen while you pick. */
+.qform{display:grid;gap:10px;margin-top:4px;min-width:0}
+.qform p{margin:0}
+.q-progress{font-size:13px;color:var(--muted)}
+.q-hint{font-size:14px;color:var(--muted)}
+.q-opts{display:flex;flex-direction:column;gap:8px}
+.q-opt{display:flex;align-items:center;gap:14px;width:100%;min-height:56px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--text);font:inherit;font-size:16px;line-height:1.4;text-align:start;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;box-sizing:border-box}
+.q-opt:active{background:var(--surface-2)}
+@media(hover:hover){.q-opt:hover{border-color:var(--muted)}}
+.q-opt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.q-copy{flex:1;min-width:0;display:grid;gap:4px}
+.q-label{font-weight:500;overflow-wrap:anywhere}
+.q-detail{display:block;font-size:14px;font-weight:400;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+.q-box{flex:none;width:28px;height:28px;color:var(--muted)}
+.q-box .tick{opacity:0}
+.q-opt[aria-checked="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--bg))}
+.q-opt[aria-checked="true"] .q-box{color:var(--accent)}
+.q-opt[aria-checked="true"] .q-box rect{fill:var(--accent)}
+.q-opt[aria-checked="true"] .q-box .tick{opacity:1;stroke:#fff;stroke-width:2.4}
+.q-opt:disabled{opacity:.6;cursor:default}
+.q-own-multi{display:grid;gap:6px;font-size:14px;color:var(--muted)}
+.qform textarea{width:100%;box-sizing:border-box;min-height:52px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--text);font:inherit;font-size:16px;resize:vertical}
+.q-own-open{justify-self:start;min-height:48px;padding:8px 2px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:15px;text-align:start;cursor:pointer}
+.q-own-form{display:grid;gap:8px}
+.q-own-acts{display:flex;flex-wrap:wrap;gap:8px}
+.q-own-acts button{min-height:48px;padding:0 18px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;cursor:pointer}
+.q-own-acts .q-send{background:var(--text);color:var(--bg);border-color:var(--text)}
+.q-own-acts button:disabled{opacity:.5;cursor:default}
+.q-submit-bar{position:sticky;bottom:0;z-index:2;padding:10px 0 calc(6px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--q-bg,var(--bg)) 30%)}
+.inbox-card{--q-bg:var(--surface)}
+.q-submit{width:100%;min-height:54px;border:0;border-radius:14px;background:var(--accent);color:#fff;font:inherit;font-size:16px;font-weight:500;cursor:pointer}
+.q-submit:disabled{background:var(--surface-2);color:var(--muted);cursor:default}
+.q-result:empty{display:none}
+.q-result{font-size:14px;color:var(--text)}
+.q-done .q-opt:not([aria-checked="true"]){opacity:.45}
+.q-all{border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:14px}
+.q-all>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--muted)}
+.q-all ol{margin:0 0 10px;padding-inline-start:20px;display:grid;gap:10px}
+.q-all ul{margin:4px 0 0;padding-inline-start:16px;color:var(--muted)}
+.q-all li[aria-current="step"]>.q-all-title{font-weight:500}
+.q-now{font-size:12px;color:var(--accent)}
+.inbox-detail{margin:-4px 0 12px;color:var(--muted);font-size:14px;line-height:1.5}
+body.chat main .qform .q-opt{border:1px solid var(--line);border-radius:14px;min-height:56px;padding:12px 14px}
 </style>
 </head>
 <body>
@@ -2560,28 +2605,18 @@ async function openInbox(){
   const cards=()=>[...main.querySelectorAll('.inbox-card')];
   const focusCard=i=>{const list=cards();if(!list.length)return;focusIndex=(i+list.length)%list.length;list.forEach((card,n)=>card.classList.toggle('focused',n===focusIndex));list[focusIndex].focus({preventScroll:false});};
   const recommended=ask=>ask.options.find(o=>/recommended|מומלץ/i.test(o.label));
+  // Every question answered in full right here: all choices with descriptions, pick-several
+  // with one Submit, an own answer, several-question prompts (Noam 2026-10-23).
   const cardHtml=item=>{
     const ask=item.ask,name=item.pane.title || item.pane.project;
-    const answerable=ask && !ask.multiSelect && ask.stage!=='review' && ask.options.length;
-    const opts=answerable?ask.options.map((o,i)=>`<button type="button" data-choice="${esc(o.key)}"${recommended(ask)===o?' class="recommended"':''}><span class="inbox-n">${i+1}</span><span dir="auto">${esc(o.label)}</span></button>`).join(''):'';
+    const form=ask && ask.options?.length?qFormHtml(ask):'';
     return `<article class="inbox-card" tabindex="0" data-pane="${esc(item.pane.id)}" data-ask="${esc(ask?.id || '')}">
       <div class="inbox-who"><span class="group-color" style="background:${groupColor(item.pane.color)}"></span><bdi dir="auto">${esc(name)}</bdi><span>${esc(item.pane.provider)}</span></div>
-      <h3 dir="auto">${esc(ask?.title || ui('Waiting for you','ממתין לך'))}</h3>
-      ${opts?`<div class="inbox-opts">${opts}</div>`:`<p class="inbox-note">${ask?.multiSelect?ui('Pick several in the chat.','בחירה מרובה בשיחה.'):ui('Answer this in the chat.','יש לענות בשיחה.')}</p>`}
-      <div class="inbox-foot"><a href="#${esc(item.pane.id)}" class="inbox-open">${ui('Open chat','פתיחת השיחה')}</a><span class="inbox-result" role="status"></span></div></article>`;
+      <h3 dir="auto">${esc(ask?.title || ui('Waiting for you','ממתין לך'))}</h3>${ask?.detail?`<p class="inbox-detail" dir="auto">${esc(ask.detail)}</p>`:''}
+      ${form || `<p class="inbox-note">${ui('Answer this in the chat.','יש לענות בשיחה.')}</p>`}
+      <div class="inbox-foot"><a href="#${esc(item.pane.id)}" class="inbox-open">${ui('Open chat','פתיחת השיחה')}</a></div></article>`;
   };
-  const answer=async(card,choice)=>{
-    if(busy)return;busy=true;
-    const buttons=card.querySelectorAll('[data-choice]'),result=card.querySelector('.inbox-result');
-    buttons.forEach(b=>b.disabled=true);result.textContent=ui('Sending…','שולח…');
-    let response;
-    try{const sent=await fetch('/api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:card.dataset.pane,askId:card.dataset.ask,choice}),signal:AbortSignal.timeout(12000)});response=await sent.json();if(!sent.ok && !response.error)response={error:ui('The terminal did not acknowledge this answer.','המסוף לא אישר את התשובה.')};}
-    catch{response={error:ui('No answer from your machine. Check the chat before answering again.','אין תשובה מהמחשב. בדקו בשיחה לפני מענה נוסף.'),uncertain:true};}
-    busy=false;
-    if(response.error){result.textContent=deliveryError(response.error);buttons.forEach(b=>b.disabled=Boolean(response.uncertain));return;}
-    card.classList.add('answered');result.textContent=ui('Sent ✓','נשלח ✓');
-    setTimeout(()=>{signature='';render();},1500);
-  };
+  let asksById={};
   const render=async()=>{
     if(busy)return;
     let data;
@@ -2590,10 +2625,12 @@ async function openInbox(){
     if(mine!==view)return;
     const items=data.items || [];
     sub.textContent=items.length?ui(`${items.length} waiting`,`${items.length} ממתינים`):'';
-    const html=items.length?items.map(cardHtml).join(''):`<div class="empty">${ui('Nothing is waiting for you.','אין מה לענות כרגע.')}</div>`;
-    if(html===signature)return;signature=html;
-    main.innerHTML=`<div class="inbox">${html}</div>`;
-    cards().forEach((card,i)=>{card.onclick=event=>{if(!event.target.closest('a,button'))focusCard(i);};card.querySelectorAll('[data-choice]').forEach(button=>{button.onclick=()=>answer(card,button.dataset.choice);});});
+    // Redrawn only when the questions change (ticks and words live outside the cards), never under his typing.
+    const sig=JSON.stringify(items.map(item=>[item.pane.id,item.ask]));
+    if(sig===signature || main.querySelector('.qform[data-sending="1"]') || document.activeElement?.matches?.('.qform textarea'))return;signature=sig;
+    asksById=Object.fromEntries(items.filter(item=>item.ask).map(item=>[item.ask.id,item.ask]));
+    main.innerHTML=`<div class="inbox">${items.length?items.map(cardHtml).join(''):`<div class="empty">${ui('Nothing is waiting for you.','אין מה לענות כרגע.')}</div>`}</div>`;
+    cards().forEach((card,i)=>{card.onclick=event=>{if(!event.target.closest('a,button,textarea,summary,label'))focusCard(i);};const ask=asksById[card.dataset.ask];if(ask)wireQForm(card.querySelector('.qform'),card.dataset.pane,ask,()=>{card.classList.add('answered');setTimeout(()=>{signature='';render();},1500);});});
     if(matchMedia('(pointer:fine)').matches)focusCard(Math.min(focusIndex,cards().length-1));
   };
   const onKey=event=>{
@@ -2602,8 +2639,8 @@ async function openInbox(){
     const card=cards()[focusIndex];
     if(event.key==='j'||event.key==='ArrowDown'){event.preventDefault();focusCard(focusIndex+1);}
     else if(event.key==='k'||event.key==='ArrowUp'){event.preventDefault();focusCard(focusIndex-1);}
-    else if(/^[1-9]$/.test(event.key) && card){const button=card.querySelectorAll('[data-choice]')[Number(event.key)-1];if(button && !button.disabled){event.preventDefault();button.click();}}
-    else if(event.key==='Enter' && card){const button=card.querySelector('[data-choice].recommended');if(button && !button.disabled){event.preventDefault();button.click();}}
+    else if(/^[1-9]$/.test(event.key) && card){const button=card.querySelectorAll('[data-q-choice]')[Number(event.key)-1];if(button && !button.disabled){event.preventDefault();button.click();}}
+    else if(event.key==='Enter' && card && !event.target.closest?.('button,summary')){const ask=asksById[card.dataset.ask],button=card.querySelector('[data-q-submit]') || (ask && card.querySelector(`[data-q-choice="${CSS.escape(recommended(ask)?.key || '')}"]`));if(button && !button.disabled){event.preventDefault();button.click();}}
     else if((event.key==='r'||event.key==='R') && card){event.preventDefault();location.hash=card.dataset.pane;}
   };
   document.addEventListener('keydown',onKey);
@@ -3388,11 +3425,12 @@ async function openBot(id,{motion=null}={}){
     }).join('')+(bot.proposedProfile?`<div class="bot-suggest" role="status"><p>${esc(ui(`${bot.name} suggests its job and rules, from your chat:`,`${bot.name} מציע תפקיד וכללים, מתוך השיחה:`))}</p><p dir="auto"><b>${esc(ui('Job: ','תפקיד: '))}</b>${esc(bot.proposedProfile.job)}</p>${bot.proposedProfile.rules?`<p dir="auto" style="white-space:pre-line"><b>${esc(ui('Rules: ','כללים: '))}</b>${esc(bot.proposedProfile.rules)}</p>`:''}<span class="bot-actions"><button type="button" class="primary" data-profile="accept">${ui('Use these','להשתמש בהם')}</button><button type="button" data-profile="edit">${ui('Edit','עריכה')}</button><button type="button" data-profile="dismiss">${ui('Not now','לא עכשיו')}</button></span></div>`:'')+pendingSends.map((e,i)=>`<div class="${e.state==='failed'?'bot-failed-send':'bot-pending'}" data-pending="${i}">${messageHtml('user',e.text,ui('You','אתה'),'',' mine','','',{of:e.replyTo || null})}<div class="pending-delivery" role="status" dir="auto">${e.state==='failed'?`${esc(ui('Not sent','לא נשלח')+(e.error?` (${e.error})`:''))}<button type="button" data-resend>${ui('Resend','שליחה חוזרת')}</button>${e.images?.length || e.answerTo || e.listTo?'':`<button type="button" data-edit>${ui('Edit','עריכה')}</button>`}<button type="button" data-discard>${ui('Discard','ביטול')}</button>`:esc(ui('Sending…','שולח…'))}</div></div>`).join('')+(bot.state==='working'?`<div class="busyline" role="status"><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${esc(bot.activity || ui('Thinking','חושב'))}${stepFor(bot.activitySince)}</span></div>`:'');
     // Never redraw under an open message menu: it would close it (Noam: "keeps closing by itself").
     // ...nor under a card answer being written (it would wipe the words and the phone keyboard).
-    const writing=[...main.querySelectorAll('.bot-q-write:not([hidden]) textarea:not(:disabled)')].some(t=>t.value.trim() || document.activeElement===t) || Boolean(document.activeElement?.closest?.('.bot-list:not(.sent)') && document.activeElement.matches('textarea,input.bot-list-note'));
+    const writing=Boolean(document.activeElement?.matches?.('.qform textarea')) || [...main.querySelectorAll('.bot-q-write:not([hidden]) textarea:not(:disabled)')].some(t=>t.value.trim() || document.activeElement===t) || Boolean(document.activeElement?.closest?.('.bot-list:not(.sent)') && document.activeElement.matches('textarea,input.bot-list-note'));
     if(html!==signature && !main.querySelector('.message-menu[open]') && !writing){signature=html;main.innerHTML=`<div class="bot-feed">${html}</div>`;markMentions(main,(tagBotsCache || []).map(b=>b.name));if(following)main.scrollTop=main.scrollHeight;
       main.querySelectorAll('[data-pending]').forEach(el=>{const entry=pendingSends[Number(el.dataset.pending)];const resend=el.querySelector('[data-resend]'),discard=el.querySelector('[data-discard]');if(resend)resend.onclick=()=>deliver(entry);const edit=el.querySelector('[data-edit]');if(edit)edit.onclick=()=>{pendingSends.splice(pendingSends.indexOf(entry),1);field.value=entry.text+(field.value.trim()?'\n'+field.value:'');grow();bar.setReply(entry.replyTo || null);render();field.focus();};if(discard)discard.onclick=()=>{pendingSends.splice(pendingSends.indexOf(entry),1);if(entry.goAheadTo)goAheadTapped.delete(entry.goAheadTo);render();};});
       const scheduleButton=routinesLine.querySelector('.bot-schedule');if(scheduleButton)scheduleButton.onclick=()=>scheduleDialog('bot:'+id,'');
       main.querySelectorAll('[data-term-choice]').forEach(b=>{b.onclick=()=>answerTermAsk(b);});
+      main.querySelectorAll('.bot-term-ask .qform').forEach(el=>{const m=termAskCards[el.closest('[data-term-ask]')?.dataset.termAsk];if(m)wireQForm(el,m.pane,askFromTermCard(m));});
       main.querySelectorAll('[data-profile]').forEach(b=>{b.onclick=async()=>{
         if(b.dataset.profile==='edit'){botDialog({...current,job:current.proposedProfile.job,rules:current.proposedProfile.rules},null);return;}
         try{const r=await fetch(`/api/bot/profile/${b.dataset.profile}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id}),signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error((await r.json()).error);}catch(e){note(e.message || ui('That did not work.','זה לא הצליח.'),true);}render();};});
@@ -4110,7 +4148,7 @@ async function chat(id,{motion=null,initialFeed=null}={}) {
       if(preservedAsk?.dataset.askId===d.ask.id && !preservedAsk.isConnected)main.append(preservedAsk);
       mountAsk(id,d.ask,answer=>{approvalHistory=rememberApproval(id,answer);lastSignature='';following=true;return render();},d.answerReceipt || (approvalHistory.find(entry=>entry.askId===d.ask.id)?{state:'sent'}:null));
     };
-    const goQuestion=async()=>{if(mode!=='chat')await document.querySelector('[data-mode="chat"]')?.onclick();const question=main.querySelector('.askbox'),pending=document.querySelector('.pending-answer');if(!question){if(pending)pending.textContent=ui('The question changed. Refresh to check.','השאלה השתנתה. רעננו לבדיקה.');return;}if(question.querySelector('.askbody')?.hidden)question.querySelector('.asktoggle')?.click();const target=question.querySelector('[data-choice]:not(:disabled)') || question.querySelector('[data-check-screen]') || question.querySelector('.asktoggle');if(question.querySelector('.receipt'))question.querySelector('.askresult').textContent=ui('Check the terminal before answering again.','בדקו במסוף לפני תשובה נוספת.');if(pending)pending.textContent=ui('Choices shown above','האפשרויות מוצגות למעלה');target?.focus({preventScroll:true});target?.scrollIntoView({block:'center'});};
+    const goQuestion=async()=>{if(mode!=='chat')await document.querySelector('[data-mode="chat"]')?.onclick();const question=main.querySelector('.askbox'),pending=document.querySelector('.pending-answer');if(!question){if(pending)pending.textContent=ui('The question changed. Refresh to check.','השאלה השתנתה. רעננו לבדיקה.');return;}if(question.querySelector('.askbody')?.hidden)question.querySelector('.asktoggle')?.click();const target=question.querySelector('[data-choice]:not(:disabled),[data-q-choice]:not(:disabled)') || question.querySelector('[data-check-screen]') || question.querySelector('.asktoggle');if(question.querySelector('.receipt'))question.querySelector('.askresult').textContent=ui('Check the terminal before answering again.','בדקו במסוף לפני תשובה נוספת.');if(pending)pending.textContent=ui('Choices shown above','האפשרויות מוצגות למעלה');target?.focus({preventScroll:true});target?.scrollIntoView({block:'center'});};
 
 
     if (!document.querySelector('.composer')) {
@@ -4338,8 +4376,18 @@ function mountAsk(id, ask, onDone, receipt=null) {
   const waiting=receipt && receipt.state!=='not-sent';
   const customSupported=ask.customAnswerSupported!==false && ask.stage!=='review';
   const customKey=`tc-answer-draft:${id}:${ask.id}`;
+  // Pick-several: ticked here at once with no wait per tap, sent as one Submit with any own
+  // words (Noam 2026-10-23: "make sure that multiple selection works better on mobile").
+  if(multi && !waiting){
+    box.innerHTML=`<div class="askheading"><h3><bdi dir="auto">${esc(ask.header || ui('Your answer is needed','נדרשת תשובה שלך'))}</bdi></h3><button type="button" class="asktoggle" aria-expanded="true">${ui('Hide','צמצום')}</button></div><div class="askbody"><p dir="auto">${esc(ask.title)}</p>${ask.detail?`<p dir="auto">${esc(ask.detail)}</p>`:''}${qFormHtml(ask)}</div>`;
+    box.classList.remove('has-progress');main.append(box);
+    const body=box.querySelector('.askbody'),toggle=box.querySelector('.asktoggle');
+    toggle.onclick=()=>{body.hidden=!body.hidden;toggle.setAttribute('aria-expanded',String(!body.hidden));toggle.textContent=body.hidden?ui('Show','הצגה'):ui('Hide','צמצום');};
+    wireQForm(box.querySelector('.qform'),id,ask,(label,r)=>onDone?.({askId:ask.id,sourceId:ask.sourceId,answer:label,completeRequest:false,delivery:'terminal',text:r.sentAsMessage?label:`Question answer: ${label}`,at:r.sentAt || Date.now()}));
+    return;
+  }
   box.innerHTML=`<div class="askheading"><h3><bdi dir="auto">${waiting?ui('Answer awaiting confirmation','התשובה ממתינה לאישור'):esc(ask.header || (ask.kind==='permission'?ui('Permission requested','נדרשת הרשאה'):ui('Your answer is needed','נדרשת תשובה שלך')))}</bdi>${ask.questionCount>1 && ask.stage!=='review'?` · <bdi dir="ltr">${ask.questionIndex+1} / ${ask.questionCount}</bdi>`:''}</h3><button type="button" class="asktoggle" aria-expanded="${!waiting}">${waiting?ui('Show','הצגה'):ui('Hide','צמצום')}</button></div>
-    <div class="askbody"${waiting?' hidden':''}><p dir="auto">${esc(ask.title)}</p>${ask.detail?`<p dir="auto">${esc(ask.detail)}</p>`:''}${ask.kind==='permission' && ask.screen?`<details class="message-details"><summary>${ui('Terminal request details','פרטי הבקשה במסוף')}</summary><pre class="askscreen">${esc(ask.screen)}</pre></details>`:''}
+    <div class="askbody"${waiting?' hidden':''}><p dir="auto">${esc(ask.title)}</p>${ask.detail?`<p dir="auto">${esc(ask.detail)}</p>`:''}${qAllHtml(ask)}${ask.kind==='permission' && ask.screen?`<details class="message-details"><summary>${ui('Terminal request details','פרטי הבקשה במסוף')}</summary><pre class="askscreen">${esc(ask.screen)}</pre></details>`:''}
     ${ask.stage==='review'?`${ask.reviewAnswers?.length?`<dl class="review-answers">${ask.reviewAnswers.map(item=>`<div><dt dir="auto">${esc(item.question)}</dt><dd dir="auto">${esc(item.answer)}</dd></div>`).join('')}</dl>`:''}<details class="message-details"><summary>${ui('Review in the terminal','הסיכום במסוף')}</summary><pre class="askscreen">${esc(ask.screen||'')}</pre></details>`:''}
     ${waiting?`<div class="receipt"><p role="status">${ui('An answer was sent or is unconfirmed. Check the terminal before answering again.','תשובה נשלחה או שמסירתה לא אושרה. בדקו במסוף לפני תשובה נוספת.')}</p><button type="button" data-check-screen>${ui('Check terminal','בדיקה במסוף')}</button></div>`:`
     <div class="opts">${ask.options.map(option=>`<button type="button" dir="${dirOf(option.label)}" data-choice="${esc(option.key)}"${multi?` aria-pressed="${(ask.checked||[]).includes(option.key)}"`:''}><span class="choice-copy"><span dir="auto">${esc(option.label)}</span>${option.detail?`<span class="detail" dir="auto">${esc(option.detail)}</span>`:''}</span>${multi?'<svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="13" height="13" rx="3"/><path class="tick" d="m6.5 10.2 2.4 2.4 4.6-5.2"/></svg>':'<svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m8 5 5 5-5 5"/></svg>'}</button>`).join('')}</div>
@@ -4396,12 +4444,74 @@ function mountAsk(id, ask, onDone, receipt=null) {
   if(form)form.onsubmit=event=>{event.preventDefault();if(field.value.trim())submit(null,field.value);};
 }
 
+// One question card for every place a terminal's question is answered: the chat, Needs you
+// and a bot's chat (Noam 2026-10-23: "I need to be able to see and answer this in the agent
+// view not only the terminal" ... "it directs me to the terminal or gives only one option").
+// Every choice with its description; pick-several ticks here with no wait per tap and goes in
+// one Submit; an own answer ("Other"); every question of a several-question prompt listed.
+// The state lives outside the card, so a redraw every few seconds keeps the ticks and words.
+const qState={};
+const qOf=key=>qState[key]||(qState[key]={picks:null,own:'',done:'',open:false});
+const qTick='<svg class="q-box" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="2.5" width="19" height="19" rx="5"/><path class="tick" d="m7 12.3 3.3 3.3 6.7-7.4"/></svg>';
+function qAllHtml(ask){
+  const n=ask.questionCount||1,at=ask.questionIndex||0;
+  if(n<2 || !ask.questions?.length || ask.stage==='review')return '';
+  return `<details class="q-all"><summary>${ui(`See all ${n} questions`,`כל ${n} השאלות`)}</summary><ol>${ask.questions.map((q,k)=>`<li${k===at?' aria-current="step"':''}><span class="q-all-title" dir="auto">${esc(q.title)}</span>${k===at?` <span class="q-now">${ui('now','עכשיו')}</span>`:k<at?` <span class="q-now">${ui('answered','נענתה')}</span>`:''}${q.options?.length?`<ul>${q.options.map(o=>`<li dir="auto">${esc(o.label)}${o.detail?`<span class="q-detail" dir="auto">${esc(o.detail)}</span>`:''}</li>`).join('')}</ul>`:''}</li>`).join('')}</ol></details>`;
+}
+function qFormHtml(ask,{key=ask.id}={}){
+  const st=qOf(key),multi=Boolean(ask.multiSelect) && ask.stage!=='review';
+  if(multi && !st.picks)st.picks=new Set(ask.checked||[]);
+  const n=ask.questionCount||1,at=ask.questionIndex||0,off=st.done?' disabled':'';
+  const opts=(ask.options||[]).map(o=>`<button type="button" class="q-opt" data-q-choice="${esc(o.key)}"${multi?` role="checkbox" aria-checked="${st.picks.has(o.key)}"`:''}${off}><span class="q-copy"><span class="q-label" dir="auto">${esc(o.label)}</span>${o.detail?`<span class="q-detail" dir="auto">${esc(o.detail)}</span>`:''}</span>${multi?qTick:''}</button>`).join('');
+  const canOwn=ask.kind==='question' && ask.stage!=='review' && ask.customAnswerSupported!==false;
+  const own=!canOwn?'':multi
+    ?`<label class="q-own-multi"><span>${ui('Other: type your own (counts as a pick)','אחר: כתבו בעצמכם (נחשב לבחירה)')}</span><textarea rows="2" maxlength="2000" dir="auto" data-q-own${off}>${esc(st.own)}</textarea></label>`
+    :`<button type="button" class="q-own-open" data-q-own-open${off}${st.open?' hidden':''}>${ui('Other: type my own answer','אחר: לכתוב תשובה משלי')}</button><form class="q-own-form"${st.open && !st.done?'':' hidden'}><textarea rows="3" maxlength="8000" dir="auto" data-q-own aria-label="${ui('Your own answer','התשובה שלך')}">${esc(st.own)}</textarea><div class="q-own-acts"><button type="submit" class="q-send"${st.own.trim()?'':' disabled'}>${ui('Send answer','שליחת תשובה')}</button><button type="button" data-q-own-close>${ui('Back to choices','חזרה לאפשרויות')}</button></div></form>`;
+  return `<div class="qform${multi?' q-multi':''}${st.done?' q-done':''}" data-q-key="${esc(key)}" data-q-ask="${esc(ask.id)}">${n>1 && ask.stage!=='review'?`<p class="q-progress">${ui(`Question ${at+1} of ${n}`,`שאלה ${at+1} מתוך ${n}`)}</p>`:''}${qAllHtml(ask)}${ask.stage==='review' && ask.reviewAnswers?.length?`<dl class="review-answers">${ask.reviewAnswers.map(item=>`<div><dt dir="auto">${esc(item.question)}</dt><dd dir="auto">${esc(item.answer)}</dd></div>`).join('')}</dl>`:''}${multi?`<p class="q-hint" dir="auto">${ui('Pick all that apply, then Submit.','בחרו את כל המתאימות ואז שלחו.')}</p>`:''}<div class="q-opts" role="group">${opts}</div>${own}${multi?`<div class="q-submit-bar"><button type="button" class="q-submit" data-q-submit${off}></button></div>`:''}<p class="askresult q-result" role="status" aria-live="polite">${esc(st.done)}</p></div>`;
+}
+// Sends exactly what the terminal itself would get, once: one choice, the whole pick, or own words.
+function wireQForm(el,pane,ask,onSent){
+  if(!el || el.dataset.wired)return;el.dataset.wired='1';
+  const st=qOf(el.dataset.qKey),multi=el.classList.contains('q-multi'),out=el.querySelector('.q-result');
+  const submit=el.querySelector('[data-q-submit]'),own=el.querySelector('[data-q-own]'),openOwn=el.querySelector('[data-q-own-open]'),ownForm=el.querySelector('.q-own-form');
+  const count=()=>(st.picks?.size||0)+(st.own.trim()?1:0);
+  const refresh=()=>{
+    if(submit){const c=count();submit.disabled=!c || Boolean(st.done) || el.dataset.sending==='1';submit.textContent=c?ui(c===1?'Submit 1 choice':`Submit ${c} choices`,c===1?'שליחת בחירה אחת':`שליחת ${c} בחירות`):ui('Tick at least one to submit','סמנו לפחות אחת כדי לשלוח');}
+    const send=el.querySelector('.q-send');if(send)send.disabled=!st.own.trim() || el.dataset.sending==='1';
+  };
+  const lock=on=>el.querySelectorAll('button,textarea').forEach(b=>{if(!b.matches('[data-q-own-close]'))b.disabled=on;});
+  const deliver=async(body,label)=>{
+    if(el.dataset.sending==='1' || st.done)return;el.dataset.sending='1';lock(true);
+    out.textContent=body.answer || body.customText?ui('Typing your answer into the terminal… this takes a few seconds.','מקליד את התשובה שלך במסוף… זה לוקח כמה שניות.'):ui('Sending to the terminal…','שולח למסוף…');
+    let r;
+    try{const res=await fetch('/api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane,askId:ask.id,...body}),signal:AbortSignal.timeout(body.answer || body.choices?45000:12000)});r=await res.json();if(!res.ok && !r.error)r={error:ui('The terminal did not acknowledge this answer.','המסוף לא אישר את התשובה.')};}
+    catch{r={error:ui('No reply from the terminal yet. Check it before answering again: the same answer is never typed twice.','עדיין אין תשובה מהמסוף. בדקו בו לפני תשובה נוספת: אותה תשובה לא תוקלד פעמיים.'),uncertain:true};}
+    el.dataset.sending='';
+    if(r.error){out.textContent=deliveryError(r.error);lock(Boolean(r.uncertain));if(!r.uncertain)refresh();return;}
+    st.done=r.sentAsMessage?ui('That question had already closed, so your answer went to the terminal as a normal message.','השאלה כבר נסגרה, אז התשובה נשלחה למסוף כהודעה רגילה.'):ui(`Answered: ${label}`,`נענה: ${label}`);
+    out.textContent=st.done;el.classList.add('q-done');lock(true);onSent?.(label,r);
+  };
+  el.querySelectorAll('[data-q-choice]').forEach(b=>{b.onclick=()=>{
+    if(!multi)return deliver({choice:b.dataset.qChoice},b.querySelector('.q-label').textContent);
+    const k=b.dataset.qChoice;st.picks.has(k)?st.picks.delete(k):st.picks.add(k);b.setAttribute('aria-checked',String(st.picks.has(k)));out.textContent='';refresh();
+  };});
+  if(own)own.oninput=()=>{st.own=own.value;refresh();};
+  if(submit)submit.onclick=()=>{const words=st.own.trim(),labels=[...(ask.options||[]).filter(o=>st.picks.has(o.key)).map(o=>o.label),...(words?[words]:[])];deliver({choice:'submit-multi',multi:true,choices:[...st.picks],customText:words},labels.join(', '));};
+  if(openOwn)openOwn.onclick=()=>{st.open=true;ownForm.hidden=false;openOwn.hidden=true;own.focus();};
+  el.querySelector('[data-q-own-close]')?.addEventListener('click',()=>{st.open=false;ownForm.hidden=true;openOwn.hidden=false;openOwn.focus();});
+  if(ownForm)ownForm.onsubmit=event=>{event.preventDefault();const words=own.value.trim();if(words)deliver({answer:own.value},words);};
+  refresh();
+}
+const askFromTermCard=m=>({id:m.askId,kind:m.kind,title:m.text,header:m.header,options:m.options||[],multiSelect:Boolean(m.multiSelect),stage:m.stage||null,questionIndex:m.questionIndex,questionCount:m.questionCount,questions:m.questions});
+
 // A prompt from a terminal a bot runs, posted in the bot's chat (Noam 2026-10-20): the
 // terminal's own choices, and a tap goes to that terminal as if pressed at the PC.
 // The bridge re-checks that the same prompt is still open before it sends anything.
 const termAskDone={};
+const termAskCards={};
 function termAskHtml(m){
-  const done=termAskDone[m.id],options=m.options || [];
+  const done=termAskDone[m.id],options=m.options || [];termAskCards[m.id]=m;
+  if(m.kind==='question' && options.length)return `<div class="bot-term-ask" data-term-ask="${esc(m.id)}" data-pane="${esc(m.pane)}" data-ask="${esc(m.askId)}" role="group" aria-label="${esc(ui('A terminal is waiting for you','מסוף ממתין לך'))}"><p class="term-ask-from" dir="auto">${esc(ui(`Terminal "${m.label || 'agent'}" is asking you`,`המסוף "${m.label || 'סוכן'}" שואל אותך`))}</p><p class="q-title" dir="auto"><b>${esc(m.text)}</b></p>${m.detail?`<p dir="auto">${esc(m.detail)}</p>`:''}${qFormHtml(askFromTermCard(m),{key:'card:'+m.id})}</div>`;
   return `<div class="bot-term-ask" data-term-ask="${esc(m.id)}" data-pane="${esc(m.pane)}" data-ask="${esc(m.askId)}" role="group" aria-label="${esc(ui('A terminal is waiting for you','מסוף ממתין לך'))}"><p class="term-ask-from" dir="auto">${esc(ui(`Terminal "${m.label || 'agent'}" is waiting for you`,`המסוף "${m.label || 'סוכן'}" ממתין לך`))}</p><p dir="auto"><b>${esc(m.text)}</b></p>${m.detail?`<p dir="auto">${esc(m.detail)}</p>`:''}${options.length?`<div class="term-ask-opts">${options.map(o=>`<button type="button" data-term-choice="${esc(o.key)}" dir="auto"${done?' disabled':''}>${esc(o.label)}</button>`).join('')}</div>`:`<a href="#${esc(m.pane)}">${ui('Open the terminal to answer','לפתוח את המסוף כדי לענות')}</a>`}<p class="askresult" role="status" aria-live="polite">${esc(done || '')}</p></div>`;
 }
 async function answerTermAsk(button){

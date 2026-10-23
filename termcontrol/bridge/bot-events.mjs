@@ -52,7 +52,10 @@ export function terminalAskMessage(paneId, label, ask) {
     role: 'terminal-ask', pane: paneId, label, askId: ask.id, kind: ask.kind,
     text: String(ask.title || 'The terminal agent is asking you something.').slice(0, 300),
     ...(ask.detail ? { detail: String(ask.detail).slice(0, 400) } : {}),
-    options: ask.multiSelect ? [] : (ask.options || []).map((o) => ({ key: o.key, label: o.label })),
+    // Every choice with its description, pick-several too (Noam 2026-10-23: "I need to be able
+    // to see and answer this in the agent view not only the terminal").
+    options: (ask.options || []).map((o) => ({ key: o.key, label: o.label, ...(o.detail ? { detail: o.detail } : {}) })),
+    ...(ask.kind === 'question' ? { multiSelect: Boolean(ask.multiSelect), questionIndex: ask.questionIndex ?? 0, questionCount: ask.questionCount ?? 1, ...(ask.header ? { header: ask.header } : {}), ...(ask.questions ? { questions: ask.questions } : {}), ...(ask.stage ? { stage: ask.stage } : {}) } : {}),
   };
 }
 

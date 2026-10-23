@@ -80,16 +80,19 @@ export function pendingQuestionFromRecords(records, { screen = '' } = {}) {
       args = JSON.parse(literal);
     } catch { continue; }
     const questions = args.questions || [];
-    const q = questions.find((item) => item.question && String(screen).includes(item.question)) || questions[0];
+    // The latest question drawn on screen is the open one; earlier ones stay above it.
+    const flat = String(screen).replace(/\s+/g, ''), seen = (item) => item.question ? flat.lastIndexOf(String(item.question).replace(/\s+/g, '')) : -1;
+    const q = questions.reduce((best, item) => (seen(item) > seen(best) ? item : best), questions[0]);
     if (!q) continue;
     const options = (q.options || []).slice(0, 9).map((option, index) => ({
-      key: String(index + 1), label: String(option.label || '').slice(0, 60),
-      detail: String(option.description || '').slice(0, 140),
+      key: String(index + 1), label: String(option.label || '').slice(0, 160),
+      detail: String(option.description || '').slice(0, 600),
     }));
     return {
-      kind: 'question', title: String(q.question || 'The agent is asking you something.').slice(0, 200),
+      kind: 'question', title: String(q.question || 'The agent is asking you something.').slice(0, 400),
       header: String(q.header || '').slice(0, 40), options,
       questionIndex: questions.indexOf(q), questionCount: questions.length,
+      ...(questions.length > 1 ? { questions: questions.slice(0, 8).map((item) => ({ title: String(item.question || '').slice(0, 400), header: String(item.header || '').slice(0, 40), multiSelect: false, options: (item.options || []).slice(0, 9).map((o) => ({ label: String(o.label || '').slice(0, 160), detail: String(o.description || '').slice(0, 600) })) })) } : {}),
       sourceId: payload.call_id || records[i]?.timestamp || '',
     };
   }

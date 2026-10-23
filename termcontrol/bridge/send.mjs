@@ -497,6 +497,38 @@ export async function submitMultiChoice(pane, question, deps) {
 }
 
 /**
+ * The whole pick-several answer in one go (Noam 2026-10-23: multi-select must work
+ * better on the phone). The phone ticks locally; here the terminal's ticks are brought
+ * to exactly that set one confirmed key at a time, an own answer is typed if given, and
+ * Submit is pressed once. Any unconfirmed step stops before Submit.
+ */
+export async function answerMultiChoice(pane, question, { choices = [], customText = '' } = {}, deps) {
+  const d = multiDeps(pane, deps);
+  const count = question.options.length;
+  const want = [...new Set((Array.isArray(choices) ? choices : []).map(String))];
+  if (want.some((key) => !/^[1-9]$/.test(key) || Number(key) > count)) return { error: 'Unknown choice.', notSent: true };
+  const own = String(customText ?? '').replace(/\r/g, '').trim();
+  if (!want.length && !own) return { error: 'Tick at least one choice first.', notSent: true };
+  const sameQuestion = (value) => String(value).replace(/\s+/g, ' ').includes(question.title.replace(/\s+/g, ' '));
+  const read = async () => { const value = await d.screen(); return sameQuestion(value) ? multiSelectState(value, count) : null; };
+  let state = await read();
+  if (!state) return { error: 'That question is no longer on screen. Refresh before answering.', notSent: true };
+  if (own && state.customText && state.customText.replace(/\s+/g, ' ') !== own.replace(/\s+/g, ' ')) return { error: 'The typing field in the terminal already has different text. Edit it there.', notSent: true };
+  for (let key = 1; key <= count; key++) {
+    if (state.checked.includes(String(key)) === want.includes(String(key))) continue;
+    const step = await toggleMultiChoice(pane, question, String(key), d);
+    if (!step.ok) return { ...step, error: `${step.error} Nothing was submitted.` };
+    state = await read();
+    if (!state) return { error: 'That question is no longer on screen. Nothing was submitted.', uncertain: true };
+  }
+  if (own && !state.customText) {
+    const typed = await typeMultiCustomAnswer(pane, question, own, d);
+    if (!typed.ok) return { ...typed, error: `${typed.error} Nothing was submitted.` };
+  }
+  return submitMultiChoice(pane, question, d);
+}
+
+/**
  * The keys a terminal needs that a phone keyboard does not offer. Sent as
  * themselves, immediately, without the idle checks that guard a message —
  * stopping a runaway agent must always be possible.
