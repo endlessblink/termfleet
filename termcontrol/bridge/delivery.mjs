@@ -136,7 +136,8 @@ export function trustedFolderRoots({ home = os.homedir(), config = null, min = 3
   const trusted = Object.entries(data?.projects || {}).filter(([, v]) => v?.hasTrustDialogAccepted).map(([k]) => path.resolve(k));
   const counts = new Map();
   for (const t of trusted) {
-    for (let d = path.dirname(t); d !== path.dirname(d); d = path.dirname(d)) {
+    // Only the folder a trusted project sits in, and the one above that: a whole drive never counts.
+    for (let d = path.dirname(t), up = 0; d !== path.dirname(d) && up < 2; d = path.dirname(d), up++) {
       if (d === home || d.split('/').filter(Boolean).length < 3) break;
       counts.set(d, (counts.get(d) || 0) + 1);
     }
