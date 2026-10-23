@@ -856,7 +856,7 @@ export class Bots {
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */
-  send(id, text, { images = [], owner = false, answerTo = null, replyTo = null, listTo = null, choices = null } = {}) {
+  send(id, text, { images = [], files = [], owner = false, answerTo = null, replyTo = null, listTo = null, choices = null } = {}) {
     const bot = this.read(id);
     if (!bot) return { error: 'That bot no longer exists.' };
     // Pictures come from the app's own upload folder only (never any path on the PC).
@@ -864,7 +864,11 @@ export class Bots {
     const pictures = (Array.isArray(images) ? images : []).slice(0, 10).map((p) => path.resolve(String(p)))
       .filter((p) => p.startsWith(dir + path.sep) && fs.existsSync(p));
     if ((images || []).length && pictures.length !== Math.min(images.length, 10)) return { error: 'A picture could not be found. Attach it again.' };
-    const body = clean(text, LIMITS.message) || (pictures.length ? (pictures.length === 1 ? 'Here is a picture.' : 'Here are some pictures.') : '');
+    // Other files (dragged or attached): same folder rule, kept under their own names.
+    const attached = (Array.isArray(files) ? files : []).slice(0, 10).map((p) => path.resolve(String(p)))
+      .filter((p) => p.startsWith(dir + path.sep) && fs.existsSync(p));
+    if ((files || []).length && attached.length !== Math.min(files.length, 10)) return { error: 'A file could not be found. Attach it again.' };
+    const body = clean(text, LIMITS.message) || (pictures.length ? (pictures.length === 1 ? 'Here is a picture.' : 'Here are some pictures.') : '') || (attached.length ? (attached.length === 1 ? 'Here is a file.' : 'Here are some files.') : '');
     if (!body) return { error: 'Nothing to send.' };
     // An answer typed or tapped on one of the bot's question cards stays tied to that card
     // (Noam 2026-10-21: "זה לא מאפשר לי לכתוב את התשובה שלי"), even when it is no longer the newest.
@@ -895,7 +899,7 @@ export class Bots {
       note: clean(String(choices.note || ''), 1000),
     } : null;
     const said0 = listChoices ? checklistAnswer(list.checklist, listChoices) : body;
-    const msg = this.append(id, { role: 'operator', text: said0, ...(pictures.length ? { images: pictures.length } : {}), ...(asked ? { answerTo: asked.id } : {}), ...(replied ? { replyTo: replied } : {}), ...(list ? { listTo: list.id } : {}), ...(listChoices ? { listChoices } : {}) });
+    const msg = this.append(id, { role: 'operator', text: said0, ...(pictures.length ? { images: pictures.length } : {}), ...(attached.length ? { files: attached.map((p) => path.basename(p)) } : {}), ...(asked ? { answerTo: asked.id } : {}), ...(replied ? { replyTo: replied } : {}), ...(list ? { listTo: list.id } : {}), ...(listChoices ? { listChoices } : {}) });
     // Typed by Noam in the app (not a routine, an event or another agent): keep a signed
     // copy so the bot can pass his exact words on and the receiver can check them.
     if (owner) { try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text: said0 }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ } }
@@ -905,6 +909,7 @@ export class Bots {
     const quoted = replied ? `[Noam is replying to ${replied.role === 'bot' ? 'your' : 'his own'} earlier message in this chat (message ${replied.id}), quoted as context only, not as a new request or approval:\n"${replied.text}"]\n` : '';
     const answered = quoted + (asked ? `[Noam's answer to your question "${asked.question.text}"]\n${said}` : said);
     let forBrain = pictures.length ? `${answered}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : answered;
+    if (attached.length) forBrain += `\n\n[Noam attached ${attached.length} file${attached.length === 1 ? '' : 's'}. Read each one before answering (open the file): ${attached.join(' , ')}]`;
     forBrain = this.withTags(id, bot, msg, body, forBrain, { owner, pictures });
     const queue = this.queues.get(id) || [];
     queue.push(forBrain);

@@ -7,6 +7,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { markStartupRestoring } from "./lib/startupScreen";
 import { installRendererStallTelemetry } from "./lib/rendererStallTelemetry";
+import { installFileDropGuard } from "./lib/fileDropGuard";
 import "./styles/global.css";
 
 const rootElement = document.getElementById("root")!;
@@ -27,6 +28,7 @@ if (import.meta.env.DEV && window.location.hash === "#ui-gallery") {
 } else {
   markStartupRestoring();
   installRendererStallTelemetry();
+  installFileDropGuard();
 
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>

@@ -91,3 +91,24 @@ export function saveImage({ type, name, body }) {
   fs.writeFileSync(file, body, { mode: 0o600 });
   return { ok: true, path: file, bytes: body.length };
 }
+
+/**
+ * Any file dragged onto a bot chat (Noam 2026-10-23: "want to drag these here"), kept
+ * under its own name in a fresh folder inside the upload folder, so the bot reads
+ * "report.md", not a stamp.
+ */
+export const fileName = (name) => {
+  const base = path.basename(String(name || '').replace(/\\/g, '/')).replace(/[\0-\x1f\x7f/]/g, '').trim();
+  return (!base || base === '.' || base === '..') ? 'file' : base.slice(-120);
+};
+
+export function saveFile({ name, body }) {
+  if (!body?.length) return { error: 'That file was empty.' };
+  if (body.length > MAX_BYTES) return { error: 'That file is over 25 MB.' };
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const folder = path.join(DIR, 'files', `${stamp}-${crypto.randomBytes(3).toString('hex')}`);
+  fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
+  const file = path.join(folder, fileName(name));
+  fs.writeFileSync(file, body, { mode: 0o600 });
+  return { ok: true, path: file, bytes: body.length };
+}

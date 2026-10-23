@@ -328,3 +328,50 @@ test('desktop engine: copied picture files whose addresses the engine hides stil
     await page.close();
   } finally { await browser.close(); }
 });
+
+// Noam 2026-10-23: "גם הדבקת צילום מסך עוד פעם לא עובדת". KDE's screenshot tool, with
+// auto-save on, puts the picture AND the saved file's address on the clipboard. The PC
+// engine then fires a paste with a blank address and refuses to hand over the picture
+// itself (NotAllowedError) but does give the address; the picture must still attach.
+test('bot and terminal chats: a saved screenshot (picture + its address, picture refused) still attaches', async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const where of ['bot', 'terminal']) {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+      await page.addInitScript(() => {
+        const address = 'file:///home/noam/Pictures/Screenshots/Screenshot_20261023_164500.png';
+        const item = { types: ['text/plain', 'text/uri-list', 'image/png'], getType: async (t) => { if (t === 'image/png') throw Object.assign(new Error('not allowed'), { name: 'NotAllowedError' }); return new Blob([address], { type: t }); } };
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read: async () => [item], writeText: async () => {} } });
+      });
+      const asked = [];
+      const bot = { id: 'abcdef012345', name: 'Quill', job: '', provider: 'claude', fallback: 'codex', active: 'claude', state: 'idle', health: { level: 'ok', text: 'Ready' }, messages: [], helpers: [], memoryPending: 0, notify: true, pinned: false, hidden: false };
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6lLQAAAAASUVORK5CYII=', 'base64');
+      await page.route('**/*', async (route) => {
+        const url = new URL(route.request().url());
+        if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
+        if (url.pathname === '/api/local-image') { asked.push(url.searchParams.get('path')); return route.fulfill({ contentType: 'image/png', body: png }); }
+        if (url.pathname === '/api/clipboard-files') return route.fulfill({ json: { paths: [] } });   // the PC reads nothing
+        if (url.pathname === '/api/panes') return route.fulfill({ json: { daemon: true, panes: [pane('a')], view: 'manual' } });
+        if (url.pathname === '/api/feed') return route.fulfill({ json: { pane: pane('a'), events: [], reachedStart: true, producing: false } });
+        if (url.pathname === '/api/bots') return route.fulfill({ json: { bots: where === 'bot' ? [bot] : [], providers: ['claude', 'codex'], models: {} } });
+        if (url.pathname === '/api/bot') return route.fulfill({ json: { bot, messages: [], asks: null } });
+        return route.fulfill({ json: {} });
+      });
+      if (where === 'bot') await page.goto('https://termcontrol.test/#bot:abcdef012345');
+      else { await page.goto('https://termcontrol.test/'); await page.locator('.pane[data-id="a"]').click(); }
+      const box = where === 'bot' ? '.bot-composer textarea' : '.composer textarea';
+      await page.locator(box).waitFor({ timeout: 10000 });
+      // What the engine fires: the address type is listed, its value blank, no files.
+      const prevented = await page.evaluate((sel) => {
+        const cd = { types: ['text/uri-list'], files: [], items: [], getData: () => '' };
+        const e = new Event('paste', { bubbles: true, cancelable: true }); Object.defineProperty(e, 'clipboardData', { value: cd });
+        document.querySelector(sel).dispatchEvent(e); return e.defaultPrevented;
+      }, box);
+      assert.equal(prevented, true);
+      if (where === 'bot') await page.locator('.bot-pics .bot-pic img').waitFor({ timeout: 6000 });
+      else await page.locator('.attached:not([hidden])').waitFor({ timeout: 6000 });
+      assert.deepEqual(asked, ['/home/noam/Pictures/Screenshots/Screenshot_20261023_164500.png']);
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});

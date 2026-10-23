@@ -30,3 +30,26 @@ export function resolveLocalImage(raw, { home = os.homedir(), roots = [home, os.
   if (!stat.isFile() || stat.size > MAX_BYTES) return null;
   return { file: real, type, size: stat.size };
 }
+
+/**
+ * Any file dragged from the PC's file manager onto a chat in the PC app (the engine
+ * hands over only its address). Same places as a pasted picture; folders, links that
+ * lead elsewhere and files over 25 MB are refused.
+ */
+export function resolveLocalFile(raw, { home = os.homedir(), roots = [home, os.tmpdir(), '/tmp'] } = {}) {
+  const asked = String(raw || '').trim();
+  if (!asked || asked.includes('\0')) return null;
+  const full = asked.startsWith('~/') ? path.join(home, asked.slice(2)) : asked;
+  if (!path.isAbsolute(full)) return null;
+  let real;
+  try { real = fs.realpathSync(full); } catch { return null; }
+  const inside = roots.some((root) => {
+    let base; try { base = fs.realpathSync(root); } catch { return false; }
+    return real === base || real.startsWith(base + path.sep);
+  });
+  if (!inside) return null;
+  let stat; try { stat = fs.statSync(real); } catch { return null; }
+  if (!stat.isFile()) return null;
+  if (stat.size > MAX_BYTES) return { error: 'That file is over 25 MB.' };
+  return { file: real, type: TYPES[path.extname(real).toLowerCase()] || 'application/octet-stream', size: stat.size };
+}

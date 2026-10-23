@@ -36,7 +36,7 @@ import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { withSleepingLives, sweepSleep, sleepPane, wakePane, workProcesses, treeRss, readSettings, writeSettings, listSleeping, isSleeping as sleepMarked, setKeepAwake, isKeepAwake, sleepVerdict } from './sleep.mjs';
 import { filesIn, matchFiles } from './files.mjs';
-import { resolveLocalImage } from './local-image.mjs';
+import { resolveLocalImage, resolveLocalFile } from './local-image.mjs';
 import { PASTE_ROOTS, readCopiedPictureFiles } from './clipboard-files.mjs';
 import { projectCatalog, resolveProject, projectLaunchArgs, projectLaunchReady, projectLaunchCapabilityPath, PROJECT_PROVIDERS, legacyProjectChoice } from './projects.mjs';
 import { spawnArgs } from './spawn.mjs';
@@ -44,7 +44,7 @@ import { applyEnglishTerms } from './english-terms.mjs';
 import { transcribe, prepareTranscriber, recentTranscriptionTimings, MAX_AUDIO_BYTES } from './transcribe/index.mjs';
 import { readWordFixes, addWordFix, removeWordFix, applyWordFixes, wordFixHint } from './word-fixes.mjs';
 import { safeUrl, crossSiteWrite } from './guard.mjs';
-import { readBody, firstFile, saveImage } from './uploads.mjs';
+import { readBody, firstFile, saveImage, saveFile } from './uploads.mjs';
 import { handlePriority } from './priority.mjs';
 import { Rooms } from './rooms.mjs';
 import { createSendOnce } from './send-once.mjs';
@@ -731,7 +731,7 @@ const handle = async (req, res) => {
     let result;
     try {
       result = url.pathname === '/api/bots' ? bots.create(body)
-        : url.pathname === '/api/bot/send' ? bots.send(body.id, body.text, { images: body.images, owner: true, answerTo: body.answerTo, replyTo: body.replyTo, listTo: body.listTo, choices: body.choices })
+        : url.pathname === '/api/bot/send' ? bots.send(body.id, body.text, { images: body.images, files: body.files, owner: true, answerTo: body.answerTo, replyTo: body.replyTo, listTo: body.listTo, choices: body.choices })
           : url.pathname === '/api/bot/update' ? bots.update(body.id, body)
             : url.pathname === '/api/bot/retry' ? bots.retry(body.id)
               : url.pathname === '/api/bot/profile/accept' ? bots.acceptProfile(body.id, body)
@@ -1102,7 +1102,8 @@ const handle = async (req, res) => {
     const file = firstFile(body, req.headers['content-type']);
     if (!file) return json(res, 400, { error: 'No image was received.' });
 
-    const saved = saveImage(file);
+    // kind=file: any file dropped or attached in a bot chat, kept under its own name.
+    const saved = url.searchParams.get('kind') === 'file' ? saveFile(file) : saveImage(file);
     if (saved.error) return json(res, 400, saved);
     return json(res, 200, { path: saved.path, bytes: saved.bytes, name: file.name });
   }
@@ -1170,6 +1171,17 @@ const handle = async (req, res) => {
     if (!image) return json(res, 404, { error: 'That picture is not available.' });
     res.writeHead(200, { 'content-type': image.type, 'content-length': image.size, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' });
     return fs.createReadStream(image.file).pipe(res);
+  }
+
+  // Files dragged from the PC's file manager onto a chat in the PC app arrive only as
+  // their addresses (text/uri-list); the page asks for the file here. Only from the PC.
+  if (url.pathname === '/api/local-file' && req.method === 'GET') {
+    if (!isLocalRecoveryRequest(req, url)) return json(res, 403, { error: 'Only from the PC app.' });
+    const found = resolveLocalFile(url.searchParams.get('path'), { roots: PASTE_ROOTS() });
+    if (found?.error) return json(res, 413, found);
+    if (!found) return json(res, 404, { error: 'That file is not available.' });
+    res.writeHead(200, { 'content-type': found.type, 'content-length': found.size, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'content-disposition': 'attachment' });
+    return fs.createReadStream(found.file).pipe(res);
   }
 
   // Ctrl+V of picture files copied on the PC: the engine hides their addresses from the
