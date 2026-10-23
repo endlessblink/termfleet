@@ -100,13 +100,57 @@ export function ownHook(command, { home = os.homedir(), root = repoRoot } = {}) 
  * What to do about a trust prompt on screen: { press } to answer it, { error } to report, or
  * null when there is none.
  */
-export function trustDecision(screen, { pending = pendingCodexHooks(), home, root } = {}) {
+export function trustDecision(screen, { pending, home, root, cwd = null, folderRoots } = {}) {
+  const folder = claudeFolderTrustPrompt(screen);
+  if (folder) return folderTrustDecision(folder, { cwd, roots: folderRoots ?? trustedFolderRoots({ home }) });
   const prompt = codexTrustPrompt(screen);
   if (!prompt) return null;
-  const foreign = pending.filter((h) => !ownHook(h.command, { home, root }));
+  const foreign = (pending ?? pendingCodexHooks({ home, cwd: cwd || process.cwd() })).filter((h) => !ownHook(h.command, { home, root }));
   if (foreign.length) return { error: `The new Codex terminal is waiting for Noam to review ${foreign.length} unknown hook${foreign.length === 1 ? '' : 's'} (${foreign.map((h) => h.command.slice(0, 80)).join('; ')}). It will not start until he does; tell him in one plain sentence.` };
   if (!prompt.trustOption) return { error: 'The new Codex terminal shows its hook review, but its "Trust all and continue" choice is not on screen; it will not start until someone answers it.' };
-  return { press: prompt.trustOption };
+  return { press: prompt.trustOption, note: 'Answered Codex\'s hook review with "Trust all and continue" (only TermFleet\'s own hooks were waiting).' };
+}
+
+/**
+ * Claude Code's folder-trust question ("Do you trust the files in this folder?" / "Is this a
+ * project you created or one you trust?"), with the number of its Yes choice. politic bot
+ * 2026-10-23: a helper sat on it, a later message typed into it chose "No, exit", the agent
+ * quit to a shell and the task was lost.
+ */
+export function claudeFolderTrustPrompt(screen) {
+  const s = String(screen || '');
+  if (!/trust the files in this folder|project you created or one you trust|Do you trust this folder|trust this folder\?/i.test(s)) return null;
+  const yes = /(?:^|\n)\s*(?:[›>❯]\s*)?(\d)[.)]\s*Yes,? (?:proceed|I trust this folder|trust)/i.exec(s);
+  const no = /(?:^|\n)\s*(?:[›>❯]\s*)?(\d)[.)]\s*No,? exit/i.exec(s);
+  return { yesOption: yes ? yes[1] : null, noOption: no ? no[1] : null };
+}
+
+/**
+ * Parent folders where Noam has already trusted at least three project folders himself (Claude
+ * keeps his answers in ~/.claude.json). A new helper folder inside one of them is his usual kind
+ * of folder; anything else stays his decision. "/" and his home folder never count as a parent.
+ */
+export function trustedFolderRoots({ home = os.homedir(), config = null, min = 3 } = {}) {
+  let data = config;
+  if (!data) { try { data = JSON.parse(fs.readFileSync(path.join(home, '.claude.json'), 'utf8')); } catch { data = {}; } }
+  const trusted = Object.entries(data?.projects || {}).filter(([, v]) => v?.hasTrustDialogAccepted).map(([k]) => path.resolve(k));
+  const counts = new Map();
+  for (const t of trusted) {
+    for (let d = path.dirname(t); d !== path.dirname(d); d = path.dirname(d)) {
+      if (d === home || d.split('/').filter(Boolean).length < 3) break;
+      counts.set(d, (counts.get(d) || 0) + 1);
+    }
+  }
+  const extra = String(process.env.TERMFLEET_TRUST_ROOTS || '').split(':').filter(Boolean).map((p) => path.resolve(p));
+  return [...new Set([...[...counts].filter(([, n]) => n >= min).map(([d]) => d), ...extra])];
+}
+
+export function folderTrustDecision(prompt, { cwd, roots }) {
+  const where = cwd ? path.resolve(cwd) : null;
+  const inside = where && roots.some((r) => where === r || where.startsWith(`${r}/`));
+  if (!inside) return { error: `The new Claude terminal is asking whether to trust its folder${where ? ` (${where})` : ''}, which is not inside a folder Noam already trusts projects in. It will not start until he answers; ask him in one plain sentence. Do not send that terminal anything meanwhile: typing into the question can choose "No, exit".` };
+  if (!prompt.yesOption) return { error: 'The new Claude terminal is asking whether to trust its folder, but its Yes choice is not on screen; it will not start until someone answers it.' };
+  return { press: prompt.yesOption, note: `Answered Claude's folder-trust question with Yes: ${where} is inside ${roots.find((r) => where === r || where.startsWith(`${r}/`))}, where Noam already trusts his projects.` };
 }
 
 /**
@@ -128,14 +172,14 @@ export async function confirmReceipt(pane, { token, wasBusy = false, timeoutMs =
     const working = now.turn === 'working' || now.producing === true;
     if (!wasBusy && working && now.turn === 'working') return { received: true, how: 'turn', notes };
     const shown = await screen(pane.id);
-    const trust = trustDecision(shown, { pending: pending ? pending(now) : pendingCodexHooks({ cwd: now.cwd || process.cwd() }) });
+    const trust = trustDecision(shown, { pending: pending ? pending(now) : undefined, cwd: now.cwd || null, folderRoots: deps.folderRoots });
     if (trust?.error) return { received: false, reason: 'trust-prompt', message: trust.error, notes };
     if (trust?.press && answered < 2) {
       await write(pane.id, trust.press);
       await new Promise((r) => setTimeout(r, 200));
       await write(pane.id, '\r');
       answered += 1;
-      notes.push('Answered Codex\'s hook review with "Trust all and continue" (only TermFleet\'s own hooks were waiting).');
+      notes.push(trust.note);
     }
   }
   if (wasBusy) return { received: false, queued: true, reason: 'busy', message: 'It is in the middle of a turn: the message is typed in but it has not read it yet.', notes };
@@ -155,14 +199,14 @@ export async function confirmStarted(paneId, { token = null, timeoutMs = 90000, 
     if (!pane) continue;
     if (pane.turn === 'working' || (token && (transcriptHas(transcript(pane), token) || fresh(token, sentAt, { cwd: pane.cwd || null })))) return { started: true, notes };
     const shown = await screen(paneId);
-    const trust = trustDecision(shown, { pending: pending ? pending(pane) : pendingCodexHooks({ cwd: pane.cwd || process.cwd() }) });
+    const trust = trustDecision(shown, { pending: pending ? pending(pane) : undefined, cwd: pane.cwd || null, folderRoots: deps.folderRoots });
     if (trust?.error) return { started: false, reason: 'trust-prompt', message: trust.error, notes };
     if (trust?.press && answered < 2) {
       await write(paneId, trust.press);
       await new Promise((r) => setTimeout(r, 200));
       await write(paneId, '\r');
       answered += 1;
-      notes.push('Answered Codex\'s hook review with "Trust all and continue" (only TermFleet\'s own hooks were waiting).');
+      notes.push(trust.note);
     }
   }
   return { started: false, reason: 'not-started', message: 'The new terminal has not started its task: nothing is in its conversation yet. Look at it with termfleet-team read.', notes };

@@ -12,7 +12,7 @@ import {
   splitMessage, captureMessage, loadLedger, markItem, record, addTopic, briefItems, briefBlock, briefedIds,
   stopProblem, ownerTextOf, itemsView, evidenceProblem, BRIEF_HEADER,
 } from '../bridge/requirements.mjs';
-import { confirmReceipt, confirmStarted, codexTrustPrompt, trustDecision, pendingCodexHooks, freshRecordsHave } from '../bridge/delivery.mjs';
+import { confirmReceipt, confirmStarted, codexTrustPrompt, trustDecision, pendingCodexHooks, freshRecordsHave, claudeFolderTrustPrompt, trustedFolderRoots } from '../bridge/delivery.mjs';
 import { framedMessage } from '../bridge/orchestrate.mjs';
 import { asksFrom, hook, cli } from '../../scripts/termfleet-asks.mjs';
 import { requirementIds } from '../../scripts/termfleet-team.mjs';
@@ -167,12 +167,53 @@ test('failure 4d: a message steered into a busy Codex turn counted as NOT delive
   assert.equal(freshRecordsHave('[delivery D-99999999]', 0, { home }), false);
 });
 
+const CLAUDE_TRUST = ' Do you trust the files in this folder?\n\n /media/x/my-projects/ai-dev/politic-game\n\n   1. Yes, proceed\n ❯ 2. No, exit\n\n Enter to confirm · Esc to exit';
+
+test('failure 4e: a Claude helper sat on the folder-trust question, a later message chose "No, exit" and the task was lost; now it is answered for his usual project folders and fails loudly elsewhere', async () => {
+  assert.deepEqual(claudeFolderTrustPrompt(CLAUDE_TRUST), { yesOption: '1', noOption: '2' });
+  assert.deepEqual(claudeFolderTrustPrompt('Quick safety check: Is this a project you created or one you trust?\n❯ 1. Yes, I trust this folder\n  2. No, exit'), { yesOption: '1', noOption: '2' });
+  assert.equal(claudeFolderTrustPrompt('❯ fix the strip'), null);
+
+  // Where Noam already trusted 3+ folders himself counts; "/" and his home folder never do.
+  const config = { projects: Object.fromEntries(['/media/x/my-projects/ai-dev/a', '/media/x/my-projects/ai-dev/b', '/media/x/my-projects/ai-dev/c', '/', '/h', '/h/one', '/h/two', '/h/three'].map((p) => [p, { hasTrustDialogAccepted: true }])) };
+  const roots = trustedFolderRoots({ home: '/h', config });
+  assert.ok(roots.includes('/media/x/my-projects/ai-dev'));
+  assert.ok(!roots.includes('/') && !roots.includes('/h') && !roots.includes('/media'), JSON.stringify(roots));
+
+  const run = async (cwd) => {
+    const writes = [];
+    let answered = false;
+    const deps = {
+      panes: async () => [{ id: 'terminal-game', provider: 'claude', turn: answered ? 'working' : 'idle', cwd }],
+      screen: async () => (answered ? '' : CLAUDE_TRUST), transcript: () => null, fresh: () => false, folderRoots: roots,
+      write: async (_id, data) => { writes.push(data); if (data === '\r') answered = true; },
+    };
+    return { r: await confirmStarted('terminal-game', { token: '[delivery D-11111111]', timeoutMs: 400, pollMs: 10, deps }), writes };
+  };
+  const inside = await run('/media/x/my-projects/ai-dev/politic-game');
+  assert.equal(inside.r.started, true);
+  assert.deepEqual(inside.writes, ['1', '\r'], 'chose Yes, never the preselected No');
+  assert.match(inside.r.notes[0], /folder-trust question with Yes/);
+
+  const t0 = Date.now();
+  const outside = await run('/tmp/somewhere-new');
+  assert.equal(outside.r.started, false);
+  assert.equal(outside.r.reason, 'trust-prompt');
+  assert.match(outside.r.message, /asking whether to trust its folder \(\/tmp\/somewhere-new\)[\s\S]*ask him[\s\S]*Do not send that terminal anything/);
+  assert.deepEqual(outside.writes, [], 'nothing typed into the question');
+  assert.ok(Date.now() - t0 < 300, 'fails at once, not after the long wait');
+
+  // A message to a terminal on that question answers it first (or refuses), never types into it.
+  const src = fs.readFileSync(new URL('../../scripts/termfleet-team.mjs', import.meta.url), 'utf8');
+  assert.match(src, /const startup = trustDecision\(await screenOf\(pane\.id, 40\)[\s\S]{0,200}NOT sent to/);
+});
+
 const TRUST_SCREEN = 'Hooks need review\nHooks can run outside the sandbox.\n  1. Review hooks\n› 2. Trust all and continue\n  3. Continue without trusting (hooks won\'t run)';
 
 test('failure 4b: new Codex terminals sat on "Hooks need review" until someone sent 3 (which also left the hooks off); TermFleet\'s own hooks are now trusted and the start continues', async () => {
   assert.deepEqual(codexTrustPrompt(TRUST_SCREEN), { trustOption: '2', skipOption: '3' });
   const own = [{ command: `node "${fileURLToPath(new URL('../../scripts/termfleet-codex-status-hook.mjs', import.meta.url))}"` }];
-  assert.deepEqual(trustDecision(TRUST_SCREEN, { pending: own, root: REPO }), { press: '2' });
+  assert.equal(trustDecision(TRUST_SCREEN, { pending: own, root: REPO }).press, '2');
   const foreign = [{ command: 'node /tmp/some-project/.codex/evil.mjs' }];
   assert.match(trustDecision(TRUST_SCREEN, { pending: foreign, root: REPO }).error, /waiting for Noam to review 1 unknown hook/);
 

@@ -75,7 +75,7 @@ export function recordHelper(helper, env = process.env) {
 }
 import { requestDaemon, defaultDaemonSocket } from './termfleetctl.mjs';
 import { briefItems, briefBlock, newDeliveryId, normId, idsIn, record as recordRequirement, loadLedger } from '../termcontrol/bridge/requirements.mjs';
-import { confirmReceipt, confirmStarted } from '../termcontrol/bridge/delivery.mjs';
+import { confirmReceipt, confirmStarted, trustDecision } from '../termcontrol/bridge/delivery.mjs';
 import { adapterFor } from '../termcontrol/bridge/feed.mjs';
 import { PATHS } from '../termcontrol/bridge/paths.mjs';
 import { mkdirSync } from 'node:fs';
@@ -237,6 +237,19 @@ async function main(argv) {
       // starts a fresh one instead of waiting in the queue (Grok Bot's "interrupt").
       await requestDaemon({ type: 'writeSession', id: pane.id, data: '\u001b' }, defaultDaemonSocket());
       await new Promise((r) => setTimeout(r, 600));
+    }
+    // A startup question on screen (Claude's folder trust, Codex's hook review) is answered or
+    // reported first: typed text and Enter went into it and chose "No, exit" (2026-10-23).
+    if (['claude', 'codex'].includes(pane.provider)) {
+      const startup = trustDecision(await screenOf(pane.id, 40), { cwd: pane.cwd || null });
+      if (startup?.error) fail(`NOT sent to ${pane.profile?.name || pane.project} (${pane.id}). ${startup.error}`, 3);
+      if (startup?.press) {
+        await requestDaemon({ type: 'writeSession', id: pane.id, data: startup.press }, defaultDaemonSocket());
+        await new Promise((r) => setTimeout(r, 200));
+        await requestDaemon({ type: 'writeSession', id: pane.id, data: '\r' }, defaultDaemonSocket());
+        await new Promise((r) => setTimeout(r, 2500));
+        out(startup.note);
+      }
     }
     const since = Date.now();
     const wasBusy = pane.turn === 'working' || pane.producing === true;
