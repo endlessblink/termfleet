@@ -302,6 +302,19 @@ export function promisedStep(text) {
   return m ? m[0].trim() : null;
 }
 
+// Noam 2026-10-23: "זו לא סיבה שהיא יעצור". Stopping to wait for his go is honest only for
+// money, posting, messaging people, deleting, a step only he can do, or a real choice.
+const WAITS_FOR_GO = /(waiting (for|on) (noam|you)|ממתין ל|מחכה ל)[^\n]*(\bgo\b|go-?ahead|\bok(ay)?\b|approv|permission|green light|say (go|yes)|when you want|אישור|לאשר|שאמשיך|להתחיל)|\b(want me to|should i|shall i|do you want me to|ok if i)\b[^\n?]*\?|let me know (when|if) you('d| would)? (want|like) me to|say (go|yes) (when|and|if)|(once|when|after|until) you (say|give( me)?) (go|yes|the word|the go-?ahead)|תגיד מתי|שאמשיך\?/i;
+const REAL_REASON = /\b(pay|paid|spend|purchase|buy|cost|money|credits?|billing|price|post(ing)?|publish|tweet|send|email|message (him|her|them|people)|dm|delete|remove|wipe|erase|irreversible|undone|sign(ing)? in|log ?in|password|(verification|login|sms) code|captcha|for you to try|you('ll| can) try|tap|click|review|deploy|release|production|push|merge|approval of|the list|prompt|which|choose|pick|prefer|or the)\b|\$|₪|תשלום|לשלם|לפרסם|לשלוח|למחוק|איזה|לבחור/i;
+export function needlessWait(text) {
+  const tail = String(text || '').slice(-600);
+  const m = WAITS_FOR_GO.exec(tail);
+  if (!m) return null;
+  const line = tail.slice(tail.lastIndexOf('\n', m.index) + 1).split('\n')[0] || m[0];
+  return REAL_REASON.test(line) ? null : line.trim();
+}
+const STOP_REASONS = 'spending money, posting publicly, messaging people, deleting, a step only he can do (signing in, a code, trying it), or a real choice between two truly different outcomes (ask that as a question card)';
+
 function lastAssistantText(lines) {
   for (let i = lines.length - 1; i >= 0; i--) {
     let o;
@@ -366,7 +379,9 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
     // Noam 2026-10-17: "they say that they will do something and just never do it".
     // Nothing runs after an agent stops, so a promised next step must happen now.
     const promise = promisedStep(last);
-    if (promise) return { decision: 'block', reason: `You promised "${clip(promise, 80)}" but nothing runs after you stop. Do it now, or end with "Waiting for Noam: <what>" / set a wake-up.` };
+    if (promise) return { decision: 'block', reason: `You promised "${clip(promise, 80)}" but nothing runs after you stop. Do it now. Stop with "Waiting for Noam: <what>" only for ${STOP_REASONS}; for work that runs later, set a wake-up.` };
+    const wait = needlessWait(last);
+    if (wait) return { decision: 'block', reason: `You stopped to wait for Noam's go ("${clip(wait, 80)}"). He asked you not to stop for that: when he asked for it or the next step is safe and can be undone, do it now. Stop only for ${STOP_REASONS}; if it is one of those, say which in the Waiting for Noam line.` };
     if (!CLAIMS_DONE.test(last)) return null;
     const unmarked = asks.filter((a) => a.status === 'open');
     if (!unmarked.length) return null;

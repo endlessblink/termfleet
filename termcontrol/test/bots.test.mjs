@@ -382,3 +382,13 @@ test('after a Codex turn the bot records which brief its conversation has', asyn
   assert.match(seen[0], /You are "Cody"/);
   assert.equal(seen[1], 'two', 'the second turn is not padded with the brief');
 });
+
+// Noam 2026-10-23: a bot ended "Waiting for Noam: say go when you want me to build the
+// sandwich, workout and cooking plans." — "זו לא סיבה שהיא יעצור".
+test('every bot is told to keep going on safe work and to stop only for real reasons', () => {
+  const brief = brainBrief({ id: 'b', name: 'Coach', job: 'health coach', rules: '' }, {});
+  assert.match(brief, /Keep going:[^\n]*do it now[^\n]*Never stop to ask for his go/);
+  assert.match(brief, /Waiting for Noam[^\n]*only for spending money, posting publicly, messaging people, deleting/);
+  assert.match(brief, /Go ahead buttons[^\n]*only/);
+  assert.doesNotMatch(brief, /say plainly that it is waiting for Noam\./, 'no open-ended permission to stop');
+});

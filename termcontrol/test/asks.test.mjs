@@ -123,3 +123,41 @@ test('an agent that ends by promising a next step is told to do it now (once); h
     'A background watcher will notify me when it finishes; next I\'m doing the review then.',
   ]) assert.equal(promisedStep(msg), null, msg);
 });
+
+// Noam 2026-10-23 (health-coach_dev ended "Waiting for Noam: say go when you want me to build
+// the sandwich, workout and cooking plans."): "זו לא סיבה שהיא יעצור". Stopping for a go on
+// safe work is refused once; money, posting, messaging, deleting, his own steps and real
+// choices still stop.
+test('stopping to wait for a go on safe work is refused once; real reasons still stop', async () => {
+  const { hook, needlessWait } = await import('../../scripts/termfleet-asks.mjs');
+  const stop = (msg, active = false) => hook({ hook_event_name: 'Stop', last_assistant_message: msg, stop_hook_active: active }, { readLines: () => [], env: {} });
+  for (const msg of [
+    'I mapped your week and your goals.\n\nWaiting for Noam: say go when you want me to build the sandwich, workout and cooking plans.',
+    'I read the interview and picked the clip.\n\nWaiting for Noam: your go-ahead to start the sample from the interview.',
+    'The plan is written. Want me to go ahead and build it?',
+    'Everything is mapped out. Should I start on the tests now?',
+    'Let me know when you want me to continue with part two.',
+    'Part one is done. Next I\'m doing part two once you say go.',
+    'הכנתי את התוכנית.\nממתין לאישור של נועם להתחיל.',
+  ]) {
+    const r = stop(msg);
+    assert.equal(r?.decision, 'block', msg);
+    assert.match(r.reason, /do it now/i, msg);
+    assert.match(r.reason, /money|posting|deleting/i, 'names the only reasons that may stop');
+  }
+  assert.equal(stop('Waiting for Noam: say go when you want me to build the plans.', true), null, 'only once per finish, never a loop');
+  for (const msg of [
+    'All three fixes are in and tested.',
+    'Waiting for Noam: your approval to post the draft on LinkedIn.',
+    'Waiting for Noam: ok to spend about $3 of credits on the render.',
+    'Waiting for Noam: your go-ahead to delete the old backups.',
+    'Should I send the email to Dana now?',
+    'Waiting for Noam: sign in to Google in your window, then hand it back.',
+    'Waiting for Noam: tap "Turn on phone notifications" once.',
+    'Waiting for Noam: try the new button on the phone.',
+    'Waiting for Noam: approval of the list of jokes and fatalities, in the question above.',
+    "Waiting for Noam: approve or decline the prompt that's stuck in the rough-cut terminal.",
+    'Which design do you want, the dark one or the light one?',
+    'The checker runs in the background and will wake me when it finishes.',
+  ]) assert.equal(needlessWait(msg), null, msg);
+});
