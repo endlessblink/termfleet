@@ -33,6 +33,32 @@ export function transcriptHas(file, token, { bytes = 4 * 1024 * 1024 } = {}) {
   } catch { return false; }
 }
 
+/**
+ * Conversation records changed since the send that hold the mark. A Codex terminal whose hooks
+ * never ran has no record mapped to it, so a message steered into its working turn read as "not
+ * delivered" although its rollout had it 5 s later (politic bot 2026-10-23). The mark is random
+ * and went to one terminal only, so finding it in any fresh record proves that terminal got it.
+ */
+export function freshRecordsHave(token, since, { home = os.homedir(), cwd = null, now = Date.now() } = {}) {
+  if (!token) return false;
+  const dirs = [];
+  for (const back of [0, 1]) {
+    const d = new Date(now - back * 86400_000);
+    dirs.push(path.join(home, '.codex', 'sessions', String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')));
+  }
+  if (cwd) dirs.push(path.join(home, '.claude', 'projects', path.resolve(cwd).replace(/[^a-zA-Z0-9]/g, '-')));
+  for (const dir of new Set(dirs)) {
+    let names = [];
+    try { names = fs.readdirSync(dir).filter((n) => n.endsWith('.jsonl')); } catch { continue; }
+    for (const n of names) {
+      const file = path.join(dir, n);
+      try { if (fs.statSync(file).mtimeMs < since - 2000) continue; } catch { continue; }
+      if (transcriptHas(file, token, { bytes: 2 * 1024 * 1024 })) return true;
+    }
+  }
+  return false;
+}
+
 /** Codex's startup hook review on screen, with the number of its "Trust all and continue" choice. */
 export function codexTrustPrompt(screen) {
   const s = String(screen || '');
@@ -89,7 +115,8 @@ export function trustDecision(screen, { pending = pendingCodexHooks(), home, roo
  * write(id, data) → keys into the terminal.
  */
 export async function confirmReceipt(pane, { token, wasBusy = false, timeoutMs = 25000, pollMs = 1500, deps }) {
-  const { panes, screen, transcript, write, pending } = deps;
+  const { panes, screen, transcript, write, pending, fresh = freshRecordsHave } = deps;
+  const sentAt = Date.now();
   const deadline = Date.now() + timeoutMs;
   const notes = [];
   let answered = 0;
@@ -97,6 +124,7 @@ export async function confirmReceipt(pane, { token, wasBusy = false, timeoutMs =
     await new Promise((r) => setTimeout(r, pollMs));
     const now = (await panes()).find((p) => p.id === pane.id) || pane;
     if (transcriptHas(transcript(now), token)) return { received: true, how: 'transcript', notes };
+    if (fresh(token, sentAt, { cwd: now.cwd || null })) return { received: true, how: 'record', notes };
     const working = now.turn === 'working' || now.producing === true;
     if (!wasBusy && working && now.turn === 'working') return { received: true, how: 'turn', notes };
     const shown = await screen(pane.id);
@@ -116,15 +144,16 @@ export async function confirmReceipt(pane, { token, wasBusy = false, timeoutMs =
 
 /** A new terminal has really started its task: a turn began, or its first message is recorded. */
 export async function confirmStarted(paneId, { token = null, timeoutMs = 90000, pollMs = 2000, deps }) {
-  const { panes, screen, transcript, write, pending } = deps;
+  const { panes, screen, transcript, write, pending, fresh = freshRecordsHave } = deps;
   const deadline = Date.now() + timeoutMs;
+  const sentAt = Date.now();
   const notes = [];
   let answered = 0;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, pollMs));
     const pane = (await panes()).find((p) => p.id === paneId);
     if (!pane) continue;
-    if (pane.turn === 'working' || (token && transcriptHas(transcript(pane), token))) return { started: true, notes };
+    if (pane.turn === 'working' || (token && (transcriptHas(transcript(pane), token) || fresh(token, sentAt, { cwd: pane.cwd || null })))) return { started: true, notes };
     const shown = await screen(paneId);
     const trust = trustDecision(shown, { pending: pending ? pending(pane) : pendingCodexHooks({ cwd: pane.cwd || process.cwd() }) });
     if (trust?.error) return { started: false, reason: 'trust-prompt', message: trust.error, notes };

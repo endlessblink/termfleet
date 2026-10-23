@@ -12,7 +12,7 @@ import {
   splitMessage, captureMessage, loadLedger, markItem, record, addTopic, briefItems, briefBlock, briefedIds,
   stopProblem, ownerTextOf, itemsView, evidenceProblem, BRIEF_HEADER,
 } from '../bridge/requirements.mjs';
-import { confirmReceipt, confirmStarted, codexTrustPrompt, trustDecision, pendingCodexHooks } from '../bridge/delivery.mjs';
+import { confirmReceipt, confirmStarted, codexTrustPrompt, trustDecision, pendingCodexHooks, freshRecordsHave } from '../bridge/delivery.mjs';
 import { framedMessage } from '../bridge/orchestrate.mjs';
 import { asksFrom, hook, cli } from '../../scripts/termfleet-asks.mjs';
 import { requirementIds } from '../../scripts/termfleet-team.mjs';
@@ -125,7 +125,7 @@ test('failure 3: briefs paraphrased him; now a bot cannot hand work over without
 
 test('failure 4: a message to an idle Codex terminal was not received but counted as sent; now it is an error', async () => {
   const pane = { id: 'terminal-x', provider: 'codex', turn: 'idle', alive: true };
-  const deps = { panes: async () => [pane], screen: async () => '› fix the portraits [delivery D-9]', transcript: () => null, write: async () => {}, pending: () => [] };
+  const deps = { panes: async () => [pane], screen: async () => '› fix the portraits [delivery D-9]', transcript: () => null, write: async () => {}, pending: () => [], fresh: () => false };
   const r = await confirmReceipt(pane, { token: '[delivery D-9]', timeoutMs: 60, pollMs: 10, deps });
   assert.equal(r.received, false);
   assert.equal(r.reason, 'not-received');
@@ -137,6 +137,34 @@ test('failure 4: a message to an idle Codex terminal was not received but counte
   fs.writeFileSync(file, JSON.stringify({ type: 'response_item', payload: { role: 'user', content: [{ type: 'input_text', text: 'x [delivery D-9]' }] } }) + '\n');
   const ok = await confirmReceipt(pane, { token: '[delivery D-9]', timeoutMs: 200, pollMs: 10, deps: { ...deps, transcript: () => file } });
   assert.equal(ok.received, true);
+});
+
+test('failure 4d: a message steered into a busy Codex turn counted as NOT delivered because no record was linked to that terminal; a fresh record holding the mark now proves it', async () => {
+  // politic bot 2026-10-23: "termfleet-team ask" to a working Codex terminal with no status hooks
+  // printed NOT delivered; its rollout had the message 5 s later and it answered in the same turn.
+  const home = tmp();
+  const now = new Date();
+  const day = path.join(home, '.codex', 'sessions', String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0'));
+  fs.mkdirSync(day, { recursive: true });
+  const rollout = path.join(day, 'rollout-busy.jsonl');
+  fs.writeFileSync(path.join(day, 'rollout-other.jsonl'), '{"old":"[delivery D-aaaaaaaa]"}\n');
+  const pane = { id: 'terminal-2f0f0028', provider: 'codex', turn: 'idle', producing: true, alive: true, cwd: home };
+  let polls = 0;
+  const deps = {
+    panes: async () => [pane], screen: async () => '• Working (3m 10s)', transcript: () => null, write: async () => {}, pending: () => [],
+    fresh: (token, since) => freshRecordsHave(token, since, { home, cwd: home }),
+  };
+  // Before the fix: no linked record, the turn never "starts" (it was already running) → NOT delivered.
+  const before = await confirmReceipt(pane, { token: '[delivery D-12345678]', wasBusy: false, timeoutMs: 80, pollMs: 10, deps: { ...deps, fresh: () => false } });
+  assert.equal(before.received, false);
+  // The steered message lands in its rollout a moment after the send.
+  const later = confirmReceipt(pane, { token: '[delivery D-12345678]', wasBusy: true, timeoutMs: 2000, pollMs: 20, deps: { ...deps, panes: async () => { if (++polls === 3) fs.writeFileSync(rollout, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'x [delivery D-12345678]' }] } }) + '\n'); return [pane]; } } });
+  const r = await later;
+  assert.equal(r.received, true);
+  assert.equal(r.how, 'record');
+  // An old record with another mark, or a file older than the send, never counts.
+  assert.equal(freshRecordsHave('[delivery D-aaaaaaaa]', Date.now() + 60_000, { home }), false);
+  assert.equal(freshRecordsHave('[delivery D-99999999]', 0, { home }), false);
 });
 
 const TRUST_SCREEN = 'Hooks need review\nHooks can run outside the sandbox.\n  1. Review hooks\n› 2. Trust all and continue\n  3. Continue without trusting (hooks won\'t run)';
