@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { OPEN_BOT_EVENT, OPEN_CLEANUP_EVENT, takePendingBot, takePendingCleanup } from "../lib/botsDirectory";
+import { forwardFileDrops } from "../lib/agentsFileDrop";
 // The agent list and chat, built into TermFleet. It is the same page the phone
 // uses, so both always look and behave alike. It signs itself in (this machine
 // only) and needs no address to type.
@@ -50,6 +51,9 @@ export function AgentsView() {
     window.addEventListener("blur", release);
     return () => window.removeEventListener("blur", release);
   }, []);
+  // Files dragged from the file manager reach the chat box under the pointer.
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  useEffect(() => forwardFileDrops(() => frameRef.current), []);
   // Right after a restart the page can take a minute or more to arrive, and the empty
   // frame painted plain white (Noam 2026-10-20, a blank Agents view). Keep the frame
   // hidden behind a short note until it has loaded. A slow load is never restarted on
@@ -78,6 +82,7 @@ export function AgentsView() {
       )}
       <iframe
         key={attempt}
+        ref={frameRef}
         title="Agents"
         src={src}
         onLoad={() => setLoaded(true)}

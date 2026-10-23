@@ -3523,8 +3523,11 @@ async function droppedFiles(dt){
   if(dragHasFiles(dt))note(ui('Those files could not be read. Use the paperclip instead.','לא ניתן לקרוא את הקבצים. השתמשו בכפתור הצירוף.'),true);
   return [];
 }
-// The box lights up while files are dragged over it; dropped files go to onFiles.
-function dropZone(el,onFiles){
+// The box lights up while files are dragged over it; dropped files go to onFiles
+// (or, from the PC app, their places on the PC to onPaths when given).
+const dropTargets=new Set();
+function dropZone(el,onFiles,onPaths=null){
+  dropTargets.add({el,onFiles,onPaths});
   let depth=0;el.dataset.dropHint=ui('Drop files to attach','שחררו כדי לצרף');
   const off=()=>{depth=0;el.classList.remove('dropping');};
   el.addEventListener('dragenter',e=>{if(!dragHasFiles(e.dataTransfer))return;e.preventDefault();depth++;el.classList.add('dropping');});
@@ -3532,6 +3535,22 @@ function dropZone(el,onFiles){
   el.addEventListener('dragleave',e=>{if(!dragHasFiles(e.dataTransfer))return;if(--depth<=0 || !el.contains(e.relatedTarget))off();});
   el.addEventListener('drop',e=>{if(!dragHasFiles(e.dataTransfer))return;e.preventDefault();e.stopPropagation();off();droppedFiles(e.dataTransfer).then(f=>{if(f.length)onFiles(f);});});
 }
+// Inside the PC app the desktop engine hides dropped files from the page, so the app
+// catches the drop and says where it landed and which files (their places on the PC).
+// The box under that point takes them; over the chat itself, the one open box does.
+window.addEventListener('message',e=>{
+  if(window.parent===window || e.source!==window.parent)return;
+  const d=e.data;if(!d || typeof d.termfleetDrop!=='string')return;
+  for(const t of dropTargets)if(!t.el.isConnected)dropTargets.delete(t);
+  const live=[...dropTargets],hit=document.elementFromPoint(Number(d.x),Number(d.y));
+  const target=live.find(t=>hit && t.el.contains(hit)) || (live.length===1 && hit && document.querySelector('main')?.contains(hit)?live[0]:null);
+  const over=d.termfleetDrop==='enter' || d.termfleetDrop==='over';
+  for(const t of live)t.el.classList.toggle('dropping',over && t===target);
+  if(d.termfleetDrop!=='drop' || !target)return;
+  const paths=(Array.isArray(d.paths)?d.paths:[]).filter(p=>typeof p==='string' && p.startsWith('/')).slice(0,10);
+  if(!paths.length)return;
+  if(target.onPaths)target.onPaths(paths);else loadDroppedPaths(paths).then(f=>{if(f.length)target.onFiles(f);});
+});
 // A file dropped anywhere else never replaces the page with that file.
 document.addEventListener('dragover',e=>{if(dragHasFiles(e.dataTransfer)){e.preventDefault();e.dataTransfer.dropEffect='none';}});
 document.addEventListener('drop',e=>{if(dragHasFiles(e.dataTransfer))e.preventDefault();});
@@ -4971,6 +4990,13 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
   };
   // Files dragged from the file manager: the first picture attaches like a pasted one;
   // other files go into the message as their addresses on the PC, which the agent opens.
+  const putAddresses = (where) => {
+    if (!where.length) return;
+    box.value = (box.value.trim() ? box.value.replace(/\s*$/, ' ') : '') + where.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(' ') + ' ';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    box.focus();
+  };
+  const isPicturePath = (p) => /\.(png|jpe?g|webp|gif)$/i.test(p);
   dropZone(bar, async (files) => {
     const pictures = files.filter(isPictureFile), others = files.filter((f) => !isPictureFile(f));
     if (pictures.length) showPasted(pictures);
@@ -4980,10 +5006,11 @@ function mountComposer(id, onSent, onMode, view = () => 'chat', hasDesk = false,
       if (f.size > MAX_ATTACH_BYTES) { note(ui(`${f.name} is over 25 MB and was not attached.`, `${f.name} גדול מ-25MB ולא צורף.`), true); continue; }
       try { const form = new FormData(); form.append('file', f, f.name); where.push((await upload(form, null, 'file')).path); } catch (err) { note(err.message || ui(`${f.name} could not be attached.`, `לא ניתן לצרף את ${f.name}.`), true); }
     }
-    if (!where.length) return;
-    box.value = (box.value.trim() ? box.value.replace(/\s*$/, ' ') : '') + where.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(' ') + ' ';
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-    box.focus();
+    putAddresses(where);
+  }, (paths) => {
+    const pictures = paths.filter(isPicturePath);
+    if (pictures.length) loadDroppedPaths(pictures).then(showPasted);
+    putAddresses(paths.filter((p) => !isPicturePath(p)));
   });
   box.addEventListener('paste', (e) => {
     const copied = pastedPicturePaths(e.clipboardData);   // picture files copied in the file manager

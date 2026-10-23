@@ -162,3 +162,40 @@ test('a drop that carries only file addresses is read on the PC; too-big files a
     fs.rmSync(src, { recursive: true, force: true });
   } finally { await browser.close(); b.stop(); }
 });
+
+// Inside the PC app the engine hides dropped files from the page (WebKitGTK gives a blank
+// address list and only the first address as text), so the app catches the drop and posts
+// {termfleetDrop, x, y, paths} to the chat frame. Several files must all arrive.
+test('in the PC app frame: the app passes the drop on and every file attaches; only its own frame parent counts', { timeout: 90000 }, async () => {
+  const b = startBridge(), base = `http://localhost:${b.port}`;
+  await ready(b.port);
+  const browser = await chromium.launch();
+  try {
+    const { p, id, errors } = await openBotChat(browser, base);
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-drop-app-'));
+    const files = ['rough-cut-mac-full-report.md', 'rough-cut-index.mjs.patched', 'rough-caut-mac-full-report.md'].map((n) => path.join(src, n));
+    files.forEach((f, i) => fs.writeFileSync(f, `# file ${i}\n`));
+    // The app around the chat: same page, in a frame, as the PC app shows it.
+    await p.evaluate((url) => { document.open(); document.write(`<iframe src="${url}" style="position:fixed;left:40px;top:30px;width:1200px;height:740px;border:0"></iframe>`); document.close(); }, `${base}/#bot:${id}`);
+    const frame = await (await p.waitForSelector('iframe')).contentFrame();
+    await frame.waitForSelector('.bot-composer textarea', { timeout: 15000 });
+    const box = await frame.$eval('.bot-composer textarea', (t) => { const r = t.getBoundingClientRect(); return { x: r.left + 20, y: r.top + 10 }; });
+    // A page that is not the frame's parent is ignored.
+    await frame.evaluate((at) => window.postMessage({ termfleetDrop: 'drop', ...at, paths: ['/etc/hostname'] }, '*'), box);
+    const post = (msg) => p.evaluate((m) => document.querySelector('iframe').contentWindow.postMessage(m, '*'), msg);
+    await post({ termfleetDrop: 'enter', ...box, paths: files });
+    assert.equal(await frame.$eval('.bot-composer', (el) => el.classList.contains('dropping')), true, 'the box did not light up');
+    await post({ termfleetDrop: 'leave', x: -1, y: -1, paths: [] });
+    assert.equal(await frame.$eval('.bot-composer', (el) => el.classList.contains('dropping')), false);
+    await post({ termfleetDrop: 'drop', ...box, paths: files });
+    await frame.waitForFunction(() => document.querySelectorAll('.bot-file').length === 3, null, { timeout: 8000 });
+    assert.deepEqual(await frame.$$eval('.bot-file .bot-file-name', (els) => els.map((e) => e.textContent)), files.map((f) => path.basename(f)));
+    await frame.locator('.bot-composer .send').click();
+    await frame.waitForFunction(() => !document.querySelector('.bot-pic'), null, { timeout: 20000, polling: 200 });
+    await wait(600);
+    const chat = fs.readFileSync(path.join(b.configDir, 'bots', id, 'chat.jsonl'), 'utf8');
+    assert.match(chat, /"files":\["rough-cut-mac-full-report.md","rough-cut-index.mjs.patched","rough-caut-mac-full-report.md"\]/);
+    assert.deepEqual(errors, []);
+    fs.rmSync(src, { recursive: true, force: true });
+  } finally { await browser.close(); b.stop(); }
+});
