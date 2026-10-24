@@ -55,6 +55,7 @@ export function terminalAskMessage(paneId, label, ask) {
     // Every choice with its description, pick-several too (Noam 2026-10-23: "I need to be able
     // to see and answer this in the agent view not only the terminal").
     options: (ask.options || []).map((o) => ({ key: o.key, label: o.label, ...(o.detail ? { detail: o.detail } : {}) })),
+    ...(ask.links?.length ? { links: ask.links } : {}),
     ...(ask.kind === 'question' ? { multiSelect: Boolean(ask.multiSelect), questionIndex: ask.questionIndex ?? 0, questionCount: ask.questionCount ?? 1, ...(ask.header ? { header: ask.header } : {}), ...(ask.questions ? { questions: ask.questions } : {}), ...(ask.stage ? { stage: ask.stage } : {}) } : {}),
   };
 }

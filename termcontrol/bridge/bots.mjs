@@ -11,12 +11,12 @@ import { claudeTranscript } from './paths.mjs';
 import { asksForFile } from '../../scripts/termfleet-asks.mjs';
 import { uploadDir } from './uploads.mjs';
 import { skillPrompt } from './skills.mjs';
-import { parseQuestion, QUESTION_RULE, markRepeatedQuestions, markRepeatedTerminalAsks } from './bot-questions.mjs';
+import { parseQuestion, QUESTION_RULE, markRepeatedQuestions, markRepeatedTerminalAsks, markWithdrawnQuestions, needsLink, sameQuestion, nearDuplicate, NOTHING_NEW, alreadyAnsweredNote } from './bot-questions.mjs';
 import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bot-checklist.mjs';
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
-import { captureMessage as captureRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements } from './requirements.mjs';
+import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements } from './requirements.mjs';
 import { sidePrompt, parseSide, withPassedOn, putSteer, takeSteer, nextTurnText } from './side-reply.mjs';
 import { BotGroups } from './bot-groups.mjs';
 import { checkFolder } from './bot-folders.mjs';
@@ -37,6 +37,9 @@ const repoRoot = path.resolve(here, '..', '..');
 const defaultDir = () => path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'bots');
 
 export const PROVIDERS = ['claude', 'codex'];
+
+/** What a bot is told when its card about looks or designs was held back for having no link. */
+const heldCardNote = (q) => `[Event, not from Noam] Your question card "${String(q.text).slice(0, 300)}" was NOT shown to Noam: it asks him to choose between things he cannot see. Send the same card again now, with a line \`link: <web address or full file path>\` under the question for the page that shows all the answers, and \`- <answer> | <link>\` for each answer that has its own preview. Do not repeat the rest of your message. If there truly is nothing to look at, send the card again unchanged and it will be shown.]`;
 
 // Which model a bot thinks with is a per-bot choice (TF-096, Noam 2026-10-19: "need a
 // way to change the bots model after it was started"). Empty = the plan's own default.
@@ -470,6 +473,7 @@ export class Bots {
     this.now = now;
     this.running = new Map();   // id -> { activity, startedAt }
     this.queues = new Map();    // id -> [text]
+    this.waitedFor = new Map(); // id -> [{ msgId, items }] of Noam's messages queued while a turn ran
     this.closing = false;       // the service is restarting: finish running replies, start no new ones
     this.resumed = new Set();   // bots whose interrupted turn is being re-run (only once)
     this.echoes = new Map();    // id -> Set of 'bot:<id>' / 'group:<id>' where Noam tagged it; its next answer is shown there too
@@ -870,7 +874,7 @@ export class Bots {
     const bot = this.read(id);
     if (!bot) return null;
     const chat = this.messages(id).slice(-MAX_CHAT_RETURNED);
-    return { bot: { ...this.summary(id), rules: bot.rules }, messages: markRepeatedTerminalAsks(markRepeatedQuestions(chat)) };
+    return { bot: { ...this.summary(id), rules: bot.rules }, messages: markRepeatedTerminalAsks(markWithdrawnQuestions(markRepeatedQuestions(chat))) };
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */
@@ -942,6 +946,7 @@ export class Bots {
     const queue = this.queues.get(id) || [];
     queue.push(forBrain);
     this.queues.set(id, queue);
+    if (this.running.has(id)) this.waitedFor.set(id, [...(this.waitedFor.get(id) || []), { msgId: msg.id, items: (items || []).map((it) => it?.id).filter(Boolean) }]);
     if (!this.running.has(id)) this.drain(id);
     return { ok: true, message: msg, queued: this.running.has(id) && queue.length > 0 };
   }
@@ -1062,8 +1067,22 @@ export class Bots {
     while ((this.queues.get(id) || []).length) {
       if (this.closing) { this.saveQueue(id); return; }
       const texts = this.queues.get(id).splice(0);
+      // His messages that waited behind a turn which replied after they arrived (Noam 2026-10-24:
+      // "אין שום סיבה לחזרה הזו"): the bot is shown that reply and must not say it again.
+      // Only when that turn already took every one of his items in them (the reminder showed it his words).
+      const waited = (this.waitedFor.get(id) || []).splice(0);
+      let since = null;
+      if (waited.length && waited.every((w) => w.items.length)) {
+        let ledger = null;
+        try { ledger = loadRequirements({ dir: this.reqDir() }).items; } catch { ledger = null; }
+        const taken = ledger && waited.every((w) => w.items.every((n) => ledger.get(n) && ledger.get(n).status !== 'new'));
+        const chat = taken ? this.messages(id) : [];
+        const ids = new Set(waited.map((w) => w.msgId));
+        const lastWaited = chat.findLastIndex((m) => ids.has(m.id));
+        since = lastWaited >= 0 ? chat.slice(lastWaited + 1).filter((m) => m.role === 'bot' && !m.side && m.text).pop() || null : null;
+      }
       // Messages that arrived while the bot was busy go in together, oldest first.
-      const text = this.withSideNotes(id, texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n'));
+      const text = this.withSideNotes(id, (since ? `${alreadyAnsweredNote(since.text)}\n\n` : '') + (texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n')));
       const echo = [...(this.echoes.get(id) || [])];
       this.echoes.delete(id);
       this.running.set(id, { activity: 'Thinking', startedAt: this.now(), echo, task: texts.join('\n\n'), steps: [], said: [] });
@@ -1129,14 +1148,44 @@ export class Bots {
       const asked = result.error ? null : parseQuestion(result.text || '');
       const listed = asked ? parseChecklist(asked.text) : null;
       if (listed) asked.text = listed.text;
+      // "Nothing new" about messages it already answered: no second reply.
+      const nothingNew = Boolean(asked && !asked.question && !listed?.checklist && new RegExp(`^\\W*${NOTHING_NEW}\\W*$`).test(asked.text || ''));
+      if (asked) asked.text = String(asked.text || '').replace(new RegExp(`\\s*\\b${NOTHING_NEW}\\b\\s*`, 'g'), ' ').trim();
+      // A card asking him to choose between looks/designs/pages with no link (Noam 2026-10-24:
+      // "שתמיד יהיה לינק עם אופציות"): held back once, and the bot adds the link first.
+      let held = false;
+      if (bot && asked?.question) {
+        const fresh = this.read(id);
+        const again = fresh?.heldQuestion && sameQuestion(fresh.heldQuestion, asked.question);
+        if (fresh && needsLink(asked.question) && !again) {
+          fresh.heldQuestion = { text: asked.question.text, options: asked.question.options };
+          this.write(fresh);
+          const queue = this.queues.get(id) || [];
+          queue.unshift(heldCardNote(asked.question));
+          this.queues.set(id, queue);
+          asked.question = null;
+          held = true;
+        } else if (fresh?.heldQuestion) { delete fresh.heldQuestion; this.write(fresh); }
+      }
+      // The same reply twice in a row (no message from him in between) is kept but not shown.
+      let duplicate = false;
+      if (bot && asked && !asked.question && !listed?.checklist && asked.text) {
+        const chat = this.messages(id);
+        for (let k = chat.length - 1; k >= 0; k--) {
+          const e = chat[k];
+          if (e.role === 'operator') break;
+          if (e.role === 'bot' && e.text && !e.side && !e.duplicate) { duplicate = nearDuplicate(e.text, asked.text); break; }
+        }
+      }
+      const silent = !result.error && !result.stopped && (nothingNew || (held && !asked.text));
       if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.' });
-      else if (bot) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question || listed.checklist ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}) });
+      else if (bot && !silent) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question || listed.checklist ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}), ...(duplicate ? { duplicate: true } : {}) });
       // Tagged elsewhere: the same answer also shows there, under this bot's name.
-      if (bot && echo.length && !result.stopped) {
-        this.postEcho(id, echo, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: [asked.text, asked.question?.text, listed?.checklist ? `${listed.checklist.title || 'A list for you'} (tick it in my own chat):\n${listed.checklist.rows.map((r) => `- ${r.label}`).join('\n')}` : ''].filter(Boolean).join('\n\n') || 'Done, with nothing to add.' });
+      if (bot && echo.length && !result.stopped && !silent && !duplicate) {
+        this.postEcho(id, echo, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: [asked.text, asked.question ? [asked.question.text, asked.question.link && /^https?:/.test(asked.question.link) ? `Open to compare: ${asked.question.link}` : ''].filter(Boolean).join('\n') : '', listed?.checklist ? `${listed.checklist.title || 'A list for you'} (tick it in my own chat):\n${listed.checklist.rows.map((r) => `- ${r.label}`).join('\n')}` : ''].filter(Boolean).join('\n\n') || 'Done, with nothing to add.' });
       }
       const [echoKind, echoAt] = (echo[0] || '').split(':');
-      if (bot && bot.notify !== false && !result.stopped) {
+      if (bot && bot.notify !== false && !result.stopped && !silent && !duplicate) {
         try { this.notify({ title: result.error ? `${bot.name} could not answer` : bot.name, body: String(result.error || (asked?.question ? asked.question.text : listed?.checklist ? `${listed.checklist.title || 'A list for you'} (${listed.checklist.rows.length} rows to tick)` : result.text) || '').replace(/\s+/g, ' ').slice(0, 200), url: echoAt ? `/#${echoKind}:${echoAt}` : `/#bot:${id}` }); } catch { /* never block a bot on a notification */ }
       }
       // Mid-turn messages the turn ended before taking: they start the next turn (R-7173).

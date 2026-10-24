@@ -1,4 +1,5 @@
 import { multiSelectState } from './send.mjs';
+import { questionLinks } from './question-view.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { claudeTranscript } from './paths.mjs';
@@ -295,7 +296,9 @@ export function questionFromRecords(pane, lines, screen = '') {
         options,
         ...(questions.length > 1 ? { questions: questionList(questions) } : {}),
       };
-      return { ...ask, id: askId(pane, ask) };
+      // Links in the question or its answers open from the card (Noam 2026-10-24: "שתמיד יהיה לינק עם אופציות").
+      const links = questionLinks(q.question, q.options || []);
+      return { ...ask, id: askId(pane, ask), ...(links.length ? { links } : {}) };
     }
   }
   return null;

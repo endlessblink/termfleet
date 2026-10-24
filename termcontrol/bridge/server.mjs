@@ -37,6 +37,7 @@ import { visits } from './visits.mjs';
 import { withSleepingLives, sweepSleep, sleepPane, wakePane, workProcesses, treeRss, readSettings, writeSettings, listSleeping, isSleeping as sleepMarked, setKeepAwake, isKeepAwake, sleepVerdict } from './sleep.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { resolveLocalImage, resolveLocalFile } from './local-image.mjs';
+import { resolveView } from './question-view.mjs';
 import { PASTE_ROOTS, readCopiedPictureFiles } from './clipboard-files.mjs';
 import { projectCatalog, resolveProject, projectLaunchArgs, projectLaunchReady, projectLaunchCapabilityPath, PROJECT_PROVIDERS, legacyProjectChoice } from './projects.mjs';
 import { spawnArgs } from './spawn.mjs';
@@ -503,6 +504,16 @@ const handle = async (req, res) => {
   if (req.method === 'GET' && PUBLIC_APP_FILES.has(url.pathname)) return serveStatic(res, url.pathname.slice(5));
   // The notification worker must load before sign-in checks (it holds no data).
   if (url.pathname === '/sw.js') return serveStatic(res, 'sw.js');
+  // A page on the PC that a question card links to (a comparison page, a mockup), opened on
+  // the phone too (Noam 2026-10-24: "שתמיד יהיה לינק עם אופציות"). The link's own key for that
+  // folder is the permission, so its pictures load too; it runs walled off (sandboxed), so the
+  // page can never act as Noam on this app.
+  if (url.pathname.startsWith('/view/') && req.method === 'GET') {
+    const found = resolveView(url.pathname);
+    if (!found) return json(res, 404, { error: 'That page is not available.' });
+    res.writeHead(200, { 'content-type': found.type, 'content-length': found.size, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': 'sandbox allow-scripts allow-popups allow-forms' });
+    return fs.createReadStream(found.file).pipe(res);
+  }
   if (await handleAuthRoutes(req, res, url)) return;
   if (res.writableEnded) return;
   if (!currentUser(req)) {
@@ -1190,7 +1201,7 @@ const handle = async (req, res) => {
     let target = '';
     try { target = String(JSON.parse(body).url || ''); } catch {}
     const picture = target.startsWith('/api/local-image?') ? resolveLocalImage(new URL(target, 'http://x').searchParams.get('path')) : null;
-    let open = picture?.file || '';
+    let open = picture?.file || (target.startsWith('/view/') ? resolveView(target.split(/[?#]/)[0])?.file : '') || '';
     if (!open) { try { const u = new URL(target); if (u.protocol === 'http:' || u.protocol === 'https:') open = u.href; } catch {} }
     if (!open) return json(res, 400, { error: 'That is not a link that can be opened.' });
     const child = spawn('xdg-open', [open], { detached: true, stdio: 'ignore' });
