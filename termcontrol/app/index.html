@@ -880,6 +880,7 @@ body main .msg.user>.message-menu[open]{grid-column:1!important}
 body main .msg>.message-menu[open]>summary{position:static!important;background:var(--line);color:var(--text)}
 body main .msg>.message-menu[open]>.message-menu-panel{position:absolute;z-index:40;top:48px;inset-inline-end:0;width:min(264px,78vw);display:grid;gap:2px;padding:6px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 14px 36px rgba(0,0,0,.4)}
 body main .msg.user>.message-menu[open]>.message-menu-panel{inset-inline-end:auto;inset-inline-start:0}
+:root:dir(rtl) body main .msg.user>.message-menu[open]>.message-menu-panel{inset-inline-start:auto;inset-inline-end:0}
 body main .message-menu-panel>button,body main .message-menu-panel .message-details>summary{display:flex;align-items:center;gap:12px;width:100%;min-height:46px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:var(--text);font:15px var(--ui);text-align:start;cursor:pointer;list-style:none}
 body main .message-menu-panel>button:hover,body main .message-menu-panel .message-details>summary:hover{background:var(--line)}
 body main .message-menu .message-menu-panel>button{padding:0 12px;min-height:46px;margin:0}body main .message-menu-panel .message-details>summary::before{content:"";width:20px;flex:none}
@@ -1093,6 +1094,8 @@ main .fleet-content{padding:0 10px}
 /* 👀 while the bot works on his message, ✓ once it answered (R-15305). */
 main .msg.user .bubble:has(>.msg-seen){position:relative;overflow:visible}
 .msg-seen{position:absolute;inset-block-end:-11px;inset-inline-start:-10px;display:grid;place-items:center;min-width:24px;height:24px;padding:0 3px;box-sizing:border-box;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:14px;line-height:1;user-select:none;-webkit-user-select:none}
+.msg-deleted{width:fit-content;max-width:80%;margin:4px 6px 10px auto;padding:6px 12px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:13px;font-style:italic;line-height:1.4;unicode-bidi:plaintext}
+body main .message-menu-panel>button.delete-message{color:#e5484d}body main .message-menu-panel>button.delete-message.armed{background:rgba(229,72,77,.14);font-weight:500}body main .message-menu-panel>button.delete-message .menu-ic{color:inherit}
 .msg-seen.answered{color:var(--accent);font-size:13px;font-weight:600;background:var(--surface);opacity:.85}
 .msg-seen.working{animation:seen-blink 2.4s ease-in-out infinite}
 @keyframes seen-blink{0%,88%,100%{transform:scaleY(1)}93%{transform:scaleY(.15)}}
@@ -2104,6 +2107,15 @@ document.addEventListener('contextmenu',event=>{const c=event.target.closest?.('
 {let cardTimer=null;
 document.addEventListener('touchstart',event=>{const c=event.target.closest?.('[data-card-reply]');if(!c || event.target.closest('button,input,textarea,a,label,video,.bot-media-cell'))return;clearTimeout(cardTimer);cardTimer=setTimeout(()=>{navigator.vibrate?.(12);replyToCard(c);},520);},{passive:true});
 for(const ev of ['touchend','touchmove','touchcancel'])document.addEventListener(ev,()=>clearTimeout(cardTimer),{passive:true});}
+// Right-click (desktop) or a long press (phone) on his own bot-chat message opens its menu, where Delete is.
+function openOwnMessageMenu(msg){const menu=msg?.querySelector(':scope>.message-menu');if(!menu || !menu.querySelector('.delete-message'))return false;menu.open=true;menu.querySelector('.delete-message')?.focus({preventScroll:true});return true;}
+document.addEventListener('contextmenu',event=>{const msg=event.target.closest?.('.msg.user[data-mid]');if(!msg || event.target.closest('a,input,textarea,.message-menu,.bot-media-cell') || String(getSelection?.() || '').trim())return;if(openOwnMessageMenu(msg)){event.preventDefault();navigator.vibrate?.(12);}});
+{let ownTimer=null,ownAt=null,swallow=false;
+document.addEventListener('touchstart',event=>{swallow=false;const msg=event.target.closest?.('.msg.user[data-mid]');if(!msg || event.touches.length>1 || event.target.closest('button,a,input,textarea,label,video,.message-menu,.bot-media-cell'))return;const t=event.touches[0];ownAt={x:t.clientX,y:t.clientY};clearTimeout(ownTimer);ownTimer=setTimeout(()=>{if(openOwnMessageMenu(msg)){swallow=true;navigator.vibrate?.(12);}},520);},{passive:true});
+// The tap that ends a long press must not close the menu it just opened.
+document.addEventListener('click',event=>{if(swallow){swallow=false;event.preventDefault();event.stopPropagation();}},true);
+document.addEventListener('touchmove',event=>{const t=event.touches[0];if(ownAt && t && Math.hypot(t.clientX-ownAt.x,t.clientY-ownAt.y)>10)clearTimeout(ownTimer);},{passive:true});
+for(const ev of ['touchend','touchcancel'])document.addEventListener(ev,()=>clearTimeout(ownTimer),{passive:true});}
 function botListHtml(m,messages){
   const list=m.checklist,sent=messages.find(x=>x.role==='operator' && x.listTo===m.id),locked=Boolean(sent);
   // Drawn from the list's own ticks; a draft or a sent answer is applied after drawing (applyBotLists).
@@ -2220,6 +2232,7 @@ function messageHtml(kind, text, who, when='', extra='', delivery='', details=''
     <details class="message-menu" data-detail-key="message:${esc(kind+':'+source)}"><summary aria-label="${ui('Message actions and source details','פעולות ופרטי מקור ההודעה')}" title="${ui('Message menu','תפריט ההודעה')}">⋯</summary><div class="message-menu-panel">
       ${kind!=='user' || reply.mid?`<button type="button" class="reply-message"><span class="menu-ic" aria-hidden="true">↩</span>${ui('Reply','תגובה')}</button>`:''}
       <button type="button" class="copy-message" aria-label="${ui('Copy message','העתקת הודעה')}">${icon('copy')}${ui('Copy message','העתקת הודעה')}</button><span class="copy-status" role="status" aria-live="polite"></span>
+      ${reply.del?`<button type="button" class="delete-message"><span class="menu-ic" aria-hidden="true">🗑</span><span class="delete-label">${ui('Delete message','מחיקת ההודעה')}</span></button>`:''}
       ${kind==='assistant'?`<button type="button" class="speak-message">${icon('speaker')}${ui('Read aloud','הקראה בקול')}</button>`:''}
       <details class="message-details"><summary>${ui('Source text','טקסט המקור')}</summary><pre dir="auto">${esc(source)}</pre></details>
       ${details?`<details class="message-details" data-detail-key="source:${esc(details)}"><summary>${ui('Original details','הפרטים המקוריים')}</summary><pre dir="auto">${esc(details)}</pre><button type="button" class="copy-message" data-copy-source="${esc(details)}">${ui('Copy original details','העתקת הפרטים המקוריים')}</button></details>`:''}
@@ -3768,8 +3781,9 @@ async function openBot(id,{motion=null}={}){
       if(m.role==='handoff' && handoffSkip.has(m.id))return '';
       if(m.role==='bot' && m.duplicate)return '';   // the same reply twice in a row shows once (Noam: "אין שום סיבה לחזרה הזו")
       if(m.guest)return guestReplyHtml(m,when);
+      if(m.role==='operator' && m.deleted)return `<div class="msg-deleted" role="note" dir="auto" data-mid="${esc(m.id)}"><span aria-hidden="true">🚫</span> ${esc(m.deleted.cancelled?ui('You deleted this message. The bot never saw it.','מחקת את ההודעה הזו. הבוט לא ראה אותה.'):ui('You deleted this message. The bot had already started on it.','מחקת את ההודעה הזו. הבוט כבר התחיל לעבוד עליה.'))}${when?` · <bdi>${esc(when)}</bdi>`:''}</div>`;
       if(m.role==='operator' && m.from)return `<div class="tagged-from" dir="auto"><a href="#${m.from.kind==='group'?'group':'bot'}:${esc(m.from.id)}">↪ ${esc(m.from.kind==='group'?ui(`You tagged ${bot.name} in the group ${m.from.name}`,`תייגת את ${bot.name} בקבוצה ${m.from.name}`):ui(`You tagged ${bot.name} in your chat with ${m.from.name}`,`תייגת את ${bot.name} בשיחה עם ${m.from.name}`))}</a></div>`+messageHtml('user',m.text,ui('You','אתה'),when);
-      if(m.role==='operator')return messageHtml('user',(m.images?`${m.text}\n📷 ${ui(m.images===1?'1 picture':`${m.images} pictures`,m.images===1?'תמונה אחת':`${m.images} תמונות`)}`:m.text)+(Array.isArray(m.files) && m.files.length?`\n📎 ${m.files.join(', ')}`:''),ui('You','אתה'),when,'','','',{mid:m.id,seen:m.status,of:m.replyTo?{who:m.replyTo.role==='bot'?bot.name:ui('You','אתה'),text:m.replyTo.text,media:m.replyTo.media || null}:null});
+      if(m.role==='operator')return messageHtml('user',(m.images?`${m.text}\n📷 ${ui(m.images===1?'1 picture':`${m.images} pictures`,m.images===1?'תמונה אחת':`${m.images} תמונות`)}`:m.text)+(Array.isArray(m.files) && m.files.length?`\n📎 ${m.files.join(', ')}`:''),ui('You','אתה'),when,'','','',{mid:m.id,del:true,seen:m.status,of:m.replyTo?{who:m.replyTo.role==='bot'?bot.name:ui('You','אתה'),text:m.replyTo.text,media:m.replyTo.media || null}:null});
       if(m.role==='bot')return (m.side?`<div class="bot-activity side-reply-tag" dir="auto">⚡ ${esc(ui('Quick answer while it keeps working','תשובה מהירה, העבודה ממשיכה'))}</div>`:'')+(m.text?messageHtml('assistant',m.text,m.side?`${bot.name} · ${ui('quick answer while it works','תשובה מהירה תוך כדי עבודה')}`:bot.name,when,m.side?' side-reply':'','','',{mid:m.id})+replyDetailsHtml(m.id,data.details?.[m.id]):'')+(m.media?botMediaHtml(m.media,m.id):'')+(!m.question && goAheadAsk(m.text)?goAheadHtml(m,[...data.messages,...pendingSends.filter(e=>e.goAheadTo).map(e=>({role:'operator',text:e.text,goAheadTo:e.goAheadTo}))]):'')+(m.question?botQuestionHtml(m,[...data.messages,...pendingSends.filter(e=>e.answerTo && e.state!=='failed').map(e=>({role:'operator',text:e.text,answerTo:e.answerTo}))]):'')+(m.checklist?botListHtml(m,[...data.messages,...pendingSends.filter(e=>e.listTo && e.state!=='failed').map(e=>({role:'operator',listTo:e.listTo,listChoices:e.choices}))]):'');
       if(m.role==='activity')return `<div class="bot-activity" dir="auto">${esc(m.text)}</div>`;
       if(m.role==='event')return `<div class="bot-note bot-event" dir="auto">⏰ ${esc(m.text.length>240?m.text.slice(0,239)+'…':m.text)}</div>`;
@@ -3801,6 +3815,15 @@ async function openBot(id,{motion=null}={}){
         box.oninput=()=>{go.disabled=!box.value.trim();box.style.height='auto';box.style.height=Math.min(box.scrollHeight,200)+'px';};
         box.onkeydown=e=>{if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();form.requestSubmit();}else if(e.key==='Escape' && !box.value.trim()){form.hidden=true;b.hidden=false;b.setAttribute('aria-expanded','false');}};
         form.onsubmit=e=>{e.preventDefault();const text=box.value.trim();if(!text)return;box.disabled=true;go.disabled=true;box.blur();following=true;const entry={text,images:[],state:'sending',answerTo:card.dataset.qid};pendingSends.push(entry);deliver(entry);};});
+      // Delete his own message (Noam 2026-10-25: "צריך שתהיה אפשרות לעצור הודעה מוסימת"): a second
+      // tap confirms (no browser dialogs); still in line, the bot never sees it.
+      main.querySelectorAll('.delete-message').forEach(b=>{b.onclick=async event=>{event.stopPropagation();
+        const label=b.querySelector('.delete-label');
+        if(!b.dataset.armed){b.dataset.armed='1';b.classList.add('armed');label.textContent=ui('Tap again to delete','לחיצה נוספת למחיקה');return;}
+        b.disabled=true;const menu=b.closest('.message-menu'),msgId=b.closest('[data-mid]')?.dataset.mid;
+        try{const r=await fetch('/api/bot/retract',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,msgId}),signal:AbortSignal.timeout(8000)});const d=await r.json();if(!r.ok)throw new Error(d.error);note(d.cancelled?ui('Deleted. The bot never saw it.','נמחקה. הבוט לא ראה אותה.'):ui('Deleted. The bot had already started on it.','נמחקה. הבוט כבר התחיל לעבוד עליה.'));}
+        catch(e){note(e.message || ui('Could not delete the message.','לא ניתן למחוק את ההודעה.'),true);}
+        if(menu)menu.open=false;render();};});
       const retry=main.querySelector('.bot-retry');
       if(retry)retry.onclick=async()=>{retry.disabled=true;try{const r=await fetch('/api/bot/retry',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id}),signal:AbortSignal.timeout(10000)});const d=await r.json();if(!r.ok)throw new Error(d.error);}catch(e){note(e.message || ui('Could not retry.','לא ניתן לנסות שוב.'),true);retry.disabled=false;}render();};
     }

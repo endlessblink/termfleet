@@ -802,7 +802,7 @@ const handle = async (req, res) => {
     dismissAsk(file, n);
     return json(res, 200, { ok: true });
   }
-  if (['/api/bots', '/api/bot/send', '/api/bot/update', '/api/bot/delete', '/api/bot/retry', '/api/bot/profile/accept', '/api/bot/profile/dismiss'].includes(url.pathname) && req.method === 'POST') {
+  if (['/api/bots', '/api/bot/send', '/api/bot/update', '/api/bot/delete', '/api/bot/retract', '/api/bot/retry', '/api/bot/profile/accept', '/api/bot/profile/dismiss'].includes(url.pathname) && req.method === 'POST') {
     let body;
     try { body = await readJson(req, 64 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
     let result;
@@ -811,6 +811,7 @@ const handle = async (req, res) => {
         : url.pathname === '/api/bot/send' ? bots.send(body.id, body.text, { images: body.images, files: body.files, owner: true, answerTo: body.answerTo, replyTo: body.replyTo, replyMedia: body.replyMedia, listTo: body.listTo, choices: body.choices, sendId: body.sendId })
           : url.pathname === '/api/bot/update' ? bots.update(body.id, body)
             : url.pathname === '/api/bot/retry' ? bots.retry(body.id)
+            : url.pathname === '/api/bot/retract' ? bots.retract(body.id, body.msgId)
               : url.pathname === '/api/bot/profile/accept' ? bots.acceptProfile(body.id, body)
                 : url.pathname === '/api/bot/profile/dismiss' ? bots.dismissProfile(body.id)
             : bots.remove(body.id);

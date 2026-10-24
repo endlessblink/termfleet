@@ -17,7 +17,7 @@ import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements } from './requirements.mjs';
-import { sidePrompt, parseSide, withPassedOn, putSteer, takeSteer, nextTurnText } from './side-reply.mjs';
+import { sidePrompt, parseSide, withPassedOn, putSteer, takeSteer, nextTurnText, steerDir } from './side-reply.mjs';
 import { BotGroups } from './bot-groups.mjs';
 import { checkFolder } from './bot-folders.mjs';
 import { classifyTool, appendAction, readActions, paneLogFile, botApproval, paneApproval, foldFiles, approvalText } from './action-log.mjs';
@@ -488,6 +488,8 @@ export class Bots {
     // the bridge passes runSide; tests pass a stand-in and never reach a real plan.
     this.side = side;
     this.sides = new Map();     // id -> { busy, pending: [entry] }
+    this.handed = new Map();    // his message id -> { bot, brain, items }: what a delete pulls back out of the line
+    this.retracted = new Set(); // his message ids he deleted: never handed on to the bot after that
     this.codexHome = process.env.TC_CODEX_HOME || os.homedir();
     this.notify = notify;   // phone notification for a reply or a "needs you" (part 7)
     this.fill = fill;
@@ -973,6 +975,8 @@ export class Bots {
     let forBrain = pictures.length ? `${answered}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : answered;
     if (attached.length) forBrain += `\n\n[Noam attached ${attached.length} file${attached.length === 1 ? '' : 's'}. Read each one before answering (open the file): ${attached.join(' , ')}]`;
     forBrain = this.withTags(id, bot, msg, body, forBrain, { owner, pictures });
+    this.handed.set(msg.id, { bot: id, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
+    if (this.handed.size > 300) this.handed.delete(this.handed.keys().next().value);
     if (owner && this.side && this.running.has(id)) {
       this.sideAnswer(id, { at: msg.at, msgId: msg.id, text: said0, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
       return { ok: true, message: msg, queued: true, side: true };
@@ -983,6 +987,70 @@ export class Bots {
     if (this.running.has(id)) this.waitedFor.set(id, [...(this.waitedFor.get(id) || []), { msgId: msg.id, items: (items || []).map((it) => it?.id).filter(Boolean) }]);
     if (!this.running.has(id)) this.drain(id);
     return { ok: true, message: msg, queued: this.running.has(id) && queue.length > 0 };
+  }
+
+  /**
+   * Noam deletes one of his own messages (Noam 2026-10-25: "צריך שתהיה אפשרות לעצור הודעה
+   * מוסימת אם בטעות מקלידים טעות"). Still waiting in line: it is pulled out, so the bot never
+   * sees it. Already handed to the bot: the turn finishes as it is. Either way the chat keeps
+   * only a "deleted" mark in its place, never the words.
+   */
+  retract(id, msgId) {
+    if (!this.read(id)) return { error: 'That bot no longer exists.' };
+    const key = String(msgId || '');
+    const chat = this.messages(id);
+    const at = chat.findIndex((m) => m.id === key);
+    const msg = chat[at];
+    if (!msg || msg.role !== 'operator') return { error: 'That message is not one of yours in this chat.' };
+    if (msg.deleted) return { ok: true, message: msg, cancelled: Boolean(msg.deleted.cancelled), repeated: true };
+    const cancelled = this.unqueue(id, key);
+    this.retracted.add(key);
+    const gone = { id: msg.id, at: msg.at, role: 'operator', ...(msg.sendId ? { sendId: msg.sendId } : {}), deleted: { at: this.now(), cancelled } };
+    const file = path.join(this.folder(id), 'chat.jsonl');
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    const line = lines.findIndex((l) => { try { return JSON.parse(l).id === key; } catch { return false; } });
+    if (line < 0) return { error: 'That message is no longer in this chat.' };
+    lines[line] = JSON.stringify(gone);
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, lines.join('\n'), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+    // The bot never saw it: the items it carried are dropped, so no one is held to them.
+    const items = cancelled ? this.handed.get(key)?.items || [] : [];
+    this.handed.delete(key);
+    for (const rid of items) {
+      try { const r = markRequirement({ status: 'dropped', id: rid, note: 'Noam deleted this message before the bot saw it.', by: 'message-delete' }, { dir: this.reqDir() }); if (r?.events) recordRequirements(r.events, { dir: this.reqDir() }); } catch { /* the message itself is gone */ }
+    }
+    return { ok: true, message: gone, cancelled };
+  }
+
+  /** Pulls his message out of every place it waits before reaching the bot. True when it was still waiting. */
+  unqueue(id, msgId) {
+    const brain = this.handed.get(msgId)?.brain;
+    const queue = this.queues.get(id) || [];
+    const i = brain == null ? -1 : queue.lastIndexOf(brain);
+    if (i >= 0) {
+      queue.splice(i, 1);
+      this.waitedFor.set(id, (this.waitedFor.get(id) || []).filter((w) => w.msgId !== msgId));
+      return true;
+    }
+    const side = this.sides.get(id);
+    const j = side ? side.pending.findIndex((e) => e.msgId === msgId) : -1;
+    if (j >= 0) { side.pending.splice(j, 1); return true; }
+    // Being read by the quick side responder right now: it is never answered or passed on to the bot (see sideLoop).
+    if (side?.inflight?.some((e) => e.msgId === msgId)) return true;
+    try {
+      const dir = steerDir(this.folder(id));
+      for (const name of fs.readdirSync(dir).filter((n) => n.endsWith(`-${String(msgId).replace(/[^\w-]/g, '')}.json`) && !n.startsWith('.'))) {
+        try { fs.unlinkSync(path.join(dir, name)); return true; } catch { /* the running turn just took it */ }
+      }
+    } catch { /* no steer inbox */ }
+    const bot = this.read(id);
+    if (brain != null && bot?.queued?.includes(brain)) {
+      bot.queued.splice(bot.queued.lastIndexOf(brain), 1);
+      this.write(bot);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -1249,7 +1317,8 @@ export class Bots {
     state.busy = true;
     try {
       while (state.pending.length) {
-        const batch = state.pending.splice(0);
+        let batch = state.pending.splice(0);
+        state.inflight = batch;
         const bot = this.read(id);
         if (!bot) return;
         const current = this.running.get(id);
@@ -1274,6 +1343,9 @@ export class Bots {
           continue;
         }
         if (!this.read(id)) return;   // removed meanwhile
+        // He deleted a message while the quick answer was being written: no answer to it, nothing passed on.
+        batch = batch.filter((e) => !this.retracted.has(e.msgId));
+        if (!batch.length) continue;
         const reply = withPassedOn(parsed.reply, parsed.forward, batch.map((e) => e.text));
         this.append(id, { role: 'bot', text: reply, side: { ms, forward: parsed.forward, to: batch.map((e) => e.msgId) } });
         if (bot.notify !== false) { try { this.notify({ title: bot.name, body: reply.replace(/\s+/g, ' ').slice(0, 200), url: `/#bot:${id}` }); } catch { /* never block on a notification */ } }
@@ -1286,11 +1358,12 @@ export class Bots {
           this.write(fresh);
         }
       }
-    } finally { state.busy = false; }
+    } finally { state.busy = false; state.inflight = []; }
   }
 
   /** A mid-turn message goes on to the bot: into the running turn if there is one, else as its next turn. */
   handOn(id, entry, reply) {
+    if (this.retracted.has(entry.msgId)) return;   // he deleted it while the quick answer ran
     if (this.running.has(id)) { putSteer(this.folder(id), { at: entry.at, msgId: entry.msgId, text: entry.text, brain: entry.brain, reply }); return; }
     const queue = this.queues.get(id) || [];
     queue.push(...nextTurnText([{ ...entry, reply }]));
