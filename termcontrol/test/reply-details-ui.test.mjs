@@ -18,7 +18,8 @@ test('a bot reply renders a collapsed Details toggle with his words, what was do
   assert.doesNotMatch(fn, /<details[^>]*\sopen/, 'closed until he taps it');
   assert.match(fn, /it\.words/); assert.match(fn, /it\.did/); assert.match(fn, /it\.evidence/);
   assert.doesNotMatch(fn, /it\.id/, 'no item ids on his screen');
-  assert.match(html, /messageHtml\('assistant',m\.text,bot\.name,when,'','','',\{mid:m\.id\}\)\+replyDetailsHtml\(m\.id,data\.details\?\.\[m\.id\]\)/);
+  // The bot's reply (its name, or "quick answer while it works") is followed by its Details toggle.
+  assert.match(html, /messageHtml\('assistant',m\.text,[^;]{0,240}\{mid:m\.id\}\)\+replyDetailsHtml\(m\.id,data\.details\?\.\[m\.id\]\)/);
 });
 
 test('an open Details stays open when new messages repaint the chat', () => {
