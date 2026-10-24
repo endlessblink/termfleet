@@ -46,6 +46,8 @@ export function pendingAsk(pane, {
       const shown = screenPromptAsk(pane, screen);
       if (shown) return shown;
       const tool = pendingToolFromTranscript(pane);
+      // A question tool raises a permission event before its question is drawn; its own card follows.
+      if (tool?.name === 'AskUserQuestion') return null;
       // Hook prompts offer only Yes / No; "don't ask again" would press No there.
       return permissionAsk(pane, {
         options: [{ key: 'yes', label: 'Yes, proceed' }, { key: 'no', label: 'No, tell the agent what to do differently' }],
@@ -73,7 +75,22 @@ export function pendingAsk(pane, {
     'approval-requested',
   ]).has(String(pane.turnReason || '').toLowerCase());
   if (pane.turn === 'waiting' && explicitPermission) {
-    return permissionAsk(pane, { title: 'This agent is asking permission to continue.' });
+    // Show WHAT is asked, never only that something is (Noam 2026-10-24: "if it asks something it
+    // needs to be visible and not a message about that"): the menu drawn on screen, else the tool
+    // call waiting for its answer, else the bottom of the terminal.
+    const shown = screenPromptAsk(pane, screen);
+    if (shown) return shown;
+    const tool = pane.provider === 'claude' ? pendingToolFromTranscript(pane) : null;
+    // Claude raises a permission event for its own question tool too, a moment before the
+    // question is drawn (2026-10-24: an empty "asking permission" card, then the real question).
+    if (tool?.name === 'AskUserQuestion') return null;
+    const tail = tool ? '' : screenTail(screen);
+    return permissionAsk(pane, {
+      title: !tool ? 'This agent is asking permission to continue.' : tool.name === 'Bash' ? 'Allow this command?' : `Allow ${tool.name}?`,
+      ...(tool?.detail ? { detail: tool.detail } : tail ? { detail: tail } : {}),
+      // Tied to the tool call, so the card's id does not change with every status update.
+      ...(tool?.id ? { sourceId: `tool:${tool.id}` } : {}),
+    });
   }
   return null;
 }
@@ -204,6 +221,12 @@ export function screenPromptAsk(pane, screen) {
   return { ...ask, id: askId(pane, ask) };
 }
 
+/** The last few lines the terminal shows, as plain text: what a prompt with no record says. */
+export function screenTail(screen, max = 6) {
+  const lines = String(screen || '').split('\n').map((l) => l.replace(/[│┃╭╮╰╯─━]/g, ' ').replace(/\s+/g, ' ').trim()).filter((l) => l && !/^[>❯›]?$/.test(l));
+  return lines.slice(-max).join('\n').slice(0, 400);
+}
+
 function pendingToolFromTranscript(pane) {
   const file = claudeTranscript(pane.cwd, pane.sessionId);
   return file ? pendingToolFromRecords(tailLines(file, 256 * 1024)) : null;
@@ -228,7 +251,7 @@ export function pendingToolFromRecords(lines) {
       if (answered.has(b.id)) return null;
       const input = b.input || {};
       const detail = input.description || input.command || input.file_path || input.url || '';
-      return { name: String(b.name || 'this tool'), detail: String(detail).replace(/\s+/g, ' ').trim().slice(0, 200) };
+      return { id: b.id ? String(b.id) : null, name: String(b.name || 'this tool'), detail: String(detail).replace(/\s+/g, ' ').trim().slice(0, 200) };
     }
   }
   return null;

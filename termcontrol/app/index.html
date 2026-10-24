@@ -1094,6 +1094,7 @@ main .fleet-content{padding:0 10px}
 /* 👀 while the bot works on his message, ✓ once it answered (R-15305). */
 main .msg.user .bubble:has(>.msg-seen){position:relative;overflow:visible}
 .msg-seen{position:absolute;inset-block-end:-11px;inset-inline-start:-10px;display:grid;place-items:center;min-width:24px;height:24px;padding:0 3px;box-sizing:border-box;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:14px;line-height:1;user-select:none;-webkit-user-select:none}
+.bot-term-ask.ended{opacity:.6}.bot-term-ask .term-ask-detail{white-space:pre-line;overflow-wrap:anywhere}
 .msg-deleted{width:fit-content;max-width:80%;margin:4px 6px 10px auto;padding:6px 12px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:13px;font-style:italic;line-height:1.4;unicode-bidi:plaintext}
 body main .message-menu-panel>button.delete-message{color:#e5484d}body main .message-menu-panel>button.delete-message.armed{background:rgba(229,72,77,.14);font-weight:500}body main .message-menu-panel>button.delete-message .menu-ic{color:inherit}
 .msg-seen.answered{color:var(--accent);font-size:13px;font-weight:600;background:var(--surface);opacity:.85}
@@ -5005,7 +5006,9 @@ function qLinksHtml(ask){
 function termAskHtml(m){
   const done=termAskDone[m.id],options=m.options || [];termAskCards[m.id]=m;
   if(m.kind==='question' && options.length)return `<div class="bot-term-ask" data-term-ask="${esc(m.id)}" data-pane="${esc(m.pane)}" data-ask="${esc(m.askId)}" role="group" aria-label="${esc(ui('A terminal is waiting for you','מסוף ממתין לך'))}"><p class="term-ask-from" dir="auto">${esc(ui(`Terminal "${m.label || 'agent'}" is asking you`,`המסוף "${m.label || 'סוכן'}" שואל אותך`))}</p><p class="q-title" dir="auto"><b>${inlineRich(m.text)}</b></p>${m.detail?`<p dir="auto">${inlineRich(m.detail)}</p>`:''}${qFormHtml(askFromTermCard(m),{key:'card:'+m.id})}</div>`;
-  return `<div class="bot-term-ask" data-term-ask="${esc(m.id)}" data-pane="${esc(m.pane)}" data-ask="${esc(m.askId)}" role="group" aria-label="${esc(ui('A terminal is waiting for you','מסוף ממתין לך'))}"><p class="term-ask-from" dir="auto">${esc(ui(`Terminal "${m.label || 'agent'}" is waiting for you`,`המסוף "${m.label || 'סוכן'}" ממתין לך`))}</p><p dir="auto"><b>${esc(m.text)}</b></p>${m.detail?`<p dir="auto">${esc(m.detail)}</p>`:''}${options.length?`<div class="term-ask-opts">${options.map(o=>`<button type="button" data-term-choice="${esc(o.key)}" dir="auto"${done?' disabled':''}>${esc(o.label)}</button>`).join('')}</div>`:`<a href="#${esc(m.pane)}">${ui('Open the terminal to answer','לפתוח את המסוף כדי לענות')}</a>`}<p class="askresult" role="status" aria-live="polite">${esc(done || '')}</p></div>`;
+  // A card the terminal has moved on from never looks answerable (Noam 2026-10-24: dead buttons on an empty card).
+  const ended=!done && m.settled,off=done || ended;
+  return `<div class="bot-term-ask${ended?' ended':''}" data-term-ask="${esc(m.id)}" data-pane="${esc(m.pane)}" data-ask="${esc(m.askId)}" role="group" aria-label="${esc(ui('A terminal is waiting for you','מסוף ממתין לך'))}"><p class="term-ask-from" dir="auto">${esc(ended?ui(`Terminal "${m.label || 'agent'}" asked`,`המסוף "${m.label || 'סוכן'}" שאל`):ui(`Terminal "${m.label || 'agent'}" is waiting for you`,`המסוף "${m.label || 'סוכן'}" ממתין לך`))}</p><p dir="auto"><b>${esc(m.text)}</b></p>${m.detail?`<p class="term-ask-detail" dir="auto">${esc(m.detail)}</p>`:''}${options.length?`<div class="term-ask-opts">${options.map(o=>`<button type="button" data-term-choice="${esc(o.key)}" dir="auto"${off?' disabled':''}>${esc(o.label)}</button>`).join('')}</div>`:ended?'':`<a href="#${esc(m.pane)}">${ui('Open the terminal to answer','לפתוח את המסוף כדי לענות')}</a>`}<p class="askresult" role="status" aria-live="polite">${esc(done || (ended?ui('No longer open in the terminal.','כבר לא פתוח במסוף.'):''))}</p></div>`;
 }
 async function answerTermAsk(button){
   const box=button.closest('[data-term-ask]');if(!box || box.dataset.sending)return;
@@ -5015,6 +5018,10 @@ async function answerTermAsk(button){
   catch{r={error:ui('Delivery is unconfirmed. Check the terminal before trying again.','המסירה לא אושרה. בדקו במסוף לפני ניסיון נוסף.'),uncertain:true};}
   delete box.dataset.sending;
   if(r.ok){termAskDone[box.dataset.termAsk]=ui(`Sent "${label}" to the terminal.`,`"${label}" נשלח למסוף.`);out.textContent=termAskDone[box.dataset.termAsk];return;}
+  // Out of date: the same prompt asked again is followed (tap again); anything else ends this card.
+  if(r.stale){const card=termAskCards[box.dataset.termAsk],keys=[...box.querySelectorAll('[data-term-choice]')].map(x=>x.dataset.termChoice);
+    if(r.current && card && r.current.kind===card.kind && r.current.title===card.text && r.current.options.join('|')===keys.join('|')){box.dataset.ask=r.current.id;card.askId=r.current.id;out.textContent=ui('The terminal asked this again. Tap your answer again.','המסוף שאל שוב. לחצו שוב על התשובה.');box.querySelectorAll('[data-term-choice]').forEach(x=>x.disabled=false);return;}
+    box.classList.add('ended');out.textContent=r.current?ui('The terminal is asking something else now; it shows below in a moment.','המסוף שואל עכשיו משהו אחר; זה יופיע למטה עוד רגע.'):ui('No longer open in the terminal.','כבר לא פתוח במסוף.');return;}
   out.textContent=r.error || ui('The terminal did not confirm it.','המסוף לא אישר.');
   if(!r.uncertain)box.querySelectorAll('[data-term-choice]').forEach(x=>x.disabled=false);
 }

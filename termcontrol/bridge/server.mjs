@@ -1071,7 +1071,8 @@ const handle = async (req, res) => {
           return json(res, 409, { error: 'A different question is open in that terminal now. Your draft is kept; answer the new question first.', notSent: true });
         }
         if (!fresh || !freshAsk || freshAsk.id !== payload.askId || (payload.choice && payload.choice !== 'submit-multi' && !matchesAsk(freshAsk, payload.askId, payload.choice)) || (typeof payload.answer==='string' && (freshAsk.kind!=='question' || freshAsk.stage==='review'))) {
-          return json(res, 409, { error: 'That question or permission request is no longer active. Refresh and check the terminal again.' });
+          // The card is out of date: say so, and hand the page the prompt open now (if any) so it can follow it.
+          return json(res, 409, { error: 'That question or permission request is no longer active. Refresh and check the terminal again.', stale: true, ...(fresh && freshAsk ? { current: { id: freshAsk.id, kind: freshAsk.kind, title: freshAsk.title, options: (freshAsk.options || []).map((o) => o.key) } } : {}) });
         }
         const adapter = adapterFor(fresh);
         // The screen a typed answer is checked against: the desktop's copy while it shows
