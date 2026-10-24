@@ -161,9 +161,9 @@ test('phone: chats with unread agent messages float to the top; folders and the 
 });
 
 // Noam 2026-10-24 (R-15166, R-15167): "I see no way to make folders on the phone" and "even if it
-// exists, it has to be clear". The button sits right under the search on BOTH tabs, big enough
-// to tap, and a folder made from the Bots tab takes him to the Terminals tab where it lives.
-test('phone: a big, clear New folder button on the Bots and Terminals tabs', async () => {
+// exists, it has to be clear". Then (R-15310) the top took too much room: the button is now a small
+// labelled one on the search row, on BOTH tabs, and the bot list starts high on the screen.
+test('phone: a clear, compact New folder button on the Bots and Terminals tabs', async () => {
   const browser = await chromium.launch();
   const store = new ListFolders(tmpFile());
   try {
@@ -172,11 +172,21 @@ test('phone: a big, clear New folder button on the Bots and Terminals tabs', asy
     const button = page.locator('.new-folder-row');
     await button.waitFor();
     const box = await button.boundingBox();
-    assert.ok(box.height >= 48 && box.width >= 300, `easy to tap: ${box.width}x${box.height}`);
+    assert.ok(box.height >= 40 && box.height <= 44 && box.width < 200, `easy to tap, not a full-width row: ${box.width}x${box.height}`);
     assert.match(await button.textContent(), /New folder/);
-    const search = await page.locator('.fleet-search').boundingBox();
-    assert.ok(box.y - (search.y + search.height) < 40, 'right under the search, no scrolling to find it');
-    assert.ok(box.y + box.height < 844, 'visible without scrolling');
+    const search = await page.locator('.fleet-search-open').boundingBox();
+    assert.ok(Math.abs(search.y - box.y) < 2, 'on the same row as the search');
+    const tabs = await page.locator('.fleet-tabs').boundingBox();
+    assert.ok(tabs.height <= 46, `tight tabs: ${tabs.height}`);
+    const first = await page.locator('.bot-row').first().boundingBox();
+    assert.ok(first.y < 260, `the bot list starts high: ${first.y}`);
+    // Search is an icon that opens into the box and closes again when emptied.
+    await page.locator('.fleet-search-open').tap();
+    assert.ok(await page.locator('.fleet-search').isVisible(), 'the box opens');
+    await page.keyboard.type('zzz');
+    assert.ok(await page.locator('.bot-row').first().evaluate((el) => el.classList.contains('search-miss')), 'filters the list');
+    await page.keyboard.press('Escape');
+    assert.ok(!(await page.locator('.fleet-search').isVisible()), 'Escape closes it');
     if (shots) await page.screenshot({ path: `${shots}/phone-bots-tab.png` });
     await button.tap();
     await page.locator('.list-sheet input').fill('Studio');
@@ -185,7 +195,7 @@ test('phone: a big, clear New folder button on the Bots and Terminals tabs', asy
     assert.equal(await page.locator('.fleet-tabs [data-tab="terminals"]').getAttribute('aria-selected'), 'true', 'moved to the tab where the folder lives');
     assert.equal(store.read('noam').folders[0].name, 'Studio');
     const t = await page.locator('.new-folder-row').boundingBox();
-    assert.ok(t.height >= 48 && t.y + t.height < 844, 'also clear on the Terminals tab');
+    assert.ok(t.height >= 40 && t.y + t.height < 400, 'also clear on the Terminals tab');
     if (shots) await page.screenshot({ path: `${shots}/phone-terminals-tab.png` });
     assert.deepEqual(errors, []);
     await context.close();

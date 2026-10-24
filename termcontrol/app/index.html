@@ -1317,6 +1317,39 @@ body.chat main .qform .q-opt{border:1px solid var(--line);border-radius:14px;min
 .removed-bot{display:flex;align-items:center;gap:10px;padding:6px 8px;min-height:44px}.removed-bot span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .removed-bot button{min-height:36px;padding:0 14px;border:1px solid var(--line);border-radius:18px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer}
 @media (pointer:coarse){.removed-bot button{min-height:44px}}
+/* R-15310: the top of the list is compact so the bots and terminals start high on a phone.
+   Usage is one quiet line (tap for reset times), tabs are tighter, search is an icon that opens
+   into the box, and New folder is a small labelled button on the same row. */
+body:not(.chat):not(.bot-view) header{min-height:52px;padding-block:6px}
+.usage-line{margin:0 0 8px;border-radius:10px;color:var(--muted);font:400 12.5px var(--ui)}
+.usage-line>summary{display:flex;align-items:center;gap:14px;min-height:32px;padding:0 10px;list-style:none;cursor:pointer;border-radius:10px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.usage-line>summary::-webkit-details-marker{display:none}
+.usage-line>summary:hover,.usage-line>summary:focus-visible{background:var(--surface-2)}
+.usage-brief{display:inline-flex;align-items:baseline;gap:5px;min-width:0}
+.usage-brief .usage-name{min-width:0;font-weight:500;color:var(--text)}
+.usage-brief b{font-weight:500;color:var(--text)}.usage-brief b.low{color:var(--danger,#d66)}
+.usage-brief i{font-style:normal;opacity:.5}.usage-unknown{opacity:.8}
+.usage-chev{width:12px;height:12px;flex:none;margin-inline-start:auto;transition:transform .2s cubic-bezier(.16,1,.3,1)}
+.usage-line[open] .usage-chev{transform:rotate(180deg)}
+.usage-line .usagebar{margin:4px 0 0}
+.fleet-tabs{margin:0 0 8px;padding:3px;border-radius:12px}
+.fleet-tabs button{min-height:38px;font-size:14px;gap:6px;border-radius:9px}
+.fleet-tabs [data-tab=health]{padding:0 14px}
+.fleet-tools{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+.fleet-search-open{flex:none;display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer;touch-action:manipulation}
+.fleet-search-open svg{width:18px;height:18px}
+.fleet-search-open:hover,.fleet-search-open:focus-visible{background:var(--surface-2);color:var(--text)}
+.fleet-tools .fleet-search{display:none;flex:1;min-width:0;width:auto;height:40px;margin:0;padding:0 12px;border-radius:10px}
+.fleet-tools.searching .fleet-search-open{display:none}
+.fleet-tools.searching .fleet-search{display:block}
+.fleet-tools .new-folder-row{display:inline-flex;width:auto;min-height:40px;margin:0;margin-inline-start:auto;padding:0 12px;gap:6px;border:1px dashed color-mix(in srgb,var(--accent) 70%,transparent);border-radius:10px;font-size:13.5px;white-space:nowrap}
+.fleet-tools .new-folder-plus{font-size:17px}
+.fleet-tools .new-folder-row .folder-icon{width:16px;height:16px}
+.fleet-tools.searching .new-folder-row{padding:0;width:40px;justify-content:center;margin-inline-start:0}
+.fleet-tools.searching .new-folder-row .new-folder-label,.fleet-tools.searching .new-folder-plus{display:none}
+.search-hits:empty{display:none}
+@media(max-width:999px){.fleetbar .new-folder{display:none}}   /* the labelled New folder button sits right above */
+@media (prefers-reduced-motion:reduce){.usage-chev{transition:none}}
 </style>
 <header role="banner">
   <nav id="nav" aria-label="Back"></nav>
@@ -1804,7 +1837,7 @@ const quotaHtml = (limits) => {
 const usageLocale=()=>chromeLocale==='he'?'he-IL':'en-GB';
 const resetClock=(ms)=>{const d=new Date(ms),now=new Date(),time=d.toLocaleTimeString(usageLocale(),{hour:'2-digit',minute:'2-digit'});if(d.toDateString()===now.toDateString())return time;const next=new Date(now);next.setDate(now.getDate()+1);if(d.toDateString()===next.toDateString())return ui(`tomorrow ${time}`,`מחר ${time}`);return `${d.toLocaleDateString(usageLocale(),{weekday:'short'})} ${time}`;};
 const usageWindow=(w)=>{const name=w.kind==='fiveHour'?ui('5 hours','5 שעות'):ui('Week','שבוע');const when=w.renewed?ui('just renewed','התחדש עכשיו'):w.resetsAt?ui(`resets ${resetClock(w.resetsAt)}`,`מתאפס ${resetClock(w.resetsAt)}`):ui('reset time unknown','זמן איפוס לא ידוע');return `<span class="usage-window${w.remainingPercent<=20?' low':''}">${name}: <b>${w.remainingPercent}%</b> ${ui('left','נשאר')}, ${when}</span>`;};
-const usageHtml=(usage)=>{const list=usage?.providers;if(!Array.isArray(list) || !list.length)return '';return `<div class="usagebar" data-key="usage" role="status" aria-label="${ui('Plan usage left','כמה נשאר מהמנוי')}">${list.map(p=>`<div class="usage-row" title="${p.observedAt?ui(`Read from this computer, updated ${new Date(p.observedAt).toLocaleString(usageLocale())}`,`נקרא מהמחשב, עודכן ${new Date(p.observedAt).toLocaleString(usageLocale())}`):ui('Nothing recorded on this computer yet','עוד לא נרשם במחשב')}"><span class="usage-name">${esc(p.label)}</span><span class="usage-windows">${p.known?p.windows.map(usageWindow).join(''):`<span class="usage-window">${ui('unknown','לא ידוע')}</span>`}</span></div>`).join('')}</div>`;};
+const usageHtml=(usage)=>{const list=usage?.providers;if(!Array.isArray(list) || !list.length)return '';const brief=p=>`<span class="usage-brief"><span class="usage-name">${esc(p.label)}</span>${p.known && p.windows.length?p.windows.map(w=>`<b class="${w.remainingPercent<=20?'low':''}">${w.remainingPercent}%</b>`).join('<i aria-hidden="true">·</i>'):`<span class="usage-unknown">${ui('unknown','לא ידוע')}</span>`}</span>`;const open=sessionStorage.getItem('termcontrol-usage-open')==='open';return `<details class="usage-line" data-key="usage"${open?' open':''}><summary aria-label="${ui('Plan usage left: 5 hours, then week. Tap for reset times','כמה נשאר מהמנוי: 5 שעות, ואז שבוע. הקשה לזמני האיפוס')}">${list.map(brief).join('')}<svg class="usage-chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary><div class="usagebar" role="status" aria-label="${ui('Plan usage left','כמה נשאר מהמנוי')}">${list.map(p=>`<div class="usage-row" title="${p.observedAt?ui(`Read from this computer, updated ${new Date(p.observedAt).toLocaleString(usageLocale())}`,`נקרא מהמחשב, עודכן ${new Date(p.observedAt).toLocaleString(usageLocale())}`):ui('Nothing recorded on this computer yet','עוד לא נרשם במחשב')}"><span class="usage-name">${esc(p.label)}</span><span class="usage-windows">${p.known?p.windows.map(usageWindow).join(''):`<span class="usage-window">${ui('unknown','לא ידוע')}</span>`}</span></div>`).join('')}</div></details>`;};
 const stallAge = (ms) => { const m = Math.round(ms / 60000); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`; };
 const statusHtml = (pane) => {
   const working = pane.workingSince
@@ -2655,7 +2688,7 @@ async function fleet(background=false,{fromCache=false}={}) {
     ? ui('Cannot check TermFleet right now — showing last known status','לא ניתן לבדוק את TermFleet כרגע — מוצג המצב האחרון הידוע')
     : (waitingItems.length || waiting.length)
       ? ui(`${waitingItems.length || waiting.length} waiting for you`,`${waitingItems.length || waiting.length} ממתינים לך`)
-      : `${panes.length} terminal${panes.length === 1 ? '' : 's'}`;
+      : ui(`${panes.length} terminal${panes.length === 1 ? '' : 's'}`,panes.length === 1 ? 'מסוף אחד' : `${panes.length} מסופים`);
 
 
   const attention = panes.filter((p) => p.attention || p.turn==='waiting');
@@ -2706,16 +2739,17 @@ async function fleet(background=false,{fromCache=false}={}) {
     return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span>${g.panes.length>1?`<span class="count">${g.panes.length}</span>`:''}${g.panes.some(p=>p.cwd)?`<button type="button" class="addagent" data-project="${esc(g.project)}" data-project-id="${esc(g.mapGroupId || g.panes[0]?.mapGroupId || '')}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
   }).join('');
   const floatedHtml=floatedList.length?`<section class="floated" data-key="floated" aria-label="${ui('New messages','הודעות חדשות')}"><div class="floated-head">${ui('New messages','הודעות חדשות')}</div><div class="group-rows">${floatedList.map(card).join('')}</div></section>`:'';
-  // Noam 2026-10-24: "I see no way to make folders on the phone" - the row was a faint grey line on
-  // the Terminals tab only. It is now a full-width outlined button under the search, on both tabs.
-  const folderButton=(key,hint)=>`<button type="button" class="new-folder-row" data-key="${key}"><span class="new-folder-plus" aria-hidden="true">+</span>${folderSvg}<span class="new-folder-label">${ui('New folder','תיקייה חדשה')}</span><span class="new-folder-hint">${hint}</span></button>`;
-  const folderRow=folderButton('new-folder-row',lf.folders.length?'':ui('Sort chats by topic','למיין שיחות לפי נושא'));
-  const botsFolderRow=folderButton('new-folder-row-bots',ui('For terminal chats','לשיחות במסופים'));
+  // Noam 2026-10-24: "I see no way to make folders on the phone" (R-15166) and then "takes too much
+  // room" (R-15310): a small labelled button on the search row, on both tabs, still named in words.
+  const folderButton=(key,hint)=>`<button type="button" class="new-folder-row" data-key="${key}" title="${esc(hint)}"><span class="new-folder-plus" aria-hidden="true">+</span>${folderSvg}<span class="new-folder-label">${ui('New folder','תיקייה חדשה')}</span></button>`;
+  const folderRow=folderButton('new-folder-row',ui('New folder: sort chats by topic','תיקייה חדשה: למיין שיחות לפי נושא'));
+  const botsFolderRow=folderButton('new-folder-row-bots',ui('New folder for terminal chats','תיקייה חדשה לשיחות במסופים'));
   const listParts=floatedHtml+folderSectionsHtml(panes,lf,skipIds,paneOrder,new Set(floatedList.map(p=>p.id)));
   const listEnd=archiveSectionHtml(archivedList,lf)+hiddenFoldersHtml(lf);
   const root=background?sideContent:main;
   let container=root.querySelector('.fleet-content');if(!container){root.replaceChildren();container=document.createElement('div');container.className='fleet-content';root.append(container);}
-  const searchBox=`<input type="search" class="fleet-search" data-key="search" dir="auto" placeholder="${ui('Search bots, chats and terminals','חיפוש בוטים, שיחות ומסופים')}" aria-label="${ui('Search','חיפוש')}" value="${esc(fleetQuery)}"><div class="search-hits" data-key="search-hits"></div>`;
+  const searchOpen=fleetSearchOpen || Boolean(fleetQuery);
+  const searchBox=folder=>`<div class="fleet-tools${searchOpen?' searching':''}" data-key="tools"><button type="button" class="fleet-search-open" aria-label="${ui('Search bots, chats and terminals','חיפוש בוטים, שיחות ומסופים')}" aria-expanded="${searchOpen}" title="${ui('Search','חיפוש')}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10.5 17a6.5 6.5 0 110-13 6.5 6.5 0 010 13z M15.5 15.5L20 20"/></svg></button><input type="search" class="fleet-search" data-key="search" dir="auto" enterkeyhint="search" placeholder="${ui('Search bots, chats and terminals','חיפוש בוטים, שיחות ומסופים')}" aria-label="${ui('Search','חיפוש')}" value="${esc(fleetQuery)}">${folder}</div><div class="search-hits" data-key="search-hits"></div>`;
   const botList=botsData?.bots || [],tab=fleetTab(botList.length);
   if(tab==='health')loadAgentHealth().then(()=>{if(agentHealth && !container.querySelector('.health-page .health-rows'))liveRefresh();});
   const botsNeed=botList.filter(b=>!b.hidden).reduce((n,b)=>n+(Number(b.unread)||0),0),termsNeed=panes.filter(p=>p.attention).length;   // same counts as the dock icon
@@ -2723,8 +2757,9 @@ async function fleet(background=false,{fromCache=false}={}) {
   const tabs=`<div class="fleet-tabs" role="tablist" data-key="tabs"><button type="button" role="tab" data-tab="bots" aria-selected="${tab==='bots'}">${ui('Bots','בוטים')}<span class="tab-count">${botList.filter(b=>!b.hidden).length}</span>${need(botsNeed)}</button><button type="button" role="tab" data-tab="terminals" aria-selected="${tab==='terminals'}">${ui('Terminals','מסופים')}<span class="tab-count">${panes.length}</span>${need(termsNeed,'term')}</button><button type="button" role="tab" data-tab="health" aria-selected="${tab==='health'}">${ui('Health','מצב')}</button></div>`;
   // The same tab redrawn by a refresh keeps its place; a different tab starts at the top.
   const keepScroll=!background && container.dataset.tab===tab && !history.state?.fleetReturn?main.scrollTop:null;container.dataset.tab=tab;
-  patchFleet(container,waitingHtml(waitingItems)+usageHtml(r.usage)+tabs+(tab==='health'?healthCardHtml(agentHealth,true):searchBox+(tab==='bots'?botsFolderRow+botsHomeHtml(botsData):folderRow+bar+roomsPanelHtml(roomsData)+none+listParts+content+listEnd+footer)));
+  patchFleet(container,waitingHtml(waitingItems)+usageHtml(r.usage)+tabs+(tab==='health'?healthCardHtml(agentHealth,true):(tab==='bots'?searchBox(botsFolderRow)+botsHomeHtml(botsData):searchBox(folderRow)+bar+roomsPanelHtml(roomsData)+none+listParts+content+listEnd+footer)));
   container.querySelectorAll('.fleet-tabs [data-tab]').forEach(el=>{el.onclick=()=>{pickedFleetTab=el.dataset.tab;try{localStorage.setItem('termcontrol-fleet-tab',el.dataset.tab);}catch{}const bg=Boolean(focusedPane);fleet(bg,{fromCache:true}).then(()=>fleet(bg));};});
+  const usageLine=container.querySelector('.usage-line');if(usageLine)usageLine.ontoggle=()=>sessionStorage.setItem('termcontrol-usage-open',usageLine.open?'open':'closed');
   const healthDetails=container.querySelector('.health-card');if(healthDetails)healthDetails.ontoggle=()=>sessionStorage.setItem('termcontrol-health-open',healthDetails.open?'open':'closed');
   if(keepScroll!==null && main.scrollTop!==keepScroll)main.scrollTop=keepScroll;
   wireFleetSearch(container);
@@ -4037,7 +4072,7 @@ if(pushSupported() && Notification.permission==='granted')setTimeout(()=>enableN
 
 // TF-096 part 6 (Grok Bot's search): filter what is on the list as you type, and
 // find words said in any bot's chat.
-let fleetQuery='',searchTimer=null;
+let fleetQuery='',searchTimer=null,fleetSearchOpen=false;
 function applyFleetFilter(container){
   const q=fleetQuery.trim().toLowerCase();
   container.querySelectorAll('.pane,.bot-row,.room-row').forEach(el=>el.classList.toggle('search-miss',Boolean(q) && !el.textContent.toLowerCase().includes(q) && !(el.getAttribute('aria-label') || '').toLowerCase().includes(q)));
@@ -4046,6 +4081,11 @@ function wireFleetSearch(container){
   const input=container.querySelector('.fleet-search'),hits=container.querySelector('.search-hits');
   if(!input || input.dataset.wired)return applyFleetFilter(container);
   input.dataset.wired='1';
+  const tools=container.querySelector('.fleet-tools'),opener=container.querySelector('.fleet-search-open');
+  const setOpen=open=>{fleetSearchOpen=open;tools?.classList.toggle('searching',open);opener?.setAttribute('aria-expanded',String(open));};
+  if(opener)opener.onclick=()=>{setOpen(true);input.focus();};
+  input.addEventListener('blur',()=>{if(!input.value.trim())setOpen(false);});
+  input.addEventListener('keydown',e=>{if(e.key==='Escape'){input.value='';input.dispatchEvent(new Event('input'));setOpen(false);opener?.focus();}});
   input.oninput=()=>{
     fleetQuery=input.value;applyFleetFilter(container);clearTimeout(searchTimer);
     if(fleetQuery.trim().length<2){hits.innerHTML='';return;}
