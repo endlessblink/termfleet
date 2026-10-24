@@ -559,7 +559,7 @@ main .desk-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:22px}
 /* Owner-approved warm graphite direction. All assets and actions stay local. */
 :root{--ready:#8cc79a;--terminals:#5aa9e6;--bg:#141312;--deep:#0f0e0d;--surface:#1f1d1b;--surface-2:#292623;--line:#393530;--text:#f2eee9;--muted:#b0a89f;--dim:#a69e94;--accent:#d97757;--waiting:#d97757;--working:#b4b7b0;--control:#645d55;--user:#292623;--ui:Rubik,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
 :root[data-theme="light"]{color-scheme:light;--ready:#3f8a53;--terminals:#2f86c9;--bg:#f5f2ed;--deep:#ede8e1;--surface:#ffffff;--surface-2:#e9e4dd;--line:#d5cfc6;--text:#26221e;--muted:#665e54;--dim:#73695e;--working:#535c54;--control:#aaa093;--user:#e9e4dd}
-body{font-size:14px}header{min-height:56px;padding:6px 12px;gap:8px}header h1{font-weight:500}header>.theme-toggle{margin-inline-start:auto;flex:none}header .sub{max-width:680px}.theme-toggle,.back{width:44px;height:44px;min-width:44px;min-height:44px;display:grid;place-items:center;padding:0;margin:0;color:var(--muted);background:transparent;border:0;border-radius:10px;cursor:pointer}.back:dir(rtl) svg{transform:rotate(180deg)}.theme-toggle:hover,.back:hover{background:var(--surface-2)}
+body{font-size:14px}header{min-height:56px;padding:6px 12px;gap:8px}header h1{font-weight:500}header>.theme-toggle{margin-inline-start:auto;flex:none}header .sub{max-width:680px}body:not(.chat) header .sub{min-height:18px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.theme-toggle,.back{width:44px;height:44px;min-width:44px;min-height:44px;display:grid;place-items:center;padding:0;margin:0;color:var(--muted);background:transparent;border:0;border-radius:10px;cursor:pointer}.back:dir(rtl) svg{transform:rotate(180deg)}.theme-toggle:hover,.back:hover{background:var(--surface-2)}
 main{max-width:none;padding:0 0 12px}body.chat main{padding:20px 20px 16px;max-width:760px}main .fleet-content{padding:0 12px}.fleetbar{display:flex;flex-direction:row;gap:10px;padding:4px 0 8px;margin:0;border:0}.fleetbar label{display:flex;align-items:center;gap:6px;min-width:0;flex:1;font-size:12px;color:var(--muted)}.fleetbar select{min-width:0;flex:1;width:100%;min-height:44px;border:0;border-radius:8px;background:var(--bg);color:var(--text);font:13px var(--ui);padding:0 4px;cursor:pointer}
 .projgroup{margin:0}.projhead{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;margin:0;color:var(--muted);font-size:12px;font-weight:500;list-style:none;cursor:pointer}.projhead::-webkit-details-marker{display:none}.projhead::after{content:'⌄';width:18px;text-align:center;font-size:16px}.projgroup:not([open])>.projhead::after{content:'›'}.projhead .count{background:transparent;padding:0;border:0;margin-inline-start:auto;font-size:12px;color:var(--muted)}.group-color{width:7px;height:7px;border-radius:2px;flex:none}.group-rows{min-width:0}.pane{min-height:44px;height:44px;display:flex;gap:9px;align-items:center;padding:4px 4px;margin:0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font-size:13px}.pane.waiting,.pane.idle{padding:4px;background:transparent;border:0;border-bottom:1px solid var(--line)}.pane.waiting::before{display:none}.pane:hover,.pane:active,.pane.selected{background:var(--surface-2)}.pane .project,.pane.idle .project,.pane.waiting .project{color:var(--text);font-size:13px;font-weight:500}.pane-copy{flex:1;min-width:0;display:flex;flex-direction:column}.pane .row1{margin:0;gap:6px;min-height:17px}.pane .badge{font-family:var(--ui);text-transform:none;letter-spacing:0;font-size:10px;font-weight:400;color:var(--muted);background:transparent;border:0;padding:0;margin:0;white-space:nowrap}.pane .task{display:block;font-size:12px;line-height:15px;min-height:15px;max-width:100%;color:var(--muted)}.row-color{width:2px;height:22px;border-radius:1px;flex:none}.pane-meta{flex:none;display:flex;flex-direction:column;text-align:end;gap:1px;max-width:90px}.pane .state{display:block;background:transparent;padding:0;border:0;border-radius:0;font-size:10px;margin:0;color:var(--muted);line-height:15px}.pane.waiting .state{color:var(--waiting)}.last-active{font-size:10px;color:var(--muted);line-height:13px;white-space:nowrap}
 .attention-panel{margin:0 0 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}.attention-panel summary{min-height:44px;padding:0 2px;font-size:12px;font-weight:500;color:var(--waiting)}.attention-count{height:18px;min-width:18px;font-size:10px;padding:0 5px;background:var(--waiting);color:#141312}.attention-list{border:0;max-height:176px}.attention-item{height:44px;padding:0 2px;gap:8px;border-color:var(--line)}.attention-project{font-size:12px;font-weight:500}.attention-reason{font-size:12px;line-height:14px;margin:0}.attention-review{min-height:44px;height:44px;min-width:62px;padding:0 8px;font-size:12px;font-weight:500;border:0;border-radius:8px;background:transparent;color:var(--waiting)}.attention-review:hover{background:var(--surface-2)}
@@ -2536,6 +2536,7 @@ function wireListFolders(container,onPhone){
   container.addEventListener('drop',e=>{const t=target(e);container.querySelectorAll('.folder-drop').forEach(x=>x.classList.remove('folder-drop'));if(!t || !dragId)return;e.preventDefault();const id=dragId;dragId=null;folderChange({op:'move',pane:id,folder:t.dataset.folder || null}).catch(err=>note(err.message,true));});
   container.addEventListener('dragend',()=>{dragId=null;container.querySelectorAll('.folder-drop').forEach(x=>x.classList.remove('folder-drop'));});
 }
+let lastFleetSub='';
 async function fleet(background=false,{fromCache=false}={}) {
   if(background && !focusedPane && otherView!=='bot' && otherView!=='group')return;
   if(fromCache && !lastFleetData)fromCache=false;
@@ -2555,7 +2556,8 @@ async function fleet(background=false,{fromCache=false}={}) {
   document.querySelector('.askbox')?.remove();
   document.querySelector('.sendstate')?.remove();
   nav.innerHTML = '';
-  title.textContent = 'TermControl';sub.textContent = '';
+  // Keep the last count while the list refreshes; emptying it moved the title (2026-10-24).
+  if(title.textContent!=='TermControl'){title.textContent = 'TermControl';sub.textContent = lastFleetSub;}
   chatStatus.innerHTML = '';routinesLine.innerHTML = '';
   if(cached)restoreFleetReturn(true);
   }
@@ -2597,7 +2599,7 @@ async function fleet(background=false,{fromCache=false}={}) {
   const everything = r.panes;
   const panes = everything.filter((p) => !cutoff || p.turn === 'waiting' || lastUsed(p) >= cutoff);
   const waiting = panes.filter((p) => p.turn === 'waiting');
-  if(!background)sub.textContent = r.daemon === false
+  if(!background)sub.textContent = lastFleetSub = r.daemon === false
     ? ui('Cannot check TermFleet right now — showing last known status','לא ניתן לבדוק את TermFleet כרגע — מוצג המצב האחרון הידוע')
     : (waitingItems.length || waiting.length)
       ? ui(`${waitingItems.length || waiting.length} waiting for you`,`${waitingItems.length || waiting.length} ממתינים לך`)
