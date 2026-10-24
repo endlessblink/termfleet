@@ -79,6 +79,7 @@ import { confirmReceipt, confirmStarted, trustDecision } from '../termcontrol/br
 import { adapterFor } from '../termcontrol/bridge/feed.mjs';
 import { PATHS } from '../termcontrol/bridge/paths.mjs';
 import { mkdirSync } from 'node:fs';
+import { botTerminalLimit, liveBotTerminals } from './lib/spawn-guards.mjs';
 
 /** How the receipt checks see the fleet (real daemon and records; tests pass their own). */
 export const receiptDeps = () => ({
@@ -300,6 +301,16 @@ async function main(argv) {
   }
 
   if (command === 'start') {
+    // One bot runs at most a few terminals at once (default 3): past that it closes one first.
+    const ownDir = botFolder();
+    if (ownDir) {
+      let helpers = [], bot = null;
+      try { helpers = JSON.parse(readFileSync(join(ownDir, 'helpers.json'), 'utf8')); } catch { helpers = []; }
+      try { bot = JSON.parse(readFileSync(join(ownDir, 'bot.json'), 'utf8')); } catch { bot = null; }
+      const limit = botTerminalLimit({ bot });
+      const running = liveBotTerminals(helpers, await fleetPanes());
+      if (running.length >= limit) fail(`Not started: you already run ${running.length} terminals (${running.join(', ')}) and the limit is ${limit}. Close one you are done with (termfleet-team close <who>) or wait for one to finish, then start again.`, 4);
+    }
     // TF-102: the task carries Noam's items in his words and a receipt mark, so the start is
     // confirmed only once the new agent has really begun (not stuck on a startup prompt).
     let taskText = typeof flags['task-file'] === 'string' ? readFileSync(flags['task-file'], 'utf8') : typeof flags.task === 'string' ? flags.task : '';

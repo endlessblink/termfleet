@@ -21,17 +21,23 @@ const input = {
 
 // Noam 2026-10-20: "I'm drowning in notifications I don't need" / "this shouldn't be in the list
 // at all" (the Try rows). Only what blocks work until he acts: an approval or a question.
-test('only approvals and questions are listed: no ready-to-try items, no idle terminals', () => {
+// 2026-10-24: a terminal's own permission prompt was a false "Waiting for you" alarm; only
+// real questions (a bot that stopped to ask, a terminal asking a question) are listed.
+test('only real questions are listed: no permission prompts, no ready-to-try items, no idle terminals', () => {
   const items = collectWaiting(input);
-  assert.deepEqual(items.map((i) => [i.kind, i.who]), [['approve', 'Desk deploy'], ['answer', 'pc-helper']]);
-  assert.equal(items[0].go, '#p2');
-  assert.equal(items[0].todo, 'Approve or decline it');
+  assert.deepEqual(items.map((i) => [i.kind, i.who]), [['answer', 'pc-helper']]);
+  const asked = collectWaiting({ panes: [{ id: 'p6', project: 'desk', attention: { kind: 'question', title: 'Which port?' } }], bots: [] });
+  assert.deepEqual(asked.map((i) => [i.kind, i.go, i.todo]), [['answer', '#p6', 'Answer it']]);
+  const perms = collectWaiting({ panes: [{ id: 'p7', project: 'x', attention: { kind: 'permission', title: 'Run npm install?' } }, { id: 'p8', project: 'y', attention: { title: 'Allow Edit?' } }], bots: [] });
+  assert.deepEqual(perms, [], 'a terminal permission prompt is not listed');
+  const allowWord = collectWaiting({ panes: [{ id: 'p9', project: 'z', attention: { kind: 'question', title: 'Should I allow guests to edit?' } }], bots: [] });
+  assert.equal(allowWord.length, 1, 'a real question that says "allow" is still listed');
   const idle = collectWaiting({ panes: [{ id: 'p5', project: 'rough-cut-mvp', turn: 'waiting' }], bots: [] });
   assert.deepEqual(idle, [], 'a terminal that just finished its turn is not waiting for him');
 });
 
 test('a terminal a bot started is listed once, under the bot, opening the terminal with the prompt', () => {
-  const attention = { kind: 'permission', title: 'Permission request: run npm install' };
+  const attention = { kind: 'question', title: 'Which branch should I use?' };
   const items = collectWaiting({
     bots: [{ id: 'b1', name: 'paper-bot_dev', helpers: [{ paneId: 'p1' }, { paneId: 'p2' }] }],
     panes: [{ id: 'p1', project: 'paper-bot', attention }, { id: 'p2', project: 'paper-bot', attention }],
@@ -44,14 +50,14 @@ test('only blocking items notify, several at once become one notification, never
   const pushes = [], desktops = [];
   const notify = createWaitingNotifier({ file, push: async (n) => pushes.push(n), desktop: async (n) => desktops.push(n) });
   assert.deepEqual(await notify([]), [], 'the first look only learns');
-  const ask = (id, title) => ({ id, project: id, attention: { kind: 'permission', title } });
-  const one = collectWaiting({ panes: [ask('p1', 'Allow this command?')] });
+  const ask = (id, title) => ({ id, project: id, attention: { kind: 'question', title } });
+  const one = collectWaiting({ panes: [ask('p1', 'Which file?')] });
   assert.equal((await notify(one)).length, 1);
   assert.equal(pushes.length, 1); assert.equal(desktops.length, 1);
   assert.match(pushes[0].title, /p1 is waiting for you/);
   assert.equal(pushes[0].url, '/#p1');
   assert.deepEqual(await notify(one), [], 'never twice for the same item');
-  const three = collectWaiting({ panes: [ask('p1', 'Allow this command?'), ask('p2', 'Allow Edit?'), ask('p3', 'Allow Write?')] });
+  const three = collectWaiting({ panes: [ask('p1', 'Which file?'), ask('p2', 'Which port?'), ask('p3', 'Which branch?')] });
   assert.equal((await notify(three)).length, 2);
   assert.equal(pushes.length, 2, 'two new items, one notification');
   assert.match(pushes[1].title, /2 agents are waiting for you/);
@@ -75,7 +81,7 @@ test('a relayed request shows his own words, and a terminal is named by its proj
   const { plainAsk } = await import('../bridge/waiting.mjs');
   assert.equal(plainAsk('<pasted_content id="x">\n[Message from the bot "Agent-Manager" (bot:1), sent through TermFleet.] New task. Noam, his words: "אז אני צריך לקבל עדכונים". More.\n</pasted_content>'), 'אז אני צריך לקבל עדכונים');
   assert.equal(plainAsk('Make the header smaller'), 'Make the header smaller');
-  const items = collectWaiting({ panes: [{ id: 'p9', project: 'termfleet', title: '[Message from the bot "A"] long brief', turn: 'waiting', attention: { title: 'Which file?' } }], bots: [] });
+  const items = collectWaiting({ panes: [{ id: 'p9', project: 'termfleet', title: '[Message from the bot "A"] long brief', turn: 'waiting', attention: { kind: 'question', title: 'Which file?' } }], bots: [] });
   assert.equal(items[0].who, 'termfleet');
 });
 

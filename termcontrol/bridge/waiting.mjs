@@ -44,7 +44,7 @@ export function collectWaiting({ panes = [], bots = [], daemon = true, previous 
   const ownerOf = new Map();
   for (const b of bots) for (const h of b.helpers || []) if (h?.paneId) ownerOf.set(h.paneId, b);
   const seen = new Set();
-  if (daemon === false) items.push(...previous.filter((i) => i.source === 'terminal'));
+  if (daemon === false) items.push(...previous.filter((i) => i.source === 'terminal' && i.kind !== 'approve'));
   else for (let p of panes) {
     if (p.alive === false) continue;
     const owner = ownerOf.get(p.id);
@@ -53,11 +53,13 @@ export function collectWaiting({ panes = [], bots = [], daemon = true, previous 
     if (p.attention && seen.has(dup)) continue;
     seen.add(dup);
     if (owner) p = { ...p, project: owner.name };
-    // Only a real question or approval prompt. A terminal that just finished its turn is idle,
-    // not waiting for him (Noam 2026-10-20: "I'm drowning in notifications I don't need").
-    if (p.attention) {
-      const approval = /permission|approv|allow/i.test(String(p.attention?.title || p.attention?.kind || ''));
-      items.push({ key: `term:${p.id}:${hash(p.attention?.title || 'waiting')}`, kind: approval ? 'approve' : 'answer', source: 'terminal', who: paneName(p), what: clip(p.attention?.title || 'Waiting for your answer', 140), todo: approval ? 'Approve or decline it' : 'Answer it', go: `#${p.id}` });
+    // Only a real question. A terminal that just finished its turn is idle, not waiting for him
+    // (Noam 2026-10-20: "I'm drowning in notifications I don't need"), and a terminal's own
+    // permission prompt is handled on its card, not here: those were false "Waiting for you"
+    // alarms (2026-10-24). Bots that stopped to ask him stay listed above.
+    // Decided by the prompt's kind, not its wording: a real question that mentions "allow" stays.
+    if (p.attention?.kind === 'question') {
+      items.push({ key: `term:${p.id}:${hash(p.attention?.title || 'waiting')}`, kind: 'answer', source: 'terminal', who: paneName(p), what: clip(p.attention?.title || 'Waiting for your answer', 140), todo: 'Answer it', go: `#${p.id}` });
     }
   }
   // Approvals first, then questions.

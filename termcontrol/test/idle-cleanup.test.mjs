@@ -178,3 +178,16 @@ test('who started a terminal is remembered after its starter closes; closed term
   const merged = rememberStarters(saved, now, new Set(['terminal-child', 'terminal-new', 'terminal-mine']));
   assert.deepEqual(Object.fromEntries(merged), { 'terminal-child': { name: 'an agent' }, 'terminal-new': { name: 'politic-figther_dev', botId: 'b1' } });
 });
+
+// Noam 2026-10-24: a terminal a bot started closes after 5 idle minutes; others keep their floors.
+test('a finished bot terminal is offered after 5 idle minutes, an agent one still waits 15', async () => {
+  const { cleanupPlan: plan, BOT_IDLE_MIN_MS } = await import('../bridge/idle-cleanup.mjs');
+  assert.equal(BOT_IDLE_MIN_MS, 5 * 60_000);
+  const now = 10 * 60 * 60_000;
+  const pane = (id) => ({ id, provider: 'claude', turn: 'idle', alive: true, lastWorkedAt: now - 6 * 60_000, lastActiveAt: now - 6 * 60_000 });
+  const p = plan({ panes: [pane('bot1'), pane('agent1'), pane('mine')], now,
+    startedBy: (x) => (x.id === 'mine' ? null : x.id === 'bot1' ? 'Agent-Manager' : 'an agent'),
+    startedByBot: (x) => x.id === 'bot1' });
+  assert.deepEqual(p.offer.map((o) => o.id), ['bot1']);
+  assert.deepEqual(p.keep.map((k) => k.id).sort(), ['agent1', 'mine']);
+});

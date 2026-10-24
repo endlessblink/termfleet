@@ -289,6 +289,7 @@ async function idleCleanupPlan() {
   const plan = cleanupPlan({
     panes, isSleeping,
     startedBy: (p) => starters.get(p.id)?.name || null,
+    startedByBot: (p) => Boolean(starters.get(p.id)?.botId),
     processes: (p) => descendantsOf(p.pid, table),
     followedByBot: (p) => followers.get(p.id)?.name || null,
     // Only work the terminal itself made: an agent's own record, or for a plain shell the
@@ -320,7 +321,7 @@ if (!process.env.TC_CONFIG_DIR && !process.env.TC_NO_AUTO_CLEANUP) {
     if (sweeping) return;
     sweeping = true;
     sweepFinishedHelpers().catch((error) => console.error('[auto-cleanup]', error.message)).finally(() => { sweeping = false; });
-  }, 5 * 60_000).unref();
+  }, 60_000).unref();   // every minute, so a bot's finished terminal closes soon after its 5 idle minutes
 }
 
 // Sleep for idle agents (Noam 2026-10-22: 'שהם לא יגנבו הרבה זיכרון במצב idle'). Every minute,

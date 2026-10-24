@@ -21,6 +21,7 @@ import { ancestors, argv as procArgv, isProviderProcess } from "./lib/single-cha
 import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
 import { appendUserWords, findTranscript, userMessagesForAny } from "./lib/handoff-user-words.mjs";
 import { checkBotTask, botTaskContext } from "./lib/bot-workflow-preflight.mjs";
+import { memoryGuard } from "./lib/spawn-guards.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -313,6 +314,14 @@ async function spawnCommand(options) {
     provider = caller.provider;
   }
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
+  // A new terminal is refused when memory is low; a handover only replaces the caller's own card.
+  if (!handover) {
+    const memory = memoryGuard();
+    if (!memory.ok) {
+      writeSync(2, `termfleet-child: warning: low memory, ${memory.freeGb.toFixed(1)} GB free (floor ${memory.minGb} GB).\n`);
+      fail(`not started: ${memory.message}`, 4);
+    }
+  }
   if (!parentPaneId && !options.separate && (handover === true || options.replace === true)) {
     fail("cannot identify your TermFleet card; the handover was not started. Do NOT retry with --separate: it leaves your old card running and adds a second one. Do NOT stop either: keep working on your task right here in this terminal (TF-102: a failed handover used to halt the work until someone noticed). Mention in your final reply that the handover could not start.", 2);
   }

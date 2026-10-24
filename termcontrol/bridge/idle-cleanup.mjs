@@ -7,6 +7,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const IDLE_MIN_MS = 15 * 60_000;
+// Noam 2026-10-24 (approved the Agent-Manager's ask): a terminal a BOT started closes after 5
+// idle minutes once finished, so one bot cannot pile up terminals that eat the machine.
+export const BOT_IDLE_MIN_MS = 5 * 60_000;
 // Noam 2026-10-22: his own terminals only 'לאחר הצגתם לי אם הם לא פעילים הרבה זמן', '2 hours'.
 export const OWN_IDLE_MIN_MS = 2 * 60 * 60_000;
 const AGENTS_SERVICE = /termcontrol\/bridge\/server\.mjs/;
@@ -109,12 +112,12 @@ function lastUsedFor(pane, starter) {
  * `processes(pane)` lists what runs under it; `unsaved(pane)` its own unsaved files;
  * `followedByBot(pane)` the name of a bot following it.
  */
-function reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter }) {
+function reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter, byBot }) {
   if (pane.turn === 'waiting' || pane.attention) return 'Waiting for you';
   if (pane.turn === 'working' || pane.producing || pane.live === 'producing') return 'Working right now';
   const lastActive = lastUsedFor(pane, starter);
   if (!lastActive && pane.cardless) return 'Cannot tell when it was last used';
-  if (lastActive && now - lastActive < IDLE_MIN_MS) return 'Used in the last few minutes';
+  if (lastActive && now - lastActive < (byBot ? BOT_IDLE_MIN_MS : IDLE_MIN_MS)) return 'Used in the last few minutes';
   if (!starter && lastActive && now - lastActive < OWN_IDLE_MIN_MS) return 'Yours, used in the last 2 hours';
   const running = processes(pane);
   if (running.some((p) => AGENTS_SERVICE.test(p.cmd))) return 'Runs the Agents service';
@@ -132,7 +135,7 @@ function unsavedWarning(pane, unsaved) {
   return files.length ? `Unsaved work: ${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}` : null;
 }
 
-export function cleanupPlan({ panes, now = Date.now(), unsaved = () => [], processes = () => [], followedByBot = () => null, startedBy = () => null, isSleeping = () => false }) {
+export function cleanupPlan({ panes, now = Date.now(), unsaved = () => [], processes = () => [], followedByBot = () => null, startedBy = () => null, startedByBot = () => false, isSleeping = () => false }) {
   const offer = [], keep = [];
   for (const pane of panes) {
     // A sleeping terminal (its programs ended, card kept to wake later) is never a candidate.
@@ -140,7 +143,7 @@ export function cleanupPlan({ panes, now = Date.now(), unsaved = () => [], proce
     // Who started it: an agent (its parent on the map) or a bot; null when Noam opened it himself.
     const starter = startedBy(pane) || null;
     const base = { id: pane.id, name: terminalName(pane), folder: pane.cwd ? path.basename(pane.cwd) : clip(pane.project || ''), provider: pane.provider || 'shell', startedBy: starter };
-    const reason = reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter });
+    const reason = reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter, byBot: Boolean(starter && startedByBot(pane)) });
     if (reason) { keep.push({ ...base, reason }); continue; }
     const idleMs = Math.max(0, now - (lastUsedFor(pane, starter) || Number(pane.startedAt) || now));
     const warning = unsavedWarning(pane, unsaved);
