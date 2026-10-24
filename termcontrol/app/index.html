@@ -2587,8 +2587,10 @@ async function fleet(background=false,{fromCache=false}={}) {
   if (mine !== view || request !== fleetRequest) return;
   checkVersion(r.version);
   fleetPaneRecords=new Map(r.panes.map(p=>[p.id,p]));
-  const roomsData=await roomsRequest;
-  const botsData=await botsRequest;
+  // A failed read keeps the lists last seen (like waiting below): an empty list for a moment threw
+  // the phone's scroll to the top (Noam 2026-10-24: "התצוגה קופצת למעלה").
+  const roomsData=(await roomsRequest) || lastFleetData?.rooms || null;
+  const botsData=(await botsRequest) || lastFleetData?.bots || null;
   // A failed read keeps the list last seen; only the bridge's own answer changes it (TF-099).
   const waitingData=(await waitingRequest) || lastFleetData?.waiting || null,waitingItems=waitingData?.items || [];
   if (mine !== view || request !== fleetRequest) return;
@@ -2670,9 +2672,12 @@ async function fleet(background=false,{fromCache=false}={}) {
   const botsNeed=botList.filter(b=>!b.hidden).reduce((n,b)=>n+(Number(b.unread)||0),0),termsNeed=panes.filter(p=>p.attention).length;   // same counts as the dock icon
   const need=(n,kind='')=>n?`<span class="tab-need${kind?' tab-need-'+kind:''}" aria-label="${kind==='term'?ui(`${n} waiting for you`,`${n} ממתינים לך`):ui(`${n} unread`,`${n} שלא נקראו`)}">${n>99?'99+':n}</span>`:'';
   const tabs=`<div class="fleet-tabs" role="tablist" data-key="tabs"><button type="button" role="tab" data-tab="bots" aria-selected="${tab==='bots'}">${ui('Bots','בוטים')}<span class="tab-count">${botList.filter(b=>!b.hidden).length}</span>${need(botsNeed)}</button><button type="button" role="tab" data-tab="terminals" aria-selected="${tab==='terminals'}">${ui('Terminals','מסופים')}<span class="tab-count">${panes.length}</span>${need(termsNeed,'term')}</button><button type="button" role="tab" data-tab="health" aria-selected="${tab==='health'}">${ui('Health','מצב')}</button></div>`;
+  // The same tab redrawn by a refresh keeps its place; a different tab starts at the top.
+  const keepScroll=!background && container.dataset.tab===tab && !history.state?.fleetReturn?main.scrollTop:null;container.dataset.tab=tab;
   patchFleet(container,waitingHtml(waitingItems)+usageHtml(r.usage)+tabs+(tab==='health'?healthCardHtml(agentHealth,true):searchBox+(tab==='bots'?botsHomeHtml(botsData):bar+roomsPanelHtml(roomsData)+none+listParts+content+listEnd+footer)));
   container.querySelectorAll('.fleet-tabs [data-tab]').forEach(el=>{el.onclick=()=>{pickedFleetTab=el.dataset.tab;try{localStorage.setItem('termcontrol-fleet-tab',el.dataset.tab);}catch{}const bg=Boolean(focusedPane);fleet(bg,{fromCache:true}).then(()=>fleet(bg));};});
   const healthDetails=container.querySelector('.health-card');if(healthDetails)healthDetails.ontoggle=()=>sessionStorage.setItem('termcontrol-health-open',healthDetails.open?'open':'closed');
+  if(keepScroll!==null && main.scrollTop!==keepScroll)main.scrollTop=keepScroll;
   wireFleetSearch(container);
   wireListFolders(container,onPhone);
   side.querySelector('.side-count').textContent=ui(`${panes.length} agents`,`${panes.length} סוכנים`);
