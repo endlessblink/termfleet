@@ -70,7 +70,9 @@ export function markReceipts(chat, { busy = false } = {}) {
   return chat.map((m, i) => {
     if (m.role !== 'operator') return m;
     const later = chat.slice(i + 1);
-    const reply = later.find((r) => ((r.role === 'bot' && !r.side) || ['error', 'note', 'needs-you'].includes(r.role)) && (r.answered == null || Number(r.answered) >= Number(m.at)));
+    // A note only ends a turn when it belongs to one (the stop note carries `answered`); the
+    // "Closed the …" notes a bot leaves mid-reply used to drop the eyes while it kept working.
+    const reply = later.find((r) => ((r.role === 'bot' && !r.side) || ['error', 'needs-you'].includes(r.role) || (r.role === 'note' && r.answered != null)) && (r.answered == null || Number(r.answered) >= Number(m.at)));
     const status = reply ? (reply.role === 'bot' ? 'answered' : null)
       : busy ? 'working'
       : later.some((r) => r.role === 'bot' && !r.side) ? 'answered' : null;
@@ -1214,7 +1216,7 @@ export class Bots {
       if (shown.media.length) asked.text = shown.text;
       const silent = !result.error && !result.stopped && !shown.media.length && (nothingNew || (held && !asked.text));
       const answered = this.running.get(id)?.startedAt;
-      if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.', ...(answered ? { answered } : {}) });
+      if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.', answered: answered || Date.now() });
       else if (bot && !silent) this.append(id, result.error ? { role: 'error', text: result.error, ...(answered ? { answered } : {}) } : { role: 'bot', ...(answered ? { answered } : {}), text: asked.text || (asked.question || listed.checklist || shown.media.length ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}), ...(shown.media.length ? { media: shown.media } : {}), ...(duplicate ? { duplicate: true } : {}) });
       // Tagged elsewhere: the same answer also shows there, under this bot's name.
       if (bot && echo.length && !result.stopped && !silent && !duplicate) {

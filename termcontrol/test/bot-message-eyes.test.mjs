@@ -26,6 +26,10 @@ test('eyes while the bot works, a check once its reply covers the message', () =
   assert.deepEqual(statusOf([op(1), { role: 'bot', side: true, at: 2, text: 'quick' }], { busy: true }), ['working']);
   // A failure or a stop drops the eyes and shows no check.
   assert.deepEqual(statusOf([op(1), { role: 'error', at: 4, answered: 1, text: 'failed' }]), [null]);
+  // R-15344 "לא נראה שהוא מעבד משהו": a "Closed the …" note left mid-reply is not the answer.
+  assert.deepEqual(statusOf([op(1), { role: 'note', at: 3, text: 'Closed the "x" terminal.' }], { busy: true }), ['working']);
+  // The stop note belongs to the turn and does drop the eyes.
+  assert.deepEqual(statusOf([op(1), { role: 'note', at: 3, answered: 2, text: 'You stopped this reply.' }]), [null]);
   // Replies saved before this change cover everything sent before them.
   assert.deepEqual(statusOf([op(1), op(2), { role: 'bot', at: 4, text: 'old' }]), ['answered', 'answered']);
 });
