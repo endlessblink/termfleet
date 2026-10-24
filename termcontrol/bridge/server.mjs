@@ -155,7 +155,21 @@ function startedAt(pid) {
   try { return pid ? fs.statSync(`/proc/${pid}`).ctimeMs : 0; } catch { return 0; }
 }
 
-async function currentPanes() {
+// Every request and timer asks for the terminal list (about 23 callers), and each build reads
+// thousands of status files, transcripts and screens. Built separately for each, the bridge sat at
+// 100% CPU and the phone stuck on "loading" (Noam 2026-10-24, twice). One build is shared for 1.5 s,
+// and callers arriving during a build wait for it; { fresh: true } always reads now.
+let panesShared = null, panesBuilding = null;
+const PANES_SHARE_MS = 1500;
+async function currentPanes({ fresh = false } = {}) {
+  if (!fresh && panesShared && Date.now() - panesShared.at < PANES_SHARE_MS) return panesShared.value;
+  if (!fresh && panesBuilding) return panesBuilding;
+  const build = buildCurrentPanes().then((value) => { panesShared = { at: Date.now(), value }; return value; }).finally(() => { if (panesBuilding === build) panesBuilding = null; });
+  if (!fresh) panesBuilding = build;
+  return build;
+}
+
+async function buildCurrentPanes() {
   // Age is now the phone's own filter (today / 3 days / week / all), applied to
   // lastActiveAt, so the bridge sends every terminal that has a card on the map.
   const workspace = readWorkspace();
@@ -1038,7 +1052,7 @@ const handle = async (req, res) => {
         }
         // Re-read immediately before injecting a key. A phone can keep an old
         // prompt visible after the terminal has moved on or asked a new one.
-        const fresh = (await currentPanes()).panes.find((candidate) => candidate.id === payload.pane);
+        const fresh = (await currentPanes({ fresh: true })).panes.find((candidate) => candidate.id === payload.pane);
         const visible = fresh ? visibleScreenOf(fresh.id) : null;
         const freshScreen = fresh ? visible ?? await screenOf(fresh.id) : '';
         const freshAsk = fresh && (pendingAsk(fresh, { screen: freshScreen }) || screenPermissionAsk(fresh, freshScreen));
