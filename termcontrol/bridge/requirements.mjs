@@ -177,7 +177,21 @@ function append(dir, events) {
 }
 
 /** Folds the event file into items by id, plus the topic aliases. */
+// The bridge asks for the ledger for every terminal every few seconds; folding the whole file
+// each time kept it at 100% CPU and the phone stuck on "loading" (2026-10-24, 9.5 MB / 23k lines).
+// The folded result is reused until the file's size or change time moves (every write appends).
+const folded = new Map();
 export function loadLedger({ dir = ledgerDir() } = {}) {
+  let stamp = 'none';
+  try { const st = fs.statSync(ledgerFile(dir)); stamp = `${st.size}:${st.mtimeMs}`; } catch { /* no ledger yet */ }
+  const hit = folded.get(dir);
+  if (hit && hit.stamp === stamp) return hit.value;
+  const value = foldLedger(dir);
+  folded.set(dir, { stamp, value });
+  return value;
+}
+
+function foldLedger(dir) {
   const items = new Map();
   const topics = new Map(); // slug -> Set(aliases)
   const escalations = [];
