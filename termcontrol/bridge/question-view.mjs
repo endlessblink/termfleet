@@ -22,7 +22,8 @@ const TYPES = {
   '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
 };
 const MAX_BYTES = 200 * 1024 * 1024;
-const defaultRoots = (home = os.homedir()) => [home, os.tmpdir(), '/tmp', '/media', '/mnt'];
+// Agents' own temp folder (where they often save what they made) counts as a temp folder.
+const defaultRoots = (home = os.homedir()) => [home, os.tmpdir(), '/tmp', path.join(home, '.cache', 'termfleet', 'tmp'), '/media', '/mnt'];
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64url');
 const unb64 = (s) => { try { return Buffer.from(s, 'base64url').toString('utf8'); } catch { return ''; } };
 const hidden = (rel) => rel.split(path.sep).some((part) => part.startsWith('.'));

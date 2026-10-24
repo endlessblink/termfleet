@@ -227,3 +227,17 @@ test('a terminal agent\'s question with links in its answers shows them on the c
   assert.match(page, /\$\{qAllHtml\(ask\)\}\$\{qLinksHtml\(ask\)\}/);
   assert.match(page, /links:m\.links/);
 });
+
+test('files in the agents\' own temp folder open too (agents save their work there)', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-agtmp-'));
+  const dir = path.join(home, '.cache', 'termfleet', 'tmp', 'claude-1000', 'job');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'looks.html'), '<h1>x</h1>');
+  const href = viewHref(path.join(dir, 'looks.html'), { home });
+  assert.ok(href, 'a link is made');
+  assert.equal(resolveView(href, { home }).file, fs.realpathSync(path.join(dir, 'looks.html')));
+  // other hidden folders in home stay closed
+  fs.mkdirSync(path.join(home, '.config'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.config', 'secret.html'), 'no');
+  assert.equal(viewHref(path.join(home, '.config', 'secret.html'), { home }), null);
+});
