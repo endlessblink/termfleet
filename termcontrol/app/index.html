@@ -2949,22 +2949,23 @@ function replyDetailsHtml(mid,list){
 }
 
 // Slim bot header (option B): "25/30" opens the requests; the line under the bar fills as they get done.
+// One count for the header chip, the menu row and the request list (Noam 2026-10-24: the header said
+// "18 done · 5 open" and the menu "0 of 25 done, 5 open"; "עד עכשיו זה היה סתם 0 כל הזמן", "משימות
+// שאני נותן ואתה עושה ומסיים באמת ומה נשאר פתוח"). Done is what the agent finished (done, or ready for
+// him to try); open is what is still in progress; dropped requests are not counted.
 function asksSummary(asks){
-  const done=asks.filter(a=>a.status==='done').length,partial=asks.filter(a=>a.status==='partial').length,open=asks.filter(a=>a.status==='open').length;
-  return {done,partial,open,total:asks.length,text:ui(`${done} of ${asks.length} done`,`${done} מתוך ${asks.length} בוצעו`)+(partial?ui(`, ${partial} partial`,`, ${partial} חלקיות`):'')+(open?ui(`, ${open} open`,`, ${open} פתוחות`):'')};
+  const list=asks || [],count=s=>list.filter(a=>a.status===s).length;
+  const ready=count('ready'),done=count('done')+ready,open=count('open')+count('partial'),total=done+open;
+  const text=ui(`${done} done · ${open} open`,`${done} בוצעו · ${open} פתוחות`);
+  return {done,ready,open,total,text,full:text+(ready?ui(` (${ready} ready for you to try)`,` (${ready} מוכנות לבדיקה שלך)`):'')};
 }
 function paintBotHead(state){
   const box=document.querySelector('.bot-head-actions');if(!box)return;
   const chip=box.querySelector('.bot-asks-chip'),bar=box.querySelector('.bot-progress'),sum=asksSummary(state.asks);
-  // Noam 2026-10-24 ("עד עכשיו זה היה סתם 0 כל הזמן", "משימות שאני נותן ואתה עושה ומסיים באמת ומה נשאר
-  // פתוח"): it counted only what he had confirmed, so finished-but-untried work read 0/24. Done is what
-  // the agent finished (done or ready to try); open is what is still in progress.
-  const finished=(state.asks || []).filter(a=>a.status==='done' || a.status==='ready').length,ready=(state.asks || []).filter(a=>a.status==='ready').length;
-  const open=sum.open+sum.partial,counted=finished+open;
-  chip.hidden=bar.hidden=!counted;if(!counted)return;
-  chip.querySelector('span').textContent=ui(`${finished} done · ${open} open`,`${finished} בוצעו · ${open} פתוחות`);chip.classList.toggle('waiting',Boolean(open));
-  chip.setAttribute('aria-label',ui(`Your requests: ${finished} done${ready?` (${ready} ready for you to try)`:''}, ${open} still open`,`הבקשות שלך: ${finished} בוצעו${ready?` (${ready} מוכנות לבדיקה שלך)`:''}, ${open} עדיין פתוחות`));
-  bar.firstElementChild.style.transform=`scaleX(${(finished/counted).toFixed(3)})`;
+  chip.hidden=bar.hidden=!sum.total;if(!sum.total)return;
+  chip.querySelector('span').textContent=sum.text;chip.classList.toggle('waiting',Boolean(sum.open));
+  chip.setAttribute('aria-label',ui(`Your requests: ${sum.full}`,`הבקשות שלך: ${sum.full}`));
+  bar.firstElementChild.style.transform=`scaleX(${(sum.done/sum.total).toFixed(3)})`;
 }
 const menuIcons={activity:'M3 12h4l3-7 4 14 3-7h4',asks:'M5 12l4 4L19 6',agents:'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h4',model:'M12 9a3 3 0 100 6 3 3 0 000-6z M12 3v3 M12 18v3 M3 12h3 M18 12h3',memory:'M6 4h12v16l-6-4-6 4z',schedule:'M12 4a8 8 0 100 16 8 8 0 000-16z M12 8v4l3 2',edit:'M4 20h4L19 9l-4-4L4 16z',theme:'M12 8a4 4 0 100 8 4 4 0 000-8z M12 3v2 M12 19v2 M3 12h2 M19 12h2',browser:'M4 5h16v14H4z M4 9h16',notify:'M6 16V11a6 6 0 0112 0v5l2 2H4z M10 20h4',pin:'M9 4h6l-1 6 3 3H7l3-3z M12 13v7',hide:'M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z M4 4l16 16',del:'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13'};
 function menuIcon(name){return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${menuIcons[name]}"/></svg>`;}
@@ -2997,7 +2998,7 @@ function botMenu(id,bot,state,start='menu'){
   const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),ready:ui('ready to try','מוכן לבדיקה'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
   const stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),closed:ui('closed','נסגר')};
   const back=`<button type="button" class="menu-item menu-back" data-act="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="menu-label">${ui('Bot menu','תפריט הבוט')}</span></button>`;
-  const asksList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui(`Your requests: ${sum.text}`,`הבקשות שלך: ${sum.text}`))}</h2><ol class="sheet-list">${state.asks.slice().sort((x,y)=>((['done','dropped'].includes(x.status)?1:0)-(['done','dropped'].includes(y.status)?1:0)) || y.n-x.n).map(a=>{const t=a.title || a.text;return `<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(t.length>240?t.slice(0,239)+'…':t)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}${['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}">${esc(ui('Remove from list','הסרה מהרשימה'))}</button>`:''}</li>`;}).join('')}</ol>`;
+  const asksList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui(`Your requests: ${sum.full}`,`הבקשות שלך: ${sum.full}`))}</h2><ol class="sheet-list">${state.asks.slice().sort((x,y)=>((['done','dropped'].includes(x.status)?1:0)-(['done','dropped'].includes(y.status)?1:0)) || y.n-x.n).map(a=>{const t=a.title || a.text;return `<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(t.length>240?t.slice(0,239)+'…':t)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}${['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}">${esc(ui('Remove from list','הסרה מהרשימה'))}</button>`:''}</li>`;}).join('')}</ol>`;
   const agentsList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui('Terminal agents it started','סוכני מסוף שהפעיל'))}</h2><ul class="sheet-list">${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul>`;
   const show=view=>{dialog.innerHTML=view==='asks'?asksList():view==='agents'?agentsList():menu();dialog.querySelector('.menu-item')?.focus();};
   dialog.addEventListener('click',e=>{

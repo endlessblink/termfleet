@@ -34,6 +34,12 @@ test('the bot header counts what the agent finished and what is still open, neve
       await p.waitForSelector('.bot-menu-button');
       await wait(1500);
       const head = await p.evaluate(() => { const c = document.querySelector('.bot-asks-chip'); return { hidden: c.hidden, text: c.innerText, label: c.getAttribute('aria-label') || '' }; });
+      // The bot menu shows the same numbers (Noam 2026-10-24: header 18 done · 5 open, menu 0 of 25 done).
+      if (!head.hidden) {
+        await p.locator('.bot-menu-button').click();
+        await p.waitForSelector('.bot-menu-sheet[open]');
+        head.menu = await p.locator('.bot-menu-sheet').innerText();
+      }
       assert.deepEqual(errors, []);
       await p.context().close();
       return head;
@@ -51,10 +57,13 @@ test('the bot header counts what the agent finished and what is still open, neve
     const allReady = await read(Array.from({ length: 24 }, (_, i) => ask(i + 1, 'ready')));
     assert.equal(allReady.hidden, false);
     assert.equal(allReady.text, '24 done · 0 open');
-    assert.match(allReady.label, /24 done \(24 ready for you to try\), 0 still open/);
+    assert.match(allReady.label, /24 done · 0 open \(24 ready for you to try\)/);
     // A mix: confirmed, ready, in progress, partly done, dropped (not counted).
     const mix = await read([ask(1, 'done'), ask(2, 'ready'), ask(3, 'ready'), ask(4, 'open'), ask(5, 'partial'), ask(6, 'dropped')]);
     assert.equal(mix.text, '3 done · 2 open');
+    assert.ok(allReady.menu.includes('24 done · 0 open'), `menu matches the header: ${allReady.menu.slice(0, 200)}`);
+    assert.ok(mix.menu.includes('3 done · 2 open'), `menu matches the header: ${mix.menu.slice(0, 200)}`);
+    assert.doesNotMatch(mix.menu, /of \d+ done/, 'no second, different count');
     // Nothing counted: no chip.
     assert.equal((await read([])).hidden, true);
   } finally { await browser.close(); bridge.kill('SIGKILL'); }
