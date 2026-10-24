@@ -614,6 +614,8 @@ header,.side-heading,.attention-panel,.attention-item{border-bottom:0}.headlive,
 .newagent .actions{display:flex;gap:8px;justify-content:flex-end}.newagent button{border:0;border-radius:10px;padding:10px 16px;font:500 14px var(--ui);cursor:pointer;background:rgba(127,127,127,.18);color:inherit}.newagent button.go{background:var(--accent,#4f8cff);color:#fff}
 .newagent .err{color:var(--waiting);font-size:13px;min-height:1em}
 .busyline{display:flex;align-items:center;gap:12px;max-width:720px;margin:14px auto 6px;padding:0 4px;animation:busy-in .4s ease-out both}
+/* R-7226: one fixed-height line that is always there in a bot chat, so it never pushes the list. */
+.bot-feed .busyline{height:32px;box-sizing:border-box;min-width:0;overflow:hidden}.bot-feed .busyline.idle{visibility:hidden;animation:none}.bot-feed .busytext{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .busyorb{display:inline-flex;align-items:center;gap:5px;padding:9px 12px;border-radius:999px;background:color-mix(in srgb,var(--accent,#4f8cff) 14%,transparent)}
 .busyorb i{width:7px;height:7px;border-radius:50%;background:var(--accent,#4f8cff);animation:busy-bounce 1.2s ease-in-out infinite}
 .busyorb i:nth-child(2){animation-delay:.15s}.busyorb i:nth-child(3){animation-delay:.3s}
@@ -2877,6 +2879,41 @@ function mentionPicker(field,picker,{bots,everyone=false,after=()=>{}}){
   return {update,key,hide,isOpen:()=>!picker.hidden};
 }
 // Shown names in a sent message are wrapped so a Latin name stays whole inside Hebrew (and back).
+// R-7226 "screen jitters while the agent is working": a chat redraw patches only the rows
+// that changed (a full innerHTML swap re-lays out the whole list on every 2 s poll), and the
+// reading place is kept by hand, because WebKit (the PC app) and iPhone Safari have no browser
+// scroll anchoring. At the bottom it follows; scrolled up, the row he reads never moves.
+function chatPlace(main,following,held){
+  if(following)return {bottom:true};
+  // Nothing scrolled since the last redraw: aim for the same spot again, so whole-pixel
+  // scrolling (WebKit) cannot add up to a drift over many redraws.
+  if(held?.row?.isConnected && held.after===main.scrollTop)return {row:held.row,top:held.top};
+  const box=main.getBoundingClientRect(),row=[...(main.firstElementChild?.children || [])].find(el=>el.getBoundingClientRect().bottom>box.top+1);
+  return row?{row,top:row.getBoundingClientRect().top}:{scrollTop:main.scrollTop};
+}
+function keepChatPlace(main,place){
+  if(place.bottom){main.scrollTop=main.scrollHeight;return;}
+  if(place.row?.isConnected){const moved=place.row.getBoundingClientRect().top-place.top;if(Math.abs(moved)>=0.5)main.scrollTop+=moved;}
+  else if(Number.isFinite(place.scrollTop))main.scrollTop=place.scrollTop;
+}
+function patchChatFeed(main,cls,html,fresh){
+  let feed=main.firstElementChild;
+  if(!feed || main.children.length!==1 || feed.className!==cls){main.innerHTML=`<div class="${cls}"></div>`;feed=main.firstElementChild;}
+  const tpl=document.createElement('template');tpl.innerHTML=html;
+  const next=[...tpl.content.childNodes].filter(n=>n.nodeType===1 || n.textContent.trim()),old=[...feed.childNodes],source=n=>n.nodeType===1?n.outerHTML:n.textContent;
+  let j=0;
+  for(const node of next){
+    const src=source(node);
+    let k=j;while(k<old.length && k<j+40 && old[k].__src!==src)k++;
+    if(k<old.length && old[k].__src===src){for(;j<k;j++)old[j].remove();j++;continue;}
+    // The working line keeps its node and only swaps its words: no re-animation, no height change.
+    const was=old[j];
+    if(was?.classList?.contains('busyline') && node.classList?.contains('busyline')){was.className=node.className;const text=was.querySelector('.busytext'),now=node.querySelector('.busytext');if(text && now && text.textContent!==now.textContent)text.textContent=now.textContent;was.__src=src;j++;continue;}
+    node.__src=src;feed.insertBefore(node,was || null);if(node.nodeType===1)fresh?.(node);
+  }
+  for(;j<old.length;j++)old[j].remove();
+  return feed;
+}
 function markMentions(root,names){
   const list=[...new Set(names.filter(Boolean))].sort((a,b)=>b.length-a.length);if(!list.length)return;
   const re=new RegExp(`@(?:${list.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/[\s_-]+/g,'[\\s_-]+')).join('|')})(?![\\p{L}\\p{N}])`,'giu');
@@ -3267,7 +3304,12 @@ async function openBot(id,{motion=null}={}){
   const pendingSends=[];   // {text, state:'sending'|'failed'} until the server shows it
   const onScroll=()=>{following=main.scrollHeight-main.scrollTop-main.clientHeight<=80;};
   main.addEventListener('scroll',onScroll,{passive:true});
-  releaseChatScroll=()=>{main.removeEventListener('scroll',onScroll);releaseChatScroll=null;};
+  // R-7226: when the chat box itself changes size (a chip above it, the phone keyboard), stay at
+  // the bottom if he was there, else keep the row he reads where it was on screen.
+  let boxTop=main.getBoundingClientRect().top,heldPlace=null;
+  const steady=typeof ResizeObserver==='function'?new ResizeObserver(()=>{const top=main.getBoundingClientRect().top;if(following)main.scrollTop=main.scrollHeight;else if(Math.abs(top-boxTop)>=0.5){main.scrollTop+=top-boxTop;if(heldPlace)heldPlace.after=main.scrollTop;}boxTop=top;}):null;
+  steady?.observe(main);
+  releaseChatScroll=()=>{main.removeEventListener('scroll',onScroll);steady?.disconnect();releaseChatScroll=null;};
   const bar=document.createElement('div');bar.className='composer room-composer bot-composer';
   bar.innerHTML=`<div class="skill-picker" role="listbox" hidden></div><div class="skill-picker mention-picker" role="listbox" hidden></div><div class="bot-pics" hidden></div><div class="stack"><button type="button" class="bot-attach" aria-label="${ui('Add pictures','הוספת תמונות')}">${icon('attach')}</button><input type="file" accept="image/*" multiple hidden class="bot-files"><button type="button" class="bot-paste" aria-label="${ui('Paste picture','הדבקת תמונה')}" title="${ui('Paste picture','הדבקת תמונה')}">${icon('paste')}</button><button type="button" class="bot-mic" aria-label="${ui('Dictate in Hebrew or English','הקלדה בקול בעברית או באנגלית')}">${icon('mic')}</button><textarea rows="1" dir="auto" enterkeyhint="send" aria-label="${ui('Message the bot','הודעה לבוט')}" placeholder="${ui('Message the bot… (/ for skills)','הודעה לבוט… (/ לסקילים)')}"></textarea><button type="button" class="send" aria-label="${ui('Send','שליחה')}">${icon('send')}</button></div>`;
   document.body.append(bar);
@@ -3438,11 +3480,11 @@ async function openBot(id,{motion=null}={}){
       if(m.role==='terminal-ask')return termAskHtml(m);
       if(m.role==='needs-you')return `<div class="bot-needs" role="alert"><p dir="auto">${esc(m.text)}</p>${bot.blocked && m.at>=bot.blocked.at?`<button type="button" class="bot-retry">${ui('Retry','לנסות שוב')}</button>`:''}</div>`;
       return `<div class="bot-note" dir="auto">${esc(m.text)}</div>`;
-    }).join('')+(bot.proposedProfile?`<div class="bot-suggest" role="status"><p>${esc(ui(`${bot.name} suggests its job and rules, from your chat:`,`${bot.name} מציע תפקיד וכללים, מתוך השיחה:`))}</p><p dir="auto"><b>${esc(ui('Job: ','תפקיד: '))}</b>${esc(bot.proposedProfile.job)}</p>${bot.proposedProfile.rules?`<p dir="auto" style="white-space:pre-line"><b>${esc(ui('Rules: ','כללים: '))}</b>${esc(bot.proposedProfile.rules)}</p>`:''}<span class="bot-actions"><button type="button" class="primary" data-profile="accept">${ui('Use these','להשתמש בהם')}</button><button type="button" data-profile="edit">${ui('Edit','עריכה')}</button><button type="button" data-profile="dismiss">${ui('Not now','לא עכשיו')}</button></span></div>`:'')+pendingSends.map((e,i)=>`<div class="${e.state==='failed'?'bot-failed-send':'bot-pending'}" data-pending="${i}">${messageHtml('user',e.text,ui('You','אתה'),'',' mine','','',{of:e.replyTo || null})}<div class="pending-delivery" role="status" dir="auto">${e.state==='failed'?`${esc(ui('Not sent','לא נשלח')+(e.error?` (${e.error})`:''))}<button type="button" data-resend>${ui('Resend','שליחה חוזרת')}</button>${e.images?.length || e.files?.length || e.answerTo || e.listTo?'':`<button type="button" data-edit>${ui('Edit','עריכה')}</button>`}<button type="button" data-discard>${ui('Discard','ביטול')}</button>`:esc(ui('Sending…','שולח…'))}</div></div>`).join('')+(bot.state==='working'?`<div class="busyline" role="status"><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${esc(bot.activity || ui('Thinking','חושב'))}${stepFor(bot.activitySince)}</span></div>`:'');
+    }).join('')+(bot.proposedProfile?`<div class="bot-suggest" role="status"><p>${esc(ui(`${bot.name} suggests its job and rules, from your chat:`,`${bot.name} מציע תפקיד וכללים, מתוך השיחה:`))}</p><p dir="auto"><b>${esc(ui('Job: ','תפקיד: '))}</b>${esc(bot.proposedProfile.job)}</p>${bot.proposedProfile.rules?`<p dir="auto" style="white-space:pre-line"><b>${esc(ui('Rules: ','כללים: '))}</b>${esc(bot.proposedProfile.rules)}</p>`:''}<span class="bot-actions"><button type="button" class="primary" data-profile="accept">${ui('Use these','להשתמש בהם')}</button><button type="button" data-profile="edit">${ui('Edit','עריכה')}</button><button type="button" data-profile="dismiss">${ui('Not now','לא עכשיו')}</button></span></div>`:'')+pendingSends.map((e,i)=>`<div class="${e.state==='failed'?'bot-failed-send':'bot-pending'}" data-pending="${i}">${messageHtml('user',e.text,ui('You','אתה'),'',' mine','','',{of:e.replyTo || null})}<div class="pending-delivery" role="status" dir="auto">${e.state==='failed'?`${esc(ui('Not sent','לא נשלח')+(e.error?` (${e.error})`:''))}<button type="button" data-resend>${ui('Resend','שליחה חוזרת')}</button>${e.images?.length || e.files?.length || e.answerTo || e.listTo?'':`<button type="button" data-edit>${ui('Edit','עריכה')}</button>`}<button type="button" data-discard>${ui('Discard','ביטול')}</button>`:esc(ui('Sending…','שולח…'))}</div></div>`).join('')+`<div class="busyline${bot.state==='working'?'':' idle'}" role="status"${bot.state==='working'?'':' aria-hidden="true"'}><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${bot.state==='working'?esc(bot.activity || ui('Thinking','חושב'))+stepFor(bot.activitySince):''}</span></div>`;
     // Never redraw under an open message menu: it would close it (Noam: "keeps closing by itself").
     // ...nor under a card answer being written (it would wipe the words and the phone keyboard).
     const writing=Boolean(document.activeElement?.matches?.('.qform textarea')) || [...main.querySelectorAll('.bot-q-write:not([hidden]) textarea:not(:disabled)')].some(t=>t.value.trim() || document.activeElement===t) || Boolean(document.activeElement?.closest?.('.bot-list:not(.sent)') && document.activeElement.matches('textarea,input.bot-list-note'));
-    if(html!==signature && !main.querySelector('.message-menu[open]') && !writing){signature=html;const openReplyDetails=new Set([...main.querySelectorAll('.reply-details[open]')].map(el=>el.dataset.detailKey));main.innerHTML=`<div class="bot-feed">${html}</div>`;main.querySelectorAll('.reply-details').forEach(el=>{if(openReplyDetails.has(el.dataset.detailKey))el.open=true;});markMentions(main,(tagBotsCache || []).map(b=>b.name));if(following)main.scrollTop=main.scrollHeight;
+    if(html!==signature && !main.querySelector('.message-menu[open]') && !writing){signature=html;const openReplyDetails=new Set([...main.querySelectorAll('.reply-details[open]')].map(el=>el.dataset.detailKey)),place=chatPlace(main,following,heldPlace);patchChatFeed(main,'bot-feed',html,row=>{row.querySelectorAll('.reply-details').forEach(el=>{if(openReplyDetails.has(el.dataset.detailKey))el.open=true;});markMentions(row,(tagBotsCache || []).map(b=>b.name));});keepChatPlace(main,place);heldPlace=place.row?{...place,after:main.scrollTop}:null;
       main.querySelectorAll('[data-pending]').forEach(el=>{const entry=pendingSends[Number(el.dataset.pending)];const resend=el.querySelector('[data-resend]'),discard=el.querySelector('[data-discard]');if(resend)resend.onclick=()=>deliver(entry);const edit=el.querySelector('[data-edit]');if(edit)edit.onclick=()=>{pendingSends.splice(pendingSends.indexOf(entry),1);field.value=entry.text+(field.value.trim()?'\n'+field.value:'');grow();bar.setReply(entry.replyTo || null);render();field.focus();};if(discard)discard.onclick=()=>{pendingSends.splice(pendingSends.indexOf(entry),1);if(entry.goAheadTo)goAheadTapped.delete(entry.goAheadTo);render();};});
       const scheduleButton=routinesLine.querySelector('.bot-schedule');if(scheduleButton)scheduleButton.onclick=()=>scheduleDialog('bot:'+id,'');
       main.querySelectorAll('[data-term-choice]').forEach(b=>{b.onclick=()=>answerTermAsk(b);});
