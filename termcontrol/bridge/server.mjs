@@ -791,7 +791,7 @@ const handle = async (req, res) => {
     let result;
     try {
       result = url.pathname === '/api/bots' ? bots.create(body)
-        : url.pathname === '/api/bot/send' ? bots.send(body.id, body.text, { images: body.images, files: body.files, owner: true, answerTo: body.answerTo, replyTo: body.replyTo, listTo: body.listTo, choices: body.choices, sendId: body.sendId })
+        : url.pathname === '/api/bot/send' ? bots.send(body.id, body.text, { images: body.images, files: body.files, owner: true, answerTo: body.answerTo, replyTo: body.replyTo, replyMedia: body.replyMedia, listTo: body.listTo, choices: body.choices, sendId: body.sendId })
           : url.pathname === '/api/bot/update' ? bots.update(body.id, body)
             : url.pathname === '/api/bot/retry' ? bots.retry(body.id)
               : url.pathname === '/api/bot/profile/accept' ? bots.acceptProfile(body.id, body)

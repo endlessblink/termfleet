@@ -883,7 +883,7 @@ export class Bots {
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */
-  send(id, text, { images = [], files = [], owner = false, answerTo = null, replyTo = null, listTo = null, choices = null, sendId = null } = {}) {
+  send(id, text, { images = [], files = [], owner = false, answerTo = null, replyTo = null, replyMedia = null, listTo = null, choices = null, sendId = null } = {}) {
     const bot = this.read(id);
     if (!bot) return { error: 'That bot no longer exists.' };
     // Each send from the app carries its own id (Noam 2026-10-24: one message with a picture
@@ -911,9 +911,15 @@ export class Bots {
     // request or approval, and a bot named inside it is not contacted.
     let replied = null;
     if (replyTo) {
-      const target = this.messages(id).find((m) => m.id === String(replyTo) && ['operator', 'bot'].includes(m.role) && m.text);
+      // A reply can be to one picture or video the message showed (Noam 2026-10-24: "צריך להיות
+      // מסוגל להגיב על תמונה"); such a message may have no text of its own.
+      const pic = replyMedia ? String(replyMedia) : null;
+      const target = this.messages(id).find((m) => m.id === String(replyTo) && ['operator', 'bot'].includes(m.role) && (m.text || (pic && (m.media || []).length)));
       if (!target) return { error: 'The message you are replying to is no longer in this chat. Your reply was not sent.' };
-      replied = { id: target.id, role: target.role, text: target.text.length > 300 ? `${target.text.slice(0, 299)}…` : target.text };
+      const media = pic ? (target.media || []).find((x) => x.href === pic) : null;
+      if (pic && !media) return { error: 'That picture is no longer in this chat. Your reply was not sent.' };
+      const said = String(target.text || '');
+      replied = { id: target.id, role: target.role, text: said.length > 300 ? `${said.slice(0, 299)}…` : said, ...(media ? { media: { kind: media.kind, href: media.href, name: media.name } } : {}) };
     }
     // His choices on one of the bot's lists ([checklist]): tied to that list, which then
     // locks; a second send on the same list is refused (one answer per list).
@@ -939,7 +945,8 @@ export class Bots {
     // TF-102: his message, split into items (R-n) the bot cannot end its turn without taking.
     const items = owner ? this.captureRequirements(id, bot, msg, said0) : [];
     const said = skillPrompt(said0) || said0;   // "/grill-me" etc. carry the skill's steps
-    const quoted = replied ? `[Noam is replying to ${replied.role === 'bot' ? 'your' : 'his own'} earlier message in this chat (message ${replied.id}), quoted as context only, not as a new request or approval:\n"${replied.text}"]\n` : '';
+    const quoted = replied?.media ? `[Noam is replying to ${replied.role === 'bot' ? 'your' : 'his own'} ${replied.media.kind === 'video' ? 'video' : 'picture'} "${replied.media.name}" (${replied.media.href}) from message ${replied.id} in this chat. His words below are about that ${replied.media.kind === 'video' ? 'video' : 'picture'}; the quote is context only, not a new request or approval.${replied.text ? `\nThat message said: "${replied.text}"` : ''}]\n`
+      : replied ? `[Noam is replying to ${replied.role === 'bot' ? 'your' : 'his own'} earlier message in this chat (message ${replied.id}), quoted as context only, not as a new request or approval:\n"${replied.text}"]\n` : '';
     const answered = quoted + (asked ? `[Noam's answer to your question "${asked.question.text}"]\n${said}` : said);
     let forBrain = pictures.length ? `${answered}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : answered;
     if (attached.length) forBrain += `\n\n[Noam attached ${attached.length} file${attached.length === 1 ? '' : 's'}. Read each one before answering (open the file): ${attached.join(' , ')}]`;
