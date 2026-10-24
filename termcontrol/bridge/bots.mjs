@@ -425,7 +425,11 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
       // the answer. Without a completed turn the run stopped partway: say so.
       const unfinished = bot.provider === 'codex' && !completed;
       if (unfinished && !error) error = `The bot stopped partway through (${(stderr.trim().split('\n').pop() || `exit ${code}`).slice(0, 300)}).`;
-      const text = unfinished ? '' : carryCard(finalText || lastText, spoken);
+      // A Claude turn that ends on a tool step (e.g. marking his request) has an empty final
+      // text even though the bot answered just before it: that answer is the reply, never
+      // "Done, with nothing to add." (R-7394).
+      const lastSaid = bot.provider === 'codex' ? '' : [...spoken].reverse().find((s) => String(s || '').trim()) || '';
+      const text = unfinished ? '' : carryCard(finalText.trim() || lastText.trim() || lastSaid, spoken);
       if (!text && !error && code !== 0) error = (stderr.trim().split('\n').pop() || `The brain stopped (exit ${code}).`).slice(0, 400);
       resolve({ text, error: text ? null : error, code });
     });

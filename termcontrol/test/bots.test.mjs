@@ -213,6 +213,22 @@ test('with no backup free, the message is kept and answered by itself after the 
   assert.equal(chat.filter((m) => m.role === 'operator').length, 1, 'his message is not duplicated');
 });
 
+// R-7394: "ממשיך לקבל את השגיאה הזו" — the bot answered, then marked his request with one
+// more tool step, so the turn's final text was empty and he only ever saw the placeholder.
+test('a Claude turn that answers and then takes one more step still shows the answer', async () => {
+  const dir = tmp();
+  const fake = path.join(dir, 'fake-claude.mjs');
+  fs.writeFileSync(fake, `#!/usr/bin/env node
+const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+out({ type: 'system', subtype: 'init', session_id: 'S1' });
+out({ type: 'assistant', message: { content: [{ type: 'text', text: 'תיקנתי, הסטטוס יתעדכן.' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'termfleet-asks done R-1 "x"' } }] } });
+out({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } });
+out({ type: 'result', subtype: 'success', is_error: false, result: '' });
+`, { mode: 0o755 });
+  const r = await runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'claude', cwd: dir, sessions: {} }, 'hi', { bins: { claude: fake } });
+  assert.equal(r.text, 'תיקנתי, הסטטוס יתעדכן.');
+});
+
 test('a real brain that hits its limit is stopped at once instead of waiting for the reset', async () => {
   const dir = tmp();
   const fake = path.join(dir, 'fake-claude.mjs');
