@@ -1147,6 +1147,32 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .sheet-list .ask-remove{display:inline-flex;align-items:center;min-height:36px;margin-top:4px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:13px;cursor:pointer}.sheet-list .ask-remove:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sheet-list li.removing{opacity:.4;pointer-events:none}
 .sheet-list a{color:var(--text)}
+/* Requests in the bot menu: open, ready to try, done (folded). Right to left when the requests are Hebrew. */
+.bot-menu-sheet[dir=rtl] .menu-back svg{transform:scaleX(-1)}
+.asks-summary{display:grid;gap:6px;margin:2px 12px 14px}
+.asks-summary .sheet-title{margin:0;font-size:19px;line-height:1.3}
+.asks-counts{margin:0;color:var(--muted);font-size:13.5px;font-variant-numeric:tabular-nums}
+.asks-meter{display:flex;height:4px;border-radius:2px;background:var(--surface-2);overflow:hidden;margin-top:4px}
+.asks-meter span{display:block;height:100%}.asks-meter .m-done{background:var(--working)}.asks-meter .m-ready{background:color-mix(in srgb,var(--working) 55%,transparent)}
+.asks-group{margin:0 4px 10px;border-top:1px solid var(--line);padding-top:6px}
+.asks-group>h3,.asks-group>summary{display:flex;align-items:center;gap:8px;min-height:40px;margin:0;padding:0 8px;font-size:13px;font-weight:500;color:var(--muted);list-style:none}
+.asks-group>summary{cursor:pointer;min-height:44px}.asks-group>summary::-webkit-details-marker{display:none}
+.asks-group>summary::after{content:"";width:7px;height:7px;border-inline-end:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);margin-inline-start:auto;transition:transform .2s}
+.asks-group[open]>summary::after{transform:rotate(-135deg)}
+.asks-group-count{min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:var(--surface-2);color:var(--text);font-size:12px;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums}
+.asks-open .asks-group-title{color:var(--accent)}.asks-ready .asks-group-title{color:var(--working)}
+.asks-group .sheet-list{padding:0;gap:2px;list-style:none}
+.sheet-list li.ask-row{display:flex;align-items:center;gap:8px;min-height:48px;padding:6px 4px 6px 8px;padding-inline:8px 4px;border-radius:12px}
+.sheet-list li.ask-row:hover{background:var(--surface-2)}
+.ask-copy{flex:1;min-width:0;display:grid;gap:3px;justify-items:start}
+.ask-words{font-size:15px;line-height:1.45;color:var(--text);overflow-wrap:anywhere;text-align:start;unicode-bidi:plaintext}
+.asks-done .ask-words{color:var(--muted)}
+.sheet-list .ask-row .ask-status{margin:0;font-size:11.5px;line-height:1;padding:3px 7px;border-radius:8px;border:1px solid var(--line);color:var(--waiting)}
+.sheet-list .ask-row .ask-dropped{color:var(--muted);text-decoration:line-through}
+.sheet-list .ask-row .ask-note{margin:0;font-size:12.5px}
+.sheet-list .ask-row .ask-remove{flex:none;width:44px;height:44px;min-height:0;margin:0;padding:0;display:grid;place-items:center;border:0;border-radius:12px;color:var(--muted);opacity:.7}
+.sheet-list .ask-row .ask-remove:hover{opacity:1;background:var(--surface)}
+.sheet-list .ask-row .ask-remove svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 @media(min-width:1000px){.bot-menu-sheet{inset:64px 16px auto auto;width:360px;border:1px solid var(--line);border-radius:16px;padding:8px}.bot-menu-sheet .sheet-grab{display:none}.bot-menu-sheet::backdrop{background:rgba(0,0,0,.5)}}
 /* Waiting for you: one quiet block at the top of the list, rows you can tap. */
 .waiting-panel{margin:0 0 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);overflow:hidden}
@@ -1244,7 +1270,7 @@ body.chat main .qform .q-opt{border:1px solid var(--line);border-radius:14px;min
 .pane-menu button{display:flex;width:100%;min-height:44px;align-items:center;padding:0 12px;border:0;border-radius:8px;background:none;color:var(--text);font:inherit;text-align:start;cursor:pointer}
 .pane-menu button:hover,.pane-menu button:focus-visible{background:var(--control)}
 .pane-menu .danger{color:#e5484d}
-.folder-group>.projhead .folder-icon,.archive-group>.projhead .folder-icon,.hidden-folder-row .folder-icon{width:15px;height:15px;flex:none;color:var(--muted)}.folder-group>.projhead .count,.archive-group>.projhead .count{margin-inline-start:auto;font-variant-numeric:tabular-nums}.folder-group>.projhead>.folder-icon,.archive-group>.projhead>.folder-icon{display:block}.folder-group>.projhead .count,.archive-group>.projhead .count{display:inline}.list-more{flex:none;min-width:40px;min-height:40px;margin-inline-end:-6px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:17px;line-height:1;cursor:pointer}.list-more:hover,.list-more:focus-visible{background:var(--surface-2);color:var(--text)}.new-folder-row{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;margin:2px 0 4px;padding:0 6px;border:0;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:13px;text-align:start;cursor:pointer}.new-folder-row .folder-icon{width:15px;height:15px;flex:none}.new-folder-row:hover,.new-folder-row:focus-visible{background:var(--surface-2);color:var(--text)}.new-folder-hint{margin-inline-start:auto;font-size:12px;opacity:.75}.folder-empty{padding:8px 8px 14px;color:var(--muted);font-size:12px;line-height:1.5}.floated{margin:2px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}.floated-head{display:flex;align-items:center;min-height:34px;padding:0 6px;color:var(--accent);font-size:12px;font-weight:500}.archive-group{margin-top:16px;padding-top:6px;border-top:1px solid var(--line)}.archive-group>.projhead{color:var(--text)}.archive-note{margin:0 6px 8px;max-width:46ch;color:var(--muted);font-size:12px;line-height:1.55}.archive-cat+.archive-cat{margin-top:6px}.archive-cat-head{display:flex;justify-content:space-between;gap:8px;padding:8px 6px 4px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.archive-group .pane .project{font-weight:400}.folder-drop{outline:1px dashed var(--accent);outline-offset:-2px;border-radius:10px;background:var(--surface-2)}.hidden-folder-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:0 6px;color:var(--muted);font-size:13px}.hidden-folder-row>span{display:flex;align-items:center;gap:8px;min-width:0}.list-show{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);font:inherit;font-size:12px;cursor:pointer}.list-sheet .sheet{max-height:min(640px,calc(100dvh - 32px));overflow:auto}.list-sheet .choices{display:grid}.list-sheet .choice{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px;width:100%;padding:8px 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font:inherit;font-size:14px;text-align:start;cursor:pointer}.list-sheet .choice:hover,.list-sheet .choice:focus-visible{background:var(--surface-2)}.list-sheet .choice>span:last-child{color:var(--muted);font-size:12px}.list-sheet .hint{font-size:12px}.list-sheet label{display:block;margin:6px 0 6px;color:var(--muted);font-size:12px}.list-sheet input,.list-sheet select{width:100%;min-height:44px;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}.list-sheet .sheet-form{display:grid;gap:8px;margin-top:4px}.list-sheet .sheet-primary{min-height:44px;border:0;border-radius:10px;background:var(--text);color:var(--bg);font:inherit;font-weight:500;cursor:pointer}.list-sheet .sheet-result:not(:empty){color:var(--waiting)}@media(prefers-reduced-motion:no-preference){.archive-group[open]>.archive-body,.folder-group[open]>.group-rows{animation:list-open .24s cubic-bezier(.16,1,.3,1)}@keyframes list-open{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}}
+.folder-group>.projhead .folder-icon,.archive-group>.projhead .folder-icon,.hidden-folder-row .folder-icon{width:15px;height:15px;flex:none;color:var(--muted)}.folder-group>.projhead .count,.archive-group>.projhead .count{margin-inline-start:auto;font-variant-numeric:tabular-nums}.folder-group>.projhead>.folder-icon,.archive-group>.projhead>.folder-icon{display:block}.folder-group>.projhead .count,.archive-group>.projhead .count{display:inline}.list-more{flex:none;min-width:40px;min-height:40px;margin-inline-end:-6px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:17px;line-height:1;cursor:pointer}.list-more:hover,.list-more:focus-visible{background:var(--surface-2);color:var(--text)}.new-folder-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;margin:4px 0 12px;padding:0 14px;border:1.5px dashed var(--accent);border-radius:12px;background:transparent;color:var(--accent);font:inherit;font-size:15px;font-weight:500;text-align:start;cursor:pointer;touch-action:manipulation}.new-folder-plus{font-size:22px;line-height:1;font-weight:400}.new-folder-row:active{background:var(--surface-2)}.new-folder-row .folder-icon{width:18px;height:18px;flex:none;color:currentColor}.new-folder-row:hover,.new-folder-row:focus-visible{background:var(--surface-2);color:var(--accent)}.new-folder-hint{margin-inline-start:auto;font-size:13px;font-weight:400;color:var(--muted)}.folder-empty{padding:8px 8px 14px;color:var(--muted);font-size:12px;line-height:1.5}.floated{margin:2px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}.floated-head{display:flex;align-items:center;min-height:34px;padding:0 6px;color:var(--accent);font-size:12px;font-weight:500}.archive-group{margin-top:16px;padding-top:6px;border-top:1px solid var(--line)}.archive-group>.projhead{color:var(--text)}.archive-note{margin:0 6px 8px;max-width:46ch;color:var(--muted);font-size:12px;line-height:1.55}.archive-cat+.archive-cat{margin-top:6px}.archive-cat-head{display:flex;justify-content:space-between;gap:8px;padding:8px 6px 4px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.archive-group .pane .project{font-weight:400}.folder-drop{outline:1px dashed var(--accent);outline-offset:-2px;border-radius:10px;background:var(--surface-2)}.hidden-folder-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:0 6px;color:var(--muted);font-size:13px}.hidden-folder-row>span{display:flex;align-items:center;gap:8px;min-width:0}.list-show{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);font:inherit;font-size:12px;cursor:pointer}.list-sheet .sheet{max-height:min(640px,calc(100dvh - 32px));overflow:auto}.list-sheet .choices{display:grid}.list-sheet .choice{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px;width:100%;padding:8px 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font:inherit;font-size:14px;text-align:start;cursor:pointer}.list-sheet .choice:hover,.list-sheet .choice:focus-visible{background:var(--surface-2)}.list-sheet .choice>span:last-child{color:var(--muted);font-size:12px}.list-sheet .hint{font-size:12px}.list-sheet label{display:block;margin:6px 0 6px;color:var(--muted);font-size:12px}.list-sheet input,.list-sheet select{width:100%;min-height:44px;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}.list-sheet .sheet-form{display:grid;gap:8px;margin-top:4px}.list-sheet .sheet-primary{min-height:44px;border:0;border-radius:10px;background:var(--text);color:var(--bg);font:inherit;font-weight:500;cursor:pointer}.list-sheet .sheet-result:not(:empty){color:var(--waiting)}@media(prefers-reduced-motion:no-preference){.archive-group[open]>.archive-body,.folder-group[open]>.group-rows{animation:list-open .24s cubic-bezier(.16,1,.3,1)}@keyframes list-open{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}}
 .close-sheet{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 .close-sheet .sheet{width:min(380px,100%);box-sizing:border-box;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);display:grid;gap:10px}
 .close-sheet h2{margin:0;font-size:17px;font-weight:500;overflow-wrap:anywhere}
@@ -2474,7 +2500,7 @@ function listSheet(title,body,wire,returnFocus){
   const fail=e=>{wrap.querySelector('.sheet-result').textContent=e.message;};
   wrap.querySelector('[data-cancel]').onclick=close;wrap.onclick=e=>{if(e.target===wrap)close();};
   wrap.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();close();}};
-  wire?.(wrap,change=>folderChange(change).then(close).catch(fail));
+  wire?.(wrap,change=>folderChange(change).then(()=>{close();return true;}).catch(e=>{fail(e);return false;}));
   (wrap.querySelector('.choice') || wrap.querySelector('input,select') || wrap.querySelector('[data-cancel]')).focus();
 }
 const sheetChoice=(attrs,label,mark='')=>`<button type="button" class="choice" ${attrs}><span dir="auto">${esc(label)}</span><span>${mark}</span></button>`;
@@ -2486,8 +2512,8 @@ function moveFolderSheet(id,name,from){
     wrap.querySelector('[data-form]').onsubmit=e=>{e.preventDefault();run({op:'create',name:wrap.querySelector('input').value,pane:id});};
   },from);
 }
-function newFolderSheet(from){
-  listSheet(ui('New folder','תיקייה חדשה'),`<p>${ui('Folders are your own topics. Move a chat into one from its ⋯ menu, or drag it onto the folder on a computer.','תיקיות הן הנושאים שלכם. מעבירים שיחה מתפריט ⋯ שלה, או גוררים אותה לתיקייה במחשב.')}</p>${sheetForm('folder',ui('Folder name','שם התיקייה'),ui('For example, Studio','למשל, סטודיו'),ui('Create folder','יצירת תיקייה'))}`,(wrap,run)=>{wrap.querySelector('[data-form]').onsubmit=e=>{e.preventDefault();run({op:'create',name:wrap.querySelector('input').value});};},from);
+function newFolderSheet(from,made){
+  listSheet(ui('New folder','תיקייה חדשה'),`<p>${ui('Folders are your own topics. Move a chat into one from its ⋯ menu, or drag it onto the folder on a computer.','תיקיות הן הנושאים שלכם. מעבירים שיחה מתפריט ⋯ שלה, או גוררים אותה לתיקייה במחשב.')}</p>${sheetForm('folder',ui('Folder name','שם התיקייה'),ui('For example, Studio','למשל, סטודיו'),ui('Create folder','יצירת תיקייה'))}`,(wrap,run)=>{wrap.querySelector('[data-form]').onsubmit=e=>{e.preventDefault();run({op:'create',name:wrap.querySelector('input').value}).then(ok=>{if(ok)made?.();});};},from);
 }
 function folderMenuSheet(fid,from){
   const lf=listFoldersState || emptyFolders,f=lf.folders.find(x=>x.id===fid);if(!f)return;const at=lf.folders.indexOf(f);
@@ -2540,7 +2566,7 @@ function wireListFolders(container,onPhone){
   container.querySelectorAll('details[data-folder]').forEach(el=>{el.ontoggle=()=>{const f=(listFoldersState || emptyFolders).folders.find(x=>x.id===el.dataset.folder);if(f && f.collapsed===el.open)folderChange({op:'collapse',id:f.id,collapsed:!el.open}).catch(()=>{});};});
   const arch=container.querySelector('details[data-archive]');if(arch)arch.ontoggle=()=>{try{sessionStorage.setItem('termcontrol-archive-open',arch.open?'open':'closed');}catch{}};
   container.querySelectorAll('[data-show-folder]').forEach(b=>{b.onclick=()=>folderChange({op:'hide',id:b.dataset.showFolder,hidden:false}).catch(e=>note(e.message,true));});
-  container.querySelectorAll('.new-folder,.new-folder-row').forEach(b=>{b.onclick=()=>newFolderSheet(b);});
+  container.querySelectorAll('.new-folder,.new-folder-row').forEach(b=>{b.onclick=()=>newFolderSheet(b,b.dataset.key==='new-folder-row-bots'?()=>{pickedFleetTab='terminals';try{localStorage.setItem('termcontrol-fleet-tab','terminals');}catch{}fleet(Boolean(focusedPane),{fromCache:true});}:null);});
   // A computer drags a chat onto a folder (or back onto a project); the ⋯ menu does the same on a phone.
   container.querySelectorAll('.pane').forEach(el=>{el.draggable=!onPhone;});
   if(container.dataset.folderDrag)return;container.dataset.folderDrag='1';
@@ -2672,8 +2698,12 @@ async function fleet(background=false,{fromCache=false}={}) {
     return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span>${g.panes.length>1?`<span class="count">${g.panes.length}</span>`:''}${g.panes.some(p=>p.cwd)?`<button type="button" class="addagent" data-project="${esc(g.project)}" data-project-id="${esc(g.mapGroupId || g.panes[0]?.mapGroupId || '')}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
   }).join('');
   const floatedHtml=floatedList.length?`<section class="floated" data-key="floated" aria-label="${ui('New messages','הודעות חדשות')}"><div class="floated-head">${ui('New messages','הודעות חדשות')}</div><div class="group-rows">${floatedList.map(card).join('')}</div></section>`:'';
-  const folderRow=`<button type="button" class="new-folder-row" data-key="new-folder-row">${folderSvg}<span>${ui('New folder','תיקייה חדשה')}</span><span class="new-folder-hint">${lf.folders.length?'':ui('Sort chats by topic','למיין שיחות לפי נושא')}</span></button>`;
-  const listParts=floatedHtml+folderRow+folderSectionsHtml(panes,lf,skipIds,paneOrder,new Set(floatedList.map(p=>p.id)));
+  // Noam 2026-10-24: "I see no way to make folders on the phone" - the row was a faint grey line on
+  // the Terminals tab only. It is now a full-width outlined button under the search, on both tabs.
+  const folderButton=(key,hint)=>`<button type="button" class="new-folder-row" data-key="${key}"><span class="new-folder-plus" aria-hidden="true">+</span>${folderSvg}<span class="new-folder-label">${ui('New folder','תיקייה חדשה')}</span><span class="new-folder-hint">${hint}</span></button>`;
+  const folderRow=folderButton('new-folder-row',lf.folders.length?'':ui('Sort chats by topic','למיין שיחות לפי נושא'));
+  const botsFolderRow=folderButton('new-folder-row-bots',ui('For terminal chats','לשיחות במסופים'));
+  const listParts=floatedHtml+folderSectionsHtml(panes,lf,skipIds,paneOrder,new Set(floatedList.map(p=>p.id)));
   const listEnd=archiveSectionHtml(archivedList,lf)+hiddenFoldersHtml(lf);
   const root=background?sideContent:main;
   let container=root.querySelector('.fleet-content');if(!container){root.replaceChildren();container=document.createElement('div');container.className='fleet-content';root.append(container);}
@@ -2685,7 +2715,7 @@ async function fleet(background=false,{fromCache=false}={}) {
   const tabs=`<div class="fleet-tabs" role="tablist" data-key="tabs"><button type="button" role="tab" data-tab="bots" aria-selected="${tab==='bots'}">${ui('Bots','בוטים')}<span class="tab-count">${botList.filter(b=>!b.hidden).length}</span>${need(botsNeed)}</button><button type="button" role="tab" data-tab="terminals" aria-selected="${tab==='terminals'}">${ui('Terminals','מסופים')}<span class="tab-count">${panes.length}</span>${need(termsNeed,'term')}</button><button type="button" role="tab" data-tab="health" aria-selected="${tab==='health'}">${ui('Health','מצב')}</button></div>`;
   // The same tab redrawn by a refresh keeps its place; a different tab starts at the top.
   const keepScroll=!background && container.dataset.tab===tab && !history.state?.fleetReturn?main.scrollTop:null;container.dataset.tab=tab;
-  patchFleet(container,waitingHtml(waitingItems)+usageHtml(r.usage)+tabs+(tab==='health'?healthCardHtml(agentHealth,true):searchBox+(tab==='bots'?botsHomeHtml(botsData):bar+roomsPanelHtml(roomsData)+none+listParts+content+listEnd+footer)));
+  patchFleet(container,waitingHtml(waitingItems)+usageHtml(r.usage)+tabs+(tab==='health'?healthCardHtml(agentHealth,true):searchBox+(tab==='bots'?botsFolderRow+botsHomeHtml(botsData):folderRow+bar+roomsPanelHtml(roomsData)+none+listParts+content+listEnd+footer)));
   container.querySelectorAll('.fleet-tabs [data-tab]').forEach(el=>{el.onclick=()=>{pickedFleetTab=el.dataset.tab;try{localStorage.setItem('termcontrol-fleet-tab',el.dataset.tab);}catch{}const bg=Boolean(focusedPane);fleet(bg,{fromCache:true}).then(()=>fleet(bg));};});
   const healthDetails=container.querySelector('.health-card');if(healthDetails)healthDetails.ontoggle=()=>sessionStorage.setItem('termcontrol-health-open',healthDetails.open?'open':'closed');
   if(keepScroll!==null && main.scrollTop!==keepScroll)main.scrollTop=keepScroll;
@@ -2964,18 +2994,21 @@ function replyDetailsHtml(mid,list){
 // "18 done · 5 open" and the menu "0 of 25 done, 5 open"; "עד עכשיו זה היה סתם 0 כל הזמן", "משימות
 // שאני נותן ואתה עושה ומסיים באמת ומה נשאר פתוח"). Done is what the agent finished (done, or ready for
 // him to try); open is what is still in progress; dropped requests are not counted.
-function asksSummary(asks){
-  const list=asks || [],count=s=>list.filter(a=>a.status===s).length;
+// Noam 2026-10-24 ("זה צריך להיות rtl"): his requests are in Hebrew, so the bot menu and its count
+// are Hebrew and right to left whenever most of them are, whatever language the phone is set to.
+const asksHebrew=asks=>{const list=(asks || []).map(a=>a.title || a.text || '');return chromeLocale==='he' || (list.length>0 && list.filter(t=>/[\u0590-\u05FF]/.test(t)).length*2>=list.length);};
+function asksSummary(asks,he=asksHebrew(asks)){
+  const say=(en,h)=>he?h:en,list=asks || [],count=s=>list.filter(a=>a.status===s).length;
   const ready=count('ready'),done=count('done')+ready,open=count('open')+count('partial'),total=done+open;
-  const text=ui(`${done} done · ${open} open`,`${done} בוצעו · ${open} פתוחות`);
-  return {done,ready,open,total,text,full:text+(ready?ui(` (${ready} ready for you to try)`,` (${ready} מוכנות לבדיקה שלך)`):'')};
+  const text=say(`${done} done · ${open} open`,`${done} בוצעו · ${open} פתוחות`);
+  return {done,ready,open,total,text,full:text+(ready?say(` (${ready} ready for you to try)`,` (${ready} מוכנות לבדיקה שלך)`):'')};
 }
 function paintBotHead(state){
   const box=document.querySelector('.bot-head-actions');if(!box)return;
   const chip=box.querySelector('.bot-asks-chip'),bar=box.querySelector('.bot-progress'),sum=asksSummary(state.asks);
   chip.hidden=bar.hidden=!sum.total;if(!sum.total)return;
-  chip.querySelector('span').textContent=sum.text;chip.classList.toggle('waiting',Boolean(sum.open));
-  chip.setAttribute('aria-label',ui(`Your requests: ${sum.full}`,`הבקשות שלך: ${sum.full}`));
+  chip.querySelector('span').textContent=sum.text;chip.classList.toggle('waiting',Boolean(sum.open));chip.dir=asksHebrew(state.asks)?'rtl':'auto';
+  chip.setAttribute('aria-label',asksHebrew(state.asks)?`הבקשות שלך: ${sum.full}`:`Your requests: ${sum.full}`);
   bar.firstElementChild.style.transform=`scaleX(${(sum.done/sum.total).toFixed(3)})`;
 }
 const menuIcons={activity:'M3 12h4l3-7 4 14 3-7h4',asks:'M5 12l4 4L19 6',agents:'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h4',model:'M12 9a3 3 0 100 6 3 3 0 000-6z M12 3v3 M12 18v3 M3 12h3 M18 12h3',memory:'M6 4h12v16l-6-4-6 4z',schedule:'M12 4a8 8 0 100 16 8 8 0 000-16z M12 8v4l3 2',edit:'M4 20h4L19 9l-4-4L4 16z',theme:'M12 8a4 4 0 100 8 4 4 0 000-8z M12 3v2 M12 19v2 M3 12h2 M19 12h2',browser:'M4 5h16v14H4z M4 9h16',notify:'M6 16V11a6 6 0 0112 0v5l2 2H4z M10 20h4',pin:'M9 4h6l-1 6 3 3H7l3-3z M12 13v7',hide:'M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z M4 4l16 16',del:'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13'};
@@ -2984,10 +3017,11 @@ function menuIcon(name){return `<svg viewBox="0 0 24 24" aria-hidden="true"><pat
 // Items in the approved mockup's order; the remaining existing options follow so nothing is lost.
 function botMenu(id,bot,state,start='menu'){
   document.querySelector('.bot-menu-sheet')?.remove();
-  const dialog=document.createElement('dialog');dialog.className='bot-menu-sheet';dialog.setAttribute('aria-label',ui('Bot menu','תפריט הבוט'));
+  const he=asksHebrew(state.asks),ui=(en,h)=>he?h:en;   // the whole sheet speaks the requests' language
+  const dialog=document.createElement('dialog');dialog.className='bot-menu-sheet';dialog.dir=he?'rtl':'ltr';dialog.lang=he?'he':'en';dialog.setAttribute('aria-label',ui('Bot menu','תפריט הבוט'));
   const close=()=>{dialog.close();dialog.remove();};
   const press=sel=>{close();document.querySelector(sel)?.click();};
-  const sum=asksSummary(state.asks),helpers=state.helpers || [];
+  const sum=asksSummary(state.asks,he),helpers=state.helpers || [];
   const item=(key,label,value='',cls='')=>`<button type="button" class="menu-item ${cls}" data-act="${key}">${menuIcon(key)}<span class="menu-label">${esc(label)}</span>${value?`<span class="menu-value" dir="auto">${esc(value)}</span>`:''}</button>`;
   const brain=p=>p==='codex'?'Codex':'Claude';
   const menu=()=>`<div class="sheet-grab" aria-hidden="true"></div>`
@@ -3009,7 +3043,19 @@ function botMenu(id,bot,state,start='menu'){
   const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),ready:ui('ready to try','מוכן לבדיקה'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
   const stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),closed:ui('closed','נסגר')};
   const back=`<button type="button" class="menu-item menu-back" data-act="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="menu-label">${ui('Bot menu','תפריט הבוט')}</span></button>`;
-  const asksList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui(`Your requests: ${sum.full}`,`הבקשות שלך: ${sum.full}`))}</h2><ol class="sheet-list">${state.asks.slice().sort((x,y)=>((['done','dropped'].includes(x.status)?1:0)-(['done','dropped'].includes(y.status)?1:0)) || y.n-x.n).map(a=>{const t=a.title || a.text;return `<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc(t.length>240?t.slice(0,239)+'…':t)}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}${['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}">${esc(ui('Remove from list','הסרה מהרשימה'))}</button>`:''}</li>`;}).join('')}</ol>`;
+  // Requests (Noam 2026-10-24: "לא ברור מה פתוח מה סגור"): open first, then ready for him to try,
+  // then done folded away. One short line of his own words each, newest first.
+  const short=t=>{t=String(t || '').replace(/\s+/g,' ').trim();return t.length>80?t.slice(0,79).trimEnd()+'…':t;};
+  const row=a=>{const t=a.title || a.text;const chip=['partial','dropped'].includes(a.status)?`<span class="ask-status ask-${esc(a.status)}">${esc(label[a.status])}</span>`:'';
+    return `<li class="ask-row ask-row-${esc(a.status)}" value="${a.n}"><span class="ask-copy">${chip}<bdi class="ask-words" dir="auto" title="${esc(t)}">${esc(short(t))}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(short(a.note))}</span>`:''}</span>${['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}" aria-label="${esc(ui('Remove from list','הסרה מהרשימה'))}" title="${esc(ui('Remove from list','הסרה מהרשימה'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>`:''}</li>`;};
+  const group=(cls,title,list,fold=false)=>{if(!list.length)return '';const head=`<span class="asks-group-title">${esc(title)}</span><span class="asks-group-count">${list.length}</span>`;const items=`<ol class="sheet-list">${list.map(row).join('')}</ol>`;
+    return fold?`<details class="asks-group ${cls}"><summary>${head}</summary>${items}</details>`:`<section class="asks-group ${cls}"><h3>${head}</h3>${items}</section>`;};
+  const asksList=()=>{const newest=state.asks.slice().sort((x,y)=>y.n-x.n),of=(...st)=>newest.filter(a=>st.includes(a.status));
+    const pct=n=>sum.total?(n/sum.total*100).toFixed(1):0;
+    return `<div class="sheet-grab" aria-hidden="true"></div>${back}<header class="asks-summary"><h2 class="sheet-title">${esc(ui('Your requests','הבקשות שלך'))}</h2><p class="asks-counts" aria-label="${esc(sum.full)}">${esc(sum.full)}</p><div class="asks-meter" aria-hidden="true"><span class="m-done" style="width:${pct(sum.done-sum.ready)}%"></span><span class="m-ready" style="width:${pct(sum.ready)}%"></span></div></header>`
+      +group('asks-open',ui('Still open','עדיין פתוחות'),of('open','partial'))
+      +group('asks-ready',ui('Ready for you to try','מוכנות לבדיקה שלך'),of('ready'))
+      +group('asks-done',ui('Done','בוצעו'),of('done','dropped'),true);};
   const agentsList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui('Terminal agents it started','סוכני מסוף שהפעיל'))}</h2><ul class="sheet-list">${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul>`;
   const show=view=>{dialog.innerHTML=view==='asks'?asksList():view==='agents'?agentsList():menu();dialog.querySelector('.menu-item')?.focus();};
   dialog.addEventListener('click',e=>{

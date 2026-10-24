@@ -63,19 +63,19 @@ function fixture() {
   return panes;
 }
 
-async function openApp(browser, { phone = false, store, owner = 'noam' } = {}) {
+async function openApp(browser, { phone = false, store, owner = 'noam', tab = 'terminals', bots = [] } = {}) {
   const context = await browser.newContext(phone ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } : { viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(() => { localStorage.setItem('termcontrol-fleet-tab', 'terminals'); localStorage.setItem('termcontrol-window', 'all'); });
+  await page.addInitScript((tab) => { localStorage.setItem('termcontrol-fleet-tab', tab); localStorage.setItem('termcontrol-window', 'all'); }, tab);
   const panes = fixture();
   await page.route('http://folders.synthetic/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/') return route.fulfill({ body: html, contentType: 'text/html' });
     let data = {};
     if (url.pathname === '/api/panes') data = { panes, groups: [{ project: 'proj', panes }], daemon: true };
-    if (url.pathname === '/api/bots') data = { bots: [] };
+    if (url.pathname === '/api/bots') data = { bots };
     if (url.pathname === '/api/waiting') data = { items: [] };
     if (url.pathname === '/api/list-folders') {
       if (route.request().method() === 'POST') {
@@ -85,7 +85,7 @@ async function openApp(browser, { phone = false, store, owner = 'noam' } = {}) {
     return route.fulfill({ json: data });
   });
   await page.goto('http://folders.synthetic/');
-  await page.waitForSelector('.pane');
+  await page.waitForSelector(tab === 'bots' ? '.new-folder-row' : '.pane');
   return { page, context, errors };
 }
 
@@ -155,6 +155,38 @@ test('phone: chats with unread agent messages float to the top; folders and the 
     await page.waitForFunction(() => true);
     await new Promise((r) => setTimeout(r, 400));
     assert.equal(store.read('noam').folders[0].collapsed, true);
+    assert.deepEqual(errors, []);
+    await context.close();
+  } finally { await browser.close(); }
+});
+
+// Noam 2026-10-24 (R-15166, R-15167): "I see no way to make folders on the phone" and "even if it
+// exists, it has to be clear". The button sits right under the search on BOTH tabs, big enough
+// to tap, and a folder made from the Bots tab takes him to the Terminals tab where it lives.
+test('phone: a big, clear New folder button on the Bots and Terminals tabs', async () => {
+  const browser = await chromium.launch();
+  const store = new ListFolders(tmpFile());
+  try {
+    const shots = process.env.FOLDER_SHOTS;
+    const { page, context, errors } = await openApp(browser, { phone: true, store, tab: 'bots', bots: [{ id: 'b1', name: 'Helper', state: 'idle' }] });
+    const button = page.locator('.new-folder-row');
+    await button.waitFor();
+    const box = await button.boundingBox();
+    assert.ok(box.height >= 48 && box.width >= 300, `easy to tap: ${box.width}x${box.height}`);
+    assert.match(await button.textContent(), /New folder/);
+    const search = await page.locator('.fleet-search').boundingBox();
+    assert.ok(box.y - (search.y + search.height) < 40, 'right under the search, no scrolling to find it');
+    assert.ok(box.y + box.height < 844, 'visible without scrolling');
+    if (shots) await page.screenshot({ path: `${shots}/phone-bots-tab.png` });
+    await button.tap();
+    await page.locator('.list-sheet input').fill('Studio');
+    await page.locator('.list-sheet .sheet-primary').tap();
+    await page.waitForSelector('details[data-folder]');
+    assert.equal(await page.locator('.fleet-tabs [data-tab="terminals"]').getAttribute('aria-selected'), 'true', 'moved to the tab where the folder lives');
+    assert.equal(store.read('noam').folders[0].name, 'Studio');
+    const t = await page.locator('.new-folder-row').boundingBox();
+    assert.ok(t.height >= 48 && t.y + t.height < 844, 'also clear on the Terminals tab');
+    if (shots) await page.screenshot({ path: `${shots}/phone-terminals-tab.png` });
     assert.deepEqual(errors, []);
     await context.close();
   } finally { await browser.close(); }
