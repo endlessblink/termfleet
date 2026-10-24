@@ -256,7 +256,7 @@ async function idleCleanupPlan() {
     if (bot) starters.set(p.id, { name: bot.name, botId: bot.id });
     else if (parents.get(p.id)) starters.set(p.id, { name: 'an agent', paneId: parents.get(p.id) });
     else if (p.startedBy) starters.set(p.id, { name: p.startedBy });
-    else if (startedByCommand(table.find((x) => x.pid === p.pid)?.cmd)) starters.set(p.id, { name: 'an agent' });
+    else if (startedByCommand(byId.get(p.id)?.command) || startedByCommand(table.find((x) => x.pid === p.pid)?.cmd)) starters.set(p.id, { name: 'an agent' });
   }
   const plan = cleanupPlan({
     panes, isSleeping,

@@ -58,6 +58,8 @@ export async function liveness() {
       exited: s.lastExit != null,
       pid: s.pid ?? null,
       initialCwd: typeof s.initialCwd === 'string' ? s.initialCwd : null,
+      // How it was started; kept after its program ends (a shell's exec replaces its own name).
+      command: typeof s.command === 'string' ? s.command : null,
       bytes,
       // "Producing" means output moved within the last few seconds. Without a
       // previous sample we say nothing rather than guess.
