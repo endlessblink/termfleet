@@ -2092,8 +2092,13 @@ function showMediaFull(href,label){
   let box=document.getElementById('media-full');
   if(!box){box=document.createElement('dialog');box.id='media-full';box.className='media-full';box.innerHTML=`<button type="button" class="media-full-close" aria-label="${esc(ui('Close','סגירה'))}">×</button><img alt="">`;document.body.append(box);box.addEventListener('click',()=>box.close());}
   const img=box.querySelector('img');img.src=href;img.alt=label||'';
+  // Back closes the picture and stays in the chat (Noam 2026-10-24: Back after opening a picture
+  // left a black screen): opening adds one history step; Back pops only that step.
+  if(!box.dataset.wired){box.dataset.wired='1';box.addEventListener('close',()=>{if(history.state?.mediaFull){mediaPopSkip=true;history.back();}});}
+  if(!history.state?.mediaFull)history.pushState({...(history.state || {}),mediaFull:true},'',location.href);
   try{box.showModal();}catch{box.setAttribute('open','');}
 }
+let mediaPopSkip=false;
 document.addEventListener('click',event=>{const item=event.target.closest?.('[data-media-full]');if(!item)return;event.preventDefault();showMediaFull(item.dataset.mediaFull,item.querySelector('img')?.alt);});
 function botQuestionHtml(m,messages){
   if(m.repeated)return '';
@@ -5509,6 +5514,10 @@ function confirmBusy(message, go) {
 }
 
 window.addEventListener('popstate', (e) => {
+  // The full-size picture: Back closes it and the chat stays exactly as it was.
+  if(mediaPopSkip){mediaPopSkip=false;return;}
+  const full=document.getElementById('media-full');
+  if(full?.open){full.close();return;}
   const ask=document.querySelector('.askbox'),editor=ask?.querySelector('.custom-answer');
   if(ask?.localEditorNavigation){ask.localEditorNavigation=false;return;}
   if(editor && !editor.hidden && !e.state?.answerEditor){ask.closeAnswerEditor(false);return;}

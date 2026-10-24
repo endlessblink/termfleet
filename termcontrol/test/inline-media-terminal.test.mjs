@@ -52,6 +52,18 @@ test('a terminal agent chat shows its pictures, GIFs and videos inside the messa
       assert.equal(await page.locator('.bot-media video[controls]').count(), 1, 'a video plays in place with its own controls');
       await page.locator('[data-media-full]').click();
       assert.equal(await page.locator('#media-full[open]').count(), 1, 'tapping a picture opens it full size inside the chat');
+      // Noam 2026-10-24: Back after opening a picture left a black screen. Back closes it, the chat stays.
+      await page.goBack();
+      await page.waitForFunction(() => !document.querySelector('#media-full[open]'));
+      assert.equal(await page.evaluate(() => location.hash), '#T1');
+      assert.equal(await page.locator('.bot-media img').isVisible(), true, 'still in the same chat');
+      // Closing it by tapping undoes its history step, so one more Back leaves the chat as usual.
+      await page.locator('[data-media-full]').click();
+      await page.locator('#media-full').click();
+      await page.waitForFunction(() => !document.querySelector('#media-full[open]') && !history.state?.mediaFull);
+      assert.equal(await page.evaluate(() => location.hash), '#T1');
+      assert.equal(await page.locator('.bot-media img').isVisible(), true);
+      await page.locator('[data-media-full]').click();
       await page.screenshot({ path: `${process.env.TMPDIR || '/tmp'}/inline-media-terminal-${phone ? 'phone' : 'pc'}.png` });
       assert.deepEqual(errors, []);
       await ctx.close();
