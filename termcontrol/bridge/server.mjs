@@ -35,6 +35,7 @@ import { readUsageLimits } from './usage-limits.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { listFolders } from './list-folders.mjs';
+import { findMedia } from './bot-questions.mjs';
 import { withSleepingLives, sweepSleep, sleepPane, wakePane, workProcesses, treeRss, readSettings, writeSettings, listSleeping, isSleeping as sleepMarked, setKeepAwake, isKeepAwake, sleepVerdict } from './sleep.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { resolveLocalImage, resolveLocalFile } from './local-image.mjs';
@@ -512,7 +513,17 @@ const handle = async (req, res) => {
   if (url.pathname.startsWith('/view/') && req.method === 'GET') {
     const found = resolveView(url.pathname);
     if (!found) return json(res, 404, { error: 'That page is not available.' });
-    res.writeHead(200, { 'content-type': found.type, 'content-length': found.size, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': 'sandbox allow-scripts allow-popups allow-forms' });
+    const head = { 'content-type': found.type, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=300', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': 'sandbox allow-scripts allow-popups allow-forms' };
+    // Videos play and seek in the chat, on the phone too (it asks for the file in pieces).
+    const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+    if (range && found.size) {
+      let start = range[1] === '' ? Math.max(0, found.size - Number(range[2])) : Number(range[1]);
+      let end = range[1] !== '' && range[2] !== '' ? Math.min(Number(range[2]), found.size - 1) : found.size - 1;
+      if (!(start <= end) || start >= found.size) { res.writeHead(416, { 'content-range': `bytes */${found.size}` }); return res.end(); }
+      res.writeHead(206, { ...head, 'content-range': `bytes ${start}-${end}/${found.size}`, 'content-length': end - start + 1 });
+      return fs.createReadStream(found.file, { start, end }).pipe(res);
+    }
+    res.writeHead(200, { ...head, 'content-length': found.size });
     return fs.createReadStream(found.file).pipe(res);
   }
   if (await handleAuthRoutes(req, res, url)) return;
@@ -881,6 +892,8 @@ const handle = async (req, res) => {
     return json(res, pane ? 200 : 404, pane ? readDesk(pane) : {error:'That terminal has been closed.'});
   }
 
+  // A picture, GIF or video an agent names in its answer shows right in the chat (Noam 2026-10-24).
+  const withMedia = (feed) => ({ ...feed, events: (feed.events || []).map((e) => { if (e.kind !== 'assistant' || !e.text) return e; const shown = findMedia(e.text); return shown.media.length ? { ...e, text: shown.text, media: shown.media } : e; }) });
   if (url.pathname === '/api/feed') {
     const id = url.searchParams.get('pane');
     const limit = Math.min(Number(url.searchParams.get('limit') || 60), 200);
@@ -900,7 +913,7 @@ const handle = async (req, res) => {
       answerReceipt: ask ? choiceReceipts.get(pane.id, ask.id) : null,
       questionResults: questionResults(pane),
       asks: asksForTranscript(adapterFor(pane)?.transcriptPath(pane)),
-      ...readFeed(pane, { limit }),
+      ...withMedia(readFeed(pane, { limit })),
     });
   }
 

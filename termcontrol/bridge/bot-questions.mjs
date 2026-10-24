@@ -152,6 +152,35 @@ export function markRepeatedTerminalAsks(messages) {
 export const NOTHING_NEW = 'NOTHING_NEW';
 export const alreadyAnsweredNote = (reply) => `[These messages from Noam arrived while you were busy, and you already replied after they arrived: "${String(reply || '').replace(/\s+/g, ' ').slice(0, 600)}". Do not repeat or re-confirm that reply. Do only what it did not cover yet (for example a picture you have not opened, or a message it did not answer) and say only that. If nothing is new, reply with exactly ${NOTHING_NEW} and nothing else.]`;
 
+/**
+ * Pictures, GIFs and videos a bot made, shown right in the chat (Noam 2026-10-24: "כדי שאראה
+ * דברים שהוא מג'נרט והוא לא יצטרך לשלוח אותי החוצה"). A file path or web address of one
+ * becomes { kind, href, name }; a line that is only that address leaves the text.
+ */
+const MEDIA_EXT = { png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', gif: 'image', avif: 'image', mp4: 'video', m4v: 'video', webm: 'video', mov: 'video' };
+const MEDIA_FIND = /https?:\/\/[^\s<>"'`)\]]+?\.(?:png|jpe?g|webp|gif|avif|mp4|m4v|webm|mov)(?:\?[^\s<>"'`)\]]*)?(?![\w.])|(?<![\w.:/])~?\/(?:[\w.@+-]+\/)+[\w.@+-]+\.(?:png|jpe?g|webp|gif|avif|mp4|m4v|webm|mov)(?![\w.])/gi;
+export function mediaKind(href) {
+  const clean = String(href || '').split(/[?#]/)[0];
+  return MEDIA_EXT[(clean.match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase()] || null;
+}
+export function findMedia(text, linkOpts) {
+  const media = [], seen = new Set(), shown = new Set();
+  for (const raw of String(text || '').match(MEDIA_FIND) || []) {
+    const href = cardLink(raw, linkOpts);
+    if (!href) continue;
+    shown.add(raw);
+    if (seen.has(href) || media.length >= 6) continue;
+    seen.add(href);
+    let name = raw.split(/[?#]/)[0].split('/').pop();
+    try { name = decodeURIComponent(name); } catch { /* as written */ }
+    media.push({ kind: mediaKind(raw), href, name });
+  }
+  const own = (line) => line.trim().replace(/^[-*•]\s+/, '').replace(/^`(.*)`$/, '$1').replace(/^!?\[[^\]]*\]\(\s*<?([^\s<>()]+)>?\s*\)$/, '$1').trim();
+  const rest = String(text || '').split('\n').filter((line) => !shown.has(own(line))).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { text: media.length ? rest : String(text || ''), media };
+}
+export const MEDIA_RULE = '- To show Noam a picture, GIF or video (something you made, a screenshot, a design), put its full file path or web address on its own line in your message: the chat shows it right there, so he never has to leave the chat to see it. On a question card, `- <answer> | <path or address of its picture or video>` shows that answer\'s picture on the card.';
+
 /** The rule every bot gets, so any question to Noam arrives as a card, in English. */
 export const QUESTION_RULE = [
   '- Your question tool: every time you ask Noam something (a choice, a yes/no, a clarification, each question in a skill such as grill-me), ask it in English as a question card; the chat turns it into tap buttons. This card IS the bots\' question tool: when Noam says "use the question tool" (in Hebrew: "כלי השאלות"), he means this card. You have no other question tool (no AskUserQuestion), so never tell him bots cannot ask with buttons. Put the question at the END of your message in exactly this form, one question per message, then stop and wait:',

@@ -11,7 +11,7 @@ import { claudeTranscript } from './paths.mjs';
 import { asksForFile } from '../../scripts/termfleet-asks.mjs';
 import { uploadDir } from './uploads.mjs';
 import { skillPrompt } from './skills.mjs';
-import { parseQuestion, QUESTION_RULE, markRepeatedQuestions, markRepeatedTerminalAsks, markWithdrawnQuestions, needsLink, sameQuestion, nearDuplicate, NOTHING_NEW, alreadyAnsweredNote } from './bot-questions.mjs';
+import { parseQuestion, findMedia, MEDIA_RULE, QUESTION_RULE, markRepeatedQuestions, markRepeatedTerminalAsks, markWithdrawnQuestions, needsLink, sameQuestion, nearDuplicate, NOTHING_NEW, alreadyAnsweredNote } from './bot-questions.mjs';
 import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bot-checklist.mjs';
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
@@ -134,6 +134,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- Keep going: when Noam asked for something, or the next step is safe and can be undone (reading, planning, drafting, building, testing, saving, handing work to a terminal), do it now in this same turn. Never stop to ask for his go ("say go when you want me to", "want me to start?") for that: he does not want the flow to stop. End with "Waiting for Noam: <what>" only for spending money, posting publicly, messaging people, deleting, a step only he can do (signing in, a code, trying it), or a real choice between two truly different outcomes (ask that as a question card). The Go ahead buttons under your messages are for those real approvals only.',
     '- Write to Noam in short, plain, everyday sentences: no code, file paths or jargon unless he asks.',
     QUESTION_RULE,
+    MEDIA_RULE,
     CHECKLIST_RULE,
     '',
     'Your memory:',
@@ -1173,7 +1174,7 @@ export class Bots {
       }
       // The same reply twice in a row (no message from him in between) is kept but not shown.
       let duplicate = false;
-      if (bot && asked && !asked.question && !listed?.checklist && asked.text) {
+      if (bot && asked && !asked.question && !listed?.checklist && asked.text && !findMedia(asked.text).media.length) {
         const chat = this.messages(id);
         for (let k = chat.length - 1; k >= 0; k--) {
           const e = chat[k];
@@ -1181,9 +1182,12 @@ export class Bots {
           if (e.role === 'bot' && e.text && !e.side && !e.duplicate) { duplicate = nearDuplicate(e.text, asked.text); break; }
         }
       }
-      const silent = !result.error && !result.stopped && (nothingNew || (held && !asked.text));
+      // Pictures, GIFs and videos it made show right in the chat (Noam 2026-10-24).
+      const shown = asked && !result.error ? findMedia(asked.text) : { media: [] };
+      if (shown.media.length) asked.text = shown.text;
+      const silent = !result.error && !result.stopped && !shown.media.length && (nothingNew || (held && !asked.text));
       if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.' });
-      else if (bot && !silent) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question || listed.checklist ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}), ...(duplicate ? { duplicate: true } : {}) });
+      else if (bot && !silent) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question || listed.checklist || shown.media.length ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}), ...(shown.media.length ? { media: shown.media } : {}), ...(duplicate ? { duplicate: true } : {}) });
       // Tagged elsewhere: the same answer also shows there, under this bot's name.
       if (bot && echo.length && !result.stopped && !silent && !duplicate) {
         this.postEcho(id, echo, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: [asked.text, asked.question ? [asked.question.text, asked.question.link && /^https?:/.test(asked.question.link) ? `Open to compare: ${asked.question.link}` : ''].filter(Boolean).join('\n') : '', listed?.checklist ? `${listed.checklist.title || 'A list for you'} (tick it in my own chat):\n${listed.checklist.rows.map((r) => `- ${r.label}`).join('\n')}` : ''].filter(Boolean).join('\n\n') || 'Done, with nothing to add.' });
