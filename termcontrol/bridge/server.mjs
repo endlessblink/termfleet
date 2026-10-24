@@ -410,7 +410,7 @@ function requirementsFor(source, { project = null } = {}) {
   if (!source) return null;
   try {
     const list = itemsView({ source, project, includeClosed: true }).items.slice(0, 60);
-    return list.length ? list.map((it) => ({ id: it.id, askN: it.askN, words: String(it.words).slice(0, 400), status: it.locked ? 'locked' : it.status, topics: it.topics, open: it.open, note: String(it.note || '').slice(0, 200) })) : null;
+    return list.length ? list.map((it) => ({ id: it.id, askN: it.askN, words: String(it.words).slice(0, 400), status: it.locked ? 'locked' : it.status, topics: it.topics, visual: Boolean(it.visual), open: it.open, note: String(it.note || '').slice(0, 200) })) : null;
   } catch { return null; }
 }
 const partsLine = (items) => {

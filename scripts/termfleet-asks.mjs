@@ -13,6 +13,9 @@
 //      termfleet-asks ready <n> "<exactly what Noam should try, in a few words>"
 //      termfleet-asks partial <n> "<what is still missing>"
 //      termfleet-asks dropped <n> "<why, and who decided>"
+//      termfleet-asks topic-meta <topic> --visual true|false [--owner-words <id>]
+//    Screen topics (visual: true) can be marked ready by an agent, never done: only
+//    termfleet-asks lock <id> --owner-words <his genuine message id> closes them.
 //    The command only checks its own wording; the record is the command itself in
 //    the conversation, which is always saved (a plain reply sometimes is not).
 //
@@ -25,7 +28,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   captureMessage, ownerTextOf, projectOf, stopProblem, escalate, briefedIds, briefItems, briefBlock, ledgerDir,
-  markItem, record, addTopic, normId, itemsView, itemsText, evidenceProblem, loadLedger, clip as clipItem,
+  markItem, record, addTopic, setTopicVisual, normId, itemsView, itemsText, evidenceProblem, loadLedger, clip as clipItem,
 } from '../termcontrol/bridge/requirements.mjs';
 import { findOwnerWords } from '../termcontrol/bridge/owner-words.mjs';
 
@@ -302,8 +305,14 @@ export function itemsByAsk(asks, items) {
   return by;
 }
 export function statusFromItems(ask, parts) {
-  if (!parts?.length || !['open', 'partial'].includes(ask.status)) return ask.status;
   const state = (it) => (it.locked ? 'locked' : it.status);
+  // A request with a screen part Noam has not confirmed is never "done", whatever the agent marked.
+  const unconfirmedScreen = (parts || []).some((it) => it.visual && !['done', 'locked', 'dropped', 'answered', 'context'].includes(state(it)));
+  if (ask.status === 'done' && unconfirmedScreen) {
+    const derived = statusFromItems({ ...ask, status: 'open' }, parts);
+    return derived === 'done' || derived === 'open' ? 'ready' : derived;
+  }
+  if (!parts?.length || !['open', 'partial'].includes(ask.status)) return ask.status;
   const open = parts.filter((it) => !ITEM_CLOSED.has(state(it))).length;
   if (parts.every((it) => state(it) === 'dropped')) return 'dropped';
   if (!open) return parts.some((it) => state(it) === 'ready') ? 'ready' : 'done';
@@ -557,6 +566,8 @@ export function itemsGate(payload, lines, asks, last, env = process.env) {
   return { decision: 'block', reason: problem };
 }
 
+const visualFlag = (v) => (v === true || v === 'true' || v === 'yes' ? true : v === 'false' || v === 'no' ? false : null);
+
 function flagsOf(args) {
   const flags = {}, rest = [];
   for (let i = 0; i < args.length; i++) {
@@ -597,6 +608,12 @@ export function itemsCli(args, env = process.env) {
     ].filter(Boolean).join('\n'));
     return { ok: !found.some((it) => typeof it === 'string'), message: lines.join('\n') };
   }
+  if (command === 'topic-meta') {
+    try {
+      const t = setTopicVisual(idText, visualFlag(flags.visual), { ownerMsg: typeof flags['owner-words'] === 'string' ? flags['owner-words'] : null, by, dir });
+      return { ok: true, message: `Topic ${t} is now ${visualFlag(flags.visual) ? 'a screen topic: agents can mark its items ready, only Noam closes them' : 'not a screen topic: agents can mark its items done with evidence'}.` };
+    } catch (error) { return { ok: false, message: String(error.message || error) }; }
+  }
   const ids = idText.split(',').map(normId);
   if (!ids.length || ids.some((id) => !id)) return { ok: false, message: 'Give item ids like R-12 or R-12,R-13.' };
   const note = rest.join(' ').trim();
@@ -605,21 +622,27 @@ export function itemsCli(args, env = process.env) {
       const [topic] = rest;
       const aliases = typeof flags.alias === 'string' ? flags.alias.split(',').map((s) => s.trim()) : [];
       const t = addTopic(ids, topic, { aliases, dir });
+      if (flags.visual !== undefined) setTopicVisual(t, visualFlag(flags.visual), { ownerMsg: typeof flags['owner-words'] === 'string' ? flags['owner-words'] : null, by, dir });
       return { ok: true, message: `${ids.join(', ')} now on topic ${t}.` };
     }
     if (command === 'lock') {
       let said = typeof flags['noam-said'] === 'string' ? flags['noam-said'].trim() : '';
+      let ownerMsg = null;
       if (typeof flags['owner-words'] === 'string') {
         const ow = findOwnerWords(flags['owner-words']);
         if (!ow) return { ok: false, message: `No genuine message from Noam with id ${flags['owner-words']}.` };
         said = `${ow.text} (message ${ow.id})`;
+        ownerMsg = ow.id;
       }
       if (said.length < 2) return { ok: false, message: 'A lock is Noam confirming it works: add --noam-said "<his words>" or --owner-words <message id>.' };
       const { items } = loadLedger({ dir });
       const notDelivered = ids.filter((id) => !['done', 'ready'].includes(items.get(id)?.status));
       if (notDelivered.length) return { ok: false, message: `${notDelivered.join(', ')} ${notDelivered.length === 1 ? 'is' : 'are'} not marked ready or done with evidence yet; only delivered items can be locked.` };
-      record(ids.map((id) => ({ e: 'lock', id, by: said })), { dir });
-      record(ids.map((id) => ({ e: 'status', id, status: 'done', note: `Noam confirmed: ${clipItem(said, 160)}`, evidence: `Noam: ${said}`, by })), { dir });
+      // Words an agent typed are not his confirmation: a screen item needs his recorded message.
+      const screen = ids.filter((id) => items.get(id)?.visual);
+      if (screen.length && !ownerMsg) return { ok: false, message: `${screen.join(', ')} ${screen.length === 1 ? 'is' : 'are'} on a screen topic: only Noam's own recorded message closes ${screen.length === 1 ? 'it' : 'them'}. Use --owner-words <his message id> (termfleet-team verify <id> checks it); --noam-said is not enough.` };
+      record(ids.map((id) => ({ e: 'lock', id, by: said, ...(ownerMsg ? { ownerMsg } : {}) })), { dir });
+      record(ids.map((id) => ({ e: 'status', id, status: 'done', note: `Noam confirmed: ${clipItem(said, 160)}`, evidence: `Noam: ${said}`, by, ...(ownerMsg ? { ownerMsg } : {}) })), { dir });
       return { ok: true, message: `Locked ${ids.join(', ')}: any later change on the same topic must re-check ${ids.length === 1 ? 'it' : 'them'} first.` };
     }
     if (command === 'reverify') {
@@ -653,7 +676,7 @@ export function itemsCli(args, env = process.env) {
 }
 
 export function cli(args, env = process.env) {
-  if (['items', 'list', 'show'].includes(args[0]) || ['topic', 'lock', 'reverify', 'assign'].includes(args[0]) || normId(String(args[1] || '').split(',')[0])) return itemsCli(args, env);
+  if (['items', 'list', 'show'].includes(args[0]) || ['topic', 'topic-meta', 'lock', 'reverify', 'assign'].includes(args[0]) || normId(String(args[1] || '').split(',')[0])) return itemsCli(args, env);
   const [status, nums, ...rest] = args;
   if (!STATUSES.includes(status)) return { ok: false, message: 'Use: termfleet-asks done|ready|partial|dropped <n[,n]> "<proof or note>"' };
   const list = String(nums || '').split(',').map(Number);

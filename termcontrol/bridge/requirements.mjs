@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
+import { findOwnerWords } from './owner-words.mjs';
 
 /**
  * Owner requirements ledger (TF-102). Noam 2026-10-23: "ותבנה מערכת שתבטיח ב100% שאתה לא
@@ -28,6 +29,25 @@ const ledgerFile = (dir) => path.join(dir, 'ledger.jsonl');
 // What each status means for "can the turn end?". new = nobody has looked at it yet.
 export const RESOLVED_FOR_STOP = new Set(['assigned', 'answered', 'waiting', 'context', 'ready', 'done', 'partial', 'dropped']);
 export const ITEM_STATUSES = ['assigned', 'answered', 'waiting', 'context', 'ready', 'done', 'partial', 'dropped'];
+
+// Screen topics (R-15307, Noam 2026-10-24: agents marked UI work "done" when the code was
+// committed, before he ever saw it). An item on a visual topic can be marked ready by an agent,
+// never done: only his own verified message (owner-words) closes it. Each topic carries a
+// "visual" flag; these are the defaults, and a topic-meta event overrides them. Turning a
+// topic's flag OFF needs his verified message too, so the guard cannot be switched off quietly.
+export const DEFAULT_VISUAL_TOPICS = new Set(['eyes-emoji', 'sidebar-folders', 'bot-menu-display', 'chat-jitter', 'scroll-jump-to-top', 'image-back-black-screen', 'inline-media', 'duplicate-messages', 'counter-card']);
+export const DEFAULT_NON_VISUAL_TOPICS = new Set(['model-routing', 'resource-balancing', 'token-optimization', 'codex-routing', 'reliability']);
+export function isVisualTopic(topic, topicMeta = new Map()) {
+  const meta = topicMeta.get(topic);
+  if (meta && typeof meta.visual === 'boolean') return meta.visual;
+  return DEFAULT_VISUAL_TOPICS.has(topic);
+}
+/** His genuine message by id, or null (a typed "--noam-said" is not proof). */
+export function ownerConfirmation(msgId, { base } = {}) {
+  if (!msgId) return null;
+  try { return findOwnerWords(String(msgId), base ? { base } : {}) || null; } catch { return null; }
+}
+const visualDoneProblem = (it) => `${it.id} is on a screen topic (${it.visualTopics.join(', ')}): an agent can mark it ready, never done. Only Noam seeing it work closes it: termfleet-asks ready ${it.id} --evidence "<screenshot>", then after his own message says it works, termfleet-asks lock ${it.id} --owner-words <his message id>.`;
 
 // ---------------------------------------------------------------------------------------
 // Splitting a message into atomic items
@@ -194,8 +214,10 @@ export function loadLedger({ dir = ledgerDir() } = {}) {
 function foldLedger(dir) {
   const items = new Map();
   const topics = new Map(); // slug -> Set(aliases)
+  const topicMeta = new Map(); // slug -> { visual, by, at }
   const escalations = [];
   for (const e of readEvents(dir)) {
+    if (e.e === 'topic-meta') { topicMeta.set(e.topic, { ...(topicMeta.get(e.topic) || {}), ...(typeof e.visual === 'boolean' ? { visual: e.visual } : {}), by: e.by || null, at: e.at }); if (!topics.has(e.topic)) topics.set(e.topic, new Set()); continue; }
     if (e.e === 'topic-alias') { const s = topics.get(e.topic) || new Set(); for (const a of e.aliases || []) s.add(a); topics.set(e.topic, s); continue; }
     if (e.e === 'escalated') { escalations.push(e); continue; }
     if (e.e === 'capture') {
@@ -208,12 +230,19 @@ function foldLedger(dir) {
     it.updatedAt = e.at;
     if (e.e === 'topic') { it.topics = [...new Set([...(e.replace ? [] : it.topics), ...(e.topics || [])])]; for (const t of e.topics || []) if (!topics.has(t)) topics.set(t, new Set()); }
     else if (e.e === 'assign') { it.assigned.push({ pane: e.pane, delivery: e.delivery || null, at: e.at, by: e.by || null }); if (!['ready', 'done', 'dropped'].includes(it.status)) it.status = 'assigned'; }
-    else if (e.e === 'status') { it.statusAt = e.at; it.status = e.status; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
-    else if (e.e === 'lock') { it.locked = true; it.lockedAt = e.at; it.lockedBy = e.by || null; }
+    else if (e.e === 'status') { it.statusAt = e.at; it.status = e.status; it.confirmedBy = e.status === 'done' ? e.ownerMsg || null : null; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
+    else if (e.e === 'lock') { it.locked = true; it.lockedAt = e.at; it.lockedBy = e.by || null; if (e.ownerMsg) it.confirmedBy = e.ownerMsg; }
     else if (e.e === 'unlock') { it.locked = false; }
     else if (e.e === 'reverify') it.reverified.push({ at: e.at, evidence: e.evidence, forId: e.forId || null });
   }
-  return { items, topics, escalations };
+  // A "done" on a screen item that Noam did not confirm (written around the command, or before
+  // the topic was known to be visual) reads as ready: built, waiting for his eyes.
+  for (const it of items.values()) {
+    it.visualTopics = it.topics.filter((t) => isVisualTopic(t, topicMeta));
+    it.visual = it.visualTopics.length > 0;
+    if (it.visual && it.status === 'done' && !it.locked && !it.confirmedBy) { it.status = 'ready'; it.awaitingNoam = true; }
+  }
+  return { items, topics, topicMeta, escalations };
 }
 
 export const projectOf = (cwd) => {
@@ -269,10 +298,18 @@ export function normId(s) {
 export const idsIn = (text) => [...new Set([...String(text || '').matchAll(/\bR-(\d+)\b/g)].map((m) => `R-${Number(m[1])}`))];
 
 /** Appends events for existing items; throws a plain sentence when an id is unknown. */
-export function record(events, { dir = ledgerDir() } = {}) {
+export function record(events, { dir = ledgerDir(), ownerBase = undefined } = {}) {
   return withLock(dir, () => {
     const { items } = loadLedger({ dir });
     for (const e of events) if (e.id && !items.has(e.id)) throw new Error(`${e.id} is not in Noam's list. termfleet-asks items shows the ids.`);
+    // Every writer goes through here, so the screen guard holds for bots and scripts too.
+    for (const e of events) {
+      const it = e.id && items.get(e.id);
+      if (!it?.visual) continue;
+      if ((e.e === 'status' && e.status === 'done') || (e.e === 'lock' && !it.locked)) {
+        if (!ownerConfirmation(e.ownerMsg, { base: ownerBase })) throw new Error(visualDoneProblem(it));
+      }
+    }
     const at = Date.now();
     append(dir, events.map((e) => ({ v: STORE_VERSION, at, ...e })));
     return true;
@@ -285,6 +322,21 @@ export function addTopic(ids, topic, { aliases = [], dir = ledgerDir() } = {}) {
   record(ids.map((id) => ({ e: 'topic', id, topics: [t] })), { dir });
   if (aliases.length) withLock(dir, () => append(dir, [{ v: STORE_VERSION, at: Date.now(), e: 'topic-alias', topic: t, aliases: aliases.map((a) => String(a).toLowerCase().trim()).filter(Boolean) }]));
   return t;
+}
+
+/** Sets a topic's visual flag. Turning a screen topic into a non-screen one needs his message. */
+export function setTopicVisual(topic, visual, { ownerMsg = null, by = null, dir = ledgerDir(), ownerBase = undefined } = {}) {
+  const t = slug(topic);
+  if (!t) throw new Error('Give a topic name, e.g. sidebar-folders.');
+  if (typeof visual !== 'boolean') throw new Error('Say --visual true or --visual false.');
+  return withLock(dir, () => {
+    const { topicMeta } = loadLedger({ dir });
+    if (!visual && isVisualTopic(t, topicMeta) && !ownerConfirmation(ownerMsg, { base: ownerBase })) {
+      throw new Error(`${t} is a screen topic: only Noam can say it is not. Add --owner-words <his message id> where he said so.`);
+    }
+    append(dir, [{ v: STORE_VERSION, at: Date.now(), e: 'topic-meta', topic: t, visual, ...(ownerMsg ? { ownerMsg: String(ownerMsg) } : {}), by }]);
+    return t;
+  });
 }
 
 // ---------------------------------------------------------------------------------------
@@ -325,6 +377,7 @@ export function markItem({ status, id, note = '', evidence = '', open = [], by =
   const it = items.get(id);
   if (!it) return { error: `${id} is not in Noam's list. termfleet-asks items shows the ids.` };
   if (!ITEM_STATUSES.includes(status)) return { error: `Unknown status "${status}".` };
+  if (status === 'done' && it.visual) return { error: visualDoneProblem(it) };
   if (status === 'done' || status === 'ready') {
     const problem = evidenceProblem(evidence);
     if (problem) return { error: `${id} ${problem}.` };
