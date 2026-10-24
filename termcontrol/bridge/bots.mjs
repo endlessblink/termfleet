@@ -874,9 +874,15 @@ export class Bots {
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */
-  send(id, text, { images = [], files = [], owner = false, answerTo = null, replyTo = null, listTo = null, choices = null } = {}) {
+  send(id, text, { images = [], files = [], owner = false, answerTo = null, replyTo = null, listTo = null, choices = null, sendId = null } = {}) {
     const bot = this.read(id);
     if (!bot) return { error: 'That bot no longer exists.' };
+    // Each send from the app carries its own id (Noam 2026-10-24: one message with a picture
+    // arrived three times after a slow send was resent). A repeat of a saved id returns the
+    // saved message: never stored, never handed to the bot again, even after a restart.
+    const once = typeof sendId === 'string' && /^[\w-]{8,80}$/.test(sendId) ? sendId : null;
+    const saved = once ? this.messages(id).find((m) => m.role === 'operator' && m.sendId === once) : null;
+    if (saved) return { ok: true, message: saved, repeated: true };
     // Pictures come from the app's own upload folder only (never any path on the PC).
     const dir = path.resolve(this.picturesDir || uploadDir());
     const pictures = (Array.isArray(images) ? images : []).slice(0, 10).map((p) => path.resolve(String(p)))
@@ -917,7 +923,7 @@ export class Bots {
       note: clean(String(choices.note || ''), 1000),
     } : null;
     const said0 = listChoices ? checklistAnswer(list.checklist, listChoices) : body;
-    const msg = this.append(id, { role: 'operator', text: said0, ...(pictures.length ? { images: pictures.length } : {}), ...(attached.length ? { files: attached.map((p) => path.basename(p)) } : {}), ...(asked ? { answerTo: asked.id } : {}), ...(replied ? { replyTo: replied } : {}), ...(list ? { listTo: list.id } : {}), ...(listChoices ? { listChoices } : {}) });
+    const msg = this.append(id, { role: 'operator', text: said0, ...(once ? { sendId: once } : {}), ...(pictures.length ? { images: pictures.length } : {}), ...(attached.length ? { files: attached.map((p) => path.basename(p)) } : {}), ...(asked ? { answerTo: asked.id } : {}), ...(replied ? { replyTo: replied } : {}), ...(list ? { listTo: list.id } : {}), ...(listChoices ? { listChoices } : {}) });
     // Typed by Noam in the app (not a routine, an event or another agent): keep a signed
     // copy so the bot can pass his exact words on and the receiver can check them.
     if (owner) { try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text: said0 }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ } }

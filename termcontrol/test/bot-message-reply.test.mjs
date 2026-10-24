@@ -129,7 +129,7 @@ test('Reply from a message menu: preview with ×, sent with the message id, kept
       fail = false;
       await tap('.bot-composer .send');
       await p.waitForFunction(() => !document.querySelector('.bot-failed-send, .bot-pending'), null, { timeout: 10000, polling: 200 });
-      assert.deepEqual(sent.at(-1), { id, text: 'גם הפיניש לא עובד', images: [], replyTo: 'o1' });
+      { const { sendId, ...last } = sent.at(-1); assert.ok(sendId, 'the send carries its own id'); assert.deepEqual(last, { id, text: 'גם הפיניש לא עובד', images: [], replyTo: 'o1' }); }
 
       // a plain message after that carries no reply
       await p.fill('.bot-composer textarea', 'plain one');

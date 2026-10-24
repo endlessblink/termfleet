@@ -3297,15 +3297,20 @@ async function openBot(id,{motion=null}={}){
   try{const kept=JSON.parse(sessionStorage.getItem(replyKey) || 'null');if(kept?.id)bar.setReply(kept);}catch{}
   // A message shows at once as "sending…", then either joins the chat or stays as
   // "Not sent" with Resend (Grok Bot's delivery states); nothing is lost silently.
+  // Each message keeps one send id for every try, so the bridge stores it once however often
+  // it is resent (Noam 2026-10-24: one message arrived three times); a second tap while it is
+  // on its way does nothing, and an answer lost on the way is checked against the chat.
   const deliver=async entry=>{
+    if(entry.delivering)return;entry.delivering=true;
+    entry.sendId||=(crypto.randomUUID?.() || `s-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     entry.state='sending';render();
     try{
-      const response=await fetch('/api/bot/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,text:entry.text,images:entry.images || [],...(entry.files?.length?{files:entry.files}:{}),...(entry.answerTo?{answerTo:entry.answerTo}:{}),...(entry.replyTo?{replyTo:entry.replyTo.id}:{}),...(entry.listTo?{listTo:entry.listTo,choices:entry.choices}:{})}),signal:AbortSignal.timeout(20000)});
+      const response=await fetch('/api/bot/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,sendId:entry.sendId,text:entry.text,images:entry.images || [],...(entry.files?.length?{files:entry.files}:{}),...(entry.answerTo?{answerTo:entry.answerTo}:{}),...(entry.replyTo?{replyTo:entry.replyTo.id}:{}),...(entry.listTo?{listTo:entry.listTo,choices:entry.choices}:{})}),signal:AbortSignal.timeout(20000)});
       const result=await response.json();if(!response.ok)throw new Error(result.error);
       pendingSends.splice(pendingSends.indexOf(entry),1);
       if(entry.listTo)forgetBotListDraft(entry.listTo);
     }catch(e){entry.state='failed';entry.error=e.message || '';}
-    render();
+    entry.delivering=false;render();
   };
   // Pictures: several at once, from the button or pasted; each shows as a small tile
   // with a remove button until it is sent (TF-096: "add multiple images to bots").
@@ -3381,6 +3386,7 @@ async function openBot(id,{motion=null}={}){
     try{const response=await fetch(`/api/bot?id=${encodeURIComponent(id)}${document.visibilityState==='visible'?'&read=1':''}`,{signal:AbortSignal.timeout(10000)});data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error),{gone:response.status===404});}
     catch(e){if(mine!==view)return;if(signature && !e.gone){chatStatus.innerHTML=`<span class="connection-note" role="status">${ui('Reconnecting…','מתחבר מחדש…')}</span>`;return;}main.innerHTML=`<div class="empty">${esc(e.message || ui('Could not open the bot.','לא ניתן לפתוח את הבוט.'))}</div>`;bar.remove();return;}
     if(mine!==view)return;
+    for(const e of pendingSends.slice())if(e.sendId && !e.delivering && data.messages.some(m=>m.sendId===e.sendId)){pendingSends.splice(pendingSends.indexOf(e),1);if(e.listTo)forgetBotListDraft(e.listTo);}
     const bot=data.bot;current=bot;
     title.innerHTML=`${botAvatar(bot,30,true)}<span class="bot-names"><bdi dir="auto">${esc(bot.name)}</bdi><small class="bot-brain" dir="auto"></small></span>`;
     const brainName=p=>p==='codex'?'Codex':'Claude';

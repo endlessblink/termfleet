@@ -52,7 +52,7 @@ test('a bot waiting for the go-ahead gets Go ahead / Not yet buttons that send o
         { id: 'now', role: 'bot', text: 'I read the interview and picked the clip.\n\nWaiting for Noam: your go-ahead to start the sample from the interview.', at: t0 + 700 },
       ];
       await p.route('**/api/bot?*', async (route) => { try { const r = await route.fetch(); const j = await r.json(); j.messages = [...extra, ...sent.map((s, i) => ({ id: 's' + i, role: 'operator', text: s.text, at: t0 + 5000 + i }))]; await route.fulfill({ response: r, json: j }); } catch {} });
-      await p.route('**/api/bot/send', async (route) => { sent.push(JSON.parse(route.request().postData())); await wait(400); await route.fulfill({ json: { ok: true } }); });
+      await p.route('**/api/bot/send', async (route) => { const { sendId, ...body } = JSON.parse(route.request().postData()); assert.match(String(sendId), /^[\w-]{8,80}$/, 'every send carries its own id'); sent.push(body); await wait(400); await route.fulfill({ json: { ok: true } }); });
       await p.goto(base + '/#bot:' + id);
       await p.waitForSelector('.bot-goahead[data-gid="now"] button', { timeout: 15000 });
       const state = () => p.evaluate(() => [...document.querySelectorAll('.bot-goahead')].map((g) => ({ gid: g.dataset.gid, answered: g.classList.contains('answered'), buttons: [...g.querySelectorAll('button')].map((b) => ({ text: b.innerText.trim(), disabled: b.disabled, pressed: b.getAttribute('aria-pressed') === 'true' })) })));
