@@ -2956,10 +2956,15 @@ function asksSummary(asks){
 function paintBotHead(state){
   const box=document.querySelector('.bot-head-actions');if(!box)return;
   const chip=box.querySelector('.bot-asks-chip'),bar=box.querySelector('.bot-progress'),sum=asksSummary(state.asks);
-  chip.hidden=bar.hidden=!sum.total;if(!sum.total)return;
-  chip.querySelector('span').textContent=`${sum.done}/${sum.total}`;chip.classList.toggle('waiting',Boolean(sum.open || sum.partial));
-  chip.setAttribute('aria-label',ui(`Your requests: ${sum.text}`,`הבקשות שלך: ${sum.text}`));
-  bar.firstElementChild.style.transform=`scaleX(${(sum.done/sum.total).toFixed(3)})`;
+  // Noam 2026-10-24 ("עד עכשיו זה היה סתם 0 כל הזמן", "משימות שאני נותן ואתה עושה ומסיים באמת ומה נשאר
+  // פתוח"): it counted only what he had confirmed, so finished-but-untried work read 0/24. Done is what
+  // the agent finished (done or ready to try); open is what is still in progress.
+  const finished=(state.asks || []).filter(a=>a.status==='done' || a.status==='ready').length,ready=(state.asks || []).filter(a=>a.status==='ready').length;
+  const open=sum.open+sum.partial,counted=finished+open;
+  chip.hidden=bar.hidden=!counted;if(!counted)return;
+  chip.querySelector('span').textContent=ui(`${finished} done · ${open} open`,`${finished} בוצעו · ${open} פתוחות`);chip.classList.toggle('waiting',Boolean(open));
+  chip.setAttribute('aria-label',ui(`Your requests: ${finished} done${ready?` (${ready} ready for you to try)`:''}, ${open} still open`,`הבקשות שלך: ${finished} בוצעו${ready?` (${ready} מוכנות לבדיקה שלך)`:''}, ${open} עדיין פתוחות`));
+  bar.firstElementChild.style.transform=`scaleX(${(finished/counted).toFixed(3)})`;
 }
 const menuIcons={activity:'M3 12h4l3-7 4 14 3-7h4',asks:'M5 12l4 4L19 6',agents:'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h4',model:'M12 9a3 3 0 100 6 3 3 0 000-6z M12 3v3 M12 18v3 M3 12h3 M18 12h3',memory:'M6 4h12v16l-6-4-6 4z',schedule:'M12 4a8 8 0 100 16 8 8 0 000-16z M12 8v4l3 2',edit:'M4 20h4L19 9l-4-4L4 16z',theme:'M12 8a4 4 0 100 8 4 4 0 000-8z M12 3v2 M12 19v2 M3 12h2 M19 12h2',browser:'M4 5h16v14H4z M4 9h16',notify:'M6 16V11a6 6 0 0112 0v5l2 2H4z M10 20h4',pin:'M9 4h6l-1 6 3 3H7l3-3z M12 13v7',hide:'M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z M4 4l16 16',del:'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13'};
 function menuIcon(name){return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${menuIcons[name]}"/></svg>`;}
