@@ -17,7 +17,7 @@ import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } fr
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice, answerMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
-import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand } from './idle-cleanup.mjs';
+import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
 import { appendAction, paneLogFile } from './action-log.mjs';
 import { parentsByPane } from './orchestrate.mjs';
 import { agentsByPane } from './inventory.mjs';
@@ -214,6 +214,14 @@ async function currentPanes() {
 const sleepingDir = path.join(os.homedir(), '.local', 'share', 'terminal-workspace', 'sleeping');
 const isSleeping = (id) => fs.existsSync(path.join(sleepingDir, `${String(id).replace(/[^A-Za-z0-9._-]/g, '_')}.json`));
 
+// Who started each open terminal, remembered (R-7214). Not for test bridges' own folders.
+const startersFile = path.join(os.homedir(), '.local', 'share', 'terminal-workspace', 'cleanup-starters.json');
+function readStarters() { if (process.env.TC_CONFIG_DIR) return {}; try { return JSON.parse(fs.readFileSync(startersFile, 'utf8')); } catch { return {}; } }
+function writeStarters(map) {
+  if (process.env.TC_CONFIG_DIR) return;
+  try { fs.writeFileSync(`${startersFile}.tmp`, JSON.stringify(Object.fromEntries(map))); fs.renameSync(`${startersFile}.tmp`, startersFile); } catch { /* next look tries again */ }
+}
+
 // A Codex terminal whose conversation id was never recorded is matched to its conversation
 // record by how it was started (R-7214), so the cleanup sees when it last really worked and
 // which files it changed. Found records are kept; a miss is retried after half an hour.
@@ -251,14 +259,16 @@ async function idleCleanupPlan() {
   const cardless = owned.size ? cardlessSessions({ liveById: byId, ownedIds: owned, agents: agentsByPane(), isSleeping,
     lastUsed: (p) => conversationMtime(p), commandOf: (pid) => table.find((x) => x.pid === pid)?.cmd || '' }) : [];
   const panes = [...onMap, ...cardless.map((p) => ({ ...p, startedAt: startedAt(p.pid) || null }))].map((p) => withCodexRecord(p, table));
-  const starters = new Map();
+  const found = new Map();
   for (const p of panes) {
     const bot = helperOf.get(p.id);
-    if (bot) starters.set(p.id, { name: bot.name, botId: bot.id });
-    else if (parents.get(p.id)) starters.set(p.id, { name: 'an agent', paneId: parents.get(p.id) });
-    else if (p.startedBy) starters.set(p.id, { name: p.startedBy });
-    else if (startedByCommand(byId.get(p.id)?.command) || startedByCommand(table.find((x) => x.pid === p.pid)?.cmd)) starters.set(p.id, { name: 'an agent' });
+    if (bot) found.set(p.id, { name: bot.name, botId: bot.id });
+    else if (parents.get(p.id)) found.set(p.id, { name: 'an agent', paneId: parents.get(p.id) });
+    else if (p.startedBy) found.set(p.id, { name: p.startedBy });
+    else if (startedByCommand(byId.get(p.id)?.command) || startedByCommand(table.find((x) => x.pid === p.pid)?.cmd)) found.set(p.id, { name: 'an agent' });
   }
+  const starters = rememberStarters(readStarters(), found, new Set(panes.map((p) => p.id)));
+  writeStarters(starters);
   const plan = cleanupPlan({
     panes, isSleeping,
     startedBy: (p) => starters.get(p.id)?.name || null,

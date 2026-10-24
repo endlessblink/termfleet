@@ -170,3 +170,11 @@ test('a helper is judged by when it last really worked; Noam\'s own still count 
   assert.deepEqual(plan.offer.map((o) => [o.id, o.idleText]), [['terminal-helper', 'idle 5 hours']]);
   assert.deepEqual(plan.keep.map((k) => [k.id, k.reason]), [['terminal-mine', 'Used in the last few minutes']]);
 });
+
+test('who started a terminal is remembered after its starter closes; closed terminals are forgotten', async () => {
+  const { rememberStarters } = await import('../bridge/idle-cleanup.mjs');
+  const saved = { 'terminal-child': { name: 'an agent' }, 'terminal-gone': { name: 'Quill' } };
+  const now = new Map([['terminal-new', { name: 'politic-figther_dev', botId: 'b1' }]]);
+  const merged = rememberStarters(saved, now, new Set(['terminal-child', 'terminal-new', 'terminal-mine']));
+  assert.deepEqual(Object.fromEntries(merged), { 'terminal-child': { name: 'an agent' }, 'terminal-new': { name: 'politic-figther_dev', botId: 'b1' } });
+});

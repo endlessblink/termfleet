@@ -78,6 +78,17 @@ export function helperRoles(bots) {
   return { starters, followers };
 }
 
+/**
+ * Who started each open terminal, kept across looks: a helper whose parent agent has closed
+ * is still a helper (R-7214). `saved` is the last record, `now` this look's; closed ones drop.
+ */
+export function rememberStarters(saved, now, openIds) {
+  const out = new Map();
+  for (const [id, who] of Object.entries(saved || {})) if (openIds.has(id) && who?.name) out.set(id, who);
+  for (const [id, who] of now) if (openIds.has(id)) out.set(id, who);
+  return out;
+}
+
 /** Only the helper-terminal tool (termfleet-child) starts a terminal with a child-tasks file. */
 export function startedByCommand(command) {
   return /terminal-workspace\/child-tasks\//.test(String(command || '')) ? 'an agent' : null;
