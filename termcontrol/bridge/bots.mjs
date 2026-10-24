@@ -59,6 +59,24 @@ export const LIMITS = { name: 40, job: 80, rules: 4000, message: 20000 };
 /** A bot starts a fresh conversation once its working memory is this full (percent). */
 export const FRESH_AT = Number(process.env.TC_BOT_FRESH_AT) || 80;
 const MAX_CHAT_RETURNED = 300;
+
+/**
+ * 👀 then ✓ on Noam's own messages (Noam 2026-10-24: "עדיין אין עיניים"): 'working' while the
+ * bot has taken it and not answered yet, 'answered' once a reply covers it. A reply covers the
+ * messages sent before its turn started (`answered` = that start; older replies cover all before
+ * them). A failure or a stop just drops the eyes.
+ */
+export function markReceipts(chat, { busy = false } = {}) {
+  return chat.map((m, i) => {
+    if (m.role !== 'operator') return m;
+    const later = chat.slice(i + 1);
+    const reply = later.find((r) => ((r.role === 'bot' && !r.side) || ['error', 'note', 'needs-you'].includes(r.role)) && (r.answered == null || Number(r.answered) >= Number(m.at)));
+    const status = reply ? (reply.role === 'bot' ? 'answered' : null)
+      : busy ? 'working'
+      : later.some((r) => r.role === 'bot' && !r.side) ? 'answered' : null;
+    return status ? { ...m, status } : m;
+  });
+}
 /** What counts as a new message for Noam: the bot's replies, failures and questions to him. */
 const UNREAD_ROLES = new Set(['bot', 'error', 'needs-you']);
 
@@ -879,7 +897,8 @@ export class Bots {
     const bot = this.read(id);
     if (!bot) return null;
     const chat = this.messages(id).slice(-MAX_CHAT_RETURNED);
-    return { bot: { ...this.summary(id), rules: bot.rules }, messages: markRepeatedTerminalAsks(markWithdrawnQuestions(markRepeatedQuestions(chat))) };
+    const busy = this.running.has(id) || (this.queues.get(id) || []).length > 0 || Boolean(bot.retry);
+    return { bot: { ...this.summary(id), rules: bot.rules }, messages: markReceipts(markRepeatedTerminalAsks(markWithdrawnQuestions(markRepeatedQuestions(chat))), { busy }) };
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */
@@ -1194,8 +1213,9 @@ export class Bots {
       const shown = asked && !result.error ? findMedia(asked.text) : { media: [] };
       if (shown.media.length) asked.text = shown.text;
       const silent = !result.error && !result.stopped && !shown.media.length && (nothingNew || (held && !asked.text));
-      if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.' });
-      else if (bot && !silent) this.append(id, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: asked.text || (asked.question || listed.checklist || shown.media.length ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}), ...(shown.media.length ? { media: shown.media } : {}), ...(duplicate ? { duplicate: true } : {}) });
+      const answered = this.running.get(id)?.startedAt;
+      if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.', ...(answered ? { answered } : {}) });
+      else if (bot && !silent) this.append(id, result.error ? { role: 'error', text: result.error, ...(answered ? { answered } : {}) } : { role: 'bot', ...(answered ? { answered } : {}), text: asked.text || (asked.question || listed.checklist || shown.media.length ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}), ...(shown.media.length ? { media: shown.media } : {}), ...(duplicate ? { duplicate: true } : {}) });
       // Tagged elsewhere: the same answer also shows there, under this bot's name.
       if (bot && echo.length && !result.stopped && !silent && !duplicate) {
         this.postEcho(id, echo, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: [asked.text, asked.question ? [asked.question.text, asked.question.link && /^https?:/.test(asked.question.link) ? `Open to compare: ${asked.question.link}` : ''].filter(Boolean).join('\n') : '', listed?.checklist ? `${listed.checklist.title || 'A list for you'} (tick it in my own chat):\n${listed.checklist.rows.map((r) => `- ${r.label}`).join('\n')}` : ''].filter(Boolean).join('\n\n') || 'Done, with nothing to add.' });
