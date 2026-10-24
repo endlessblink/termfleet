@@ -1151,18 +1151,19 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .bot-menu-sheet[dir=rtl] .menu-back svg{transform:scaleX(-1)}
 .asks-summary{display:grid;gap:6px;margin:2px 12px 14px}
 .asks-summary .sheet-title{margin:0;font-size:19px;line-height:1.3}
-.asks-counts{margin:0;color:var(--muted);font-size:13.5px;font-variant-numeric:tabular-nums}
+.asks-counts{margin:0;display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--muted);font-size:13.5px;font-variant-numeric:tabular-nums}.asks-counts b{color:var(--text);font-weight:500}
+.asks-empty{margin:0 12px 12px;padding:12px;border-radius:12px;background:var(--surface-2);color:var(--muted);font-size:14px}
 .asks-meter{display:flex;height:4px;border-radius:2px;background:var(--surface-2);overflow:hidden;margin-top:4px}
 .asks-meter span{display:block;height:100%}.asks-meter .m-done{background:var(--working)}.asks-meter .m-ready{background:color-mix(in srgb,var(--working) 55%,transparent)}
 .asks-group{margin:0 4px 10px;border-top:1px solid var(--line);padding-top:6px}
 .asks-group>h3,.asks-group>summary{display:flex;align-items:center;gap:8px;min-height:40px;margin:0;padding:0 8px;font-size:13px;font-weight:500;color:var(--muted);list-style:none}
 .asks-group>summary{cursor:pointer;min-height:44px}.asks-group>summary::-webkit-details-marker{display:none}
-.asks-group>summary::after{content:"";width:7px;height:7px;border-inline-end:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);margin-inline-start:auto;transition:transform .2s}
-.asks-group[open]>summary::after{transform:rotate(-135deg)}
+.asks-group>summary::after{content:"";width:7px;height:7px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:translateY(-2px) rotate(45deg);margin-inline-start:auto;transition:transform .2s}
+.asks-group[open]>summary::after{transform:translateY(2px) rotate(-135deg)}
 .asks-group-count{min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:var(--surface-2);color:var(--text);font-size:12px;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums}
 .asks-open .asks-group-title{color:var(--accent)}.asks-ready .asks-group-title{color:var(--working)}
 .asks-group .sheet-list{padding:0;gap:2px;list-style:none}
-.sheet-list li.ask-row{display:flex;align-items:center;gap:8px;min-height:48px;padding:6px 4px 6px 8px;padding-inline:8px 4px;border-radius:12px}
+.sheet-list li.ask-row{display:flex;align-items:center;gap:8px;min-height:48px;padding-block:6px;padding-inline:8px 4px;border-radius:12px}
 .sheet-list li.ask-row:hover{background:var(--surface-2)}
 .ask-copy{flex:1;min-width:0;display:grid;gap:3px;justify-items:start}
 .ask-words{font-size:15px;line-height:1.45;color:var(--text);overflow-wrap:anywhere;text-align:start;unicode-bidi:plaintext}
@@ -3052,8 +3053,8 @@ function botMenu(id,bot,state,start='menu'){
     return fold?`<details class="asks-group ${cls}"><summary>${head}</summary>${items}</details>`:`<section class="asks-group ${cls}"><h3>${head}</h3>${items}</section>`;};
   const asksList=()=>{const newest=state.asks.slice().sort((x,y)=>y.n-x.n),of=(...st)=>newest.filter(a=>st.includes(a.status));
     const pct=n=>sum.total?(n/sum.total*100).toFixed(1):0;
-    return `<div class="sheet-grab" aria-hidden="true"></div>${back}<header class="asks-summary"><h2 class="sheet-title">${esc(ui('Your requests','הבקשות שלך'))}</h2><p class="asks-counts" aria-label="${esc(sum.full)}">${esc(sum.full)}</p><div class="asks-meter" aria-hidden="true"><span class="m-done" style="width:${pct(sum.done-sum.ready)}%"></span><span class="m-ready" style="width:${pct(sum.ready)}%"></span></div></header>`
-      +group('asks-open',ui('Still open','עדיין פתוחות'),of('open','partial'))
+    return `<div class="sheet-grab" aria-hidden="true"></div>${back}<div class="asks-summary"><h2 class="sheet-title">${esc(ui('Your requests','הבקשות שלך'))}</h2><p class="asks-counts" aria-label="${esc(sum.full)}"><span><b>${sum.done}</b> ${esc(ui('done','בוצעו'))}</span><span><b>${sum.open}</b> ${esc(ui('open','פתוחות'))}</span>${sum.ready?`<span><b>${sum.ready}</b> ${esc(ui('ready for you to try','מחכות לבדיקה שלך'))}</span>`:''}</p><div class="asks-meter" aria-hidden="true"><span class="m-done" style="width:${pct(sum.done-sum.ready)}%"></span><span class="m-ready" style="width:${pct(sum.ready)}%"></span></div></div>`
+      +(of('open','partial').length?group('asks-open',ui('Still open','עדיין פתוחות'),of('open','partial')):`<p class="asks-empty">${esc(ui('Nothing open right now.','אין כרגע בקשות פתוחות.'))}</p>`)
       +group('asks-ready',ui('Ready for you to try','מוכנות לבדיקה שלך'),of('ready'))
       +group('asks-done',ui('Done','בוצעו'),of('done','dropped'),true);};
   const agentsList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui('Terminal agents it started','סוכני מסוף שהפעיל'))}</h2><ul class="sheet-list">${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul>`;

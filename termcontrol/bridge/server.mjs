@@ -65,7 +65,7 @@ import { checkBotEvents, helperState } from './bot-events.mjs';
 import { Push } from './push.mjs';
 import { createDockIcon } from './dock-icon.mjs';
 import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
-import { asksForFile, isRealRequest, askTitle, dismissAsk } from '../../scripts/termfleet-asks.mjs';
+import { asksForFile, isRealRequest, askTitle, dismissAsk, itemsByAsk, statusFromItems } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 import { itemsView, replyDetails } from './requirements.mjs';
 
@@ -419,7 +419,7 @@ const partsLine = (items) => {
   return `Parts ${doneish} of ${items.length} done${open.length ? `, open ${open.join(' ')}` : ''}`;
 };
 
-function asksForTranscript(file) {
+function asksForTranscript(file, source = file) {
   // Only chat logs (.jsonl). An OpenCode pane's record is OpenCode's whole database
   // (GBs of binary); reading it every 4 s froze the bridge, so the phone app sat on
   // its splash screen (Noam 2026-10-20 "termcontrol לא עולה לי בסלולרי").
@@ -427,12 +427,14 @@ function asksForTranscript(file) {
   try {
     // Removed by Noam (dismissAsk) and short follow-ups (isRealRequest) are left out; numbers stay.
     const asks = asksForFile(file).filter((a) => isRealRequest(a.text) && !a.dismissed);
-    const items = requirementsFor(file) || [];
+    // A bot's items are kept under "bot:<id>", a terminal's under its record.
+    const items = requirementsFor(source) || [];
+    const byAsk = itemsByAsk(asks, items);
     return asks.length ? asks.slice(-30).map((a) => {
       // A request with several parts shows each part (his words) and how many are done.
-      const parts = items.filter((it) => it.askN === a.n);
+      const parts = byAsk.get(a.n) || [];
       const note = String(a.note || '').slice(0, 200);
-      return { n: a.n, text: a.text.slice(0, 600), title: askTitle(a.text).slice(0, 300), status: a.status, note: parts.length > 1 ? `${partsLine(parts)}${note ? ` · ${note}` : ''}` : note, ...(parts.length ? { items: parts } : {}) };
+      return { n: a.n, text: a.text.slice(0, 600), title: askTitle(a.text).slice(0, 300), status: statusFromItems(a, parts), note: parts.length > 1 ? `${partsLine(parts)}${note ? ` · ${note}` : ''}` : note, ...(parts.length ? { items: parts } : {}) };
     }) : null;
   } catch { return null; }
 }
@@ -748,7 +750,7 @@ const handle = async (req, res) => {
     }
     if (view && view.bot.provider !== 'codex') {
       const raw = bots.read(view.bot.id);
-      if (raw?.sessions?.claude?.started) view.asks = asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id));
+      if (raw?.sessions?.claude?.started) view.asks = asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id), `bot:${view.bot.id}`);
     }
     if (view) view.requirements = requirementsFor(`bot:${view.bot.id}`);
     // Noam 2026-10-23: the per-item list sits under a finished reply's Details toggle, not in its text.
@@ -1385,7 +1387,7 @@ async function refreshWaiting() {
     const asksOf = ({ kind, id }) => {
       if (kind === 'terminal') return asksForTranscript(adapterFor(byId.get(id))?.transcriptPath(byId.get(id)));
       const raw = bots.read(id);
-      return raw?.sessions?.claude?.started ? asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id)) : null;
+      return raw?.sessions?.claude?.started ? asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id), `bot:${id}`) : null;
     };
     waitingNow = collectWaiting({ panes, bots: bots.list(), asksOf, daemon, previous: waitingNow });
     if (daemon !== false) waitingLooked = true;

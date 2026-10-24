@@ -240,13 +240,84 @@ export function followUp(text) {
   return t.split(/\s+/).length <= 3 && FOLLOW_UP.test(t);
 }
 
+// Notes TermFleet wraps around his words ("[While you were busy, Noam asked …]", "[Noam is replying
+// to your earlier message …]", "[Noam's answer to your question …]"). Noam 2026-10-24: the bot
+// menu showed these instead of what he wrote.
+const NOTE_START = /^\[(?:While you were busy|Noam is replying to|Noam's answer to your question|Noam tagged you|Noam's requirements for this work|delivery D-|Message from the bot)/;
+/** The end of the bracket that opens at `from`, counting nested brackets; -1 if it never closes. */
+function bracketEnd(text, from) {
+  let depth = 0;
+  for (let i = from; i < text.length; i++) {
+    if (text[i] === '[') depth++;
+    else if (text[i] === ']' && --depth === 0) return i;
+  }
+  return -1;
+}
+/** His words without the notes TermFleet added around them. */
+export function stripSystemNotes(text) {
+  let rest = String(text || '');
+  // A tag from another chat: only what follows "Noam's message:" is his message to this bot.
+  const tagged = /\n\s*Noam's message:\s*\n([\s\S]*)$/.exec(rest);
+  if (/^\s*\[Noam tagged you/.test(rest) && tagged) rest = tagged[1];
+  const asked = [];
+  let out = '';
+  for (;;) {
+    const at = rest.search(/(^|\n)[ \t]*\[/);
+    if (at < 0) { out += rest; break; }
+    const open = rest.indexOf('[', at);
+    const end = NOTE_START.test(rest.slice(open)) ? bracketEnd(rest, open) : -1;
+    if (end < 0) {
+      // A "[Event, not from Noam]" paragraph is not his at all.
+      if (/^\[Event, not from/.test(rest.slice(open))) { const stop = rest.indexOf('\n\n', open); out += rest.slice(0, open); rest = stop < 0 ? '' : rest.slice(stop); continue; }
+      out += rest.slice(0, open + 1); rest = rest.slice(open + 1); continue;
+    }
+    // A side question he asked while the agent was busy: kept in case nothing else is left.
+    for (const m of rest.slice(open, end).matchAll(/^\s*- Noam: "([\s\S]*?)"\s*$/gm)) asked.push(m[1]);
+    out += rest.slice(0, open); rest = rest.slice(end + 1);
+  }
+  const own = out.replace(/\n{3,}/g, '\n\n').trim();
+  return own || asked.join(' · ').trim();
+}
+
+// Noam 2026-10-24 ("items marked done still show as open"): agents now mark his split items
+// (R-12: answered, done, context) instead of the numbered request, so a request whose items are
+// all taken read "open" forever. Its status now follows its items unless it was marked itself.
+const ITEM_CLOSED = new Set(['done', 'ready', 'locked', 'answered', 'context', 'dropped']);
+const squash = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+/** The items (from the requirements ledger) that came from each request: by number, else by his words. */
+export function itemsByAsk(asks, items) {
+  const texts = asks.map((a) => squash(a.text));
+  const by = new Map();
+  for (const it of items || []) {
+    let n = Number.isInteger(it.askN) ? it.askN : null;
+    if (n === null) {
+      const words = squash(it.words).replace(/…$/, '').slice(0, 120);
+      if (words.length < 2) continue;
+      for (let i = asks.length - 1; i >= 0; i--) if (texts[i].includes(words)) { n = asks[i].n; break; }
+    }
+    if (n === null) continue;
+    if (!by.has(n)) by.set(n, []);
+    by.get(n).push(it);
+  }
+  return by;
+}
+export function statusFromItems(ask, parts) {
+  if (!parts?.length || !['open', 'partial'].includes(ask.status)) return ask.status;
+  const state = (it) => (it.locked ? 'locked' : it.status);
+  const open = parts.filter((it) => !ITEM_CLOSED.has(state(it))).length;
+  if (parts.every((it) => state(it) === 'dropped')) return 'dropped';
+  if (!open) return parts.some((it) => state(it) === 'ready') ? 'ready' : 'done';
+  return open < parts.length ? 'partial' : ask.status;
+}
+
 /**
  * What a list shows for a request: his own words first. A job post or a log he pasted sits
  * above his one line ("jobs like this should not pass the filter"), and the list showed the
  * pasted title instead. Pasted text is recognised by script: an English block, his Hebrew line.
  */
 export function askTitle(text) {
-  const lines = (ownWords(text) || String(text || '')).split('\n').map((l) => l.trim()).filter(Boolean);
+  const plain = stripSystemNotes(text);
+  const lines = (ownWords(plain) || plain).split('\n').map((l) => l.trim()).filter(Boolean);
   if (lines.length < 3) return lines.join(' ');
   const hebrew = (s) => /[֐-׿]/.test(s);
   const last = lines[lines.length - 1];
