@@ -1244,6 +1244,7 @@ body.chat main .qform .q-opt{border:1px solid var(--line);border-radius:14px;min
 .pane-menu button{display:flex;width:100%;min-height:44px;align-items:center;padding:0 12px;border:0;border-radius:8px;background:none;color:var(--text);font:inherit;text-align:start;cursor:pointer}
 .pane-menu button:hover,.pane-menu button:focus-visible{background:var(--control)}
 .pane-menu .danger{color:#e5484d}
+.folder-group>.projhead .folder-icon,.archive-group>.projhead .folder-icon,.hidden-folder-row .folder-icon{width:15px;height:15px;flex:none;color:var(--muted)}.folder-group>.projhead .count,.archive-group>.projhead .count{margin-inline-start:auto;font-variant-numeric:tabular-nums}.folder-group>.projhead>.folder-icon,.archive-group>.projhead>.folder-icon{display:block}.folder-group>.projhead .count,.archive-group>.projhead .count{display:inline}.list-more{flex:none;min-width:40px;min-height:40px;margin-inline-end:-6px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:17px;line-height:1;cursor:pointer}.list-more:hover,.list-more:focus-visible{background:var(--surface-2);color:var(--text)}.folder-empty{padding:8px 8px 14px;color:var(--muted);font-size:12px;line-height:1.5}.floated{margin:2px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}.floated-head{display:flex;align-items:center;min-height:34px;padding:0 6px;color:var(--accent);font-size:12px;font-weight:500}.archive-group{margin-top:16px;padding-top:6px;border-top:1px solid var(--line)}.archive-group>.projhead{color:var(--text)}.archive-note{margin:0 6px 8px;max-width:46ch;color:var(--muted);font-size:12px;line-height:1.55}.archive-cat+.archive-cat{margin-top:6px}.archive-cat-head{display:flex;justify-content:space-between;gap:8px;padding:8px 6px 4px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.archive-group .pane .project{font-weight:400}.folder-drop{outline:1px dashed var(--accent);outline-offset:-2px;border-radius:10px;background:var(--surface-2)}.hidden-folder-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:0 6px;color:var(--muted);font-size:13px}.hidden-folder-row>span{display:flex;align-items:center;gap:8px;min-width:0}.list-show{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);font:inherit;font-size:12px;cursor:pointer}.list-sheet .sheet{max-height:min(640px,calc(100dvh - 32px));overflow:auto}.list-sheet .choices{display:grid}.list-sheet .choice{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px;width:100%;padding:8px 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font:inherit;font-size:14px;text-align:start;cursor:pointer}.list-sheet .choice:hover,.list-sheet .choice:focus-visible{background:var(--surface-2)}.list-sheet .choice>span:last-child{color:var(--muted);font-size:12px}.list-sheet .hint{font-size:12px}.list-sheet label{display:block;margin:6px 0 6px;color:var(--muted);font-size:12px}.list-sheet input,.list-sheet select{width:100%;min-height:44px;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}.list-sheet .sheet-form{display:grid;gap:8px;margin-top:4px}.list-sheet .sheet-primary{min-height:44px;border:0;border-radius:10px;background:var(--text);color:var(--bg);font:inherit;font-weight:500;cursor:pointer}.list-sheet .sheet-result:not(:empty){color:var(--waiting)}@media(prefers-reduced-motion:no-preference){.archive-group[open]>.archive-body,.folder-group[open]>.group-rows{animation:list-open .24s cubic-bezier(.16,1,.3,1)}@keyframes list-open{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}}
 .close-sheet{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 .close-sheet .sheet{width:min(380px,100%);box-sizing:border-box;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);display:grid;gap:10px}
 .close-sheet h2{margin:0;font-size:17px;font-weight:500;overflow-wrap:anywhere}
@@ -2384,6 +2385,116 @@ function showReadFailure(error, retry) {
 // The last lists fetched, so a tab click switches at once instead of waiting on the bridge
 // (Noam 2026-10-20: "clicking here does not load the terminals" while the PC was under load).
 let lastFleetData=null;
+// Sidebar folders, the Archive and New messages on top (Noam 2026-10-24: folders "למיין דברים
+// שאני עובד פר נושא / להסתיר", "7 days", quiet chats in "תיקייה ברורה ... לחלק לקטגוריות", unread on
+// top on the phone). His choices live on the bridge per owner (list-folders.mjs); who is archived is
+// worked out here from live facts, the same rule as the bridge's isArchived.
+const emptyFolders={folders:[],members:{},archiveCats:[],archiveCat:{},keepActive:{},archiveDays:7};
+let listFoldersState=null;
+const folderSvg='<svg class="folder-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5.5a1 1 0 0 1 1-1h4.2l1.8 1.8h7a1 1 0 0 1 1 1v8.2a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1Z"/></svg>';
+const archiveSvg='<svg class="folder-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="4" rx="1"/><path d="M4 7.5v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-8M8 11h4"/></svg>';
+function paneUnread(p){const s=avatarState(p);return hasNewAnswer(p,['working','producing','needs-you'].includes(s) || Boolean(s==='working' && p.stalledForMs));}
+function paneArchived(p,lf=listFoldersState || emptyFolders){
+  const days=Number(lf.archiveDays ?? 7);if(!days || p.id===focusedPane)return false;
+  if(p.turn==='waiting' || p.attention || p.turn==='working' || p.producing || paneUnread(p))return false;
+  const last=Math.max(Number(p.lastActiveAt) || 0,Number(p.lastUsedAt) || 0,Number(lf.keepActive?.[p.id]) || 0);
+  return last>0 && Date.now()-last>=days*86400000;
+}
+async function folderChange(body){
+  const r=await fetch('/api/list-folders',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
+  const out=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(out.error || ui('That did not work. Try again.','זה לא הצליח. נסו שוב.'));
+  listFoldersState=out;if(lastFleetData)lastFleetData.folders=out;
+  fleet(Boolean(focusedPane),{fromCache:true});
+  return out;
+}
+function listSheet(title,body,wire,returnFocus){
+  document.querySelector('.list-sheet')?.remove();
+  const wrap=document.createElement('div');wrap.className='close-sheet list-sheet';
+  wrap.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="list-sheet-title"><h2 id="list-sheet-title" dir="auto">${esc(title)}</h2>${body}<p class="sheet-result" role="status" aria-live="polite"></p><div class="sheet-actions"><button type="button" data-cancel>${ui('Close','סגירה')}</button></div></div>`;
+  document.body.append(wrap);
+  const close=()=>{wrap.remove();if(returnFocus?.isConnected)returnFocus.focus();};
+  const fail=e=>{wrap.querySelector('.sheet-result').textContent=e.message;};
+  wrap.querySelector('[data-cancel]').onclick=close;wrap.onclick=e=>{if(e.target===wrap)close();};
+  wrap.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();close();}};
+  wire?.(wrap,change=>folderChange(change).then(close).catch(fail));
+  (wrap.querySelector('.choice') || wrap.querySelector('input,select') || wrap.querySelector('[data-cancel]')).focus();
+}
+const sheetChoice=(attrs,label,mark='')=>`<button type="button" class="choice" ${attrs}><span dir="auto">${esc(label)}</span><span>${mark}</span></button>`;
+const sheetForm=(id,label,placeholder,button)=>`<form class="sheet-form" data-form="${id}"><label for="sheet-${id}">${label}</label><input id="sheet-${id}" maxlength="48" dir="auto" placeholder="${esc(placeholder)}" autocomplete="off"><button type="submit" class="sheet-primary">${button}</button></form>`;
+function moveFolderSheet(id,name,from){
+  const lf=listFoldersState || emptyFolders,cur=lf.members?.[id] || '';
+  listSheet(ui('Move to folder','העברה לתיקייה'),`<p dir="auto">${esc(name)}</p><div class="choices">${lf.folders.map(f=>sheetChoice(`data-to="${esc(f.id)}"`,f.name+(f.hidden?ui(' · hidden',' · מוסתרת'):''),f.id===cur?'✓':'')).join('')}${sheetChoice('data-to=""',ui('No folder (back to its project)','בלי תיקייה (חזרה לפרויקט)'),cur?'':'✓')}</div>${sheetForm('folder',ui('New folder','תיקייה חדשה'),ui('For example, Studio','למשל, סטודיו'),ui('Create and move here','יצירה והעברה לכאן'))}`,(wrap,run)=>{
+    wrap.querySelectorAll('[data-to]').forEach(b=>{b.onclick=()=>run({op:'move',pane:id,folder:b.dataset.to || null});});
+    wrap.querySelector('[data-form]').onsubmit=e=>{e.preventDefault();run({op:'create',name:wrap.querySelector('input').value,pane:id});};
+  },from);
+}
+function newFolderSheet(from){
+  listSheet(ui('New folder','תיקייה חדשה'),`<p>${ui('Folders are your own topics. Move a chat into one from its ⋯ menu, or drag it onto the folder on a computer.','תיקיות הן הנושאים שלכם. מעבירים שיחה מתפריט ⋯ שלה, או גוררים אותה לתיקייה במחשב.')}</p>${sheetForm('folder',ui('Folder name','שם התיקייה'),ui('For example, Studio','למשל, סטודיו'),ui('Create folder','יצירת תיקייה'))}`,(wrap,run)=>{wrap.querySelector('[data-form]').onsubmit=e=>{e.preventDefault();run({op:'create',name:wrap.querySelector('input').value});};},from);
+}
+function folderMenuSheet(fid,from){
+  const lf=listFoldersState || emptyFolders,f=lf.folders.find(x=>x.id===fid);if(!f)return;const at=lf.folders.indexOf(f);
+  listSheet(f.name,`<div class="choices">${sheetChoice('data-hide',f.hidden?ui('Show folder','הצגת התיקייה'):ui('Hide folder','הסתרת התיקייה'))}${at>0?sheetChoice('data-up',ui('Move up','הזזה למעלה')):''}${at<lf.folders.length-1?sheetChoice('data-down',ui('Move down','הזזה למטה')):''}${sheetChoice('data-remove',ui('Remove folder','הסרת התיקייה'))}</div><p class="hint">${ui('Hiding or removing a folder never closes a chat. Chats waiting for you stay in Needs you.','הסתרה או הסרה של תיקייה לא סוגרות שיחה. שיחות שממתינות לכם נשארות ב״דורשים מענה״.')}</p>${sheetForm('rename',ui('Rename','שינוי שם'),f.name,ui('Save name','שמירת השם'))}`,(wrap,run)=>{
+    wrap.querySelector('[data-hide]').onclick=()=>run({op:'hide',id:fid,hidden:!f.hidden});
+    wrap.querySelector('[data-up]')?.addEventListener('click',()=>run({op:'order',id:fid,direction:'up'}));
+    wrap.querySelector('[data-down]')?.addEventListener('click',()=>run({op:'order',id:fid,direction:'down'}));
+    wrap.querySelector('[data-remove]').onclick=()=>run({op:'remove',id:fid});
+    const input=wrap.querySelector('input');input.value=f.name;
+    wrap.querySelector('[data-form]').onsubmit=e=>{e.preventDefault();run({op:'rename',id:fid,name:input.value});};
+  },from);
+}
+function archiveCatSheet(id,name,from){
+  const lf=listFoldersState || emptyFolders,cur=lf.archiveCat?.[id] || '';
+  listSheet(ui('Sort in the Archive','מיון בארכיון'),`<p dir="auto">${esc(name)}</p><div class="choices">${lf.archiveCats.map(c=>sheetChoice(`data-cat="${esc(c.id)}"`,c.name,c.id===cur?'✓':'')).join('')}${sheetChoice('data-cat=""',ui('Not sorted yet','עוד לא ממוין'),cur?'':'✓')}</div>${sheetForm('cat',ui('New category','קטגוריה חדשה'),ui('For example, Old clients','למשל, לקוחות ישנים'),ui('Create and sort here','יצירה ומיון לכאן'))}`,(wrap,run)=>{
+    wrap.querySelectorAll('[data-cat]').forEach(b=>{b.onclick=()=>run({op:'sortCat',pane:id,cat:b.dataset.cat || null});});
+    wrap.querySelector('[data-form]').onsubmit=e=>{e.preventDefault();run({op:'catCreate',name:wrap.querySelector('input').value,pane:id});};
+  },from);
+}
+function archiveMenuSheet(from){
+  const lf=listFoldersState || emptyFolders;
+  listSheet(ui('Archive','ארכיון'),`<p>${ui('Chats with no activity for this long move here by themselves. Chats waiting for your answer or approval, unread answers and working agents never do.','שיחות בלי פעילות לאורך הזמן הזה עוברות לכאן מעצמן. שיחות שממתינות לתשובה או לאישור שלכם, תשובות שלא נקראו וסוכנים שעובדים — אף פעם לא.')}</p><label for="sheet-days">${ui('Move here after','העברה לכאן אחרי')}</label><select id="sheet-days">${[[7,'7 days without activity','7 ימים בלי פעילות'],[14,'14 days','14 ימים'],[30,'30 days','30 ימים'],[0,'Never','אף פעם']].map(([v,en,he])=>`<option value="${v}"${Number(lf.archiveDays)===v?' selected':''}>${ui(en,he)}</option>`).join('')}</select>${lf.archiveCats.length?`<div class="choices">${lf.archiveCats.map(c=>sheetChoice(`data-cat-remove="${esc(c.id)}"`,c.name,ui('Remove category','הסרת קטגוריה'))).join('')}</div><p class="hint">${ui('Removing a category keeps its chats; they move to Not sorted yet.','הסרת קטגוריה משאירה את השיחות שלה; הן עוברות ל״עוד לא ממוין״.')}</p>`:''}`,(wrap,run)=>{
+    wrap.querySelector('#sheet-days').onchange=e=>run({op:'days',days:Number(e.target.value)});
+    wrap.querySelectorAll('[data-cat-remove]').forEach(b=>{b.onclick=()=>run({op:'catRemove',id:b.dataset.catRemove});});
+  },from);
+}
+function folderSectionsHtml(panes,lf,skip,order,floated=new Set()){
+  return lf.folders.filter(f=>!f.hidden).map(f=>{
+    let rows=panes.filter(p=>lf.members?.[p.id]===f.id && !skip.has(p.id));if(order)rows=[...rows].sort(order);
+    const up=panes.filter(p=>lf.members?.[p.id]===f.id && floated.has(p.id)).length,away=panes.filter(p=>lf.members?.[p.id]===f.id && skip.has(p.id) && !floated.has(p.id)).length;
+    const empty=up?ui(up===1?'Its chat with a new message is at the top.':`${up} chats with new messages are at the top.`,up===1?'השיחה שלה עם הודעה חדשה נמצאת למעלה.':`${up} שיחות עם הודעות חדשות נמצאות למעלה.`):away?ui('Its quiet chats are in the Archive.','השיחות השקטות שלה בארכיון.'):ui('Nothing here yet. Move a chat here from its ⋯ menu.','עוד ריק. מעבירים לכאן שיחה מתפריט ⋯ שלה.');
+    return `<details class="projgroup folder-group" data-key="folder:${esc(f.id)}" data-folder="${esc(f.id)}"${f.collapsed?'':' open'}><summary class="projhead">${folderSvg}<span dir="auto">${esc(f.name)}</span><span class="count">${rows.length}</span><button type="button" class="list-more" data-folder-menu="${esc(f.id)}" aria-label="${esc(ui('Folder options:','אפשרויות תיקייה:')+' '+f.name)}">⋯</button></summary><div class="group-rows">${rows.map(card).join('') || `<div class="folder-empty" data-key="folder-empty:${esc(f.id)}">${empty}</div>`}</div></details>`;
+  }).join('');
+}
+function archiveSectionHtml(list,lf){
+  if(!list.length && !lf.archiveCats.length)return '';
+  let open=false;try{open=sessionStorage.getItem('termcontrol-archive-open')==='open';}catch{}
+  const days=Number(lf.archiveDays) || 7,newest=(a,b)=>Number(b.lastActiveAt || 0)-Number(a.lastActiveAt || 0);
+  const known=id=>lf.archiveCats.some(c=>c.id===id);
+  const groups=[...lf.archiveCats.map(c=>({id:c.id,name:c.name,rows:list.filter(p=>lf.archiveCat?.[p.id]===c.id)})),{id:'',name:ui('Not sorted yet','עוד לא ממוין'),rows:list.filter(p=>!known(lf.archiveCat?.[p.id]))}];
+  return `<details class="projgroup archive-group" data-key="archive" data-archive${open?' open':''}><summary class="projhead">${archiveSvg}<span>${ui('Archive','ארכיון')}</span><span class="count">${list.length}</span><button type="button" class="list-more" data-archive-menu aria-label="${ui('Archive options','אפשרויות ארכיון')}">⋯</button></summary><div class="archive-body" data-key="archive-body"><p class="archive-note" data-key="archive-note">${ui(`Quiet for ${days} days or more. Nothing here is closed; a new message brings a chat back.`,`שקטות ${days} ימים ויותר. שום דבר כאן לא נסגר; הודעה חדשה מחזירה שיחה.`)}</p>${groups.filter(g=>g.rows.length || g.id).map(g=>`<div class="archive-cat" data-key="acat:${esc(g.id || 'none')}" data-archive-cat="${esc(g.id)}"><div class="archive-cat-head"><span dir="auto">${esc(g.name)}</span><span>${g.rows.length}</span></div><div class="group-rows">${[...g.rows].sort(newest).map(card).join('') || `<div class="folder-empty">${ui('Sort chats here from their ⋯ menu.','ממיינים לכאן שיחות מתפריט ⋯ שלהן.')}</div>`}</div></div>`).join('')}</div></details>`;
+}
+function hiddenFoldersHtml(lf){
+  const hid=lf.folders.filter(f=>f.hidden);if(!hid.length)return '';
+  return `<details class="hidden-bots hidden-folders" data-key="hidden-folders"><summary>${ui(`Hidden folders (${hid.length})`,`תיקיות מוסתרות (${hid.length})`)}</summary>${hid.map(f=>`<div class="hidden-folder-row" data-key="hf:${esc(f.id)}"><span dir="auto">${folderSvg}${esc(f.name)}</span><button type="button" class="list-show" data-show-folder="${esc(f.id)}">${ui('Show','הצגה')}</button></div>`).join('')}</details>`;
+}
+function wireListFolders(container,onPhone){
+  container.querySelectorAll('[data-folder-menu]').forEach(b=>{b.onclick=e=>{e.preventDefault();e.stopPropagation();folderMenuSheet(b.dataset.folderMenu,b);};});
+  const am=container.querySelector('[data-archive-menu]');if(am)am.onclick=e=>{e.preventDefault();e.stopPropagation();archiveMenuSheet(am);};
+  container.querySelectorAll('details[data-folder]').forEach(el=>{el.ontoggle=()=>{const f=(listFoldersState || emptyFolders).folders.find(x=>x.id===el.dataset.folder);if(f && f.collapsed===el.open)folderChange({op:'collapse',id:f.id,collapsed:!el.open}).catch(()=>{});};});
+  const arch=container.querySelector('details[data-archive]');if(arch)arch.ontoggle=()=>{try{sessionStorage.setItem('termcontrol-archive-open',arch.open?'open':'closed');}catch{}};
+  container.querySelectorAll('[data-show-folder]').forEach(b=>{b.onclick=()=>folderChange({op:'hide',id:b.dataset.showFolder,hidden:false}).catch(e=>note(e.message,true));});
+  const nf=container.querySelector('.new-folder');if(nf)nf.onclick=()=>newFolderSheet(nf);
+  // A computer drags a chat onto a folder (or back onto a project); the ⋯ menu does the same on a phone.
+  container.querySelectorAll('.pane').forEach(el=>{el.draggable=!onPhone;});
+  if(container.dataset.folderDrag)return;container.dataset.folderDrag='1';
+  let dragId=null;
+  const target=e=>e.target.closest?.('details[data-folder],details.projgroup:not(.archive-group):not(.folder-group)');
+  container.addEventListener('dragstart',e=>{const row=e.target.closest?.('.pane');if(!row)return;dragId=row.dataset.id;e.dataTransfer.setData('text/plain',dragId);e.dataTransfer.effectAllowed='move';});
+  container.addEventListener('dragover',e=>{const t=dragId && target(e);if(!t)return;e.preventDefault();container.querySelectorAll('.folder-drop').forEach(x=>{if(x!==t)x.classList.remove('folder-drop');});t.classList.add('folder-drop');});
+  container.addEventListener('dragleave',e=>{const t=target(e);if(t && !t.contains(e.relatedTarget))t.classList.remove('folder-drop');});
+  container.addEventListener('drop',e=>{const t=target(e);container.querySelectorAll('.folder-drop').forEach(x=>x.classList.remove('folder-drop'));if(!t || !dragId)return;e.preventDefault();const id=dragId;dragId=null;folderChange({op:'move',pane:id,folder:t.dataset.folder || null}).catch(err=>note(err.message,true));});
+  container.addEventListener('dragend',()=>{dragId=null;container.querySelectorAll('.folder-drop').forEach(x=>x.classList.remove('folder-drop'));});
+}
 async function fleet(background=false,{fromCache=false}={}) {
   if(background && !focusedPane && otherView!=='bot' && otherView!=='group')return;
   if(fromCache && !lastFleetData)fromCache=false;
@@ -2412,6 +2523,7 @@ async function fleet(background=false,{fromCache=false}={}) {
   const roomsRequest=kept?Promise.resolve(kept.rooms):fetch('/api/rooms',{signal:AbortSignal.timeout(8000)}).then(response=>response.ok?response.json():null).catch(()=>null);
   const botsRequest=kept?Promise.resolve(kept.bots):fetch('/api/bots',{signal:AbortSignal.timeout(8000)}).then(response=>response.ok?response.json():null).catch(()=>null);
   const waitingRequest=kept?Promise.resolve(kept.waiting):fetch('/api/waiting',{signal:AbortSignal.timeout(8000)}).then(response=>response.ok?response.json():null).catch(()=>null);
+  const foldersRequest=kept?Promise.resolve(kept.folders):fetch('/api/list-folders',{signal:AbortSignal.timeout(8000)}).then(response=>response.ok?response.json():null).catch(()=>null);
   try {
     if(kept)r=kept.r;else{
     const resp = await fetch('/api/panes', { signal: AbortSignal.timeout(12000) });
@@ -2432,7 +2544,9 @@ async function fleet(background=false,{fromCache=false}={}) {
   // A failed read keeps the list last seen; only the bridge's own answer changes it (TF-099).
   const waitingData=(await waitingRequest) || lastFleetData?.waiting || null,waitingItems=waitingData?.items || [];
   if (mine !== view || request !== fleetRequest) return;
-  if(!kept)lastFleetData={r,rooms:roomsData,bots:botsData,waiting:waitingData};
+  listFoldersState=(await foldersRequest) || lastFleetData?.folders || listFoldersState || emptyFolders;
+  if (mine !== view || request !== fleetRequest) return;
+  if(!kept)lastFleetData={r,rooms:roomsData,bots:botsData,waiting:waitingData,folders:listFoldersState};
   const sortBy = localStorage.getItem('termcontrol-sort') || 'map';
   const windowKey = localStorage.getItem('termcontrol-window') || 'all';
   const WINDOWS = { today: 24, '3d': 72, week: 168 };
@@ -2465,30 +2579,40 @@ async function fleet(background=false,{fromCache=false}={}) {
     </details>` : '';
 
   const options=(current,list)=>list.map(([value,en,he])=>`<option value="${value}"${current===value?' selected':''}>${ui(en,he)}</option>`).join('');
-  const bar=`<div class="fleetbar" data-key="controls"><label><span>${ui('Sort','מיון')}</span><select data-pref="sort" aria-label="${ui('Sort agents','מיון סוכנים')}">${options(sortBy,[['map','Map order','סדר המפה'],['recent','Last used','בשימוש לאחרונה'],['needs','Needs you','דורשים מענה']])}</select></label><label><span>${ui('Live','פעילות')}</span><select data-pref="window" aria-label="${ui('Activity window','טווח פעילות')}">${options(windowKey,[['today','Today','היום'],['3d','3 days','3 ימים'],['week','Week','שבוע'],['all','All','הכול']])}</select></label><button type="button" class="new-room icon-button" aria-label="${ui('New room: several agents in one chat','חדר חדש: כמה סוכנים בשיחה אחת')}" title="${ui('New room','חדר חדש')}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 6h16v10H9l-5 4z M9 11h6"/></svg></button><button type="button" class="addagent global-new-agent" aria-label="${ui('New agent','סוכן חדש')}" title="${ui('New agent','סוכן חדש')}">+</button></div><button type="button" class="cleanup-idle" data-key="cleanup">${ui('Clean up idle terminals','ניקוי מסופים לא פעילים')}</button>`;
+  const bar=`<div class="fleetbar" data-key="controls"><label><span>${ui('Sort','מיון')}</span><select data-pref="sort" aria-label="${ui('Sort agents','מיון סוכנים')}">${options(sortBy,[['map','Map order','סדר המפה'],['recent','Last used','בשימוש לאחרונה'],['needs','Needs you','דורשים מענה']])}</select></label><label><span>${ui('Live','פעילות')}</span><select data-pref="window" aria-label="${ui('Activity window','טווח פעילות')}">${options(windowKey,[['today','Today','היום'],['3d','3 days','3 ימים'],['week','Week','שבוע'],['all','All','הכול']])}</select></label><button type="button" class="new-folder icon-button" aria-label="${ui('New folder','תיקייה חדשה')}" title="${ui('New folder','תיקייה חדשה')}">${folderSvg}</button><button type="button" class="new-room icon-button" aria-label="${ui('New room: several agents in one chat','חדר חדש: כמה סוכנים בשיחה אחת')}" title="${ui('New room','חדר חדש')}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 6h16v10H9l-5 4z M9 11h6"/></svg></button><button type="button" class="addagent global-new-agent" aria-label="${ui('New agent','סוכן חדש')}" title="${ui('New agent','סוכן חדש')}">+</button></div><button type="button" class="cleanup-idle" data-key="cleanup">${ui('Clean up idle terminals','ניקוי מסופים לא פעילים')}</button>`;
   const hidden = everything.length - panes.length;
   const none = panes.length ? '' : '<div class="empty">Nothing was live in this period.</div>';
   const footer = hidden > 0 ? `<div class="empty" style="padding:8px 0 24px">${hidden} older terminal${hidden === 1 ? '' : 's'} hidden</div>` : '';
 
+  // Folders, the Archive and (phone) New messages take their chats out of the project groups below.
+  const lf=listFoldersState || emptyFolders,onPhone=matchMedia('(max-width: 760px)').matches;
+  const archivedList=everything.filter(p=>paneArchived(p,lf)),archivedIds=new Set(archivedList.map(p=>p.id));
+  const floatedList=onPhone?panes.filter(p=>!archivedIds.has(p.id) && paneUnread(p)).sort((a,b)=>Number(b.lastActiveAt || 0)-Number(a.lastActiveAt || 0)):[];
+  const skipIds=new Set([...archivedIds,...floatedList.map(p=>p.id)]);
+  const filed=p=>lf.folders.some(f=>f.id===lf.members?.[p.id]);
+  const rest=panes.filter(p=>!skipIds.has(p.id) && !filed(p));
   // Groups keep the map's grouping; sorting reorders the groups and the cards
   // inside them, so "last used" puts the terminal you touched most recently first.
   const byRecent = (a, b) => Number(b.lastUsedAt || 0) - Number(a.lastUsedAt || 0);
   const byNeed = (a, b) => (a.turn === 'waiting' ? 0 : 1) - (b.turn === 'waiting' ? 0 : 1) || byRecent(a, b);
   const paneOrder = sortBy === 'recent' ? byRecent : sortBy === 'needs' ? byNeed : null;
   const shownGroups = (r.groups || [])
-    .map((g) => ({ ...g, panes: g.panes.filter((p) => panes.includes(p) || panes.some((q) => q.id === p.id)) }))
+    .map((g) => ({ ...g, panes: g.panes.filter((p) => rest.includes(p) || rest.some((q) => q.id === p.id)) }))
     .filter((g) => g.panes.length)
     .map((g) => paneOrder ? { ...g, panes: [...g.panes].sort(paneOrder) } : g);
   if (paneOrder) shownGroups.sort((a, b) => paneOrder(a.panes[0], b.panes[0]));
 
   const mode = r.view === 'manual' ? 'manual' : 'projects';
-  const content=mode==='manual'?(paneOrder?[...panes].sort(paneOrder):panes).map(card).join(''):shownGroups.map(g=>{
+  const content=mode==='manual'?(paneOrder?[...rest].sort(paneOrder):rest).map(card).join(''):shownGroups.map(g=>{
     const groupKey=g.id || g.panes[0].mapGroupId || `pane:${g.panes[0].id}`;
     const closed=sessionStorage.getItem(`termcontrol-group:${groupKey}`)==='closed';
     // Every project gets its own heading, even with one agent: a headerless
     // card reads as part of the group above it.
     return `<details class="projgroup" data-key="group:${esc(groupKey)}" data-group="${esc(groupKey)}"${closed?'':' open'}><summary class="projhead"><span class="group-color" style="background:${groupColor(g.color || g.panes[0]?.color)}" aria-hidden="true"></span><span dir="auto">${esc(projectLabel(g.project))}</span>${g.panes.length>1?`<span class="count">${g.panes.length}</span>`:''}${g.panes.some(p=>p.cwd)?`<button type="button" class="addagent" data-project="${esc(g.project)}" data-project-id="${esc(g.mapGroupId || g.panes[0]?.mapGroupId || '')}" aria-label="${esc(ui('New agent in','סוכן חדש ב־')+' '+projectLabel(g.project))}">+</button>`:''}</summary><div class="group-rows">${g.panes.map(card).join('')}</div></details>`;
   }).join('');
+  const floatedHtml=floatedList.length?`<section class="floated" data-key="floated" aria-label="${ui('New messages','הודעות חדשות')}"><div class="floated-head">${ui('New messages','הודעות חדשות')}</div><div class="group-rows">${floatedList.map(card).join('')}</div></section>`:'';
+  const listParts=floatedHtml+folderSectionsHtml(panes,lf,skipIds,paneOrder,new Set(floatedList.map(p=>p.id)));
+  const listEnd=archiveSectionHtml(archivedList,lf)+hiddenFoldersHtml(lf);
   const root=background?sideContent:main;
   let container=root.querySelector('.fleet-content');if(!container){root.replaceChildren();container=document.createElement('div');container.className='fleet-content';root.append(container);}
   const searchBox=`<input type="search" class="fleet-search" data-key="search" dir="auto" placeholder="${ui('Search bots, chats and terminals','חיפוש בוטים, שיחות ומסופים')}" aria-label="${ui('Search','חיפוש')}" value="${esc(fleetQuery)}"><div class="search-hits" data-key="search-hits"></div>`;
@@ -2497,10 +2621,11 @@ async function fleet(background=false,{fromCache=false}={}) {
   const botsNeed=botList.filter(b=>!b.hidden).reduce((n,b)=>n+(Number(b.unread)||0),0),termsNeed=panes.filter(p=>p.attention).length;   // same counts as the dock icon
   const need=(n,kind='')=>n?`<span class="tab-need${kind?' tab-need-'+kind:''}" aria-label="${kind==='term'?ui(`${n} waiting for you`,`${n} ממתינים לך`):ui(`${n} unread`,`${n} שלא נקראו`)}">${n>99?'99+':n}</span>`:'';
   const tabs=`<div class="fleet-tabs" role="tablist" data-key="tabs"><button type="button" role="tab" data-tab="bots" aria-selected="${tab==='bots'}">${ui('Bots','בוטים')}<span class="tab-count">${botList.filter(b=>!b.hidden).length}</span>${need(botsNeed)}</button><button type="button" role="tab" data-tab="terminals" aria-selected="${tab==='terminals'}">${ui('Terminals','מסופים')}<span class="tab-count">${panes.length}</span>${need(termsNeed,'term')}</button><button type="button" role="tab" data-tab="health" aria-selected="${tab==='health'}">${ui('Health','מצב')}</button></div>`;
-  patchFleet(container,waitingHtml(waitingItems)+usageHtml(r.usage)+tabs+(tab==='health'?healthCardHtml(agentHealth,true):searchBox+(tab==='bots'?botsHomeHtml(botsData):bar+roomsPanelHtml(roomsData)+none+content+footer)));
+  patchFleet(container,waitingHtml(waitingItems)+usageHtml(r.usage)+tabs+(tab==='health'?healthCardHtml(agentHealth,true):searchBox+(tab==='bots'?botsHomeHtml(botsData):bar+roomsPanelHtml(roomsData)+none+listParts+content+listEnd+footer)));
   container.querySelectorAll('.fleet-tabs [data-tab]').forEach(el=>{el.onclick=()=>{pickedFleetTab=el.dataset.tab;try{localStorage.setItem('termcontrol-fleet-tab',el.dataset.tab);}catch{}const bg=Boolean(focusedPane);fleet(bg,{fromCache:true}).then(()=>fleet(bg));};});
   const healthDetails=container.querySelector('.health-card');if(healthDetails)healthDetails.ontoggle=()=>sessionStorage.setItem('termcontrol-health-open',healthDetails.open?'open':'closed');
   wireFleetSearch(container);
+  wireListFolders(container,onPhone);
   side.querySelector('.side-count').textContent=ui(`${panes.length} agents`,`${panes.length} סוכנים`);
   container.querySelectorAll('.fleetbar select').forEach(el=>{el.onchange=()=>{localStorage.setItem(`termcontrol-${el.dataset.pref}`,el.value);fleet(Boolean(focusedPane));};});
   container.querySelectorAll('.attention-review,.pane').forEach(el=>{el.classList.toggle('selected',el.classList.contains('pane') && el.dataset.id===selected);el.onclick=()=>openFleetPane(el);});
@@ -4038,12 +4163,16 @@ function openPaneMenu(row,x,y){
   const menu=document.createElement('div');menu.className='pane-menu';menu.setAttribute('role','menu');
   const rec=fleetPaneRecords.get(id),agent=['claude','codex','opencode'].includes(rec?.provider);
   const sleepItems=agent?`${rec.sleeping?`<button type="button" role="menuitem" data-wake>${ui('Wake now','להעיר עכשיו')}</button>`:''}<button type="button" role="menuitem" data-keep-awake>${rec.keepAwake?ui('Let it sleep when idle','לאפשר שינה כשפנוי'):ui('Keep awake','להשאיר ער')}</button>`:'';
-  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button>${sleepItems}<button type="button" role="menuitem" data-urgent>${ui('Make urgent','להפוך לדחוף')}</button><div class="pane-menu-share" data-share><span>${ui('Agents when busy','סוכנים כשעמוס')}</span><button type="button" data-w="20">${ui('Gentle','עדין')}</button><button type="button" data-w="50">${ui('Medium','בינוני')}</button><button type="button" data-w="100">${ui('Normal','רגיל')}</button></div><button type="button" role="menuitem" class="danger" data-close>${ui('Close terminal…','סגירת המסוף…')}</button>`;
+  const archivedNow=Boolean(rec && paneArchived(rec)),folderItems=`<button type="button" role="menuitem" data-move-folder>${ui('Move to folder…','העברה לתיקייה…')}</button>${archivedNow?`<button type="button" role="menuitem" data-archive-cat>${ui('Sort in the Archive…','מיון בארכיון…')}</button><button type="button" role="menuitem" data-bring-back>${ui('Bring back from the Archive','החזרה מהארכיון')}</button>`:''}`;
+  menu.innerHTML=`<button type="button" role="menuitem" data-open>${ui('Open','פתיחה')}</button>${sleepItems}<button type="button" role="menuitem" data-urgent>${ui('Make urgent','להפוך לדחוף')}</button><div class="pane-menu-share" data-share><span>${ui('Agents when busy','סוכנים כשעמוס')}</span><button type="button" data-w="20">${ui('Gentle','עדין')}</button><button type="button" data-w="50">${ui('Medium','בינוני')}</button><button type="button" data-w="100">${ui('Normal','רגיל')}</button></div>${folderItems}<button type="button" role="menuitem" class="danger" data-close>${ui('Close terminal…','סגירת המסוף…')}</button>`;
   document.body.append(menu);
   const r=menu.getBoundingClientRect();
   menu.style.left=Math.max(12,Math.min(x,innerWidth-r.width-12))+'px';menu.style.top=Math.max(12,Math.min(y,innerHeight-r.height-12))+'px';
   menu.querySelector('[data-open]').onclick=()=>{closePaneMenu();row.click();};
   menu.querySelector('[data-close]').onclick=()=>{closePaneMenu();confirmClose(id,name,row);};
+  menu.querySelector('[data-move-folder]').onclick=()=>{closePaneMenu();moveFolderSheet(id,name,row);};
+  menu.querySelector('[data-archive-cat]')?.addEventListener('click',()=>{closePaneMenu();archiveCatSheet(id,name,row);});
+  menu.querySelector('[data-bring-back]')?.addEventListener('click',()=>{closePaneMenu();folderChange({op:'bringBack',pane:id}).then(()=>note(ui(`${name} is back in the list.`,`${name} חזר לרשימה.`))).catch(e=>note(e.message,true));});
   // Urgent: this terminal at full speed while other agents stay gentle (Noam 2026-10-22).
   const urgentBtn=menu.querySelector('[data-urgent]'),shareRow=menu.querySelector('[data-share]');
   const prio=(path,body)=>fetch(path,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)}:{signal:AbortSignal.timeout(20000)}).then(async r=>{const out=await r.json().catch(()=>({}));if(!r.ok)throw new Error(out.error || 'failed');return out;});

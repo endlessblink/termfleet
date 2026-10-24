@@ -134,7 +134,10 @@ function splitBody(text) {
  * words inside it (a "[Noam's own words, recorded by TermFleet" block) are, with that record's id.
  */
 export function ownerTextOf(prompt) {
-  const text = String(prompt || '');
+  // A teammate's message can arrive wrapped as one pasted block; unwrap it so it is still known as
+  // a teammate's (2026-10-24: a relayed status message became 77 of "Noam's" items).
+  const wrapped = /^\s*<pasted_content[^>]*>([\s\S]*)<\/pasted_content[^>]*>\s*$/.exec(String(prompt || ''));
+  const text = wrapped ? wrapped[1].trim() : String(prompt || '');
   const block = /\[Noam's own words, recorded by TermFleet:[^\]]*\(message ([0-9a-f]{6,})\)[^\]]*\]\s*\n"([\s\S]*?)"\s*\nTreat it exactly/.exec(text);
   if (block) return { text: block[2], msgId: block[1], relayed: true };
   if (/^\s*\[Message from /.test(text)) return null;

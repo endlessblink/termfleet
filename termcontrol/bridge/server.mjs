@@ -34,6 +34,7 @@ import { readSessionStatus, subscribeSessionEventHeads, applyVendorStatus, stall
 import { readUsageLimits } from './usage-limits.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
+import { listFolders } from './list-folders.mjs';
 import { withSleepingLives, sweepSleep, sleepPane, wakePane, workProcesses, treeRss, readSettings, writeSettings, listSleeping, isSleeping as sleepMarked, setKeepAwake, isKeepAwake, sleepVerdict } from './sleep.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { resolveLocalImage, resolveLocalFile } from './local-image.mjs';
@@ -836,6 +837,15 @@ const handle = async (req, res) => {
     return json(res, 404, { error: 'Not found' });
   }
 
+  // Sidebar folders and the Archive, per owner (list-folders.mjs).
+  if (url.pathname === '/api/list-folders') {
+    if (req.method === 'GET') return json(res, 200, listFolders.read(currentUser(req).id));
+    if (req.method === 'POST') {
+      let raw='';for await (const chunk of req){raw+=chunk;if(raw.length>4096)return json(res,413,{error:'Request too large.'});}
+      let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'Invalid change.'});}
+      try{return json(res,200,listFolders.apply(currentUser(req).id,body));}catch(error){return json(res,400,{error:error.message || 'That did not work.'});}
+    }
+  }
   if (url.pathname === '/api/visit' && req.method === 'POST') {
     let raw='';for await (const chunk of req){raw+=chunk;if(raw.length>1024)return json(res,413,{error:'Request too large.'});}
     let body;try{body=JSON.parse(raw);}catch{return json(res,400,{error:'Invalid visit.'});}
