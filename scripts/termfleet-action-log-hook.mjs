@@ -3,7 +3,7 @@
 // Activity view of the bot that started it. Claude and Codex call it on PostToolUse
 // (the action happened) and PermissionRequest (the agent asked first; that is a request,
 // never counted as an approval). Record only:
-// it never blocks, never prints, and always exits 0.
+// it never blocks, prints only a bot brain's mid-turn messages (see below), and always exits 0.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -60,8 +60,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let raw = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => { raw += c; });
-  process.stdin.on('end', () => {
-    try { handle(JSON.parse(raw || '{}')); } catch { /* never in the agent's way */ }
+  process.stdin.on('end', async () => {
+    let payload = {};
+    try { payload = JSON.parse(raw || '{}'); handle(payload); } catch { /* never in the agent's way */ }
+    // A bot brain on Codex gets Noam's mid-turn messages here (its only after-step hook);
+    // the one place this hook prints. Claude bots get them through their own --settings hook.
+    if (process.env.TERMFLEET_BOT_STEER) {
+      try { const { steer } = await import('./termfleet-bot-steer-hook.mjs'); const out = steer(payload); if (out) process.stdout.write(JSON.stringify(out)); } catch { /* never in the bot's way */ }
+    }
     process.exit(0);
   });
   setTimeout(() => process.exit(0), 3000).unref();

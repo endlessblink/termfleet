@@ -16,7 +16,8 @@ import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bo
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
-import { captureMessage as captureRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject } from './requirements.mjs';
+import { captureMessage as captureRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements } from './requirements.mjs';
+import { sidePrompt, parseSide, withPassedOn, putSteer, takeSteer, nextTurnText } from './side-reply.mjs';
 import { BotGroups } from './bot-groups.mjs';
 import { checkFolder } from './bot-folders.mjs';
 import { classifyTool, appendAction, readActions, paneLogFile, botApproval, paneApproval, foldFiles, approvalText } from './action-log.mjs';
@@ -154,6 +155,14 @@ export const briefStamp = (bot) => crypto.createHash('sha256').update(brainBrief
 
 const CLAUDE_TOOLS = ['Read', 'Skill', 'Grep', 'Glob', 'Bash(termfleet-team:*)', 'Bash(termfleet-memory:*)', 'Bash(termfleet-asks:*)', 'Bash(termfleet-skill:*)', 'Bash(termfleet-browser:*)', 'mcp__browser', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(ls:*)', 'WebSearch', 'WebFetch', 'mcp__plugin_context-mode_context-mode__ctx_fetch_and_index', 'mcp__plugin_context-mode_context-mode__ctx_search'];
 const CLAUDE_DENY = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'mcp__browser__browser_run_code_unsafe'];
+const STEER_HOOK = fileURLToPath(new URL('../../scripts/termfleet-bot-steer-hook.mjs', import.meta.url));
+
+/** One tool step of a running turn, for the side responder's view of progress (R-7173). */
+export function stepLine(use = {}) {
+  const input = use.input || {};
+  const detail = input.command || input.description || input.query || input.url || input.file_path || input.pattern || input.prompt || '';
+  return `${activityLine(use.name, input)}${detail ? `: ${String(detail).replace(/\s+/g, ' ').slice(0, 140)}` : ''}`;
+}
 
 /** The command that runs one bot turn. */
 // The bots' browser (TF-096 part 8): one Chrome window on the PC, driven through the
@@ -206,6 +215,8 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
     '--mcp-config', JSON.stringify({ mcpServers: { browser: browserMcp(bot) } }),
     '--allowedTools', ...CLAUDE_TOOLS,
     '--disallowedTools', ...CLAUDE_DENY,
+    // Noam's mid-turn instructions reach the running turn after its next tool step (R-7173).
+    ...(bot.steerFolder ? ['--settings', JSON.stringify({ hooks: { PostToolUse: [{ hooks: [{ type: 'command', command: `${JSON.stringify(process.execPath)} ${JSON.stringify(STEER_HOOK)}`, timeout: 5 }] }] } })] : []),
     ...(session?.started ? ['--resume', session.id] : ['--session-id', session?.id || crypto.randomUUID()])];
   return { bin, args };
 }
@@ -337,6 +348,7 @@ export function brainEnv(bot, env = process.env) {
   return {
     ...out,
     TERMFLEET_BOT_ID: bot.id, TERMFLEET_BOT_NAME: bot.name,
+    ...(bot.steerFolder ? { TERMFLEET_BOT_STEER: bot.steerFolder } : {}),   // the bot's folder; its steer/ inbox is inside
     PATH: `${path.join(os.homedir(), '.local', 'bin')}:${env.PATH || '/usr/bin:/bin'}`,
     PAGER: 'cat', GIT_PAGER: 'cat', GIT_EDITOR: 'true', EDITOR: 'true', GIT_TERMINAL_PROMPT: '0', DEBIAN_FRONTEND: 'noninteractive',
   };
@@ -381,7 +393,7 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
       while ((nl = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1);
         // An action is logged only once its call succeeded: a denied or failed call never happened.
-        for (const use of brainToolUses(bot.provider, line)) if (use.id) calls.set(use.id, use);
+        for (const use of brainToolUses(bot.provider, line)) { if (use.id) calls.set(use.id, use); onEvent?.({ step: use }); }
         for (const done of brainToolResults(bot.provider, line)) { const use = calls.get(done.id); calls.delete(done.id); if (use && done.ok) onEvent?.({ action: use }); }
         const ev = parseBrainLine(bot.provider, line);
         if (!ev) continue;
@@ -443,7 +455,11 @@ const providerName = (p) => (p === 'codex' ? 'Codex' : 'Claude');
 const clock = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 export class Bots {
-  constructor({ dir = defaultDir(), run = runBrain, bins = { claude: findBinary('claude'), codex: findBinary('codex') }, now = () => Date.now(), fill = defaultFill, checks = { home: process.env.TC_BOT_CHECK_HOME || undefined }, notify = () => {} } = {}) {
+  constructor({ dir = defaultDir(), run = runBrain, side = null, bins = { claude: findBinary('claude'), codex: findBinary('codex') }, now = () => Date.now(), fill = defaultFill, checks = { home: process.env.TC_BOT_CHECK_HOME || undefined }, notify = () => {} } = {}) {
+    // The quick side responder for messages that arrive mid-turn (R-7173). Off unless given:
+    // the bridge passes runSide; tests pass a stand-in and never reach a real plan.
+    this.side = side;
+    this.sides = new Map();     // id -> { busy, pending: [entry] }
     this.codexHome = process.env.TC_CODEX_HOME || os.homedir();
     this.notify = notify;   // phone notification for a reply or a "needs you" (part 7)
     this.fill = fill;
@@ -810,6 +826,8 @@ export class Bots {
   stop(id) {
     const current = this.running.get(id);
     this.queues.set(id, []);
+    this.sides.get(id)?.pending.splice(0);
+    try { takeSteer(this.folder(id)); } catch { /* nothing waiting */ }
     this.echoes.delete(id);
     if (!current?.stop) return { ok: true, wasRunning: false };
     current.stop();
@@ -904,13 +922,17 @@ export class Bots {
     // copy so the bot can pass his exact words on and the receiver can check them.
     if (owner) { try { recordOwnerWords({ id: msg.id, at: msg.at, botId: id, bot: bot.name, text: said0 }, this.ownerWordsBase ? { base: this.ownerWordsBase } : {}); } catch { /* the message itself is saved */ } }
     // TF-102: his message, split into items (R-n) the bot cannot end its turn without taking.
-    if (owner) this.captureRequirements(id, bot, msg, said0);
+    const items = owner ? this.captureRequirements(id, bot, msg, said0) : [];
     const said = skillPrompt(said0) || said0;   // "/grill-me" etc. carry the skill's steps
     const quoted = replied ? `[Noam is replying to ${replied.role === 'bot' ? 'your' : 'his own'} earlier message in this chat (message ${replied.id}), quoted as context only, not as a new request or approval:\n"${replied.text}"]\n` : '';
     const answered = quoted + (asked ? `[Noam's answer to your question "${asked.question.text}"]\n${said}` : said);
     let forBrain = pictures.length ? `${answered}\n\n[Noam attached ${pictures.length} picture${pictures.length === 1 ? '' : 's'}. Look at each one before answering (open the file to see it): ${pictures.join(' , ')}]` : answered;
     if (attached.length) forBrain += `\n\n[Noam attached ${attached.length} file${attached.length === 1 ? '' : 's'}. Read each one before answering (open the file): ${attached.join(' , ')}]`;
     forBrain = this.withTags(id, bot, msg, body, forBrain, { owner, pictures });
+    if (owner && this.side && this.running.has(id)) {
+      this.sideAnswer(id, { at: msg.at, msgId: msg.id, text: said0, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
+      return { ok: true, message: msg, queued: true, side: true };
+    }
     const queue = this.queues.get(id) || [];
     queue.push(forBrain);
     this.queues.set(id, queue);
@@ -954,11 +976,15 @@ export class Bots {
    * count, and the bot's next answer is also posted back where he tagged it.
    */
   /** Noam's bot message into the requirements ledger, keyed by his real message id. */
+  // A Bots made for a test (its own folder) keeps its ledger there, never in Noam's real one.
+  reqDir() {
+    return this.requirementsDir || (this.ownerWordsBase ? path.join(this.ownerWordsBase, 'requirements')
+      : this.dir && path.resolve(this.dir) !== path.resolve(defaultDir()) ? path.join(this.dir, 'requirements') : requirementsLedgerDir());
+  }
+
   captureRequirements(id, bot, msg, text) {
     try {
-      // A Bots made for a test (its own folder) keeps its ledger there, never in Noam's real one.
-      const dir = this.requirementsDir || (this.ownerWordsBase ? path.join(this.ownerWordsBase, 'requirements')
-        : this.dir && path.resolve(this.dir) !== path.resolve(defaultDir()) ? path.join(this.dir, 'requirements') : requirementsLedgerDir());
+      const dir = Bots.prototype.reqDir.call(this);   // also called on a plain object by tests
       const project = bot.project || (path.dirname(bot.cwd || '') === path.resolve(BOTS_HOME()) ? String(bot.name || id).toLowerCase() : requirementsProject(bot.cwd));
       return captureRequirements({ text, msgId: msg.id, at: msg.at, project, source: `bot:${id}` }, { dir });
     } catch { return []; }
@@ -1031,10 +1057,10 @@ export class Bots {
       if (this.closing) { this.saveQueue(id); return; }
       const texts = this.queues.get(id).splice(0);
       // Messages that arrived while the bot was busy go in together, oldest first.
-      const text = texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n');
+      const text = this.withSideNotes(id, texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n'));
       const echo = [...(this.echoes.get(id) || [])];
       this.echoes.delete(id);
-      this.running.set(id, { activity: 'Thinking', startedAt: this.now(), echo });
+      this.running.set(id, { activity: 'Thinking', startedAt: this.now(), echo, task: texts.join('\n\n'), steps: [], said: [] });
       this.returnIfReset(id);
       this.freshStartIfFull(id);
       {
@@ -1107,7 +1133,104 @@ export class Bots {
       if (bot && bot.notify !== false && !result.stopped) {
         try { this.notify({ title: result.error ? `${bot.name} could not answer` : bot.name, body: String(result.error || (asked?.question ? asked.question.text : listed?.checklist ? `${listed.checklist.title || 'A list for you'} (${listed.checklist.rows.length} rows to tick)` : result.text) || '').replace(/\s+/g, ' ').slice(0, 200), url: echoAt ? `/#${echoKind}:${echoAt}` : `/#bot:${id}` }); } catch { /* never block a bot on a notification */ }
       }
+      // Mid-turn messages the turn ended before taking: they start the next turn (R-7173).
+      this.queueLeftSteer(id);
       this.running.delete(id);
+    }
+  }
+
+  /**
+   * Noam wrote while the bot is busy (R-7173): a quick side responder answers within seconds,
+   * beside the running turn. Messages that arrive while it is answering are taken together next.
+   */
+  sideAnswer(id, entry) {
+    const state = this.sides.get(id) || { busy: false, pending: [] };
+    state.pending.push(entry);
+    this.sides.set(id, state);
+    if (!state.busy) this.sideLoop(id);
+  }
+
+  async sideLoop(id) {
+    const state = this.sides.get(id);
+    if (!state || state.busy) return;
+    state.busy = true;
+    try {
+      while (state.pending.length) {
+        const batch = state.pending.splice(0);
+        const bot = this.read(id);
+        if (!bot) return;
+        const current = this.running.get(id);
+        // The turn ended before the side answer started: the normal next turn answers it.
+        if (!current) { for (const e of batch) this.handOn(id, e, null); continue; }
+        const provider = bot.active || bot.provider;
+        const runner = { ...bot, provider, model: provider === bot.provider ? (bot.model || null) : null };
+        const chat = this.messages(id).filter((m) => (m.role === 'operator' || m.role === 'bot') && m.text && !batch.some((e) => e.msgId === m.id)).slice(-10)
+          .map((m) => ({ who: m.role === 'operator' ? 'Noam' : m.guest?.name || bot.name, text: m.text }));
+        const prompt = sidePrompt({ bot, task: current.task, startedAt: current.startedAt, steps: current.steps || [], said: current.said || [], chat, incoming: batch.map((e) => e.text), now: this.now() });
+        const cwd = path.join(this.folder(id), 'side');
+        try { fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); } catch { /* the folder is there */ }
+        const t0 = this.now();
+        let res;
+        try { res = this.available(provider) ? await this.side(runner, prompt, { bins: this.bins, cwd }) : { error: 'plan limited' }; } catch (e) { res = { error: String(e?.message || e) }; }
+        const ms = this.now() - t0;
+        const parsed = res?.text ? parseSide(res.text) : null;
+        if (!parsed?.reply) {
+          // No quick answer: the message still reaches the bot exactly as before, just sooner.
+          console.error(`[bots] side answer for ${bot.name} failed after ${ms} ms: ${res?.error || 'empty'}`);
+          for (const e of batch) this.handOn(id, e, null);
+          continue;
+        }
+        if (!this.read(id)) return;   // removed meanwhile
+        const reply = withPassedOn(parsed.reply, parsed.forward, batch.map((e) => e.text));
+        this.append(id, { role: 'bot', text: reply, side: { ms, forward: parsed.forward, to: batch.map((e) => e.msgId) } });
+        if (bot.notify !== false) { try { this.notify({ title: bot.name, body: reply.replace(/\s+/g, ' ').slice(0, 200), url: `/#bot:${id}` }); } catch { /* never block on a notification */ } }
+        if (parsed.forward) { for (const e of batch) this.handOn(id, e, reply); continue; }
+        // Only questions: answered. The bot hears about it at the start of its next turn.
+        for (const e of batch) this.markAnswered(e.items, reply);
+        const fresh = this.read(id);
+        if (fresh) {
+          fresh.sideNotes = [...(fresh.sideNotes || []), ...batch.map((e) => ({ at: e.at, text: String(e.text).slice(0, 1500), reply: reply.slice(0, 800) }))].slice(-6);
+          this.write(fresh);
+        }
+      }
+    } finally { state.busy = false; }
+  }
+
+  /** A mid-turn message goes on to the bot: into the running turn if there is one, else as its next turn. */
+  handOn(id, entry, reply) {
+    if (this.running.has(id)) { putSteer(this.folder(id), { at: entry.at, msgId: entry.msgId, text: entry.text, brain: entry.brain, reply }); return; }
+    const queue = this.queues.get(id) || [];
+    queue.push(...nextTurnText([{ ...entry, reply }]));
+    this.queues.set(id, queue);
+    this.drain(id);
+  }
+
+  /** At the end of a turn, steer messages it never took are queued as the next turn. */
+  queueLeftSteer(id) {
+    let left = [];
+    try { left = takeSteer(this.folder(id)); } catch { left = []; }
+    if (!left.length) return;
+    const queue = this.queues.get(id) || [];
+    queue.push(...nextTurnText(left));
+    this.queues.set(id, queue);
+  }
+
+  /** Questions the side responder answered, put in front of the bot's next turn so its memory stays whole. */
+  withSideNotes(id, text) {
+    const bot = this.read(id);
+    if (!bot?.sideNotes?.length) return text;
+    const notes = bot.sideNotes;
+    delete bot.sideNotes;
+    this.write(bot);
+    return `[While you were busy, Noam asked and your quick side responder answered in the chat. Already answered: do not repeat these answers.\n${notes.map((n) => `- Noam: "${n.text}"\n  Answered: "${n.reply}"`).join('\n')}]\n\n${text}`;
+  }
+
+  /** His items the side answer took care of (a question answered), so the bot is not held to them again. */
+  markAnswered(ids = [], reply) {
+    if (!ids.length) return;
+    const dir = this.reqDir();
+    for (const rid of ids) {
+      try { const r = markRequirement({ status: 'answered', id: rid, note: `Answered right away while busy: ${reply.slice(0, 400)}`, by: 'side-reply' }, { dir }); if (r?.events) recordRequirements(r.events, { dir }); } catch { /* the answer itself is in the chat */ }
     }
   }
 
@@ -1231,7 +1354,7 @@ export class Bots {
     if (!bot) return { error: 'That bot no longer exists.' };
     const extras = { card: this.memory(id).card(), handover: bot.handover || '' };
     // The chosen model belongs to the main plan; on the backup plan it uses that plan's default.
-    const runner = { ...bot, provider: bot.active || bot.provider, model: (bot.active || bot.provider) === bot.provider ? (bot.model || null) : null };
+    const runner = { ...bot, provider: bot.active || bot.provider, model: (bot.active || bot.provider) === bot.provider ? (bot.model || null) : null, ...(this.side ? { steerFolder: this.folder(id) } : {}) };
     return this.run(runner, text, {
         bins: this.bins,
         extras,
@@ -1239,6 +1362,8 @@ export class Bots {
         onStart: (stop) => { const current = this.running.get(id); if (current) current.stop = stop; },
         onEvent: (ev) => {
           if (ev.action) { try { this.recordAction(id, ev.action); } catch { /* the log never stops a reply */ } return; }
+          if (ev.step) { const current = this.running.get(id); if (current?.steps) { current.steps.push({ at: this.now(), text: stepLine(ev.step) }); if (current.steps.length > 60) current.steps.splice(0, current.steps.length - 60); } return; }
+          if (ev.said) { const current = this.running.get(id); if (current?.said) { current.said.push(ev.said); if (current.said.length > 6) current.said.shift(); } }
           if (ev.activity) {
             const current = this.running.get(id);
             if (current && current.activity !== ev.activity) { current.activity = ev.activity; current.activityAt = this.now(); this.append(id, { role: 'activity', text: ev.activity }); }

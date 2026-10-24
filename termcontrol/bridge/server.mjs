@@ -52,6 +52,7 @@ import { contextFill } from './context-fill.mjs';
 import { Routines, describeDays } from './routines.mjs';
 import { profiles, rulesMessage } from './profiles.mjs';
 import { Bots, PROVIDERS as BOT_PROVIDERS, modelChoices } from './bots.mjs';
+import { runSide } from './side-reply.mjs';
 import { knownFolders, startFolder, subfolders, makeFolder } from './bot-folders.mjs';
 import { listSkills, approveSkill, rejectSkill, suggestSkill, checkSkill } from './skills.mjs';
 import { BotBrowser, BROWSER_PORT } from './bot-browser.mjs';
@@ -347,7 +348,7 @@ function refreshAgentHealth() {
 }
 setTimeout(refreshAgentHealth, 90_000).unref();
 setInterval(refreshAgentHealth, 60 * 60_000).unref();
-const bots = new Bots({ notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
+const bots = new Bots({ side: runSide, notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
 
 /** Bots join group chats like terminal agents do: as members with a chat to read. */
 function botMembers() {
