@@ -914,11 +914,12 @@ export class Bots {
       // A reply can be to one picture or video the message showed (Noam 2026-10-24: "צריך להיות
       // מסוגל להגיב על תמונה"); such a message may have no text of its own.
       const pic = replyMedia ? String(replyMedia) : null;
-      const target = this.messages(id).find((m) => m.id === String(replyTo) && ['operator', 'bot'].includes(m.role) && (m.text || (pic && (m.media || []).length)));
+      const target = this.messages(id).find((m) => m.id === String(replyTo) && ['operator', 'bot'].includes(m.role) && (m.text || m.question || m.checklist || (pic && (m.media || []).length)));
       if (!target) return { error: 'The message you are replying to is no longer in this chat. Your reply was not sent.' };
       const media = pic ? (target.media || []).find((x) => x.href === pic) : null;
       if (pic && !media) return { error: 'That picture is no longer in this chat. Your reply was not sent.' };
-      const said = String(target.text || '');
+      // A checklist or question card keeps its words in the card itself (Noam 2026-10-24: "צריך להיות מסוגל להגיב גם על אלמנט כזה").
+      const said = String(target.text || (target.checklist ? `List: ${target.checklist.title || ''}` : '') || (target.question ? `Question: ${target.question.text || ''}` : ''));
       replied = { id: target.id, role: target.role, text: said.length > 300 ? `${said.slice(0, 299)}…` : said, ...(media ? { media: { kind: media.kind, href: media.href, name: media.name } } : {}) };
     }
     // His choices on one of the bot's lists ([checklist]): tied to that list, which then
