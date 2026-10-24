@@ -59,6 +59,41 @@ export function processTable() {
 }
 
 /**
+ * Who started and who follows each terminal, from every bot's full helpers list (R-7214: a
+ * start record that scrolled out of the short list made a bot's terminal look like Noam's own).
+ * A follow counts only while it lasts: the newest follow entry for that terminal is not ended.
+ */
+export function helperRoles(bots) {
+  const starters = new Map(), latestFollow = new Map();
+  for (const b of bots) {
+    for (const h of b.helpers || []) {
+      if (!h?.paneId) continue;
+      if (!h.followed) { if (!starters.has(h.paneId)) starters.set(h.paneId, b); continue; }
+      const prev = latestFollow.get(h.paneId);
+      if (!prev || (Number(h.at) || 0) >= (Number(prev.h.at) || 0)) latestFollow.set(h.paneId, { b, h });
+    }
+  }
+  const followers = new Map();
+  for (const [id, { b, h }] of latestFollow) if (!h.ended) followers.set(id, b);
+  return { starters, followers };
+}
+
+/** Only the helper-terminal tool (termfleet-child) starts a terminal with a child-tasks file. */
+export function startedByCommand(command) {
+  return /terminal-workspace\/child-tasks\//.test(String(command || '')) ? 'an agent' : null;
+}
+
+/**
+ * When it was last used. A terminal an agent or bot started counts only real work
+ * (`lastWorkedAt`: its agent's record, its conversation, or output that kept moving), since an
+ * idle agent repaints its screen now and then (R-7214). Noam's own count any screen change.
+ */
+function lastUsedFor(pane, starter) {
+  if (starter && pane.lastWorkedAt != null) return Number(pane.lastWorkedAt) || 0;
+  return Number(pane.lastActiveAt) || 0;
+}
+
+/**
  * Why this terminal must stay open, or null when it is safe to close.
  * `processes(pane)` lists what runs under it; `unsaved(pane)` its own unsaved files;
  * `followedByBot(pane)` the name of a bot following it.
@@ -66,7 +101,7 @@ export function processTable() {
 function reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter }) {
   if (pane.turn === 'waiting' || pane.attention) return 'Waiting for you';
   if (pane.turn === 'working' || pane.producing || pane.live === 'producing') return 'Working right now';
-  const lastActive = Number(pane.lastActiveAt) || 0;
+  const lastActive = lastUsedFor(pane, starter);
   if (!lastActive && pane.cardless) return 'Cannot tell when it was last used';
   if (lastActive && now - lastActive < IDLE_MIN_MS) return 'Used in the last few minutes';
   if (!starter && lastActive && now - lastActive < OWN_IDLE_MIN_MS) return 'Yours, used in the last 2 hours';
@@ -96,7 +131,7 @@ export function cleanupPlan({ panes, now = Date.now(), unsaved = () => [], proce
     const base = { id: pane.id, name: terminalName(pane), folder: pane.cwd ? path.basename(pane.cwd) : clip(pane.project || ''), provider: pane.provider || 'shell', startedBy: starter };
     const reason = reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter });
     if (reason) { keep.push({ ...base, reason }); continue; }
-    const idleMs = Math.max(0, now - (Number(pane.lastActiveAt) || Number(pane.startedAt) || now));
+    const idleMs = Math.max(0, now - (lastUsedFor(pane, starter) || Number(pane.startedAt) || now));
     const warning = unsavedWarning(pane, unsaved);
     offer.push({ ...base, idleMs, idleText: idleText(idleMs), checked: !warning, ...(warning ? { warning } : {}) });
   }
@@ -160,8 +195,9 @@ export function cardlessSessions({ liveById, ownedIds, agents = new Map(), now =
     };
     pane.title = `Hidden terminal in ${pane.project} (no card on the map)`;
     pane.lastActiveAt = Math.max(Number(lastUsed(pane)) || 0, life.quietForMs != null ? now - life.quietForMs : 0);
+    pane.lastWorkedAt = Math.max(Number(lastUsed(pane)) || 0, life.busyQuietForMs != null ? now - life.busyQuietForMs : 0);
     // Started by an agent: termfleet-child gives every helper a task file to read.
-    if (/terminal-workspace\/child-tasks\//.test(commandOf(life.pid))) pane.startedBy = 'an agent';
+    if (startedByCommand(commandOf(life.pid))) pane.startedBy = 'an agent';
     out.push(pane);
   }
   return out;

@@ -141,3 +141,32 @@ test('a finished agent terminal with unsaved work of its own is never closed aut
   await autoCloseFinished({ plan: { offer: [{ id: 'terminal-dirty', name: 'D', startedBy: 'Quill', checked: false, warning: 'Unsaved work: a.js' }], keep: [] }, requestClose: async (id) => { closed.push(id); return { ok: true }; } });
   assert.deepEqual(closed, []);
 });
+
+// R-7214 (Noam 2026-10-24: 'הסוכנים באמת הורגים טרמינלים שסיימנו בביטחה ואמינות עכשיו?'). The map
+// had 20 finished 'politic-fighter · codex' terminals no one closed: their bot's start record had
+// scrolled out of its short helpers list, so they counted as Noam's own, and a bot's ended follow
+// still read as "following it".
+test('who started a terminal survives a long helpers list, and an ended follow no longer keeps it', async () => {
+  const { helperRoles } = await import('../bridge/idle-cleanup.mjs');
+  const old = { paneId: 'terminal-old', at: 1 };
+  const follows = Array.from({ length: 30 }, (_, i) => ({ paneId: 'terminal-old', followed: true, at: 2 + i, ended: 100 }));
+  const bots = [{ id: 'b1', name: 'politic-figther_dev', helpers: [old, ...follows, { paneId: 'terminal-watched', followed: true, at: 50 }, { paneId: 'terminal-noam', followed: true, at: 60, ended: 70 }] }];
+  const { starters, followers } = helperRoles(bots);
+  assert.deepEqual([...starters].map(([id, b]) => [id, b.name]), [['terminal-old', 'politic-figther_dev']]);
+  assert.deepEqual([...followers.keys()], ['terminal-watched'], 'a follow that ended is not a reason to keep it');
+});
+
+test('a terminal started through the helper-terminal tool counts as agent-started even with no bot record', async () => {
+  const { startedByCommand } = await import('../bridge/idle-cleanup.mjs');
+  assert.equal(startedByCommand("codex 'Goal: x\nFull instructions: Read /home/n/.local/share/terminal-workspace/child-tasks/9add.md and carry out'; exec bash -l"), 'an agent');
+  assert.equal(startedByCommand("codex 'The PC rebooted, read HANDOFF.md'"), null, 'a hand-typed start stays Noam\'s own');
+  assert.equal(startedByCommand(''), null);
+});
+
+test('a helper is judged by when it last really worked; Noam\'s own still count any screen change', () => {
+  const blip = { lastActiveAt: NOW - 60_000, lastWorkedAt: NOW - 5 * H };
+  const plan = cleanupPlan({ now: NOW, ...quiet, startedBy: (p) => (p.id === 'terminal-helper' ? 'politic-figther_dev' : null),
+    panes: [pane('terminal-helper', blip), pane('terminal-mine', blip)] });
+  assert.deepEqual(plan.offer.map((o) => [o.id, o.idleText]), [['terminal-helper', 'idle 5 hours']]);
+  assert.deepEqual(plan.keep.map((k) => [k.id, k.reason]), [['terminal-mine', 'Used in the last few minutes']]);
+});

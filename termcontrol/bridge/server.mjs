@@ -10,14 +10,14 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { canvasSidebarView, listPanes, reconcileLivePanes, readWorkspace, inventoryVersion } from './inventory.mjs';
-import { transcriptPath as codexTranscript } from './adapters/codex.mjs';
+import { transcriptPath as codexTranscript, rolloutForStart, promptToken } from './adapters/codex.mjs';
 import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } from './auth.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice, answerMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
-import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished } from './idle-cleanup.mjs';
+import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand } from './idle-cleanup.mjs';
 import { appendAction, paneLogFile } from './action-log.mjs';
 import { parentsByPane } from './orchestrate.mjs';
 import { agentsByPane } from './inventory.mjs';
@@ -179,10 +179,13 @@ async function currentPanes() {
       // Last time the terminal was used: the later of what its agent last
       // reported and the last time its own output grew. 0 when unknown.
       const lastActiveAt = Math.max(Number(p.updatedAt) || 0, conversationMtime(p), life.quietForMs != null ? Date.now() - life.quietForMs : 0) || startedAt(life.pid);
+      // The same, counting output only when it kept moving: an idle agent's lone repaint is not use (R-7214).
+      const lastWorkedAt = Math.max(Number(p.updatedAt) || 0, conversationMtime(p), life.busyQuietForMs != null ? Date.now() - life.busyQuietForMs : 0) || startedAt(life.pid);
       return {
         ...pane,
         alive: true,
         lastActiveAt,
+        lastWorkedAt,
         pid: life.pid ?? null,
         startedAt: startedAt(life.pid) || null,
         // "Working" with no output and no conversation change for a long time is
@@ -210,12 +213,34 @@ async function currentPanes() {
 const sleepingDir = path.join(os.homedir(), '.local', 'share', 'terminal-workspace', 'sleeping');
 const isSleeping = (id) => fs.existsSync(path.join(sleepingDir, `${String(id).replace(/[^A-Za-z0-9._-]/g, '_')}.json`));
 
+// A Codex terminal whose conversation id was never recorded is matched to its conversation
+// record by how it was started (R-7214), so the cleanup sees when it last really worked and
+// which files it changed. Found records are kept; a miss is retried after half an hour.
+const codexRecords = new Map();
+function withCodexRecord(p, table) {
+  if (p.provider !== 'codex' || p.sessionId || !p.pid || !p.cwd) return p;
+  let hit = codexRecords.get(p.id);
+  if (!hit || (!hit.found && Date.now() - hit.at > 30 * 60_000)) {
+    const found = rolloutForStart({ cwd: p.cwd, startedAt: Number(p.startedAt) || startedAt(p.pid), token: promptToken(table.find((x) => x.pid === p.pid)?.cmd) });
+    hit = { found, at: Date.now() };
+    codexRecords.set(p.id, hit);
+  }
+  if (!hit.found) return p;
+  let mtime = 0;
+  try { mtime = fs.statSync(hit.found.file).mtimeMs; } catch { return p; }
+  return { ...p, sessionId: hit.found.sessionId, lastActiveAt: Math.max(Number(p.lastActiveAt) || 0, mtime), lastWorkedAt: Math.max(Number(p.lastWorkedAt) || 0, mtime) };
+}
+
 /** What "Clean up idle terminals" offers, judged now; `starters` says who started each terminal. */
 async function idleCleanupPlan() {
   const { panes: onMap } = await currentPanes();
   const table = processTable();
-  const followers = new Map(), helperOf = new Map();
-  for (const b of bots.list()) for (const h of b.helpers || []) if (h?.paneId) (h.followed ? followers : helperOf).set(h.paneId, b);
+  // Every bot's full helpers list: the short one in its summary loses old start records (R-7214).
+  const { starters: helperOf, followers } = helperRoles(bots.list().map((b) => {
+    let helpers = b.helpers || [];
+    try { helpers = JSON.parse(fs.readFileSync(path.join(bots.folder(b.id), 'helpers.json'), 'utf8')); } catch { /* keep the summary's */ }
+    return { ...b, helpers };
+  }));
   const workspace = readWorkspace();
   const parents = parentsByPane(workspace);
   // Terminals still running with no card on the map: invisible to Noam, so listed too.
@@ -224,13 +249,14 @@ async function idleCleanupPlan() {
   const { byId } = await liveness();
   const cardless = owned.size ? cardlessSessions({ liveById: byId, ownedIds: owned, agents: agentsByPane(), isSleeping,
     lastUsed: (p) => conversationMtime(p), commandOf: (pid) => table.find((x) => x.pid === pid)?.cmd || '' }) : [];
-  const panes = [...onMap, ...cardless.map((p) => ({ ...p, startedAt: startedAt(p.pid) || null }))];
+  const panes = [...onMap, ...cardless.map((p) => ({ ...p, startedAt: startedAt(p.pid) || null }))].map((p) => withCodexRecord(p, table));
   const starters = new Map();
   for (const p of panes) {
     const bot = helperOf.get(p.id);
     if (bot) starters.set(p.id, { name: bot.name, botId: bot.id });
     else if (parents.get(p.id)) starters.set(p.id, { name: 'an agent', paneId: parents.get(p.id) });
     else if (p.startedBy) starters.set(p.id, { name: p.startedBy });
+    else if (startedByCommand(table.find((x) => x.pid === p.pid)?.cmd)) starters.set(p.id, { name: 'an agent' });
   }
   const plan = cleanupPlan({
     panes, isSleeping,

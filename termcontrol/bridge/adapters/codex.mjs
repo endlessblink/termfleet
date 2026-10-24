@@ -264,3 +264,56 @@ function firstLine(v) {
 }
 
 export const approval = { yes: 'y\r', yesAlways: 'p\r', no: 'n\r' };
+
+/**
+ * What a Codex terminal was started with, short enough to find in its conversation record:
+ * the child-task file it was told to read, else the start of its first request. null when it
+ * was started without a request (R-7214).
+ */
+export function promptToken(command) {
+  const m = String(command || '').match(/\bcodex\b[^']*'((?:[^']|'\\'')*)'/);
+  if (!m) return null;
+  const prompt = m[1].replace(/'\\''/g, "'");
+  const task = prompt.match(/child-tasks\/[A-Za-z0-9._-]+\.md/);
+  if (task) return task[0];
+  const first = prompt.split('\n')[0].trim().slice(0, 60);
+  return first.length >= 12 ? first : null;
+}
+
+const pad = (n) => String(n).padStart(2, '0');
+const dayFolder = (root, ms) => { const d = new Date(ms); return path.join(root, String(d.getFullYear()), pad(d.getMonth() + 1), pad(d.getDate())); };
+/** The file name's local time, e.g. rollout-2026-10-23T23-16-44-<id>.jsonl. */
+function fileTime(name) {
+  const m = name.match(/^rollout-(\d{4})-(\d\d)-(\d\d)T(\d\d)-(\d\d)-(\d\d)-([0-9a-f-]{36})\.jsonl$/i);
+  return m ? { at: new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime(), id: m[7] } : null;
+}
+
+/**
+ * The conversation record of a Codex terminal whose id was never recorded (R-7214): the main
+ * (not forked) conversation in the same folder, begun within minutes of the terminal, whose
+ * opening holds `token`. Returns { sessionId, file } or null.
+ */
+export function rolloutForStart({ cwd, startedAt, token, root = PATHS.codexSessions, readBytes = 4 * 1024 * 1024 }) {
+  if (!cwd || !token || !startedAt) return null;
+  const needle = JSON.stringify(token).slice(1, -1);
+  const folders = [...new Set([startedAt - 6 * 3600_000, startedAt, startedAt + 6 * 3600_000].map((t) => dayFolder(root, t)))];
+  for (const dir of folders) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      const t = fileTime(name);
+      if (!t || t.at < startedAt - 60_000 || t.at > startedAt + 5 * 60_000) continue;
+      const file = path.join(dir, name);
+      let head = '';
+      try {
+        const fd = fs.openSync(file, 'r');
+        try { const buf = Buffer.alloc(readBytes); head = buf.subarray(0, fs.readSync(fd, buf, 0, readBytes, 0)).toString('utf8'); } finally { fs.closeSync(fd); }
+      } catch { continue; }
+      let meta;
+      try { meta = JSON.parse(head.slice(0, head.indexOf('\n'))).payload || {}; } catch { continue; }
+      if (meta.cwd !== cwd || meta.forked_from_id) continue;
+      if (head.includes(needle)) return { sessionId: meta.id || t.id, file };
+    }
+  }
+  return null;
+}

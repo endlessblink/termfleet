@@ -15,6 +15,24 @@ const seen = new Map();      // id -> { bytes, at, lastGrewAt, pulse: number[] }
 const QUIET_AFTER_MS = 20_000;
 const PULSE_SAMPLES = 14;
 
+/**
+ * One look at a session's output size. `lastGrewAt` is the last look its output grew;
+ * `lastBusyAt` the last look it grew right after growing on the look before. An idle agent
+ * repaints a few bytes when its window is focused or resized (R-7214); real work keeps moving.
+ */
+export function observe(before, bytes, now) {
+  const grew = before ? bytes > before.bytes : false;
+  const delta = before ? Math.max(0, bytes - before.bytes) : 0;
+  return {
+    bytes, at: now, grew,
+    lastGrewAt: grew ? now : before?.lastGrewAt ?? null,
+    lastBusyAt: grew && before?.grew ? now : before?.lastBusyAt ?? null,
+    // A short history of how much output arrived between looks. It is what
+    // makes the indicator feel alive: a shape that moves, not a lamp.
+    pulse: [...(before?.pulse || []), delta].slice(-PULSE_SAMPLES),
+  };
+}
+
 export async function liveness() {
   let sessions = [];
   try {
@@ -31,15 +49,9 @@ export async function liveness() {
   for (const s of sessions) {
     const bytes = Number(s.scrollbackBytes || 0);
     const before = seen.get(s.id);
-    const grew = before ? bytes > before.bytes : false;
-    const lastGrewAt = grew ? now : before?.lastGrewAt ?? null;
-
-    // A short history of how much output arrived between looks. It is what
-    // makes the indicator feel alive: a shape that moves, not a lamp.
-    const delta = before ? Math.max(0, bytes - before.bytes) : 0;
-    const pulse = [...(before?.pulse || []), delta].slice(-PULSE_SAMPLES);
-
-    seen.set(s.id, { bytes, at: now, lastGrewAt, pulse });
+    const next = observe(before, bytes, now);
+    const { lastGrewAt, pulse } = next;
+    seen.set(s.id, next);
 
     byId.set(s.id, {
       alive: true,
@@ -51,6 +63,8 @@ export async function liveness() {
       // previous sample we say nothing rather than guess.
       producing: lastGrewAt != null && now - lastGrewAt < QUIET_AFTER_MS,
       quietForMs: lastGrewAt == null ? null : now - lastGrewAt,
+      // Quiet since output last moved on two looks in a row; a lone repaint does not count.
+      busyQuietForMs: next.lastBusyAt == null ? null : now - next.lastBusyAt,
       firstLook: !before,
       pulse,
     });
