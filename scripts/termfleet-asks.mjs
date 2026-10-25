@@ -28,7 +28,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   captureMessage, ownerTextOf, projectOf, stopProblem, escalate, briefedIds, briefItems, briefBlock, ledgerDir,
-  markItem, record, addTopic, setTopicVisual, normId, itemsView, itemsText, evidenceProblem, loadLedger, clip as clipItem,
+  markItem, record, addTopic, setTopicVisual, normId, itemsView, itemsText, evidenceProblem, answerProblem, loadLedger, clip as clipItem,
 } from '../termcontrol/bridge/requirements.mjs';
 import { findOwnerWords } from '../termcontrol/bridge/owner-words.mjs';
 

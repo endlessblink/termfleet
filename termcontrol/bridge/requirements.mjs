@@ -358,6 +358,14 @@ export function evidenceProblem(evidence) {
   return null;
 }
 
+/** An "answered" note that is hollow: claims an answer exists without giving one. */
+export function answerProblem(note) {
+  const n = String(note || '').trim();
+  if (n.length < 8) return 'the answer is too short: say what you actually answered';
+  if (/^(see (above|reply|my reply|the reply|earlier|before)|both answered|already answered|answered above|in my reply|covered above|discussed above|addressed|handled)\b[.!]?$/i.test(n)) return 'the answer only points elsewhere: write the actual answer here so Noam can see it without scrolling';
+  return null;
+}
+
 /** Locked items on the same topics (same project) not yet re-checked for this delivery. */
 export function lockedToReverify(item, items) {
   if (!item?.topics?.length) return [];
@@ -389,8 +397,12 @@ export function markItem({ status, id, note = '', evidence = '', open = [], by =
     if (!parts.length) return { error: `A partial ${id} must list exactly which parts are still open: --open "<part one>; <part two>"` };
     return { events: [{ e: 'status', id, status, note, open: parts, evidence: evidence || null, by }] };
   }
-  if (['answered', 'waiting', 'context', 'dropped'].includes(status) && clean(note).length < 4) {
-    const want = { answered: 'what you answered', waiting: 'what you are waiting for Noam to say', context: 'why it is background, not a request', dropped: 'why, and who decided' }[status];
+  if (status === 'answered') {
+    const problem = answerProblem(note);
+    if (problem) return { error: `${id} ${problem}.` };
+  }
+  if (['waiting', 'context', 'dropped'].includes(status) && clean(note).length < 4) {
+    const want = { waiting: 'what you are waiting for Noam to say', context: 'why it is background, not a request', dropped: 'why, and who decided' }[status];
     return { error: `Say ${want}.` };
   }
   return { events: [{ e: 'status', id, status, note, evidence: evidence || null, by }] };
