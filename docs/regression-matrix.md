@@ -482,7 +482,7 @@ Hook packaging/input follow-up: missing bundled transitive modules prevented cop
 These rows supersede earlier statements that the native producer is absent or the original shell map guard is a fixme. See `session-native-runtime-checkpoint.md` for exact limits; default authority is still off.
 
 
-Agent activity history (2026-10-25): SQLite persistence, seven-day retention, CHECK migration, token/activity separation, epoch timestamps, streamed IDs, sleeping close and authenticated HTTP statistics are guarded by `node --test termcontrol/test/events-db.test.mjs termcontrol/test/opencode-adapter.test.mjs` (11/11). Real source-service restart and database read-back are required for live completion; no desktop rendering changes.
+Agent activity history (2026-10-25): SQLite persistence, seven-day retention, CHECK migration, token/activity separation, epoch timestamps, streamed IDs, sleeping close and authenticated HTTP statistics are guarded by `node --test termcontrol/test/events-db.test.mjs termcontrol/test/opencode-adapter.test.mjs` (11/11). Live PASS: source-service PID303273, authenticated statistics HTTP200 (13 events/10 terminals), unauthenticated401; SQLite read-back 10 starts/7 messages/8 tools, zero expired rows, mode0600. Evidence `/tmp/tc-provider-live.log`, `/tmp/agent-events-live-proof.json`. No desktop rendering changes.
 
 
 ### Controlbot provider and working avatar (2026-10-25)
