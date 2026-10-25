@@ -69,6 +69,7 @@ import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest, askTitle, dismissAsk, itemsByAsk, statusFromItems } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 import { itemsView, replyDetails } from './requirements.mjs';
+import { getStats as agentEventStats, observeEvents } from './events-db.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
@@ -557,6 +558,8 @@ const handle = async (req, res) => {
     if (url.pathname.startsWith('/api/')) return json(res, 401, { error: 'unauthorised' });
     return requireAuth(res);
   }
+
+  if (req.method === 'GET' && url.pathname === '/api/events/stats') return json(res, 200, agentEventStats());
 
   if(req.method==='GET' && url.pathname==='/api/session-events') {
     res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});
@@ -1333,7 +1336,19 @@ setInterval(() => { liveness().catch(() => {}); }, 3000).unref?.();
 // Requests per terminal for the desktop app's side panel (see asks-sidecar.mjs).
 const writeAsksSidecars = createAsksSidecarWriter({ asksOf: (pane) => asksForTranscript(adapterFor(pane)?.transcriptPath(pane)) });
 setInterval(async () => {
-  try { writeAsksSidecars((await currentPanes()).panes); } catch (error) { console.error('[asks sidecar]', error.message); }
+  try {
+    const snapshot = await currentPanes();
+    writeAsksSidecars(snapshot.panes);
+    // An unreachable daemon is not evidence that every terminal closed.
+    if (snapshot.daemon) {
+      const { starters } = helperRoles(bots.list().map((bot) => {
+        let helpers = bot.helpers || [];
+        try { helpers = JSON.parse(fs.readFileSync(path.join(bots.folder(bot.id), 'helpers.json'), 'utf8')); } catch { /* use summary */ }
+        return { ...bot, helpers };
+      }));
+      observeEvents(snapshot.panes.map((pane) => ({ ...pane, bot_name: starters.get(pane.id)?.name || null })));
+    }
+  } catch (error) { console.error('[asks sidecar / agent events]', error.message); }
 }, 4000).unref?.();
 liveness().catch(() => {});
 

@@ -480,3 +480,6 @@ Hook packaging/input follow-up: missing bundled transitive modules prevented cop
 | Latest mobile choices | Current deployed multi-question choice/submit and stale-VT patch integrated; worker TF-078 states preserved. | Fresh32 focused and24 canonical pass; owner Claude/physical phone acceptance pending, custom text disabled. |
 
 These rows supersede earlier statements that the native producer is absent or the original shell map guard is a fixme. See `session-native-runtime-checkpoint.md` for exact limits; default authority is still off.
+
+
+Agent activity history (2026-10-25): SQLite persistence, seven-day retention, CHECK migration, token/activity separation, epoch timestamps, streamed IDs, sleeping close and authenticated HTTP statistics are guarded by `node --test termcontrol/test/events-db.test.mjs termcontrol/test/opencode-adapter.test.mjs` (11/11). Real source-service restart and database read-back are required for live completion; no desktop rendering changes.

@@ -145,14 +145,14 @@ function readFeedUncached(pane, { limit = 60 } = {}) {
   for (const ids of chunk([...meta.keys()], PART_CHUNK)) {
     const placeholders = ids.map(() => '?').join(',');
     const rows = query(
-      `SELECT message_id, data FROM part
+      `SELECT id, message_id, data FROM part
         WHERE message_id IN (${placeholders}) ORDER BY time_created ASC, id ASC`,
       ids,
     );
     if (!rows) return { events: [], pending: [] };
     for (const row of rows) {
       if (!parts.has(row.message_id)) parts.set(row.message_id, []);
-      parts.get(row.message_id).push(row.data);
+      parts.get(row.message_id).push(row);
     }
   }
 
@@ -160,17 +160,17 @@ function readFeedUncached(pane, { limit = 60 } = {}) {
   for (const [id, { role, at }] of meta) {
     const texts = [];
     const tools = [];
-    for (const raw of parts.get(id) || []) {
+    for (const row of parts.get(id) || []) {
       let part;
-      try { part = JSON.parse(raw); } catch { continue; }
+      try { part = JSON.parse(row.data); } catch { continue; }
       if (part?.type === 'text' && part.text) texts.push(String(part.text));
-      else if (part?.type === 'tool') tools.push(summariseTool(part.tool, part.state?.input));
+      else if (part?.type === 'tool') tools.push({ ...summariseTool(part.tool, part.state?.input), source_id: `part:${row.id}` });
     }
 
     const body = texts.join('\n').trim();
     const text = body ? clean(body) : '';
-    if (text && !isNoise(body)) events.push({ kind: role, at, text });
-    for (const tool of tools) events.push({ kind: 'tool', at, name: tool.name, summary: tool.summary });
+    if (text && !isNoise(body)) events.push({ kind: role, at, text, source_id: `message:${id}` });
+    for (const tool of tools) events.push({ kind: 'tool', at, name: tool.name, summary: tool.summary, source_id: tool.source_id });
   }
 
   return { events: events.reverse(), pending: [] };

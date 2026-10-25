@@ -33,3 +33,6 @@ agent-fleet.log
 
 # Local screenshots dropped at the repo root.
 /termfleet-critique-main.png
+
+# Local agent activity history (SQLite database and WAL files).
+/termcontrol/data/
