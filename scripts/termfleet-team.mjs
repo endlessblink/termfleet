@@ -179,6 +179,20 @@ async function main(argv) {
   const selfId = typeof flags.from === 'string' ? flags.from : caller.paneId || null;
   const json = flags.json === true;
 
+
+  if (command === 'context') {
+    const { fleetContextHealth } = await import('./lib/context-health.mjs');
+    const health = await fleetContextHealth();
+    if (!health.length) return out('No agent terminals with context data.');
+    if (json) return out(JSON.stringify(health, null, 2));
+    const lines = health.map(h => {
+      const bar = h.level === 'critical' ? '🔴' : h.level === 'elevated' ? '🟡' : '🟢';
+      const name = h.name || h.paneId.slice(-8);
+      const pct = `${Math.round(h.percent)}%`;
+      return `${bar} ${name} (${h.provider}) ${pct} context used`;
+    });
+    return out(lines.join('\n'));
+  }
   if (command === 'list') {
     const panes = (await fleetPanes()).filter((p) => flags.all === true || p.alive);
     if (json) return out(JSON.stringify(panes.map((p) => ({ id: p.id, name: p.profile?.name || null, job: p.profile?.job || null, project: p.project, provider: p.provider, state: stateOf(p), goal: p.goal, task: p.statedTask, parentPaneId: p.parentPaneId, self: p.id === selfId })), null, 2));
@@ -230,6 +244,9 @@ async function main(argv) {
       return out(framedMessage(text, sender, { ownerWords, requirements, delivery }));
     }
     const { pane, panes } = await target(who, selfId);
+    // A plain shell terminal has no agent to receive and queue a message; typing text into it
+    // as commands is a safety bug. Refuse the send entirely.
+    if (pane.provider === 'shell') fail(`Cannot send to ${pane.profile?.name || pane.project || pane.id} (${pane.id}): it is a plain shell with no agent. Text typed into it would run as commands. Hand it over first, or start an agent in it.`);
     // A bot runs outside the terminals; its messages say which bot sent them.
     const bot = process.env.TERMFLEET_BOT_NAME && !caller.paneId ? { id: `bot:${process.env.TERMFLEET_BOT_ID || ''}`, bot: process.env.TERMFLEET_BOT_NAME } : null;
     const from = bot || panes.find((p) => p.id === selfId) || (selfId ? { id: selfId } : null);
@@ -322,7 +339,7 @@ async function main(argv) {
       else taskText = `${taskText.trim()}\n\n[delivery ${delivery}]`;
     }
     const args = ['spawn'];
-    for (const key of ['provider', 'cwd', 'title', 'goal', 'near']) if (typeof flags[key] === 'string') args.push(`--${key}`, flags[key]);
+    for (const key of ['provider', 'model', 'cwd', 'title', 'goal', 'near']) if (typeof flags[key] === 'string') args.push(`--${key}`, flags[key]);
     if (taskText) {
       const dir = join(os.homedir(), '.cache', 'termfleet', 'tasks');
       mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -395,9 +412,13 @@ async function main(argv) {
       const me = caller.paneId ? (await fleetPanes()).find((p) => p.id === caller.paneId) : null;
       const r = await closeSelf({ pane: me, schedule: async (paneId) => {
         // A separate waiter, outside this terminal's process group, closes it once this reply is saved.
+        // Inside Codex's box that waiter dies with this command, so a note also lets Codex's Stop
+        // hook (outside the box) start it again (lib/self-close-handoff.mjs).
+        const { markSelfClose } = await import('./lib/self-close-handoff.mjs');
+        const noted = markSelfClose(paneId);
         const child = spawn(process.execPath, [join(here, 'termfleet-close-self.mjs'), paneId], { detached: true, stdio: 'ignore' });
         child.unref();
-        return { ok: Boolean(child.pid) };
+        return { ok: Boolean(child.pid) || noted };
       } });
       if (json) return out(JSON.stringify(r));
       return r.ok ? out(r.text) : fail(r.text, 2);

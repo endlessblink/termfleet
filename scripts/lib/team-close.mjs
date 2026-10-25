@@ -121,8 +121,12 @@ export async function closeOwnTerminal({ query, panes, owned, resolvePane, state
   if (state === 'closed') return { ok: false, text: `"${name}" is already closed.` };
   if (state === 'working') return { ok: false, text: `Not closed: "${name}" is still working. Wait for it to finish (termfleet-team wait ${pane.id}).` };
   if (state === 'waiting') return { ok: false, text: `Not closed: "${name}" is waiting on a prompt for Noam. He has to answer it first.` };
-  const files = unsaved(pane.cwd, Number(mine.at) || 0, undefined, changes(pane));
-  if (files.length) return { ok: false, text: `Not closed: "${name}" has unsaved work (${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}). Have it commit or hand it over first.` };
+  // A plain shell has no agent, so it has no "own work" — unsaved files in a shared folder
+  // belong to other sessions. Only check unsaved work for agent terminals.
+  if (pane.provider !== 'shell') {
+    const files = unsaved(pane.cwd, Number(mine.at) || 0, undefined, changes(pane));
+    if (files.length) return { ok: false, text: `Not closed: "${name}" has unsaved work (${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}). Have it commit or hand it over first.` };
+  }
   const result = await request(pane.id, { by });
   if (!result.ok) return { ok: false, text: `Not closed: ${result.error}` };
   record({ role: 'note', text: `Closed the "${name}" terminal; its work was finished.` });
