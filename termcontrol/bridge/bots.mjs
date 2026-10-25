@@ -18,6 +18,7 @@ import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements, messageProblem, structureProblem } from './requirements.mjs';
 import { sidePrompt, parseSide, withPassedOn, putSteer, takeSteer, nextTurnText, steerDir } from './side-reply.mjs';
+import { fnv, statusDir as agentStatusDir } from '../../scripts/lib/agent-status-paths.mjs';
 import { BotGroups } from './bot-groups.mjs';
 import { checkFolder } from './bot-folders.mjs';
 import { brainTokenUsage, traceTokenUsage } from './token-monitor.mjs';
@@ -718,6 +719,31 @@ export class Bots {
     try { return JSON.parse(fs.readFileSync(path.join(this.folder(id), 'helpers.json'), 'utf8')).slice(-20); } catch { return []; }
   }
 
+  terminalDigest(id) {
+    const helpers = this.helpers(id);
+    const active = helpers.filter((h) => !h.ended);
+    if (!active.length) return '';
+    const dir = agentStatusDir();
+    const now = this.now();
+    const seen = new Set();
+    const lines = [];
+    for (const h of active) {
+      if (seen.has(h.paneId)) continue;
+      seen.add(h.paneId);
+      let s = null;
+      try { s = JSON.parse(fs.readFileSync(path.join(dir, `pane-${fnv(h.paneId)}.json`), 'utf8')); } catch { /* no status file */ }
+      const fresh = s && typeof s.updatedAt === 'number' && now - s.updatedAt < 30 * 60_000;
+      const activity = fresh ? String(s.now || s.narration || '').replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+      const task = String(s?.mainTask || h.task || '').replace(/\s+/g, ' ').trim().slice(0, 150);
+      const turn = s?.turn || (fresh && s?.turnEventAt && now - s.turnEventAt < 5 * 60_000 ? 'working' : 'unknown');
+      const provider = h.provider || s?.provider || '';
+      const name = h.paneId.length > 30 ? h.paneId.slice(9, 21) : h.paneId;
+      lines.push(`- ${name} (${provider}, ${turn}${activity ? `, now: ${activity}` : ''}${task && task !== activity ? `, task: ${task.slice(0, 100)}` : ''})`);
+    }
+    if (!lines.length) return '';
+    return `[Your terminals right now — use this to answer status questions directly instead of calling termfleet-team list/read:\n${lines.join('\n')}]`;
+  }
+
   /** One tool call the bot's brain made, kept in its action log when it changes something. */
   recordAction(id, use) {
     const bot = this.read(id);
@@ -1223,7 +1249,8 @@ export class Bots {
         since = lastWaited >= 0 ? chat.slice(lastWaited + 1).filter((m) => m.role === 'bot' && !m.side && m.text).pop() || null : null;
       }
       // Messages that arrived while the bot was busy go in together, oldest first.
-      const text = this.withSideNotes(id, (since ? `${alreadyAnsweredNote(since.text)}\n\n` : '') + (texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n')));
+      const digest = this.terminalDigest(id);
+      const text = this.withSideNotes(id, (digest ? `${digest}\n\n` : '') + (since ? `${alreadyAnsweredNote(since.text)}\n\n` : '') + (texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n')));
       const echo = [...(this.echoes.get(id) || [])];
       this.echoes.delete(id);
       this.running.set(id, { activity: 'Thinking', startedAt: this.now(), echo, task: texts.join('\n\n'), steps: [], said: [] });
