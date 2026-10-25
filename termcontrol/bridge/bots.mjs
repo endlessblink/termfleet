@@ -804,6 +804,29 @@ export class Bots {
     return count;
   }
 
+  /** Explicit changes restart the brain without dropping queued work. */
+  changeProvider(id, provider) {
+    if (!PROVIDERS.includes(provider)) return { ok: false, error: 'Choose Claude or Codex.' };
+    const bot = this.read(id);
+    if (!bot) return { ok: false, error: 'Bot not found.' };
+    if (bot.provider === provider && (bot.active || bot.provider) === provider && !this.running.get(id)?.providerChange) return { ok: true, bot: this.summary(id) };
+    const current = this.running.get(id);
+    if (current) {
+      if (!current.stop) return { ok: false, error: 'The brain is starting. Please try again in a moment.' };
+      current.providerChange = provider;
+      current.stop();
+      return { ok: true, bot: this.summary(id), pending: true };
+    }
+    bot.provider = provider;
+    bot.model = null;
+    delete bot.retry;
+    delete bot.inflight;
+    if (bot.fallback === provider) bot.fallback = PROVIDERS.find(p => p !== provider);
+    this.write(bot);
+    this.switchTo(id, provider, `Switched to ${providerName(provider)} with a fresh brain conversation.`);
+    return { ok: true, bot: this.summary(id) };
+  }
+
   /** Moves a bot to another plan, starting a fresh brain conversation there with a handover. */
   switchTo(id, provider, line) {
     const bot = this.read(id);
@@ -1249,6 +1272,14 @@ export class Bots {
         fresh.retry = { text, at: Math.min(...[bot.provider, bot.fallback].filter(Boolean).map((p) => this.health()[p]?.limitedUntil || this.now())) };
         this.write(fresh);
         result = { error: `${providerName(from)} reached its limit (${until}) and no backup plan is free right now. ${bot.name} kept your message and will answer it by itself at ${clock(fresh.retry.at)}.` };
+      }
+      const requestedProvider = this.running.get(id)?.providerChange;
+      if (requestedProvider) {
+        this.queueLeftSteer(id);
+        this.running.delete(id);
+        this.changeProvider(id, requestedProvider);
+        this.queues.get(id).unshift(...texts);
+        continue;
       }
       let bot = this.read(id);
       if (!bot) { this.running.delete(id); return; }

@@ -957,6 +957,9 @@ body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:va
 .room-feed{display:flex;flex-direction:column}
 /* @-tags and bot groups (Noam 2026-10-21): a tagged bot's answer carries its own face and name. */
 .guest-from{display:flex;align-items:center;gap:6px;margin:8px 2px 2px;font-size:13px;color:var(--muted)}.guest-from bdi{color:var(--text);font-weight:500}.guest-from .bot-avatar,.guest-from .bot-avatar svg{width:24px;height:24px}
+.bot-avatar.head.working{border-radius:50%;animation:bot-working-pulse 1.8s ease-in-out infinite}
+@keyframes bot-working-pulse{0%,100%{box-shadow:0 0 0 0 transparent;opacity:1}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent);opacity:.72}}
+@media(prefers-reduced-motion:reduce){.bot-avatar.head.working{animation:none}}
 .tagged-from{font-size:12.5px;color:var(--muted);text-align:right;margin:8px 2px 2px}.tagged-from a{color:inherit}
 .untagged-note{font-size:12.5px;color:var(--dim,var(--muted));text-align:right;margin:2px 4px 6px}
 .bubble bdi.mention{color:var(--accent);font-weight:500;unicode-bidi:isolate}
@@ -3647,17 +3650,36 @@ async function openBot(id,{motion=null}={}){
   const field=bar.querySelector('textarea'),send=bar.querySelector('.send'),draftKey='tc-bot-draft:'+id;
   try{field.value=sessionStorage.getItem(draftKey) || '';}catch{}
   const grow=()=>{field.style.height='auto';field.style.height=Math.min(field.scrollHeight,160)+'px';send.disabled=(!field.value.trim() && !(bar.querySelector('.bot-pics .bot-pic'))) || bar.dataset.sending==='true';try{sessionStorage.setItem(draftKey,field.value);}catch{}};
-  // Typing "/" at the start lists the approved skills; picking one writes
+   // Typing "/" at the start lists the approved skills; picking one writes
   // "Use the <name> skill: " so the bot follows it.
-  const picker=bar.querySelector('.skill-picker');let skillList=null;
+  const picker=bar.querySelector('.skill-picker');let skillList=null,providerPicking=false;
+  const showProviders=(error='')=>{
+    providerPicking=true;picker.hidden=false;
+    picker.innerHTML=`<p class="rooms-empty" role="status">${esc(error || ui('Choose the bot’s provider','בחירת ספק לבוט'))}</p>`+['claude','codex'].map(p=>`<button type="button" role="option" data-provider="${p}"><b dir="ltr">${p==='codex'?'Codex':'Claude'}</b><span>${ui('Start a fresh brain with the conversation handover','התחלת שיחה חדשה עם סיכום השיחה הקודמת')}</span></button>`).join('');
+    picker.querySelectorAll('[data-provider]').forEach(button=>{button.onclick=async()=>{
+      picker.querySelectorAll('button').forEach(b=>b.disabled=true);
+      try{
+        const response=await fetch('/api/provider',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({botId:id,provider:button.dataset.provider}),signal:AbortSignal.timeout(10000)});
+        const result=await response.json();if(!response.ok || !result.ok)throw new Error(result.error || ui('Could not change provider.','לא ניתן לשנות ספק.'));
+        providerPicking=false;picker.hidden=true;field.value='';grow();signature='';await render();field.focus();
+      }catch(error){showProviders(error.message);}
+    };});
+  };
   const showPicker=async()=>{
+    providerPicking=false;
     const m=/^\/(\S*)$/.exec(field.value);if(!m){picker.hidden=true;return;}
+    const draw=()=>{
+      const q=m[1].toLowerCase(),builtin='provider'.includes(q),hits=(skillList || []).filter(k=>k.name!=='provider' && (k.name.includes(q) || k.description.toLowerCase().includes(q))).slice(0,30);
+      picker.innerHTML=(builtin?`<button type="button" role="option" data-provider-command><b dir="ltr">/provider</b><span>${ui('Switch between Claude and Codex','החלפה בין Claude ל-Codex')}</span></button>`:'')+hits.map(k=>`<button type="button" role="option" data-name="${esc(k.name)}"><b>${esc(k.name)}</b><span>${esc(k.description)}</span></button>`).join('') || `<p class="rooms-empty">${ui('No command or skill matches.','אין פקודה או סקיל מתאימים.')}</p>`;
+      picker.hidden=false;
+      const command=picker.querySelector('[data-provider-command]');if(command)command.onclick=()=>{field.value='/provider';grow();showProviders();};
+      picker.querySelectorAll('[data-name]').forEach(b=>{b.onclick=()=>{field.value=`Use the ${b.dataset.name} skill: `;picker.hidden=true;grow();field.focus();};});
+    };
+    draw();
     if(!skillList){try{const r=await fetch('/api/skills',{signal:AbortSignal.timeout(8000)});skillList=(await r.json()).skills.filter(k=>k.status==='approved');}catch{skillList=[];}}
-    if(field.value!==m[0]){picker.hidden=!/^\/(\S*)$/.test(field.value);if(picker.hidden)return;return showPicker();}   // typed on (or sent) while the list loaded
-    const q=m[1].toLowerCase(),hits=skillList.filter(k=>k.name.includes(q) || k.description.toLowerCase().includes(q)).slice(0,30);
-    picker.innerHTML=hits.length?hits.map(k=>`<button type="button" role="option" data-name="${esc(k.name)}"><b>${esc(k.name)}</b><span>${esc(k.description)}</span></button>`).join(''):`<p class="rooms-empty">${ui('No skill matches.','אין סקיל מתאים.')}</p>`;
-    picker.hidden=false;
-    picker.querySelectorAll('[data-name]').forEach(b=>{b.onclick=()=>{field.value=`Use the ${b.dataset.name} skill: `;picker.hidden=true;grow();field.focus();};});
+    if(providerPicking)return;
+    if(field.value!==m[0]){picker.hidden=!/^\/(\S*)$/.test(field.value);return;}
+    draw();
   };
   const tags=mentionPicker(field,bar.querySelector('.mention-picker'),{bots:async()=>(await tagBots()).filter(b=>b.id!==id),after:grow});tagBots().then(()=>{signature='';render?.();});
   field.oninput=()=>{grow();showPicker();tags.update();};grow();
@@ -3739,6 +3761,7 @@ async function openBot(id,{motion=null}={}){
   };
   const post=async()=>{
     const text=field.value.trim();if(!text && !pics.length)return;
+    if(text==='/provider'){showProviders();return;}
     let images=[],files=[];
     if(pics.length){
       send.disabled=true;
@@ -3753,7 +3776,7 @@ async function openBot(id,{motion=null}={}){
     await deliver(entry);
   };
   send.onclick=post;
-  field.onkeydown=event=>{if(tags.key(event))return;if(event.key==='Escape' && !picker.hidden){event.preventDefault();picker.hidden=true;return;}if(event.key==='Enter' && !picker.hidden){const first=picker.querySelector('[data-name]');if(first){event.preventDefault();first.click();return;}}if(event.key==='Enter' && !event.shiftKey && !event.isComposing && !matchMedia('(pointer:coarse)').matches){event.preventDefault();post();}};
+  field.onkeydown=event=>{if(tags.key(event))return;if(event.key==='Escape' && !picker.hidden){event.preventDefault();picker.hidden=true;return;}if(event.key==='Enter' && !picker.hidden){const first=picker.querySelector('button:not(:disabled)');if(first){event.preventDefault();first.click();return;}}if(event.key==='Enter' && !event.shiftKey && !event.isComposing && !matchMedia('(pointer:coarse)').matches){event.preventDefault();post();}};
   const render=async()=>{
     let data;
     try{const response=await fetch(`/api/bot?id=${encodeURIComponent(id)}${document.visibilityState==='visible'?'&read=1':''}`,{signal:AbortSignal.timeout(10000)});data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error),{gone:response.status===404});}
@@ -3761,7 +3784,9 @@ async function openBot(id,{motion=null}={}){
     if(mine!==view)return;
     for(const e of pendingSends.slice())if(e.sendId && !e.delivering && data.messages.some(m=>m.sendId===e.sendId)){pendingSends.splice(pendingSends.indexOf(e),1);if(e.listTo)forgetBotListDraft(e.listTo);}
     const bot=data.bot;current=bot;
-    title.innerHTML=`${botAvatar(bot,30,true)}<span class="bot-names"><bdi dir="auto">${esc(bot.name)}</bdi><small class="bot-brain" dir="auto"></small></span>`;
+    if(!title.querySelector('.bot-avatar.head'))title.innerHTML=`${botAvatar(bot,30,true)}<span class="bot-names"><bdi dir="auto"></bdi><small class="bot-brain" dir="auto"></small></span>`;
+    title.querySelector('.bot-names bdi').textContent=bot.name;
+    title.querySelector('.bot-avatar.head').classList.toggle('working',bot.state==='working');
     const brainName=p=>p==='codex'?'Codex':'Claude';
     const plan=bot.active && bot.active!==bot.provider
       ?ui(`on ${brainName(bot.active)} (backup)${bot.mainResetsAt?` until ${brainName(bot.provider)} resets ${new Date(bot.mainResetsAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:''}`,`על ${brainName(bot.active)} (גיבוי)${bot.mainResetsAt?` עד ש-${brainName(bot.provider)} מתאפס ב-${new Date(bot.mainResetsAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:''}`)

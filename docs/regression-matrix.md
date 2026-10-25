@@ -483,3 +483,10 @@ These rows supersede earlier statements that the native producer is absent or th
 
 
 Agent activity history (2026-10-25): SQLite persistence, seven-day retention, CHECK migration, token/activity separation, epoch timestamps, streamed IDs, sleeping close and authenticated HTTP statistics are guarded by `node --test termcontrol/test/events-db.test.mjs termcontrol/test/opencode-adapter.test.mjs` (11/11). Real source-service restart and database read-back are required for live completion; no desktop rendering changes.
+
+
+### Controlbot provider and working avatar (2026-10-25)
+
+TF-108: built-in `/provider` survives catalog failure, persists Claude/Codex choice, resets the brain with handover and preserves active, queued and steering messages. TF-109: stable header avatar pulses only while working; idle/waiting and reduced motion remain still. Guard: `node --test termcontrol/test/bot-provider.test.mjs` (6/6); browser fixture checks Hebrew phone layout, retry, reload, computed animation and stable avatar identity. Visual artifacts: `/tmp/termfleet-bot-provider-picker.png`, `/tmp/termfleet-bot-provider-working.png`, `/tmp/termfleet-bot-provider-idle.png`. Live service read-back is recorded below when available.
+
+Live read-back after the single coordinated termcontrol-only restart (PID 303273): authenticated Claude-to-Codex change persisted through reload; idle animation was none; temporary verification bot removed. `/tmp/tc-provider-live.log`, `/tmp/termfleet-provider-live-picker.png`, `/tmp/termfleet-provider-live-codex.png`. Disposable visual review found readable RTL layout without clipping. Final focused run: 6/6 (`/tmp/tc-provider-focused-final.log`); final `npm run build` passes (`/tmp/tc-provider-build-final.log`). Physical phone trial and the wider suite failures remain open; issues stay verifying.
