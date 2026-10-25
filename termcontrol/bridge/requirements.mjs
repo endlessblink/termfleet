@@ -2,8 +2,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
-import http from 'node:http';
-import https from 'node:https';
 import { findOwnerWords } from './owner-words.mjs';
 
 /**
@@ -368,6 +366,70 @@ export function answerProblem(note) {
   return null;
 }
 
+/** Extract URLs and file paths from text. */
+function extractLinks(text) {
+  const links = [];
+  const s = String(text || '').trim();
+
+  // Match URLs: http://, https://, file paths (/, ~/, ./)
+  const urlPattern = /https?:\/\/[^\s)]+/g;
+  const filePathPattern = /(?:^|\s)((?:~|\.{0,2})?\/\S+)(?:\s|$|[),.!])/g;
+
+  for (const m of s.matchAll(urlPattern)) links.push({ url: m[0], type: 'url' });
+  for (const m of s.matchAll(filePathPattern)) links.push({ path: m[1].trim(), type: 'file' });
+
+  return links;
+}
+
+/** Validate that all links in evidence work: file exists for paths, format correct for URLs. */
+export function linkProblem(evidence) {
+  const e = String(evidence || '').trim();
+  if (!e) return 'needs evidence with at least one link: a file path (/path/screenshot.png) or a URL (http://localhost:PORT or https://domain)';
+
+  const links = extractLinks(e);
+  if (!links.length) return 'needs at least one link in the evidence: a file path like /home/user/screenshot.png or http://localhost:PORT/path';
+
+  const problems = [];
+  let hasWorkingLink = false;
+
+  for (const link of links) {
+    if (link.type === 'file') {
+      const p = link.path.replace(/^~(?=\/)/, os.homedir());
+      if (fs.existsSync(p)) {
+        hasWorkingLink = true;
+      } else {
+        problems.push(`file ${link.path} does not exist`);
+      }
+    } else if (link.type === 'url') {
+      // For URLs, validate format and check tailnet links have localhost variants
+      const isLocalhost = link.url.includes('localhost');
+      const isTailnet = link.url.includes('.ts.net');
+
+      if (isTailnet && !isLocalhost) {
+        // Tailnet URL should also suggest localhost variant for this PC
+        const tailnetMatch = /https?:\/\/[^:]+:(\d+)(\/.*)?$/.exec(link.url);
+        if (tailnetMatch) {
+          const port = tailnetMatch[1];
+          const urlPath = tailnetMatch[2] || '';
+          problems.push(`tailnet link needs localhost variant too: http://localhost:${port}${urlPath}`);
+        }
+      } else if (isLocalhost || isTailnet) {
+        hasWorkingLink = true;
+      }
+    }
+  }
+
+  if (!hasWorkingLink && links.length > 0) {
+    return `the evidence has broken links: ${problems.join('; ')}`;
+  }
+
+  if (problems.length > 0) {
+    return problems.join('; ');
+  }
+
+  return null;
+}
+
 /** Detects bot replies that claim completion without substance. Returns null if OK, or a string describing the problem. */
 export function messageProblem(text) {
   const msg = String(text || '').trim();
@@ -447,6 +509,8 @@ export function markItem({ status, id, note = '', evidence = '', open = [], by =
   if (status === 'done' || status === 'ready') {
     const problem = evidenceProblem(evidence);
     if (problem) return { error: `${id} ${problem}.` };
+    const linkErr = linkProblem(evidence);
+    if (linkErr) return { error: `${id} ${linkErr}.` };
     const stale = lockedToReverify(it, items);
     if (stale.length) return { error: `${id} touches ${it.topics.join(', ')}, where Noam already approved ${stale.map((s) => s.id).join(', ')}. Re-check each one on the live result first: ${stale.map((s) => `termfleet-asks reverify ${s.id} --for ${id} --evidence "<screenshot or test output>" (${s.id}: "${clip(s.words, 70)}")`).join('; ')}` };
   }

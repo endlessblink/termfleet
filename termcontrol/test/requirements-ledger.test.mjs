@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const REPO = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
 import {
   splitMessage, captureMessage, loadLedger, markItem, record, addTopic, briefItems, briefBlock, briefedIds,
-  stopProblem, ownerTextOf, itemsView, evidenceProblem, BRIEF_HEADER, replyDetails,
+  stopProblem, ownerTextOf, itemsView, evidenceProblem, linkProblem, BRIEF_HEADER, replyDetails,
 } from '../bridge/requirements.mjs';
 import { confirmReceipt, confirmStarted, codexTrustPrompt, trustDecision, pendingCodexHooks, freshRecordsHave, claudeFolderTrustPrompt, trustedFolderRoots } from '../bridge/delivery.mjs';
 import { framedMessage } from '../bridge/orchestrate.mjs';
@@ -394,4 +394,63 @@ test('splitting rules: bullets, Hebrew numbering, lines and sentences, picture n
   const withNote = splitMessage("Look at this\n[Noam attached 1 picture]\n[Noam's note on picture 1: the arrow points at the empty strip]");
   assert.deepEqual(withNote.map((p) => [p.words, p.kind]), [['Look at this', 'sentence'], ['the arrow points at the empty strip', 'picture-note']]);
   assert.ok(BRIEF_HEADER.startsWith("[Noam's requirements"));
+});
+
+test('link validation: ready/done must include a working link', () => {
+  const dir = tmp();
+  const [item] = captureMessage({ text: 'Fix the button', project: 'test', source: 'conv-x' }, { dir });
+
+  // No evidence is caught by evidenceProblem first
+  assert.match(markItem({ status: 'ready', id: item.id, evidence: '' }, { dir }).error, /needs evidence/);
+
+  // Evidence with no links is rejected by linkProblem
+  assert.match(markItem({ status: 'ready', id: item.id, evidence: 'button works now' }, { dir }).error, /needs at least one link/);
+
+  // Non-existent file path is rejected
+  assert.match(markItem({ status: 'ready', id: item.id, evidence: '/nonexistent/screenshot.png' }, { dir }).error, /does not exist/);
+
+  // Tailnet link without localhost variant is rejected
+  assert.match(markItem({ status: 'ready', id: item.id, evidence: 'verified at https://endlessblink.tail07658e.ts.net:8445/page' }, { dir }).error, /localhost variant/);
+
+  // Localhost link passes
+  const r = markItem({ status: 'ready', id: item.id, evidence: 'http://localhost:5185/page works' }, { dir });
+  assert.equal(r.error, undefined, 'localhost link should pass');
+
+  // Create a temporary file and use it
+  const tmpFile = path.join(dir, 'screenshot.png');
+  fs.writeFileSync(tmpFile, 'fake image');
+  const r2 = markItem({ status: 'ready', id: item.id, evidence: tmpFile }, { dir });
+  assert.equal(r2.error, undefined, 'existing file should pass');
+
+  // Both link types together
+  const r3 = markItem({ status: 'ready', id: item.id, evidence: `screenshot: ${tmpFile} and live at http://localhost:9999` }, { dir });
+  assert.equal(r3.error, undefined, 'multiple working links should pass');
+});
+
+test('link problem function validates URLs and files', () => {
+  const tmpFile = path.join(os.tmpdir(), 'exists.txt');
+  fs.writeFileSync(tmpFile, 'test');
+
+  // No evidence means link problem message
+  assert.match(linkProblem(''), /needs evidence with at least one link/);
+
+  // Evidence with no links
+  assert.match(linkProblem('this is just text'), /needs at least one link/);
+
+  // Missing file
+  assert.match(linkProblem('/missing/file.png'), /does not exist/);
+
+  // Existing file passes
+  assert.equal(linkProblem(tmpFile), null);
+
+  // Localhost URL passes
+  assert.equal(linkProblem('See http://localhost:5000/test'), null);
+
+  // Tailnet URL without localhost fails
+  assert.match(linkProblem('https://example.ts.net:8443/page'), /localhost variant/);
+
+  // Mixed content works
+  assert.equal(linkProblem(`File: ${tmpFile} and http://localhost:3000`), null);
+
+  fs.unlinkSync(tmpFile);
 });
