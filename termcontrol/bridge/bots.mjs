@@ -1015,6 +1015,7 @@ export class Bots {
     forBrain = this.withTags(id, bot, msg, body, forBrain, { owner, pictures });
     this.handed.set(msg.id, { bot: id, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
     if (this.handed.size > 300) this.handed.delete(this.handed.keys().next().value);
+    if (owner) this.append(id, { role: 'activity', text: 'קיבלתי, עובד על זה...' });
     if (owner && this.side && this.running.has(id)) {
       this.sideAnswer(id, { at: msg.at, msgId: msg.id, text: said0, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
       return { ok: true, message: msg, queued: true, side: true };
