@@ -58,9 +58,6 @@ export function checkStalls({ bots, panes, items = null, now = Date.now(), flagg
     flagged.set(key, finding.episode);
     findings.push(finding);
     log(`[watchdog] ${finding.text}`);
-    for (const b of chats) {
-      try { bots.append(b.id, { role: 'stuck', pane: finding.pane, ...(finding.item ? { item: finding.item } : {}), text: finding.text }); } catch (error) { log(`[watchdog] could not write to ${b.name}: ${error.message}`); }
-    }
   };
 
   for (const pane of panes) {
