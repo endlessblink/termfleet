@@ -28,9 +28,10 @@ test('a waiting terminal card stays in view at the bottom of a busy bot chat, ph
       const t = Date.now() - 60 * 60_000;
       const card = { id: 'pin1', role: 'terminal-ask', pane: 'terminal-x', label: 'termfleet', askId: 'claude:s:vendor:1::permission:Allow Edit?', kind: 'permission', text: 'Allow Edit?', detail: 'termcontrol/bridge/requirements.mjs', options: [{ key: 'yes', label: 'Yes, proceed' }, { key: 'no', label: 'No, tell the agent what to do differently' }], at: t };
       const ended = { ...card, id: 'old1', askId: 'old', text: 'An older prompt', settled: true, at: t - 1000 };
+      const closed = Array.from({length: 12}, (_, i) => ({ ...card, id: `closed${i}`, kind: i % 2 ? 'question' : 'permission', settled: true, terminalClosed: true }));
       const busy = Array.from({ length: 80 }, (_, i) => (i % 3 ? { id: `a${i}`, role: 'activity', text: 'Checking something', at: t + i * 1000 } : { id: `b${i}`, role: 'bot', text: `Status line ${i}: still working on the release.`, at: t + i * 1000 }));
       const reminder = { id: 'r1', role: 'reminder', pane: 'terminal-x', card: 'pin1', text: 'Still waiting for your answer after 5 minutes: terminal "termfleet" asks "Allow Edit?". The buttons are at the bottom of this chat.', at: t + 300_000 };
-      await p.route('**/api/bot?*', async (route) => { const r = await route.fetch(); const j = await r.json(); j.messages = [...j.messages, ended, card, ...busy, reminder]; await route.fulfill({ response: r, json: j }); });
+      await p.route('**/api/bot?*', async (route) => { const r = await route.fetch(); const j = await r.json(); j.messages = [...j.messages, ended, ...closed, card, ...busy, reminder]; await route.fulfill({ response: r, json: j }); });
       const sent = [];
       await p.route('**/api/send', async (route) => { sent.push(JSON.parse(route.request().postData())); await route.fulfill({ json: { ok: true, sentAt: Date.now() } }); });
       await p.goto(base + '/#bot:' + id);
@@ -44,6 +45,14 @@ test('a waiting terminal card stays in view at the bottom of a busy bot chat, ph
         return { inView: r.top >= 0 && r.bottom <= innerHeight && (!composer || r.bottom <= composer.top + 1), onTop: box.contains(hit), live: box.querySelectorAll('[data-term-choice]:not([disabled])').length, copies: document.querySelectorAll('[data-term-ask="pin1"]').length, endedShown: Boolean(document.querySelector('[data-term-ask="old1"].ended')), reminder: Boolean(document.querySelector('.bot-reminder')) };
       });
       const atBottom = await look();
+      assert.equal(await p.locator('[data-term-ask^="closed"] button').count(), 0);
+      assert.equal(await p.locator('.term-ask-pinned [data-term-ask^="closed"]').count(), 0);
+      assert.ok(await p.locator('[data-term-ask="closed0"]').evaluate(el => el.getBoundingClientRect().height < 50));
+      const before = await p.locator('main').evaluate(el => el.scrollTop);
+      await p.locator('main').hover({position:{x:30,y:100}});
+      await p.mouse.wheel(0, -600);
+      await wait(300);
+      assert.ok(await p.locator('main').evaluate(el => el.scrollTop) < before, 'wheel scroll reaches earlier messages');
       await p.evaluate(() => { const main = document.querySelector('.bot-term-ask').closest('main') || document.scrollingElement; main.scrollTop = 0; });
       await wait(400);
       const scrolledUp = await look();

@@ -80,7 +80,7 @@ test('a terminal card the terminal moved on from never looks answerable', { time
     const old = await p.evaluate(() => { const b = document.querySelector('[data-term-ask="old"]'); return { ended: b.classList.contains('ended'), live: b.querySelectorAll('[data-term-choice]:not([disabled])').length, text: b.innerText }; });
     assert.equal(old.ended, true);
     assert.equal(old.live, 0, 'an ended card has no live buttons');
-    assert.match(old.text, /Push the steps update/);
+    assert.doesNotMatch(old.text, /Push the steps update/, 'ended prompts collapse to a short status line');
     assert.match(old.text, /No longer open in the terminal/);
     // Out of date, but the terminal asks the same again: the card follows it, and the next tap goes through.
     await p.locator('[data-term-ask="new"] [data-term-choice="yes"]').click();

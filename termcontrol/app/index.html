@@ -930,7 +930,7 @@ body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:va
 .act-row.unapproved{border-color:#e5484d;background:rgba(229,72,77,.10)}.act-row.unapproved .act-what::before{background:#e5484d}.act-row.unapproved .act-approval{color:#ff8a8d;font-weight:500}
 .mem-list{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px}.mem-row{display:grid;gap:6px;padding:10px;border:1px solid var(--line);border-radius:12px;font-size:14px;line-height:1.45}.mem-row .ask-status{justify-self:start;font-size:11.5px;border-radius:8px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
 .bot-health{flex:none;width:9px;height:9px;border-radius:50%;background:var(--idle);align-self:center}.bot-health-ok{background:var(--working)}.bot-health-busy{background:var(--working);animation:busy-fade 1.6s infinite}.bot-health-warn{background:var(--waiting)}.bot-health-bad{background:var(--accent)}.bot-needs{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:10px}.bot-needs p{margin:0;line-height:1.5}
-.term-ask-pinned{position:sticky;bottom:0;z-index:3;background:var(--bg);padding:4px 0 2px;box-shadow:0 -6px 12px -8px rgba(0,0,0,.35)}.term-ask-pinned .bot-term-ask{background:var(--bg)}
+.term-ask-pinned{position:sticky;bottom:0;z-index:3;max-height:35vh;overflow-y:auto;flex-shrink:0;background:var(--bg);padding:4px 0 2px;box-shadow:0 -6px 12px -8px rgba(0,0,0,.35)}.term-ask-pinned .bot-term-ask{background:var(--bg)}
 .bot-term-ask{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:8px;max-width:100%;box-sizing:border-box}
 .bot-term-ask p{margin:0;line-height:1.5;overflow-wrap:anywhere}
 .bot-term-ask .term-ask-from{font-size:12px;color:var(--muted)}
@@ -5032,13 +5032,14 @@ function qLinksHtml(ask){
 // A terminal's prompt still waiting for Noam stays pinned at the bottom of the chat until he answers
 // (Noam 2026-10-25: "שהכפתור תמיד יופיע כאן", after an "Allow Edit?" card scrolled away under a busy chat
 // and sat for an hour). Its place in the timeline is left empty so it never shows twice.
-const liveTermAsk=m=>m.role==='terminal-ask' && !m.settled && !m.repeated && !termAskDone[m.id];
+const liveTermAsk=m=>m.role==='terminal-ask' && !m.settled && !m.terminalClosed && !m.repeated && !termAskDone[m.id];
 function pinnedTermAsks(messages){
   const live=messages.filter(liveTermAsk);
   return live.length?`<div class="term-ask-pinned" role="region" aria-label="${esc(ui('Waiting for your answer','ממתין לתשובה שלך'))}">${live.map(termAskHtml).join('')}</div>`:'';
 }
 function termAskHtml(m){
   const done=termAskDone[m.id],options=m.options || [];termAskCards[m.id]=m;
+  if(m.terminalClosed || m.settled)return `<div class="bot-note ended" data-term-ask="${esc(m.id)}" dir="auto">${esc(m.terminalClosed?ui('That terminal has been closed.','המסוף הזה נסגר.'):ui('No longer open in the terminal.','כבר לא פתוח במסוף.'))}</div>`;
   if(m.kind==='question' && options.length)return `<div class="bot-term-ask" data-term-ask="${esc(m.id)}" data-pane="${esc(m.pane)}" data-ask="${esc(m.askId)}" role="group" aria-label="${esc(ui('A terminal is waiting for you','מסוף ממתין לך'))}"><p class="term-ask-from" dir="auto">${esc(ui(`Terminal "${m.label || 'agent'}" is asking you`,`המסוף "${m.label || 'סוכן'}" שואל אותך`))}</p><p class="q-title" dir="auto"><b>${inlineRich(m.text)}</b></p>${m.detail?`<p dir="auto">${inlineRich(m.detail)}</p>`:''}${qFormHtml(askFromTermCard(m),{key:'card:'+m.id})}</div>`;
   // A card the terminal has moved on from never looks answerable (Noam 2026-10-24: dead buttons on an empty card).
   const ended=!done && m.settled,off=done || ended;
