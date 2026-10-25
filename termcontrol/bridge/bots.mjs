@@ -20,6 +20,7 @@ import { captureMessage as captureRequirements, loadLedger as loadRequirements, 
 import { sidePrompt, parseSide, withPassedOn, putSteer, takeSteer, nextTurnText, steerDir } from './side-reply.mjs';
 import { BotGroups } from './bot-groups.mjs';
 import { checkFolder } from './bot-folders.mjs';
+import { brainTokenUsage, traceTokenUsage } from './token-monitor.mjs';
 import { classifyTool, appendAction, readActions, paneLogFile, botApproval, paneApproval, foldFiles, approvalText } from './action-log.mjs';
 
 /**
@@ -379,7 +380,7 @@ export function brainEnv(bot, env = process.env) {
 }
 
 /** Runs one brain turn as a child process and reports events as they come. */
-export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = process.env, timeoutMs = 30 * 60 * 1000, idleMs = 10 * 60 * 1000, logPath = null } = {}) {
+export function runBrain(bot, text, { onEvent, onStart, onUsage = traceTokenUsage, bins, extras, env = process.env, timeoutMs = 30 * 60 * 1000, idleMs = 10 * 60 * 1000, logPath = null } = {}) {
   const command = brainCommand(bot, text, { bins, extras });
   // Brains (and every test suite they run) yield CPU and disk to Noam's own apps: their own
   // gentle scope beside the bridge, idle disk class (Agent-Manager 2026-10-22, PC unusable).
@@ -397,6 +398,16 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
     let buffer = '', stderr = '', finalText = '', error = null, lastText = '', limit = null, completed = false, stopped = false, ownKill = false;
     const spoken = [];
     const calls = new Map();   // tool calls waiting for their result (action log)
+    let usageModel = bot.model || 'unknown';
+    const recordUsage = (line) => {
+      try {
+        const event = JSON.parse(line);
+        if (event.type === 'system' && event.subtype === 'init' && event.model) usageModel = event.model;
+        for (const u of brainTokenUsage(bot.provider, event, usageModel)) {
+          onUsage(bot.name, bot.provider, u.model, u.inputTokens, u.outputTokens, u.cost);
+        }
+      } catch { /* missing usage or monitoring failure must not interrupt the reply */ }
+    };
     // Noam closing the bot stops this reply the way the timeout does: a polite SIGTERM.
     onStart?.(() => { stopped = true; child.kill('SIGTERM'); });
     // The last run's raw output, so a failure can be explained afterwards (capped).
@@ -416,6 +427,7 @@ export function runBrain(bot, text, { onEvent, onStart, bins, extras, env = proc
       let nl;
       while ((nl = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1);
+        recordUsage(line);
         // An action is logged only once its call succeeded: a denied or failed call never happened.
         for (const use of brainToolUses(bot.provider, line)) { if (use.id) calls.set(use.id, use); onEvent?.({ step: use }); }
         for (const done of brainToolResults(bot.provider, line)) { const use = calls.get(done.id); calls.delete(done.id); if (use && done.ok) onEvent?.({ action: use }); }

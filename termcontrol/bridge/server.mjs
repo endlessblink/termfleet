@@ -9,6 +9,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
+import { getTokenSummary } from './token-monitor.mjs';
 import { canvasSidebarView, listPanes, reconcileLivePanes, readWorkspace, inventoryVersion } from './inventory.mjs';
 import { transcriptPath as codexTranscript, rolloutForStart, promptToken } from './adapters/codex.mjs';
 import { claudeTranscript } from './paths.mjs';
@@ -561,6 +562,10 @@ const handle = async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/events/stats') return json(res, 200, agentEventStats());
 
+  if (req.method === 'GET' && url.pathname === '/api/tokens/summary') {
+    try { return json(res, 200, getTokenSummary()); }
+    catch { return json(res, 503, { error: 'Token history is temporarily unavailable.' }); }
+  }
   if(req.method==='GET' && url.pathname==='/api/session-events') {
     res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});
     // retry: tells the browser to come back after 1 s if the stream drops (restart).

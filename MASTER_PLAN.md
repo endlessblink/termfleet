@@ -10858,3 +10858,9 @@ Mic button in the TermControl message box (tap to talk, tap to stop, words land 
 ### 2026-10-25 — Agent activity history
 
 IN_PROGRESS: SQLite event history retains seven days of metadata, with authenticated statistics and estimated active/idle durations. Token usage stays outside terminal lifecycle. OpenCode numeric timestamps, WAL updates and stable message/tool IDs are supported; sleeping inventory closes activity. `node --test termcontrol/test/events-db.test.mjs termcontrol/test/opencode-adapter.test.mjs`: 11/11 pass, including real isolated bridge auth, migration, retention and restart deduplication. `node --test termcontrol/test/token-monitor.test.mjs`: 6/6 pass. Syntax checks and `git diff --check` pass. Live service restart/read-back pending coordinated monitor readiness. Bounded transcript tails and initial-observation baselines mean this is an observational log, not a lossless audit trail.
+
+
+### Langfuse token monitoring — 2026-10-25
+- Implemented completed-turn Claude/Codex usage capture, optional Langfuse generation export, cached SQLite totals per bot/provider, and authenticated summary endpoint. No real Langfuse API calls were made.
+- Validation: `TC_CONFIG_DIR=/tmp/termfleet-token-tests node --test termcontrol/test/token-monitor.test.mjs termcontrol/test/events-db.test.mjs` — 15/15 pass, including isolated authenticated HTTP and mocked provider streams. Syntax checks pass for monitor/bots/server; scoped `git diff --cached --check` passes.
+- Wider diagnosis: bots suite has five existing failures outside token monitoring; not represented as green. Runtime: awaiting coordinated termcontrol-only restart and read-back. Real Langfuse delivery intentionally untested.
