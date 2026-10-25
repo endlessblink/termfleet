@@ -16,6 +16,7 @@ import { loadLedger } from './requirements.mjs';
 export const WATCHDOG_EVERY_MS = 15 * 60_000;
 export const SILENT_AFTER_MS = 30 * 60_000;
 export const REQUEST_MAX_AGE_MS = 24 * 60 * 60_000;
+export const STALL_MAX_REPORT_MS = 2 * 60 * 60_000;
 
 /** When the agent last said or did anything in its own record; its last output time without one. */
 export function lastAgentMessageAt(pane, read = readFeed) {
@@ -48,7 +49,7 @@ const minutes = (ms) => Math.round(ms / 60_000);
  * One look. `flagged` remembers what was already reported so an ongoing stall is told once.
  * Returns the findings (for tests and the log).
  */
-export function checkStalls({ bots, panes, items = null, now = Date.now(), flagged = new Map(), lastAt = lastAgentMessageAt, log = (line) => console.error(line), silentAfterMs = SILENT_AFTER_MS }) {
+export function checkStalls({ bots, panes, items = null, now = Date.now(), flagged = new Map(), lastAt = lastAgentMessageAt, log = (line) => console.error(line), silentAfterMs = SILENT_AFTER_MS, stallMaxMs = STALL_MAX_REPORT_MS }) {
   const findings = [];
   const live = new Set();
   const tell = (key, chats, finding) => {
@@ -65,7 +66,7 @@ export function checkStalls({ bots, panes, items = null, now = Date.now(), flagg
   for (const pane of panes) {
     if (pane.turn !== 'working') continue;
     const last = lastAt(pane);
-    if (!last || now - last < silentAfterMs) continue;
+    if (!last || now - last < silentAfterMs || now - last > stallMaxMs) continue;
     const name = pane.title || pane.project || pane.id;
     tell(`stall|${pane.id}`, chatsFor(bots, pane.id), { kind: 'stalled', pane: pane.id, episode: String(last), text: `Terminal "${name}" has been silent for ${minutes(now - last)} minutes while marked working and may be stuck.` });
   }
@@ -81,7 +82,7 @@ export function checkStalls({ bots, panes, items = null, now = Date.now(), flagg
     const pane = panes.find((p) => p.id === handed.pane);
     if (!pane || pane.turn !== 'working') continue;
     const idleSince = Math.max(assigned, lastAt(pane) || 0);
-    if (!idleSince || now - idleSince < silentAfterMs) continue;
+    if (!idleSince || now - idleSince < silentAfterMs || now - idleSince > stallMaxMs) continue;
     const words = String(item.words || '').replace(/\s+/g, ' ').slice(0, 120);
     const where = `its working terminal "${pane.title || pane.project || pane.id}" has been silent for ${minutes(now - idleSince)} minutes`;
     tell(`item|${item.id}`, chatForItem(bots, item, handed), { kind: 'item', item: item.id, pane: handed.pane, episode: `${handed.at}|${idleSince}`, text: `Your request "${words}" was handed to a terminal, but ${where} without finishing it. It may have fallen through the cracks.` });
