@@ -809,6 +809,30 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 .room-copy{display:flex;flex-direction:column;min-width:0;flex:1}
 .room-name{font-weight:500}
 .room-last{color:var(--muted);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+dialog.room-dialog{border:0;border-radius:16px;background:var(--surface);color:var(--text);padding:0;max-width:min(480px,calc(100vw - 32px));box-shadow:0 12px 40px rgba(0,0,0,.4)}
+dialog.room-dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog.room-dialog form{display:grid;gap:0;padding:0;margin:0}
+dialog.room-dialog h2{margin:0;padding:20px 20px 0;font-size:18px;font-weight:600;line-height:1.3}
+dialog.room-dialog .room-field{display:block;padding:16px 20px 0;margin:0;border:0}
+dialog.room-dialog .room-field span{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:6px}
+dialog.room-dialog .room-field input{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--text);font:inherit;font-size:16px;box-sizing:border-box}
+dialog.room-dialog .room-hint{margin:8px 20px 0;padding:0;color:var(--muted);font-size:13px;line-height:1.5}
+dialog.room-dialog fieldset{border:0;margin:16px 20px 0;padding:0;display:grid;gap:0}
+dialog.room-dialog legend{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:12px;padding:0}
+dialog.room-dialog .room-agent{display:flex;align-items:flex-start;gap:12px;width:100%;padding:12px 0;margin:0;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;text-align:start;font:inherit;cursor:pointer}
+dialog.room-dialog .room-agent:last-of-type{border-bottom:0}
+dialog.room-dialog .room-agent input[type=checkbox]{flex:none;width:20px;height:20px;margin-top:4px;cursor:pointer;appearance:auto}
+dialog.room-dialog .room-agent svg{flex:none;width:32px;height:32px}
+dialog.room-dialog .room-agent>span{flex:1;min-width:0;display:grid;gap:3px}
+dialog.room-dialog .agent-name{font-weight:500;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+dialog.room-dialog .agent-job{display:block;font-size:13px;color:var(--muted);line-height:1.3;overflow-wrap:break-word}
+dialog.room-dialog .room-error{margin:12px 20px 0;padding:0;color:#d66;font-size:13px;min-height:0}
+dialog.room-dialog .room-error:empty{display:none}
+dialog.room-dialog .room-actions{display:flex;gap:10px;padding:20px;border-top:1px solid var(--line);margin:0;background:var(--bg)}
+dialog.room-dialog .room-cancel,dialog.room-dialog .room-create{flex:1;min-height:48px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);font:600 15px var(--ui);cursor:pointer}
+dialog.room-dialog .room-create{background:var(--accent);border-color:var(--accent);color:#191512}
+dialog.room-dialog .room-cancel:active,dialog.room-dialog .room-create:active{opacity:.8}
+dialog.room-dialog .room-create:disabled{opacity:.5;cursor:default}
 .rooms-empty{margin:0;padding:4px 10px 8px;color:var(--muted);font-size:14px;line-height:1.5}
 .pane.unread .project{font-weight:500;color:var(--text)}.unread-dot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--accent);margin-inline-start:6px;align-self:center}
 .msg.handoff{margin-inline-end:8%}.msg.handoff>.bubble{border:1px solid var(--line);border-radius:16px;padding:10px 14px;background:transparent}.handoff-from{font-size:12.5px;color:var(--muted);margin:0 2px 4px}
@@ -906,6 +930,7 @@ body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:va
 .act-row.unapproved{border-color:#e5484d;background:rgba(229,72,77,.10)}.act-row.unapproved .act-what::before{background:#e5484d}.act-row.unapproved .act-approval{color:#ff8a8d;font-weight:500}
 .mem-list{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px}.mem-row{display:grid;gap:6px;padding:10px;border:1px solid var(--line);border-radius:12px;font-size:14px;line-height:1.45}.mem-row .ask-status{justify-self:start;font-size:11.5px;border-radius:8px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
 .bot-health{flex:none;width:9px;height:9px;border-radius:50%;background:var(--idle);align-self:center}.bot-health-ok{background:var(--working)}.bot-health-busy{background:var(--working);animation:busy-fade 1.6s infinite}.bot-health-warn{background:var(--waiting)}.bot-health-bad{background:var(--accent)}.bot-needs{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:10px}.bot-needs p{margin:0;line-height:1.5}
+.term-ask-pinned{position:sticky;bottom:0;z-index:3;background:var(--bg);padding:4px 0 2px;box-shadow:0 -6px 12px -8px rgba(0,0,0,.35)}.term-ask-pinned .bot-term-ask{background:var(--bg)}
 .bot-term-ask{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:8px;max-width:100%;box-sizing:border-box}
 .bot-term-ask p{margin:0;line-height:1.5;overflow-wrap:anywhere}
 .bot-term-ask .term-ask-from{font-size:12px;color:var(--muted)}
@@ -3790,10 +3815,11 @@ async function openBot(id,{motion=null}={}){
       if(m.role==='event')return `<div class="bot-note bot-event" dir="auto">⏰ ${esc(m.text.length>240?m.text.slice(0,239)+'…':m.text)}</div>`;
       if(m.role==='handoff')return `<a class="bot-handoff" href="#${esc(m.pane || '')}" dir="auto">↪ <b>${esc(ui(`Handed to ${m.to || 'a terminal agent'}`,`הועבר אל ${m.to || 'סוכן מסוף'}`))}${handoffCount.get(m.id)?esc(ui(` (${handoffCount.get(m.id)} terminals)`,` (${handoffCount.get(m.id)} מסופים)`)):''}</b>${m.text?`: ${esc(m.text.length>220?m.text.slice(0,219)+'…':m.text)}`:''}</a>`;
       if(m.role==='error')return `<div class="bot-error" role="alert" dir="auto">${esc(ui('The bot could not answer: ','הבוט לא הצליח לענות: ')+m.text)}</div>`;
-      if(m.role==='terminal-ask')return termAskHtml(m);
+      if(m.role==='terminal-ask')return liveTermAsk(m)?'':termAskHtml(m);
+      if(m.role==='reminder' || m.role==='stuck')return `<div class="bot-note bot-event bot-${m.role}" role="${m.role==='stuck'?'alert':'note'}" dir="auto">${m.role==='stuck'?'⚠️':'⏰'} ${esc(m.text)}${when?` · <bdi>${esc(when)}</bdi>`:''}</div>`;
       if(m.role==='needs-you')return `<div class="bot-needs" role="alert"><p dir="auto">${esc(m.text)}</p>${bot.blocked && m.at>=bot.blocked.at?`<button type="button" class="bot-retry">${ui('Retry','לנסות שוב')}</button>`:''}</div>`;
       return `<div class="bot-note" dir="auto">${esc(m.text)}</div>`;
-    }).join('')+(bot.proposedProfile?`<div class="bot-suggest" role="status"><p>${esc(ui(`${bot.name} suggests its job and rules, from your chat:`,`${bot.name} מציע תפקיד וכללים, מתוך השיחה:`))}</p><p dir="auto"><b>${esc(ui('Job: ','תפקיד: '))}</b>${esc(bot.proposedProfile.job)}</p>${bot.proposedProfile.rules?`<p dir="auto" style="white-space:pre-line"><b>${esc(ui('Rules: ','כללים: '))}</b>${esc(bot.proposedProfile.rules)}</p>`:''}<span class="bot-actions"><button type="button" class="primary" data-profile="accept">${ui('Use these','להשתמש בהם')}</button><button type="button" data-profile="edit">${ui('Edit','עריכה')}</button><button type="button" data-profile="dismiss">${ui('Not now','לא עכשיו')}</button></span></div>`:'')+pendingSends.map((e,i)=>`<div class="${e.state==='failed'?'bot-failed-send':'bot-pending'}" data-pending="${i}">${messageHtml('user',e.text,ui('You','אתה'),'',' mine','','',{of:e.replyTo || null})}<div class="pending-delivery" role="status" dir="auto">${e.state==='failed'?`${esc(ui('Not sent','לא נשלח')+(e.error?` (${e.error})`:''))}<button type="button" data-resend>${ui('Resend','שליחה חוזרת')}</button>${e.images?.length || e.files?.length || e.answerTo || e.listTo?'':`<button type="button" data-edit>${ui('Edit','עריכה')}</button>`}<button type="button" data-discard>${ui('Discard','ביטול')}</button>`:esc(ui('Sending…','שולח…'))}</div></div>`).join('')+`<div class="busyline${bot.state==='working'?'':' idle'}" role="status"${bot.state==='working'?'':' aria-hidden="true"'}><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${bot.state==='working'?esc(bot.activity || ui('Thinking','חושב'))+stepFor(bot.activitySince):''}</span></div>`;
+    }).join('')+pinnedTermAsks(data.messages)+(bot.proposedProfile?`<div class="bot-suggest" role="status"><p>${esc(ui(`${bot.name} suggests its job and rules, from your chat:`,`${bot.name} מציע תפקיד וכללים, מתוך השיחה:`))}</p><p dir="auto"><b>${esc(ui('Job: ','תפקיד: '))}</b>${esc(bot.proposedProfile.job)}</p>${bot.proposedProfile.rules?`<p dir="auto" style="white-space:pre-line"><b>${esc(ui('Rules: ','כללים: '))}</b>${esc(bot.proposedProfile.rules)}</p>`:''}<span class="bot-actions"><button type="button" class="primary" data-profile="accept">${ui('Use these','להשתמש בהם')}</button><button type="button" data-profile="edit">${ui('Edit','עריכה')}</button><button type="button" data-profile="dismiss">${ui('Not now','לא עכשיו')}</button></span></div>`:'')+pendingSends.map((e,i)=>`<div class="${e.state==='failed'?'bot-failed-send':'bot-pending'}" data-pending="${i}">${messageHtml('user',e.text,ui('You','אתה'),'',' mine','','',{of:e.replyTo || null})}<div class="pending-delivery" role="status" dir="auto">${e.state==='failed'?`${esc(ui('Not sent','לא נשלח')+(e.error?` (${e.error})`:''))}<button type="button" data-resend>${ui('Resend','שליחה חוזרת')}</button>${e.images?.length || e.files?.length || e.answerTo || e.listTo?'':`<button type="button" data-edit>${ui('Edit','עריכה')}</button>`}<button type="button" data-discard>${ui('Discard','ביטול')}</button>`:esc(ui('Sending…','שולח…'))}</div></div>`).join('')+`<div class="busyline${bot.state==='working'?'':' idle'}" role="status"${bot.state==='working'?'':' aria-hidden="true"'}><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${bot.state==='working'?esc(bot.activity || ui('Thinking','חושב'))+stepFor(bot.activitySince):''}</span></div>`;
     // Never redraw under an open message menu: it would close it (Noam: "keeps closing by itself").
     // ...nor under a card answer being written (it would wipe the words and the phone keyboard).
     const writing=Boolean(document.activeElement?.matches?.('.qform textarea')) || [...main.querySelectorAll('.bot-q-write:not([hidden]) textarea:not(:disabled)')].some(t=>t.value.trim() || document.activeElement===t) || Boolean(document.activeElement?.closest?.('.bot-list:not(.sent)') && document.activeElement.matches('textarea,input.bot-list-note'));
@@ -4139,7 +4165,7 @@ async function groupDialog(existing){
   dialog.innerHTML=`<form><h2>${existing?ui('Edit group','עריכת קבוצה'):ui('New group','קבוצה חדשה')}</h2>
     <label class="room-field"><span>${ui('Name','שם')}</span><input name="name" dir="auto" maxlength="60" required placeholder="${ui('e.g. Launch team','למשל: צוות השקה')}"></label>
     <p class="room-hint">${ui('A bot answers in the group only when you tag it with @ (or @all).','בוט עונה בקבוצה רק כשמתייגים אותו עם @ (או ‎@all).')}</p>
-    <fieldset><legend>${ui('Bots in the group','בוטים בקבוצה')}</legend>${list.map(b=>`<label class="room-agent"><input type="checkbox" value="${esc(b.id)}"${chosen.has(b.id)?' checked':''}>${botAvatar(b,26)}<span dir="auto">${esc(b.name)}</span>${b.job?`<small dir="auto">${esc(b.job)}</small>`:''}</label>`).join('') || `<p>${ui('Make a bot first.','צרו קודם בוט.')}</p>`}</fieldset>
+    <fieldset><legend>${ui('Bots in the group','בוטים בקבוצה')}</legend>${list.map(b=>`<label class="room-agent"><input type="checkbox" value="${esc(b.id)}"${chosen.has(b.id)?' checked':''}>${botAvatar(b,26)}<span dir="auto"><span class="agent-name">${esc(b.name)}</span>${b.job?`<small class="agent-job" dir="auto">${esc(b.job)}</small>`:''}</span></label>`).join('') || `<p>${ui('Make a bot first.','צרו קודם בוט.')}</p>`}</fieldset>
     <p class="room-error" role="alert"></p>
     <div class="room-actions"><button type="button" class="room-cancel">${ui('Cancel','ביטול')}</button><button type="submit" class="room-create">${existing?ui('Save','שמירה'):ui('Create group','יצירת קבוצה')}</button></div></form>`;
   document.body.append(dialog);
@@ -5002,6 +5028,14 @@ const termAskCards={};
 function qLinksHtml(ask){
   const found=(ask.links && ask.links.length?ask.links:[ask.title,...(ask.options||[]).map(o=>o.detail)].flatMap((t,i)=>(String(t||'').match(/https?:\/\/[^\s<>"')\]]+/g)||[]).map(href=>({label:i?ask.options[i-1].label:'',href})))).slice(0,6);
   return found.length?`<div class="term-ask-links">${found.map(x=>`<a class="msg-link bot-q-optlink" href="${esc(x.href)}" target="_blank" rel="noopener noreferrer" dir="auto">${esc(x.label?ui(`Open ${x.label}`,`לפתוח את ${x.label}`):ui('Open to compare','לפתוח להשוואה'))} ↗</a>`).join('')}</div>`:'';
+}
+// A terminal's prompt still waiting for Noam stays pinned at the bottom of the chat until he answers
+// (Noam 2026-10-25: "שהכפתור תמיד יופיע כאן", after an "Allow Edit?" card scrolled away under a busy chat
+// and sat for an hour). Its place in the timeline is left empty so it never shows twice.
+const liveTermAsk=m=>m.role==='terminal-ask' && !m.settled && !m.repeated && !termAskDone[m.id];
+function pinnedTermAsks(messages){
+  const live=messages.filter(liveTermAsk);
+  return live.length?`<div class="term-ask-pinned" role="region" aria-label="${esc(ui('Waiting for your answer','ממתין לתשובה שלך'))}">${live.map(termAskHtml).join('')}</div>`:'';
 }
 function termAskHtml(m){
   const done=termAskDone[m.id],options=m.options || [];termAskCards[m.id]=m;
