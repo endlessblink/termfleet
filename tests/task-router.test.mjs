@@ -78,3 +78,19 @@ test('only the three model names come out', () => {
     assert.ok(['haiku', 'sonnet', 'opus'].includes(classifyTask(task)));
   }
 });
+
+// Noam 2026-10-25: "אתה בעצם דואג של טרמינל חדש ישתנה לקודקס?". A new terminal with no
+// --provider starts in Codex; Claude only when the task needs it.
+import { explainProviderRoute } from '../scripts/lib/task-router.mjs';
+import fs from 'node:fs';
+
+test('new terminals start in Codex by default; Claude only for conversation, open reasoning, or by name', () => {
+  for (const task of ['Fix the failing export test', 'Build the watchdog module and add tests', 'Run the release build and report', '', 'Refactor the canvas renderer across 6 files'])
+    assert.equal(explainProviderRoute(task).provider, 'codex', task);
+  for (const task of ['Handle the conversation with Noam about the trailer', 'Think it through and weigh the trade-offs of the two designs', 'Use Claude for this one: review the copy', 'תעבוד עם קלוד על זה'])
+    assert.equal(explainProviderRoute(task).provider, 'claude', task);
+  const child = fs.readFileSync(new URL('../scripts/termfleet-child.mjs', import.meta.url), 'utf8');
+  assert.match(child, /if \(!provider && !handover\) \{\s*const picked = explainProviderRoute\(baseTask\);/, 'the spawn command uses the router when --provider is left out');
+  const bots = fs.readFileSync(new URL('../termcontrol/bridge/bots.mjs', import.meta.url), 'utf8');
+  assert.match(bots, /termfleet-team start --cwd <folder> --task "<task>"` \(open a new terminal agent for a job; it starts in Codex/, 'bots are told new terminals start in Codex');
+});

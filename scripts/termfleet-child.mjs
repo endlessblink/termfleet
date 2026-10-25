@@ -22,6 +22,7 @@ import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
 import { appendUserWords, findTranscript, userMessagesForAny } from "./lib/handoff-user-words.mjs";
 import { checkBotTask, botTaskContext } from "./lib/bot-workflow-preflight.mjs";
 import { memoryGuard } from "./lib/spawn-guards.mjs";
+import { explainProviderRoute } from "./lib/task-router.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -30,8 +31,9 @@ const INLINE_TASK_LIMIT = 1_500;
 const USAGE = `termfleet-child ${VERSION} - start an agent instance as a visible TermFleet terminal
 
 usage:
-  termfleet-child spawn --provider <${PROVIDERS.join("|")}> (--task "<text>" | --task-file FILE | --dropoff FILE)
+  termfleet-child spawn [--provider <${PROVIDERS.join("|")}>] (--task "<text>" | --task-file FILE | --dropoff FILE)
                         [--title "<card title>"] [--near PROJECT_DIR] [--separate | --replace] [--allow-thin] [--allow-no-words] [--cwd DIR] [--bot REGISTRY_ID] [--timeout SECONDS] [--no-start-app]
+  (no --provider: a new terminal starts in Codex, or Claude when its task needs complex reasoning or a conversation)
   termfleet-child status
   termfleet-child --help | --version
 
@@ -312,6 +314,12 @@ async function spawnCommand(options) {
       writeSync(2, `termfleet-child: a handover continues in the same agent as you (${caller.provider}), not ${provider}.\n`);
     }
     provider = caller.provider;
+  }
+  // No --provider: a new terminal starts in Codex unless its task needs Claude (task-router.mjs).
+  if (!provider && !handover) {
+    const picked = explainProviderRoute(baseTask);
+    provider = picked.provider;
+    writeSync(2, `termfleet-child: ${provider} for this task (${picked.reasons.join("; ")}); --provider claude|codex overrides.\n`);
   }
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
   // A new terminal is refused when memory is low; a handover only replaces the caller's own card.

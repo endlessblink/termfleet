@@ -107,3 +107,19 @@ export function explainTaskRoute(taskText) {
 export function classifyTask(taskText) {
   return explainTaskRoute(taskText).model;
 }
+
+// Which agent a new terminal starts in (Noam 2026-10-25: "אתה בעצם דואג של טרמינל חדש ישתנה
+// לקודקס?"): Codex by default. Claude only when the task asks for it by name, or is about
+// handling a conversation or open-ended reasoning rather than building something.
+const NEEDS_CLAUDE = [
+  [/\b(use|in|with|needs?|via|on)\s+claude\b|\bclaude[ -]code\b|--provider claude|קלוד/i, "asks for Claude"],
+  [/\b(conversation|chat with|talk(ing)? (to|with)|reply to (him|her|noam|the user)|answer noam|persona|role-?play|tone of voice|coach(ing)?)\b/i, "conversation handling"],
+  [/\b(think (it )?through|reason about|weigh (the )?(options|trade-?offs)|strategy|judg(e)?ment call|decide (whether|between)|second opinion)\b/i, "complex reasoning"],
+];
+
+/** { provider: 'codex' | 'claude', reasons } for a new terminal with no --provider. */
+export function explainProviderRoute(taskText) {
+  const text = String(taskText ?? "").trim();
+  const reasons = NEEDS_CLAUDE.filter(([re]) => re.test(text)).map(([, why]) => why);
+  return reasons.length ? { provider: "claude", reasons } : { provider: "codex", reasons: ["default: new terminals start in Codex"] };
+}

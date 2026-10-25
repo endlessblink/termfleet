@@ -3,6 +3,7 @@ import path from 'node:path';
 import { followActive } from './follows.mjs';
 import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
 import { readFeed } from './feed.mjs';
+import { screenPromptAsk } from './asks.mjs';
 
 /**
  * TF-096 part 7: things that wake a bot without Noam writing (Grok Bot's event
@@ -46,6 +47,44 @@ export function helperState(bot, panes, now = Date.now()) {
   return { waitingOn, helpersAsking };
 }
 
+/**
+ * Is a prompt still drawn at the bottom of the terminal? (Noam 2026-10-25: "שהכפתור תמיד יופיע
+ * כאן", after an "Allow Edit?" sat for an hour with its card already shown as ended.) The agent's
+ * status can read "working" or "idle" while the menu is still up (a queued message, a hook that
+ * missed it), so the screen decides whether the card stays live.
+ */
+export function screenStillAsks(screen) {
+  const tail = String(screen || '').split('\n').map((l) => l.trimEnd()).filter((l) => l.trim()).slice(-14).join('\n');
+  if (!tail) return false;
+  return /Esc to cancel/i.test(tail) && /(^|\n)\s*(❯\s*)?1\.\s+\S/.test(tail)
+    || /Do you want to (proceed|make this edit|create|allow|run|overwrite|delete)\b[^\n]*\?/i.test(tail)
+    || /Allow (command|this|the \S+ server)[^\n]*\?/i.test(tail) && /(^|\n)\s*(›|❯|>)?\s*1\.\s+\S/.test(tail);
+}
+
+// Where an agent stopped and cannot go on without someone (Noam 2026-10-25: "כל דבר שכל סוכן
+// נתקע עליו צריך להגיע לכאן"): an error, a limit, or a command something blocked.
+const STUCK_LINES = [
+  [/\bAPI Error\b[^\n]*/i, 'error'],
+  [/\b(usage|rate) limit[^\n]*/i, 'limit'],
+  [/You've hit your[^\n]*limit[^\n]*/i, 'limit'],
+  [/\bOverloaded\b[^\n]*/i, 'error'],
+  [/\bstream (disconnected|error)[^\n]*/i, 'error'],
+  [/\bRequest timed out[^\n]*/i, 'error'],
+  [/\b(Blocked by (security )?policy|hook error)[^\n]*/i, 'blocked'],
+];
+
+/** The line an agent that stopped is stuck on, from the bottom of its screen, or null. */
+export function stuckOnScreen(screen) {
+  const tail = String(screen || '').split('\n').map((l) => l.trim()).filter(Boolean).slice(-12);
+  for (const line of tail.reverse()) {
+    for (const [re, kind] of STUCK_LINES) { const m = re.exec(line); if (m) return { kind, line: line.replace(/^[⎿●■•✗×\s]+/, '').slice(0, 220) }; }
+  }
+  return null;
+}
+
+export const REMIND_AFTER_MS = 5 * 60_000;
+export const REMIND_EVERY_MS = 15 * 60_000;
+
 /** The prompt as the bot chat shows it: the same choices the terminal offers. */
 export function terminalAskMessage(paneId, label, ask) {
   return {
@@ -60,6 +99,8 @@ export function terminalAskMessage(paneId, label, ask) {
   };
 }
 
+// A prompt read off the screen answers with its digits; the record's form with yes / no.
+const menuForm = (m) => (m.options || []).some((o) => /^[1-9]$/.test(String(o.key)));
 const promptKey = (m) => [m.kind || '', String(m.text ?? m.title ?? '').trim(), ...(m.options || []).map((o) => o.label)].join('\u0001');
 const samePrompt = (card, ask) => promptKey(card) === promptKey({ ...ask, text: String(ask.title || 'The terminal agent is asking you something.').slice(0, 300) });
 
@@ -93,7 +134,8 @@ export function newPromptSince(pane, since) {
   try { return (readFeed(pane, { limit: 20 }).events || []).some((e) => e.kind === 'user' && Date.parse(e.at) > since); } catch { return false; }
 }
 
-export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince }) {
+export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, readScreen = async () => '', head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, notify = (note) => bots.notify?.(note) }) {
+  const alert = (note) => { try { notify(note); } catch { /* a notification never blocks the events */ } };
   for (const b of bots.list()) {
     // One entry per terminal: a bot that followed the same agent twice is woken once.
     const live = new Map();
@@ -133,21 +175,56 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
       // One card per prompt until Noam answers it (Noam 2026-10-22: "להשאיר את אותה אחת עד
       // שאני אענה"). The open card lives in the chat itself, so a restart or a re-detected
       // prompt with a new id finds it; it closes only once the terminal has moved on.
-      const open = openTerminalAsk(bots, b.id, h.paneId);
-      const away = state === 'waiting' ? 0 : (before.away || 0) + 1;
-      if (open && away >= 2) settleTerminalAsk(bots, b.id, open.id, {});
-      if (state === 'waiting') {
-        const ask = await readAsk(pane);
+      let open = openTerminalAsk(bots, b.id, h.paneId);
+      const screen = pane && (state !== 'idle' || open || before.state !== 'idle') ? String(await readScreen(pane) || '') : '';
+      // The status says it moved on, but the menu is still on screen: the prompt is still open.
+      const onScreen = state !== 'waiting' && pane ? (screenPromptAsk(pane, screen) || (open && screenStillAsks(screen) ? true : null)) : null;
+      const asking = state === 'waiting' || Boolean(onScreen);
+      const away = asking ? 0 : (before.away || 0) + 1;
+      if (open && away >= 2) { settleTerminalAsk(bots, b.id, open.id, {}); open = null; }
+      if (asking) {
+        const ask = state === 'waiting' ? await readAsk(pane) : (onScreen === true ? null : onScreen);
         if (ask?.id && open && samePrompt(open, ask)) {
           if (open.askId !== ask.id) settleTerminalAsk(bots, b.id, open.id, { askId: ask.id }, false);
+        } else if (ask?.id && open && open.kind === 'permission' && ask.kind === 'permission' && menuForm(open) !== menuForm(ask)) {
+          // The same permission read two ways (the menu on screen, "Do you want to make this edit…?"
+          // 1/2/3, or the record's "Allow Edit?" Yes/No): the card follows it in place. Before, every
+          // flip ended the card, posted a new one and woke the bot again (four cards in an hour).
+          const fresh = terminalAskMessage(h.paneId, label, ask);
+          settleTerminalAsk(bots, b.id, open.id, { askId: fresh.askId, text: fresh.text, options: fresh.options, detail: fresh.detail }, false);
         } else if (ask?.id) {
           if (open) settleTerminalAsk(bots, b.id, open.id, {});
-          bots.append(b.id, terminalAskMessage(h.paneId, label, ask));
-          bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are already shown to Noam in this chat; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
+          open = bots.append(b.id, terminalAskMessage(h.paneId, label, ask));
+          bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are pinned at the bottom of his chat with you until he answers, his phone was notified, and he is reminded after 5 minutes; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
+          alert({ title: `${b.name}: a terminal is waiting for you`, body: `"${label}" asks: ${String(ask.title || '').slice(0, 160)}`, url: `/#bot:${b.id}` });
+        }
+        // Unanswered: remind him after 5 minutes, then every 15, with the phone buzzing even
+        // when a page is open (an open PC tab is not him looking at this chat).
+        if (open?.at) {
+          const last = Number(open.remindedAt || open.at);
+          if (now - last >= (open.remindedAt ? REMIND_EVERY_MS : REMIND_AFTER_MS)) {
+            const minutes = Math.max(1, Math.round((now - Number(open.at)) / 60_000));
+            settleTerminalAsk(bots, b.id, open.id, { remindedAt: now }, false);
+            bots.append(b.id, { role: 'reminder', pane: h.paneId, card: open.id, text: `Still waiting for your answer after ${minutes} minutes: terminal "${label}" asks "${String(open.text || '').slice(0, 160)}". The buttons are at the bottom of this chat.` });
+            alert({ title: `${b.name}: still waiting for you (${minutes} min)`, body: `"${label}" asks: ${String(open.text || '').slice(0, 160)}`, url: `/#bot:${b.id}`, force: true });
+          }
         }
       }
+      // Stopped on an error, a limit or a blocked command: Noam hears it now, once per problem.
+      let { stuck = null } = before;
+      if (state === 'idle' && pane) {
+        const found = stuckOnScreen(screen);
+        const stuckKey = found ? `${found.kind}|${found.line}` : null;
+        if (found && stuckKey !== stuck) {
+          const what = { error: 'stopped on an error', limit: 'stopped on a usage limit', blocked: 'was blocked' }[found.kind];
+          bots.append(b.id, { role: 'stuck', pane: h.paneId, text: `Terminal "${label}" ${what}: ${found.line}` });
+          bots.wake(b.id, `Your terminal agent for "${label}" ${what}: "${found.line}". Noam already sees this line in his chat. Read it (termfleet-team read ${h.paneId}), then tell him in plain words what is wrong and what you will do about it.`);
+          alert({ title: `${b.name}: a terminal is stuck`, body: `"${label}" ${what}: ${found.line}`.slice(0, 200), url: `/#bot:${b.id}` });
+        }
+        stuck = stuckKey;
+      } else if (state === 'working') stuck = null;
       if (state === 'closed' && away >= 2) seen.delete(key);
-      else seen.set(key, { state, away, finishedAt, blocked, workRun });
+      else seen.set(key, { state, away, finishedAt, blocked, workRun, stuck });
     }
     for (const w of bots.watches(b.id)) {
       if (w.paused) continue; // paused when Noam closed the bot; kept so it can be turned back on

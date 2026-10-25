@@ -62,6 +62,7 @@ import { BotBrowser, BROWSER_PORT } from './bot-browser.mjs';
 import { sweepWindows, setTakeover, clearTakeover, handBackText, readWindows } from './bot-windows.mjs';
 import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
 import { checkBotEvents, helperState } from './bot-events.mjs';
+import { startWatchdog } from './watchdog.mjs';
 import { Push } from './push.mjs';
 import { createDockIcon } from './dock-icon.mjs';
 import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
@@ -392,9 +393,13 @@ async function botEvents() {
   await checkBotEvents({
     bots, panes: (await currentPanes()).panes, seen: helperSeen,
     readAsk: async (pane) => { const screen = visibleScreenOf(pane.id) ?? await screenOf(pane.id); return pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen); },
+    readScreen: async (pane) => visibleScreenOf(pane.id) ?? await screenOf(pane.id),
   });
 }
 setInterval(() => { botEvents().catch((error) => console.error('[bot events]', error.message)); }, 30_000).unref?.();
+// Work that went quiet (a silent "working" terminal, a handed-over request nobody finished) is
+// reported in the owning bot's chat every 15 minutes. Test copies (TC_CONFIG_DIR) stay quiet.
+if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') startWatchdog({ bots, panes: async () => (await currentPanes()).panes });
 // A message that waited for a plan to reset is answered once one does.
 setInterval(() => { try { bots.retryDue(); } catch (error) { console.error('[bots]', error.message); } }, 60_000).unref?.();
 

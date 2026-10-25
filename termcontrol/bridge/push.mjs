@@ -71,14 +71,15 @@ export class Push {
 
   /**
    * Queue a notification and wake the phone, unless Noam has the app open
-   * (Grok Bot does not notify while the app is focused).
+   * (Grok Bot does not notify while the app is focused). `force` sends it anyway: a reminder
+   * that a terminal still waits (an open PC tab is not Noam looking at that chat).
    */
-  async notify({ title, body, url = '/' }) {
+  async notify({ title, body, url = '/', force = false }) {
     const data = this.read();
     const entry = { id: crypto.randomBytes(6).toString('hex'), title: String(title).slice(0, 80), body: String(body).slice(0, 240), url, at: this.now() };
     data.queue = [...(data.queue || []), entry].slice(-50);
     this.write(data);
-    if (this.now() - this.lastSeenVisible < 60_000) return { queued: true, sent: 0, reason: 'app open' };
+    if (!force && this.now() - this.lastSeenVisible < 60_000) return { queued: true, sent: 0, reason: 'app open' };
     let sent = 0;
     const keep = [];
     for (const sub of data.subscriptions || []) {

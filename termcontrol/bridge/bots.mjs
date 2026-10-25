@@ -143,7 +143,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- Real changes, builds, tests and long jobs go to terminal agents, which you direct with the termfleet-team command:',
     '  `termfleet-team list` (who is working on what), `termfleet-team read <who>` (their latest messages),',
     '  `termfleet-team send <who> "<task>"` (hand work over), `termfleet-team ask <who> "<question>"` (wait up to 2 minutes for the answer; if it is not ready you are woken when it finishes, so then just tell Noam it is in progress and stop),',
-    '  `termfleet-team start --provider claude|codex --cwd <folder> --task "<task>"` (open a new terminal agent for a job),',
+    '  `termfleet-team start --cwd <folder> --task "<task>"` (open a new terminal agent for a job; it starts in Codex. Add `--provider claude` only when the job needs complex reasoning or handling a conversation),',
     '  `termfleet-team routine add --time 09:00 --days weekdays --message "<text>"` (a scheduled message).',
     '- Say which terminal agent you handed work to, and check its result before telling Noam it is done.',
     '- When Noam approves or decides something here that a terminal agent needs (e.g. "Yes add the images"), pass on his own words, never a retelling: `termfleet-team send <who> --owner-words latest "<what to do with it>"` attaches his exact latest message here as a record the agent can check (use a message id from `termfleet-team verify` instead of latest for an older one). Never ask Noam to repeat an approval he already gave; if an agent still refuses, send it his words this way again.',
@@ -900,7 +900,10 @@ export class Bots {
   view(id) {
     const bot = this.read(id);
     if (!bot) return null;
-    const chat = this.messages(id).slice(-MAX_CHAT_RETURNED);
+    const all = this.messages(id);
+    const chat = all.slice(-MAX_CHAT_RETURNED);
+    // A terminal's card still waiting for Noam is always returned, however busy the chat got since.
+    chat.unshift(...all.slice(0, -MAX_CHAT_RETURNED).filter((m) => m.role === 'terminal-ask' && !m.settled));
     const busy = this.running.has(id) || (this.queues.get(id) || []).length > 0 || Boolean(bot.retry);
     return { bot: { ...this.summary(id), rules: bot.rules }, messages: markReceipts(markRepeatedTerminalAsks(markWithdrawnQuestions(markRepeatedQuestions(chat))), { busy }) };
   }

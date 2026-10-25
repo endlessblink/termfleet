@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { findOwnerWords } from './owner-words.mjs';
 
 /**
@@ -370,18 +371,104 @@ export function answerProblem(note) {
 function extractLinks(text) {
   const links = [];
   const s = String(text || '').trim();
+  const trim = (x) => x.replace(/[),.!?;:'"\]>]+$/, '');
 
   // Match URLs: http://, https://, file paths (/, ~/, ./)
-  const urlPattern = /https?:\/\/[^\s)]+/g;
+  const urlPattern = /https?:\/\/[^\s)<>"']+/g;
   const filePathPattern = /(?:^|\s)((?:~|\.{0,2})?\/\S+)(?:\s|$|[),.!])/g;
 
-  for (const m of s.matchAll(urlPattern)) links.push({ url: m[0], type: 'url' });
-  for (const m of s.matchAll(filePathPattern)) links.push({ path: m[1].trim(), type: 'file' });
+  for (const m of s.matchAll(urlPattern)) links.push({ url: trim(m[0]), type: 'url' });
+  for (const m of s.matchAll(filePathPattern)) links.push({ path: trim(m[1].trim()), type: 'file' });
 
   return links;
 }
 
-/** Validate that all links in evidence work: file exists for paths, format correct for URLs. */
+/**
+ * Where a tailnet link really lands on this PC. Noam 2026-10-25: "תמיד ושזה יהיה ברמת הקוד - אם
+ * משהו גמור אתה חייב לתת לי לינק עובד". The phone opens https://<pc>.ts.net:<port>/…, which
+ * tailscale serve proxies to a local port (not always the same number: :8443 → 5181), so the
+ * check opens the local target from `tailscale serve status --json`.
+ * TERMFLEET_TAILSCALE_SERVE_JSON (a file path or the JSON itself) replaces the live read in tests.
+ */
+let serveCache = null;
+export function tailscaleServeConfig({ fresh = false } = {}) {
+  const override = process.env.TERMFLEET_TAILSCALE_SERVE_JSON;
+  if (override) {
+    try { return JSON.parse(override.trim().startsWith('{') ? override : fs.readFileSync(override, 'utf8')); } catch { return {}; }
+  }
+  if (serveCache && !fresh) return serveCache;
+  const r = spawnSync('tailscale', ['serve', 'status', '--json'], { encoding: 'utf8', timeout: 4000 });
+  try { serveCache = JSON.parse(r.stdout || '{}'); } catch { serveCache = {}; }
+  return serveCache;
+}
+
+/** The local URL tailscale serve forwards a tailnet URL to, or null when nothing serves it. */
+export function tailnetToLocal(url, serve = tailscaleServeConfig()) {
+  let u;
+  try { u = new URL(url); } catch { return null; }
+  const port = u.port || (u.protocol === 'https:' ? '443' : '80');
+  const handlers = serve?.Web?.[`${u.hostname}:${port}`]?.Handlers;
+  if (!handlers) return null;
+  const mount = Object.keys(handlers)
+    .filter((m) => u.pathname === m || u.pathname.startsWith(m.endsWith('/') ? m : `${m}/`))
+    .sort((a, b) => b.length - a.length)[0];
+  const proxy = mount && handlers[mount]?.Proxy;
+  if (!proxy) return null;
+  // tailscale strips the mount point before proxying.
+  const rest = mount === '/' ? u.pathname : u.pathname.slice(mount.replace(/\/$/, '').length) || '/';
+  return `${proxy.replace(/\/$/, '')}${rest.startsWith('/') ? rest : `/${rest}`}${u.search}`;
+}
+
+const ERROR_BODY = [
+  /^\s*(cannot (get|post) \/|404 page not found|not found\b|bad gateway|internal server error|service unavailable|gateway time-?out)/i,
+  /<title>[^<]*(\b404\b|\b50[0-4]\b|not found|error|bad gateway|unavailable)[^<]*<\/title>/i,
+  /^\s*\{\s*"error"\s*:/,
+];
+
+/** Plain reason a fetched page is not a working page, or null. Exported for tests. */
+export function bodyProblem(body) {
+  const b = String(body || '');
+  if (ERROR_BODY.some((re) => re.test(b))) return 'the page it opens is an error page';
+  return null;
+}
+
+// Runs in a child node so the gate stays synchronous for every caller (CLI, bridge).
+const PROBE_SCRIPT = `
+const urls = JSON.parse(process.argv[1]); const ms = Number(process.argv[2]);
+const one = async (url) => {
+  try {
+    const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(ms), headers: { 'user-agent': 'termfleet-link-check' } });
+    let body = '';
+    try { const reader = res.body?.getReader(); let got = 0;
+      while (reader && got < 65536) { const { done, value } = await reader.read(); if (done) break; got += value.length; body += Buffer.from(value).toString('utf8'); }
+      reader?.cancel().catch(() => {}); } catch {}
+    return { url, status: res.status, body: body.slice(0, 65536) };
+  } catch (e) { return { url, error: e?.name === 'TimeoutError' ? 'timeout' : (e?.cause?.code || e?.cause?.errors?.[0]?.code || e?.message || String(e)) }; }
+};
+Promise.all(urls.map(one)).then((r) => { process.stdout.write(JSON.stringify(r)); process.exit(0); });
+`;
+
+/** Opens each URL (5 s each, redirects followed). Returns [{ url, status, body } | { url, error }]. */
+export function probeUrls(urls, { timeoutMs = Number(process.env.TERMFLEET_LINK_TIMEOUT_MS) || 5000 } = {}) {
+  if (!urls.length) return [];
+  const r = spawnSync(process.execPath, ['-e', PROBE_SCRIPT, JSON.stringify(urls), String(timeoutMs)], { encoding: 'utf8', timeout: timeoutMs + 4000 });
+  try { return JSON.parse(r.stdout); } catch { return urls.map((url) => ({ url, error: 'timeout' })); }
+}
+
+const plainNetError = (err) => ({
+  ECONNREFUSED: 'nothing is running there (connection refused)',
+  ENOTFOUND: 'the address does not exist',
+  EAI_AGAIN: 'the address could not be looked up',
+  ECONNRESET: 'the connection was cut',
+  timeout: 'it did not answer within 5 seconds',
+  'bad port': 'that port is blocked for web pages',
+}[err] || `it failed to open (${err})`);
+
+/**
+ * Every link in ready/done evidence must actually work: files exist, and each URL is opened
+ * (tailnet links through their local target) and must answer 2xx with a page that is not an
+ * error page. Returns null, or one plain sentence naming each broken link.
+ */
 export function linkProblem(evidence) {
   const e = String(evidence || '').trim();
   if (!e) return 'needs evidence with at least one link: a file path (/path/screenshot.png) or a URL (http://localhost:PORT or https://domain)';
@@ -390,43 +477,30 @@ export function linkProblem(evidence) {
   if (!links.length) return 'needs at least one link in the evidence: a file path like /home/user/screenshot.png or http://localhost:PORT/path';
 
   const problems = [];
-  let hasWorkingLink = false;
-
+  const toOpen = [];
   for (const link of links) {
     if (link.type === 'file') {
       const p = link.path.replace(/^~(?=\/)/, os.homedir());
-      if (fs.existsSync(p)) {
-        hasWorkingLink = true;
-      } else {
-        problems.push(`file ${link.path} does not exist`);
-      }
-    } else if (link.type === 'url') {
-      // For URLs, validate format and check tailnet links have localhost variants
-      const isLocalhost = link.url.includes('localhost');
-      const isTailnet = link.url.includes('.ts.net');
-
-      if (isTailnet && !isLocalhost) {
-        // Tailnet URL should also suggest localhost variant for this PC
-        const tailnetMatch = /https?:\/\/[^:]+:(\d+)(\/.*)?$/.exec(link.url);
-        if (tailnetMatch) {
-          const port = tailnetMatch[1];
-          const urlPath = tailnetMatch[2] || '';
-          problems.push(`tailnet link needs localhost variant too: http://localhost:${port}${urlPath}`);
-        }
-      } else if (isLocalhost || isTailnet) {
-        hasWorkingLink = true;
-      }
+      if (!fs.existsSync(p)) problems.push(`file ${link.path} does not exist`);
+      continue;
     }
+    let target = link.url;
+    if (/\.ts\.net(?::\d+)?(?:\/|$)/i.test(link.url)) {
+      target = tailnetToLocal(link.url);
+      if (!target) { problems.push(`${link.url} is not served by tailscale on this PC, so it will not open on the phone`); continue; }
+    }
+    toOpen.push({ shown: link.url, target });
   }
 
-  if (!hasWorkingLink && links.length > 0) {
-    return `the evidence has broken links: ${problems.join('; ')}`;
+  for (const r of probeUrls([...new Set(toOpen.map((t) => t.target))])) {
+    const shown = toOpen.filter((t) => t.target === r.url).map((t) => t.shown).join(', ');
+    const via = shown === r.url ? '' : ` (opened on this PC as ${r.url})`;
+    if (r.error) problems.push(`${shown}${via} does not open: ${plainNetError(r.error)}`);
+    else if (r.status < 200 || r.status > 299) problems.push(`${shown}${via} answered ${r.status} instead of a working page`);
+    else { const bad = bodyProblem(r.body); if (bad) problems.push(`${shown}${via}: ${bad}`); }
   }
 
-  if (problems.length > 0) {
-    return problems.join('; ');
-  }
-
+  if (problems.length) return `has links that do not work, so it cannot be marked yet. Fix them or give a link that opens: ${problems.join('; ')}`;
   return null;
 }
 

@@ -30,6 +30,7 @@ import {
   captureMessage, ownerTextOf, projectOf, stopProblem, escalate, briefedIds, briefItems, briefBlock, ledgerDir,
   markItem, record, addTopic, setTopicVisual, normId, itemsView, itemsText, evidenceProblem, answerProblem, loadLedger, clip as clipItem,
 } from '../termcontrol/bridge/requirements.mjs';
+import { writeRequestDoc, requestDocsDir } from '../termcontrol/bridge/request-docs.mjs';
 import { findOwnerWords } from '../termcontrol/bridge/owner-words.mjs';
 
 const TAIL_BYTES = 8 * 1024 * 1024;
@@ -669,7 +670,16 @@ export function itemsCli(args, env = process.env) {
       events.push(...result.events);
     }
     record(events, { dir });
-    return { ok: true, message: `Marked ${ids.join(', ')} ${command}.` };
+    // Ready and done items get their Obsidian note (request-docs.mjs); a failed write never undoes the mark.
+    let docNote = '';
+    if (command === 'ready' || command === 'done') {
+      try {
+        const { items: after } = loadLedger({ dir });
+        const written = ids.map((id) => writeRequestDoc(after.get(id), { dir: requestDocsDir(env) })).filter(Boolean);
+        if (written.length) docNote = ` Note: ${written.join(', ')}`;
+      } catch (error) { docNote = ` (Obsidian note not written: ${error.message})`; }
+    }
+    return { ok: true, message: `Marked ${ids.join(', ')} ${command}.${docNote}` };
   } catch (error) {
     return { ok: false, message: String(error.message || error) };
   }

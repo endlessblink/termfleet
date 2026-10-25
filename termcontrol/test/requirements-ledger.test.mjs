@@ -17,8 +17,12 @@ import { framedMessage } from '../bridge/orchestrate.mjs';
 import { asksFrom, hook, cli } from '../../scripts/termfleet-asks.mjs';
 import { requirementIds } from '../../scripts/termfleet-team.mjs';
 import { Bots } from '../bridge/bots.mjs';
+import { startLinkServer, deadPort } from './helpers/link-server.mjs';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'req-ledger-'));
+// Ready/done evidence must carry a link that works: a real screenshot file.
+const SHOT_FILE = path.join(tmp(), 'shot.png');
+fs.writeFileSync(SHOT_FILE, 'png');
 const user = (text) => JSON.stringify({ type: 'user', message: { content: text }, timestamp: '2026-10-22T20:00:00Z' });
 const assistantTool = (command) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', input: { command } }] } });
 const assistantText = (text) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
@@ -45,7 +49,7 @@ test('failure 1: a four-part message was ONE request and a vague "partial" dropp
   // partial must name exactly what is open.
   assert.match(markItem({ status: 'partial', id: 'R-2', note: 'mostly' }, { dir }).error, /must list exactly which parts are still open/);
   mark(dir, 'context', 'R-1', { note: 'heading of the list' });
-  mark(dir, 'ready', 'R-2', { evidence: 'screenshot of the live page shows 9 faces across the full strip width' });
+  mark(dir, 'ready', 'R-2', { evidence: `screenshot of the live page shows 9 faces across the full strip width ${SHOT_FILE}` });
   mark(dir, 'partial', 'R-3', { open: ['loop stutters on Safari'] });
   mark(dir, 'waiting', 'R-4', { note: 'asked Noam which colours are the approved ones' });
   // An old-style "#1 done" while R-5 is still untaken is refused at stop.
@@ -253,15 +257,15 @@ test('failure 5: approved work regressed and nothing re-checked it; now a later 
   const dir = tmp();
   const [strip] = captureMessage({ text: 'The faces fill the title strip and loop endlessly', project: 'pf', source: 's', msgId: 'a' }, { dir });
   addTopic([strip.id], 'title-strip', { dir });
-  mark(dir, 'ready', strip.id, { evidence: 'live link screenshot: strip full, loop seamless after 3 cycles' });
+  mark(dir, 'ready', strip.id, { evidence: `live link screenshot: strip full, loop seamless after 3 cycles ${SHOT_FILE}` });
   record([{ e: 'lock', id: strip.id, by: 'Noam: works perfectly' }], { dir });
   const [change] = captureMessage({ text: 'Make the title strip taller', project: 'pf', source: 's', msgId: 'b' }, { dir });
   assert.deepEqual(change.topics, ['title-strip']);
-  const refused = markItem({ status: 'ready', id: change.id, evidence: 'screenshot shows the strip is 120px tall now' }, { dir });
+  const refused = markItem({ status: 'ready', id: change.id, evidence: `screenshot shows the strip is 120px tall now ${SHOT_FILE}` }, { dir });
   assert.match(refused.error, /Noam already approved R-1. Re-check each one/);
   assert.match(refused.error, /termfleet-asks reverify R-1 --for R-2/);
   record([{ e: 'reverify', id: strip.id, forId: change.id, evidence: 'screenshot after the change: faces still fill and loop' }], { dir });
-  assert.equal(markItem({ status: 'ready', id: change.id, evidence: 'screenshot shows the strip is 120px tall now' }, { dir }).error, undefined);
+  assert.equal(markItem({ status: 'ready', id: change.id, evidence: `screenshot shows the strip is 120px tall now ${SHOT_FILE}` }, { dir }).error, undefined);
   // The brief for the change lists the locked item so the agent knows before it starts.
   assert.match(briefBlock(briefItems([change.id], { dir })), /Locked: Noam confirmed these work[\s\S]*R-1 \(title-strip\)/);
 });
@@ -272,7 +276,7 @@ test('failure 5 through the command: lock needs Noam\'s confirmation and a deliv
   captureMessage({ text: 'portraits in colour', project: 'pf', source: 's', msgId: 'c' }, { dir });
   assert.match(cli(['lock', 'R-1'], env).message, /Noam confirming it works/);
   assert.match(cli(['lock', 'R-1', '--noam-said', 'works'], env).message, /not marked ready or done with evidence yet/);
-  assert.equal(cli(['ready', 'R-1', '--evidence', 'screenshot shows all 12 portraits in colour'], env).ok, true);
+  assert.equal(cli(['ready', 'R-1', '--evidence', `screenshot shows all 12 portraits in colour ${SHOT_FILE}`], env).ok, true);
   assert.equal(cli(['lock', 'R-1', '--noam-said', 'מעולה, עובד'], env).ok, true);
   assert.equal(loadLedger({ dir }).items.get('R-1').locked, true);
 });
@@ -396,7 +400,9 @@ test('splitting rules: bullets, Hebrew numbering, lines and sentences, picture n
   assert.ok(BRIEF_HEADER.startsWith("[Noam's requirements"));
 });
 
-test('link validation: ready/done must include a working link', () => {
+test('link validation: ready/done must include a working link', async (t) => {
+  const srv = await startLinkServer();
+  t.after(() => srv.stop());
   const dir = tmp();
   const [item] = captureMessage({ text: 'Fix the button', project: 'test', source: 'conv-x' }, { dir });
 
@@ -409,11 +415,14 @@ test('link validation: ready/done must include a working link', () => {
   // Non-existent file path is rejected
   assert.match(markItem({ status: 'ready', id: item.id, evidence: '/nonexistent/screenshot.png' }, { dir }).error, /does not exist/);
 
-  // Tailnet link without localhost variant is rejected
-  assert.match(markItem({ status: 'ready', id: item.id, evidence: 'verified at https://endlessblink.tail07658e.ts.net:8445/page' }, { dir }).error, /localhost variant/);
+  // A tailnet link nothing serves is rejected
+  process.env.TERMFLEET_TAILSCALE_SERVE_JSON = '{"Web":{}}';
+  t.after(() => { delete process.env.TERMFLEET_TAILSCALE_SERVE_JSON; });
+  assert.match(markItem({ status: 'ready', id: item.id, evidence: 'verified at https://endlessblink.tail07658e.ts.net:8445/page' }, { dir }).error, /not served by tailscale/);
 
-  // Localhost link passes
-  const r = markItem({ status: 'ready', id: item.id, evidence: 'http://localhost:5185/page works' }, { dir });
+  // A localhost link that opens passes; one where nothing runs does not
+  assert.match(markItem({ status: 'ready', id: item.id, evidence: `http://localhost:${await deadPort()}/page works` }, { dir }).error, /does not open/);
+  const r = markItem({ status: 'ready', id: item.id, evidence: `${srv.url('/ok')} works` }, { dir });
   assert.equal(r.error, undefined, 'localhost link should pass');
 
   // Create a temporary file and use it
@@ -423,11 +432,13 @@ test('link validation: ready/done must include a working link', () => {
   assert.equal(r2.error, undefined, 'existing file should pass');
 
   // Both link types together
-  const r3 = markItem({ status: 'ready', id: item.id, evidence: `screenshot: ${tmpFile} and live at http://localhost:9999` }, { dir });
+  const r3 = markItem({ status: 'ready', id: item.id, evidence: `screenshot: ${tmpFile} and live at ${srv.url('/ok')}` }, { dir });
   assert.equal(r3.error, undefined, 'multiple working links should pass');
 });
 
-test('link problem function validates URLs and files', () => {
+test('link problem function validates URLs and files', async (t) => {
+  const srv = await startLinkServer();
+  t.after(() => srv.stop());
   const tmpFile = path.join(os.tmpdir(), 'exists.txt');
   fs.writeFileSync(tmpFile, 'test');
 
@@ -444,13 +455,16 @@ test('link problem function validates URLs and files', () => {
   assert.equal(linkProblem(tmpFile), null);
 
   // Localhost URL passes
-  assert.equal(linkProblem('See http://localhost:5000/test'), null);
+  assert.equal(linkProblem(`See ${srv.url('/ok')}`), null);
+  assert.match(linkProblem(`See ${srv.url('/test')}`), /answered 404/);
 
-  // Tailnet URL without localhost fails
-  assert.match(linkProblem('https://example.ts.net:8443/page'), /localhost variant/);
+  // Tailnet URL that tailscale does not serve fails
+  process.env.TERMFLEET_TAILSCALE_SERVE_JSON = '{"Web":{}}';
+  t.after(() => { delete process.env.TERMFLEET_TAILSCALE_SERVE_JSON; });
+  assert.match(linkProblem('https://example.ts.net:8443/page'), /not served by tailscale/);
 
   // Mixed content works
-  assert.equal(linkProblem(`File: ${tmpFile} and http://localhost:3000`), null);
+  assert.equal(linkProblem(`File: ${tmpFile} and ${srv.url('/ok')}`), null);
 
   fs.unlinkSync(tmpFile);
 });
