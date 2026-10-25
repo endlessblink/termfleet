@@ -1337,8 +1337,7 @@ export class Bots {
          const msg = asked.text;
          const hollow = messageProblem(msg);
          if (hollow) {
-           const warningNote = `[Hollow message warning] The reply may lack substance: ${hollow}`;
-           this.append(id, { role: 'note', text: warningNote, answered: answered || Date.now() });
+           console.error(`[${bot.name}] Hollow message: ${hollow}`);
          }
          const structure = structureProblem(msg);
          if (structure) {
