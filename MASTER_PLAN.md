@@ -10863,7 +10863,7 @@ IN_PROGRESS: SQLite event history retains seven days of metadata, with authentic
 ### Langfuse token monitoring — 2026-10-25
 - Implemented completed-turn Claude/Codex usage capture, optional Langfuse generation export, cached SQLite totals per bot/provider, and authenticated summary endpoint. No real Langfuse API calls were made.
 - Validation: `TC_CONFIG_DIR=/tmp/termfleet-token-tests node --test termcontrol/test/token-monitor.test.mjs termcontrol/test/events-db.test.mjs` — 15/15 pass, including isolated authenticated HTTP and mocked provider streams. Syntax checks pass for monitor/bots/server; scoped `git diff --cached --check` passes.
-- Wider diagnosis: bots suite has five existing failures outside token monitoring; not represented as green. Runtime: awaiting coordinated termcontrol-only restart and read-back. Real Langfuse delivery intentionally untested.
+- Wider diagnosis: bots suite has five existing failures outside token monitoring; not represented as green. Runtime: single termcontrol-only restart completed (PID 303273, active since 20:03:11 IST); authenticated summary HTTP 200 with zero recorded generations/tokens/cost, and events stats HTTP 200 with 13 events across 10 terminals (`/tmp/tc-provider-live.log`). Live token ingestion remains unverified. Real Langfuse delivery intentionally untested.
 
 
 ### Controlbot provider picker and working avatar — 2026-10-25
