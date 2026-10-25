@@ -177,8 +177,8 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
  */
 export const briefStamp = (bot) => crypto.createHash('sha256').update(brainBrief(bot)).digest('hex').slice(0, 16);
 
-const CLAUDE_TOOLS = ['Read', 'Skill', 'Grep', 'Glob', 'Bash(termfleet-team:*)', 'Bash(termfleet-memory:*)', 'Bash(termfleet-asks:*)', 'Bash(termfleet-skill:*)', 'Bash(termfleet-browser:*)', 'mcp__browser', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(ls:*)', 'WebSearch', 'WebFetch', 'mcp__plugin_context-mode_context-mode__ctx_fetch_and_index', 'mcp__plugin_context-mode_context-mode__ctx_search'];
-const CLAUDE_DENY = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'mcp__browser__browser_run_code_unsafe'];
+const CLAUDE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Skill', 'Grep', 'Glob', 'Bash(termfleet-team:*)', 'Bash(termfleet-memory:*)', 'Bash(termfleet-asks:*)', 'Bash(termfleet-skill:*)', 'Bash(termfleet-browser:*)', 'mcp__browser', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)', 'Bash(ls:*)', 'WebSearch', 'WebFetch', 'mcp__plugin_context-mode_context-mode__ctx_fetch_and_index', 'mcp__plugin_context-mode_context-mode__ctx_search'];
+const CLAUDE_DENY = ['mcp__browser__browser_run_code_unsafe'];
 const STEER_HOOK = fileURLToPath(new URL('../../scripts/termfleet-bot-steer-hook.mjs', import.meta.url));
 
 /** One tool step of a running turn, for the side responder's view of progress (R-7173). */
