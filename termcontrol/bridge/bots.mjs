@@ -16,7 +16,7 @@ import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bo
 import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
-import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements } from './requirements.mjs';
+import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements, messageProblem, structureProblem } from './requirements.mjs';
 import { sidePrompt, parseSide, withPassedOn, putSteer, takeSteer, nextTurnText, steerDir } from './side-reply.mjs';
 import { BotGroups } from './bot-groups.mjs';
 import { checkFolder } from './bot-folders.mjs';
@@ -1286,6 +1286,19 @@ export class Bots {
       const answered = this.running.get(id)?.startedAt;
       if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.', answered: answered || Date.now() });
       else if (bot && !silent) this.append(id, result.error ? { role: 'error', text: result.error, ...(answered ? { answered } : {}) } : { role: 'bot', ...(answered ? { answered } : {}), text: asked.text || (asked.question || listed.checklist || shown.media.length ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}), ...(shown.media.length ? { media: shown.media } : {}), ...(duplicate ? { duplicate: true } : {}) });
+       // Guard: check for hollow messages and poor structure
+       if (bot && !silent && !result.error && asked.text) {
+         const msg = asked.text;
+         const hollow = messageProblem(msg);
+         if (hollow) {
+           const warningNote = `[Hollow message warning] The reply may lack substance: ${hollow}`;
+           this.append(id, { role: 'note', text: warningNote, answered: answered || Date.now() });
+         }
+         const structure = structureProblem(msg);
+         if (structure) {
+           console.error(`[${bot.name}] Message structure issue: ${structure}`);
+         }
+       }
       // Tagged elsewhere: the same answer also shows there, under this bot's name.
       if (bot && echo.length && !result.stopped && !silent && !duplicate) {
         this.postEcho(id, echo, result.error ? { role: 'error', text: result.error } : { role: 'bot', text: [asked.text, asked.question ? [asked.question.text, asked.question.link && /^https?:/.test(asked.question.link) ? `Open to compare: ${asked.question.link}` : ''].filter(Boolean).join('\n') : '', listed?.checklist ? `${listed.checklist.title || 'A list for you'} (tick it in my own chat):\n${listed.checklist.rows.map((r) => `- ${r.label}`).join('\n')}` : ''].filter(Boolean).join('\n\n') || 'Done, with nothing to add.' });

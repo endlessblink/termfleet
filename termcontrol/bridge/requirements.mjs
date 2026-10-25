@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
+import http from 'node:http';
+import https from 'node:https';
 import { findOwnerWords } from './owner-words.mjs';
 
 /**
@@ -364,6 +366,62 @@ export function answerProblem(note) {
   if (n.length < 8) return 'the answer is too short: say what you actually answered';
   if (/^(see (above|reply|my reply|the reply|earlier|before)|both answered|already answered|answered above|in my reply|covered above|discussed above|addressed|handled)\b[.!]?$/i.test(n)) return 'the answer only points elsewhere: write the actual answer here so Noam can see it without scrolling';
   return null;
+}
+
+/** Detects bot replies that claim completion without substance. Returns null if OK, or a string describing the problem. */
+export function messageProblem(text) {
+  const msg = String(text || '').trim();
+  if (!msg) return null;
+
+  // Check for structured elements FIRST - these exempt a message from being hollow
+  const hasQuestion = /\[question\]|\?/.test(msg);
+  const hasChecklist = /\[checklist\]|-\s+\[/.test(msg);
+  if (hasQuestion || hasChecklist) return null;
+
+  // Hollow patterns in Hebrew and English
+  const hollowClaimPatterns = [
+    // Hebrew: טופל (handled), בוצע (executed), הושלם (completed), נעשה (done), סיימתי (finished), etc.
+    /טופל|בוצע|הושלם|נעשה|סיימתי|כל.*טופלו|הכל.*בוצע/i,
+    // English: all.*taken, all.*handled, all.*done, everything.*handled, items.*taken, completed, handled, done with
+    /\ball\s+(taken|handled|done)|everything\s+handled|items\s+taken|^completed|^handled|^done\b|done with|nothing to add/i,
+  ];
+
+  const isShort = msg.length < 80;
+  const hasCompletionClaim = hollowClaimPatterns.some((p) => p.test(msg));
+  const hasSubstantiveLines = (msg.match(/\n/g) || []).length >= 3 && msg.split('\n').filter((l) => l.trim().length > 10).length >= 3;
+  const hasPaths = /\/[^\s]*|~\/|`[^`]+`/.test(msg);
+  const hasNumbers = /\d+%|\d+\.\d+|[0-9]+\s*(ms|s|min|items|files)/.test(msg);
+  const isLongWithContent = msg.length > 200 && hasSubstantiveLines;
+
+  // A message IS hollow if: under 80 chars AND contains a completion claim
+  if (isShort && hasCompletionClaim) {
+    return 'the message claims completion but is too short to contain real details';
+  }
+
+  // A message is NOT hollow if: has 3+ substantive lines, has paths/commands, has numbers as evidence, or is over 200 chars with content
+  if (hasSubstantiveLines || hasPaths || hasNumbers || isLongWithContent) {
+    return null;
+  }
+
+  // If it only has completion claims without any of the above
+  if (hasCompletionClaim && msg.split(/[.!?]/g).filter((s) => s.trim().length > 0).every((s) => hollowClaimPatterns.some((p) => p.test(s)))) {
+    return 'the message contains only completion claims without specific details or evidence';
+  }
+
+  return null;
+}
+
+/** Detects bot replies with poor structure. Returns null if OK, or a string describing the problem. */
+export function structureProblem(text) {
+  const msg = String(text || '').trim();
+  if (!msg) return null;
+
+  // Not a problem if: message is under 200 chars, or contains newlines/bullets/headers
+  if (msg.length <= 200) return null;
+  if (/\n|[-*•▪◦]\s+|^#{1,6}\s+/m.test(msg)) return null;
+
+  // Poor structure: a message over 200 chars that is a single paragraph (no line breaks, no bullets, no formatting)
+  return 'the message is long but formatted as a single paragraph; use line breaks and bullets to separate ideas';
 }
 
 /** Locked items on the same topics (same project) not yet re-checked for this delivery. */
