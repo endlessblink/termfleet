@@ -259,7 +259,7 @@
   }
   h2.section:first-child{margin-top:4px}
 
-  .msg{margin-bottom:18px}
+  .msg{margin-bottom:18px}.msg-time{display:block;font-size:11px;color:var(--muted);margin-top:4px;opacity:.6;text-align:end}
   .msg.mine .bubble{
     background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);
     padding:11px 13px;
@@ -2255,7 +2255,7 @@ function messageHtml(kind, text, who, when='', extra='', delivery='', details=''
   const confirmed=delivery===ui('Confirmed in the agent’s answer record.','אושר ברישום התשובה של הסוכן.');
   const awaiting=delivery===ui('Sent to the terminal · awaiting agent confirmation.','נשלח למסוף · ממתין לאישור הסוכן.');
   return `<article class="msg ${kind}${extra}" aria-label="${esc(who)}"${reply.mid?` data-mid="${esc(reply.mid)}"`:''}>
-    ${handoff?`<div class="handoff-from" dir="auto">↪ ${esc(who)}</div>`:''}${reply.of?`<div class="reply-of${reply.of.media?' with-thumb':''}" dir="auto">${reply.of.media?replyThumbHtml(reply.of.media):''}<span>↩ <b>${esc(reply.of.who)}</b>: <bdi>${esc(reply.of.media?(reply.of.media.kind==='video'?ui('Video','סרטון'):ui('Picture','תמונה'))+(reply.of.media.name?` · ${reply.of.media.name}`:''):String(reply.of.text).replace(/\s+/g,' ').slice(0,160))}</bdi></span></div>`:''}<div class="bubble richbubble" data-copy-text="${esc(source)}">${richText(content)}${reply.seen==='working'?`<span class="msg-seen working" role="img" aria-label="${ui('Received, the bot is working on it','התקבל, הבוט עובד על זה')}" title="${ui('Received, working on it','התקבל, בעבודה')}">👀</span>`:reply.seen==='answered'?`<span class="msg-seen answered" role="img" aria-label="${ui('Answered','נענה')}" title="${ui('Answered','נענה')}">✓</span>`:''}</div>
+    ${handoff?`<div class="handoff-from" dir="auto">↪ ${esc(who)}</div>`:''}${reply.of?`<div class="reply-of${reply.of.media?' with-thumb':''}" dir="auto">${reply.of.media?replyThumbHtml(reply.of.media):''}<span>↩ <b>${esc(reply.of.who)}</b>: <bdi>${esc(reply.of.media?(reply.of.media.kind==='video'?ui('Video','סרטון'):ui('Picture','תמונה'))+(reply.of.media.name?` · ${reply.of.media.name}`:''):String(reply.of.text).replace(/\s+/g,' ').slice(0,160))}</bdi></span></div>`:''}<div class="bubble richbubble" data-copy-text="${esc(source)}">${richText(content)}${reply.seen==='working'?`<span class="msg-seen working" role="img" aria-label="${ui('Received, the bot is working on it','התקבל, הבוט עובד על זה')}" title="${ui('Received, working on it','התקבל, בעבודה')}">👀</span>`:reply.seen==='answered'?`<span class="msg-seen answered" role="img" aria-label="${ui('Answered','נענה')}" title="${ui('Answered','נענה')}">✓</span>`:''}</div>${when?`<time class="msg-time" dir="ltr">${esc(when)}</time>`:''}
     ${extra.includes('pendingmsg') && when?`<div class="pending-delivery" role="status" dir="auto">${esc(when)}</div>`:''}
     ${delivery?`<details class="delivery-details" data-detail-key="delivery:${esc(source)}"><summary dir="auto">${esc(confirmed?ui('Confirmed by the agent','אושר אצל הסוכן'):awaiting?ui('Awaiting agent confirmation','ממתין לאישור הסוכן'):delivery)}</summary><p dir="auto">${esc(delivery)}</p></details>`:''}
     <details class="message-menu" data-detail-key="message:${esc(kind+':'+source)}"><summary aria-label="${ui('Message actions and source details','פעולות ופרטי מקור ההודעה')}" title="${ui('Message menu','תפריט ההודעה')}">⋯</summary><div class="message-menu-panel">
