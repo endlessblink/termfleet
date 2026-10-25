@@ -7,14 +7,15 @@ import { loadLedger } from './requirements.mjs';
  * משהו נפל בין הכיסאות עוד לא עובדת"). Every 15 minutes the bridge looks for work that went
  * quiet without anyone hearing about it:
  *  - a terminal marked "working" whose agent has said nothing for 30 minutes;
- *  - an item of Noam's handed to a terminal (status "assigned") whose terminal has sat idle,
- *    or is gone, for 30 minutes since it got the item.
+ *  - a request from the last 24 hours assigned to a live working terminal that has
+ *    been silent for 30 minutes since it got the item.
  * Each finding goes to stderr and, once per episode, as a note in the chat of the bot that
  * owns that terminal or item (the Agent Manager when no bot does).
  */
 
 export const WATCHDOG_EVERY_MS = 15 * 60_000;
 export const SILENT_AFTER_MS = 30 * 60_000;
+export const REQUEST_MAX_AGE_MS = 24 * 60 * 60_000;
 
 /** When the agent last said or did anything in its own record; its last output time without one. */
 export function lastAgentMessageAt(pane, read = readFeed) {
@@ -73,13 +74,17 @@ export function checkStalls({ bots, panes, items = null, now = Date.now(), flagg
   for (const item of ledgerItems) {
     if (item.status !== 'assigned' || !item.assigned?.length) continue;
     const handed = item.assigned.at(-1);
+    const created = Number(item.at);
+    const assigned = Number(handed.at);
+    if (!created || !assigned || !Number.isFinite(created) || !Number.isFinite(assigned)
+      || created > now || assigned > now || now - created > REQUEST_MAX_AGE_MS || now - assigned > REQUEST_MAX_AGE_MS) continue;
     const pane = panes.find((p) => p.id === handed.pane);
-    if (pane && (pane.turn === 'working' || pane.turn === 'waiting')) continue;   // busy (the stall check covers it), or asking (its card does)
-    const idleSince = Math.max(Number(handed.at) || 0, pane ? lastAt(pane) : 0);
+    if (!pane || pane.turn !== 'working') continue;
+    const idleSince = Math.max(assigned, lastAt(pane) || 0);
     if (!idleSince || now - idleSince < silentAfterMs) continue;
     const words = String(item.words || '').replace(/\s+/g, ' ').slice(0, 120);
-    const where = pane ? `its terminal "${pane.title || pane.project || pane.id}" has been idle for ${minutes(now - idleSince)} minutes` : `its terminal is gone (nothing heard for ${minutes(now - idleSince)} minutes)`;
-    tell(`item|${item.id}`, chatForItem(bots, item, handed), { kind: 'item', item: item.id, pane: handed.pane, episode: `${handed.at}|${pane ? 'idle' : 'gone'}`, text: `Your request "${words}" was handed to a terminal, but ${where} without finishing it. It may have fallen through the cracks.` });
+    const where = `its working terminal "${pane.title || pane.project || pane.id}" has been silent for ${minutes(now - idleSince)} minutes`;
+    tell(`item|${item.id}`, chatForItem(bots, item, handed), { kind: 'item', item: item.id, pane: handed.pane, episode: `${handed.at}|${idleSince}`, text: `Your request "${words}" was handed to a terminal, but ${where} without finishing it. It may have fallen through the cracks.` });
   }
 
   // A stall that ended can be reported again if it comes back.

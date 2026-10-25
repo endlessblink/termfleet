@@ -399,7 +399,10 @@ async function botEvents() {
 setInterval(() => { botEvents().catch((error) => console.error('[bot events]', error.message)); }, 30_000).unref?.();
 // Work that went quiet (a silent "working" terminal, a handed-over request nobody finished) is
 // reported in the owning bot's chat every 15 minutes. Test copies (TC_CONFIG_DIR) stay quiet.
-if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') startWatchdog({ bots, panes: async () => (await currentPanes()).panes });
+if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') startWatchdog({ bots, panes: async () => {
+  const current = await currentPanes();
+  return current.daemon ? current.panes : [];
+} });
 // A message that waited for a plan to reset is answered once one does.
 setInterval(() => { try { bots.retryDue(); } catch (error) { console.error('[bots]', error.message); } }, 60_000).unref?.();
 
