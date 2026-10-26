@@ -94,3 +94,13 @@ test('new terminals start in Codex by default; Claude only for conversation, ope
   const bots = fs.readFileSync(new URL('../termcontrol/bridge/bots.mjs', import.meta.url), 'utf8');
   assert.match(bots, /termfleet-team start --cwd <folder> --task "<task>"` \(open a new terminal agent for a job; it starts in Codex/, 'bots are told new terminals start in Codex');
 });
+
+// Complaint #19 (2026-10-26): 41 of 43 bot helpers in three days started in Claude through a bare
+// --provider claude that the router would not pick. From a bot, the task decides.
+test('a bot asking for Claude without a reason in the task gets Codex', () => {
+  const team = fs.readFileSync(new URL('../scripts/termfleet-team.mjs', import.meta.url), 'utf8');
+  assert.match(team, /if \(ownDir && flags\.provider === 'claude'\) \{\s*const route = explainProviderRoute\(taskText\);\s*if \(route\.provider !== 'claude'\) \{\s*flags\.provider = 'codex';/);
+  assert.ok(team.indexOf("flags.provider = 'codex'") < team.indexOf("for (const key of ['provider', 'model', 'cwd'"), 'decided before the spawn arguments are built');
+  assert.equal(explainProviderRoute('Fix the title menu and ESC on the tester site').provider, 'codex');
+  assert.equal(explainProviderRoute('Use Claude: it handles the conversation with the client').provider, 'claude');
+});

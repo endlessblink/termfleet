@@ -45,6 +45,7 @@ import {
 } from '../termcontrol/bridge/orchestrate.mjs';
 import { endFollows } from '../termcontrol/bridge/follows.mjs';
 import { resolveCaller } from './termfleet-child.mjs';
+import { explainProviderRoute } from './lib/task-router.mjs';
 import { findOwnerWords, recentOwnerWords } from '../termcontrol/bridge/owner-words.mjs';
 import { Routines, describeDays } from '../termcontrol/bridge/routines.mjs';
 import { screenOf } from '../termcontrol/bridge/liveness.mjs';
@@ -335,6 +336,15 @@ async function main(argv) {
     // TF-102: the task carries Noam's items in his words and a receipt mark, so the start is
     // confirmed only once the new agent has really begun (not stuck on a startup prompt).
     let taskText = typeof flags['task-file'] === 'string' ? readFileSync(flags['task-file'], 'utf8') : typeof flags.task === 'string' ? flags.task : '';
+    // Codex unless the task itself needs Claude (Noam 2026-10-26, complaint #19: 41 of 43 bot helpers
+    // in three days were started in Claude by a bare --provider claude the router would not pick).
+    if (ownDir && flags.provider === 'claude') {
+      const route = explainProviderRoute(taskText);
+      if (route.provider !== 'claude') {
+        flags.provider = 'codex';
+        out('Starting in Codex: new terminals run in Codex unless the task needs Claude. If it does, say so in the task (for example "use Claude: it handles a conversation").');
+      }
+    }
     const reqs = taskText ? requirementIds(flags, taskText, { selfId }) : { ids: [] };
     if (reqs.error) fail(reqs.error);
     const delivery = taskText ? newDeliveryId() : null;
