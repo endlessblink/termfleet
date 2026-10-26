@@ -344,7 +344,9 @@ export function childStartupCommand(provider: AgentProvider, task: string, hando
       : provider === "opencode"
         ? `opencode --prompt ${quoted}`
         : provider === "claude" && model
-          ? `claude --model ${shellQuote(model)} ${quoted}`
+          // Haiku has no auto mode (31 of 31 Haiku helpers ran ask-first, 2026-10-26), so every edit
+          // in its own folder asked Noam; it accepts file edits there instead. Commands still ask.
+          ? `claude --model ${shellQuote(model)}${/haiku/i.test(model) ? " --permission-mode acceptEdits" : ""} ${quoted}`
           : `${provider} ${quoted}`;
   const bound = handoff ? `TERMFLEET_HANDOFF_DESCRIPTOR=${shellQuote(JSON.stringify(handoff))} ${start}` : start;
   return `${bound}; exec "\${SHELL:-bash}" -l`;

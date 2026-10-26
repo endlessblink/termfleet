@@ -296,7 +296,8 @@ test("a helper starts its agent on the task, then stays a usable terminal", () =
 // Noam 2026-10-24: "קלוד מאבד טוקנים ... אין routing למודלים זולים", "לא רוצה הארדקודינג!!!". A Claude
 // helper starts on the model its task needs unless --model names another; the model is a name only.
 test("a Claude helper starts on the model its task needs, or the one it was given", async () => {
-  expect(childStartupCommand("claude", "Fix the dialog", undefined, "haiku")).toBe(`claude --model 'haiku' 'Fix the dialog'; exec "\${SHELL:-bash}" -l`);
+  expect(childStartupCommand("claude", "Fix the dialog", undefined, "haiku")).toBe(`claude --model 'haiku' --permission-mode acceptEdits 'Fix the dialog'; exec "\${SHELL:-bash}" -l`);
+  expect(childStartupCommand("claude", "Fix the dialog", undefined, "sonnet")).toBe(`claude --model 'sonnet' 'Fix the dialog'; exec "\${SHELL:-bash}" -l`);
   expect(childStartupCommand("codex", "x", undefined, "haiku")).toBe(`codex 'x'; exec "\${SHELL:-bash}" -l`);
   expect(parseChildRequest(JSON.stringify({ ...good, model: "opus" }), now)).toMatchObject({ ok: true, request: { model: "opus" } });
   expect(parseChildRequest(JSON.stringify({ ...good, model: "opus; rm -rf ~" }), now)).toEqual({ ok: false, reason: "bad-model" });
