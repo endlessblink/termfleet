@@ -224,6 +224,26 @@ export function brokenHandoff(text, chat, turnStart) {
   return handed ? null : m[0].trim();
 }
 
+// "It is fixed / done / ready" said to Noam. 19 of 40 such claims in a week were false
+// because nobody had looked at what he sees, after the install or restart (#13).
+const HEB = (w) => `(?<![\\u0590-\\u05FF])(?:${w})(?![\\u0590-\\u05FF])`;
+const DONE_CLAIM = new RegExp(`${HEB('תוקן|תוקנו|תיקנתי|טופל|טופלו|בוצע|בוצעו|הושלם|הושלמו|סיימתי|ניקיתי|מוכן|מוכנים|כמוכן|עובד עכשיו|כבר עשיתי')}|\\b(?:fixed|resolved|works now|now works|is live|cleaned up|i'?ve (?:already )?done it|all done|it'?s done|is done|are done|ready to try)\\b`, 'i');
+const NOT_YET = new RegExp(`${HEB('לא|טרם|עוד לא|כש\\S*|אחרי ש\\S*|ברגע ש\\S*|אם|אולי|מחכה|ממתין|ממתינה')}|\\b(?:not|never|yet|still|once|when|if|will|until|waiting|being|next|can'?t|cannot|isn'?t|aren'?t|wasn'?t|didn'?t|hasn'?t)\\b`, 'i');
+const SEEN_LIVE = /צילום|screenshot|בדקתי (?:אצלך|בטלפון|במסך|באפליקציה)|ראיתי (?:אצלך|בטלפון|במסך|באפליקציה)|אישרת|(?:checked|saw|opened|tried) it (?:on|in) (?:your|the) (?:phone|screen|app)|you confirmed/i;
+
+/** The sentence where a reply tells Noam something is fixed or ready, with nothing to show it was seen working; else null. */
+export function unprovenClaim(text, { media = 0 } = {}) {
+  // Words in quotes are a name or a quote ("בוצע חלקית" as a label), not a claim.
+  const msg = String(text || '').replace(/"[^"\n]{0,80}"|“[^”\n]{0,80}”|`[^`\n]*`/g, '""').trim();
+  if (!msg || media > 0 || SEEN_LIVE.test(msg)) return null;
+  // A reply that opens with "not fixed yet" is an honest status, whatever follows.
+  if (/^\W*(?:עוד לא|טרם|לא)(?![֐-׿])|^\W*(?:not (?:fixed|done|ready)|still not|not yet)\b/i.test(msg)) return null;
+  for (const sentence of msg.split(/(?<=[.!?\n])\s*|\s+[-—]\s+/)) {
+    if (DONE_CLAIM.test(sentence) && !NOT_YET.test(sentence)) return sentence.trim().slice(0, 140);
+  }
+  return null;
+}
+
 /** The pictures the bridge's own "[Noam attached N picture(s)…: a , b]" notes name in a message, that exist. */
 export function attachedPictures(text) {
   const out = [];
@@ -553,6 +573,7 @@ export class Bots {
     this.groups = new BotGroups({ dir: path.join(dir, 'groups'), now: this.now, botExists: (id) => Boolean(this.read(id)) });
     this.live = { at: 0, ids: null }; // running terminals, refreshed in the background (a turn never waits for it)
     this.handoffNudged = new Map(); // id -> when it was last told to keep a hand-off promise
+    this.claimNudged = new Map(); // id -> when it was last asked to show a "fixed" claim working
   }
 
   folder(id) {
@@ -1454,7 +1475,7 @@ export class Bots {
       const silent = !result.error && !result.stopped && !shown.media.length && (nothingNew || (held && !asked.text));
       const answered = this.running.get(id)?.startedAt;
       if (bot && result.stopped) this.append(id, { role: 'note', text: 'You stopped this reply. Ask again any time.', answered: answered || Date.now() });
-      else if (bot && !silent) this.append(id, result.error ? { role: 'error', text: result.error, ...(answered ? { answered } : {}) } : { role: 'bot', ...(answered ? { answered } : {}), text: asked.text || (asked.question || listed.checklist || shown.media.length ? '' : 'Done, with nothing to add.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}), ...(shown.media.length ? { media: shown.media } : {}), ...(duplicate ? { duplicate: true } : {}) });
+      else if (bot && !silent) this.append(id, result.error ? { role: 'error', text: result.error, ...(answered ? { answered } : {}) } : { role: 'bot', ...(answered ? { answered } : {}), text: asked.text || (asked.question || listed.checklist || shown.media.length ? '' : 'This turn ended without a written reply.'), ...(asked.question ? { question: asked.question } : {}), ...(listed.checklist ? { checklist: listed.checklist } : {}), ...(shown.media.length ? { media: shown.media } : {}), ...(duplicate ? { duplicate: true } : {}) });
        // Guard: check for hollow messages and poor structure
        if (bot && !silent && !result.error && asked.text) {
          const msg = asked.text;
@@ -1471,6 +1492,12 @@ export class Bots {
          if (promise && this.now() - (this.handoffNudged.get(id) || 0) > 10 * 60_000) {
            this.handoffNudged.set(id, this.now());
            this.wake(id, `You just told Noam "${promise}", but no terminal got that work in this turn. Hand it over now (termfleet-team start or send), or tell him plainly that you will not.`);
+         }
+         const claim = unprovenClaim(msg, { media: shown.media.length });
+         if (claim && this.now() - (this.claimNudged.get(id) || 0) > 10 * 60_000) {
+           this.claimNudged.set(id, this.now());
+           console.error(`[${bot.name}] Unproven claim: ${claim}`);
+           this.wake(id, `You just told Noam "${claim}". Did you see it working where he uses it, after any install or restart (his app, his phone, his screen)? If yes, send him a screenshot of it working now. If not, tell him plainly that it is built but not checked yet, and check it.`);
          }
        }
       // Tagged elsewhere: the same answer also shows there, under this bot's name.

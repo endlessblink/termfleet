@@ -152,13 +152,13 @@ test('a bot row counts its busy terminal agents, once each, and only recent hand
     { paneId: 'gone', at: now - 10 },
   ] };
   const panes = [
-    { id: 'a', turn: 'working' }, { id: 'b', turn: 'idle', producing: true },
+    { id: 'a', turn: 'working', task: 'Fixing the login page' }, { id: 'b', turn: 'idle', producing: true },
     { id: 'c', turn: 'waiting' }, { id: 'old', turn: 'working' },
   ];
-  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 2, helpersAsking: 0 });
+  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 2, helpersAsking: 0, helperNow: 'Fixing the login page' }, 'says what the busy agent is doing (#24)');
   panes[0].turn = 'idle'; panes[1].producing = false;
-  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 0, helpersAsking: 0 }, 'drops as they finish; waiting alone is not a card');
-  assert.deepEqual(helperState({}, panes, now), { waitingOn: 0, helpersAsking: 0 });
+  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 0, helpersAsking: 0, helperNow: '' }, 'drops as they finish; waiting alone is not a card');
+  assert.deepEqual(helperState({}, panes, now), { waitingOn: 0, helpersAsking: 0, helperNow: '' });
 });
 
 // Noam 2026-10-22: "אין צורך בהודעות כפולות עם שאלות כפולות. פשוט להשאיר את אותה אחת עד שאני אענה".

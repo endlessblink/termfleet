@@ -3057,6 +3057,8 @@ function visibleAsks(asks,scheduled=[]){
 }
 function asksHtml(asks,working,live,scheduled=[]){
   asks=visibleAsks(asks,scheduled);
+  // No requests, but a terminal agent is working for this bot: still show what it is doing (#24).
+  if((!asks || !asks.length) && working && live){live0=String(live);paintSideAsks([{n:0,id:'live',status:'open',title:String(live),text:String(live)}],0,railLive(live));return '';}
   if(!asks || !asks.length){clearSideAsks();return '';}
   const done=asks.filter(a=>a.status==='done').length,partial=asks.filter(a=>a.status==='partial').length,open=asks.filter(a=>a.status==='open').length;
   const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),ready:ui('ready to try','מוכן לבדיקה'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
@@ -3294,7 +3296,7 @@ function botsHomeHtml(data){
       :b.state==='needs-you'?['needs-you',ui('Needs you','נדרש מענה'),esc(b.blocked?.ask || '')]
       :b.helpersAsking?['needs-you',ui('Needs you','נדרש מענה'),ui('a terminal agent is asking you','סוכן בטרמינל שואל אותך')]
       :b.state==='failed'?['needs-you',ui('Something went wrong','משהו השתבש'),ui('open to see','פתחו לפרטים')]
-      :n?['agents',ui(`Waiting on ${n} agent${n>1?'s':''}`,n>1?`ממתין ל-${n} סוכנים`:'ממתין לסוכן'),'']
+      :n?['agents',ui(`Waiting on ${n} agent${n>1?'s':''}`,n>1?`ממתין ל-${n} סוכנים`:'ממתין לסוכן'),esc(b.helperNow || '')]
       :b.waitingForReset?['idle',ui('Waiting for a plan to reset','ממתין לאיפוס של תוכנית'),'']
       :b.openTasks?['pending',ui(`${b.openTasks} open task${b.openTasks>1?'s':''}`,b.openTasks===1?'משימה פתוחה אחת':`${b.openTasks} משימות פתוחות`),said]
       :unread?['done',ui('Done','הסתיים'),said]

@@ -9,8 +9,10 @@ import { loadLedger } from './requirements.mjs';
  *  - a terminal marked "working" whose agent has said nothing for 30 minutes;
  *  - a request from the last 24 hours assigned to a live working terminal that has
  *    been silent for 30 minutes since it got the item.
- * Each finding goes to stderr and, once per episode, as a note in the chat of the bot that
- * owns that terminal or item (the Agent Manager when no bot does).
+ * Each finding goes to stderr and, once per episode, into the lasting event log (the journal
+ * keeps under two hours, so findings used to vanish). Notes in bot chats were removed on
+ * 2026-10-25 (bd4ffe1, they flooded Noam's chat); a stuck terminal now reaches its bot once
+ * through bot-events' "stuck" notice instead.
  */
 
 export const WATCHDOG_EVERY_MS = 15 * 60_000;
@@ -49,7 +51,7 @@ const minutes = (ms) => Math.round(ms / 60_000);
  * One look. `flagged` remembers what was already reported so an ongoing stall is told once.
  * Returns the findings (for tests and the log).
  */
-export function checkStalls({ bots, panes, items = null, now = Date.now(), flagged = new Map(), lastAt = lastAgentMessageAt, log = (line) => console.error(line), silentAfterMs = SILENT_AFTER_MS, stallMaxMs = STALL_MAX_REPORT_MS }) {
+export function checkStalls({ bots, panes, items = null, now = Date.now(), flagged = new Map(), lastAt = lastAgentMessageAt, log = (line) => console.error(line), record = null, silentAfterMs = SILENT_AFTER_MS, stallMaxMs = STALL_MAX_REPORT_MS }) {
   const findings = [];
   const live = new Set();
   const tell = (key, chats, finding) => {
@@ -58,6 +60,7 @@ export function checkStalls({ bots, panes, items = null, now = Date.now(), flagg
     flagged.set(key, finding.episode);
     findings.push(finding);
     log(`[watchdog] ${finding.text}`);
+    try { record?.(finding, chats.map((b) => b.name)); } catch (error) { log(`[watchdog] could not save: ${error.message}`); }
   };
 
   for (const pane of panes) {
@@ -91,10 +94,10 @@ export function checkStalls({ bots, panes, items = null, now = Date.now(), flagg
 }
 
 /** Starts the 15-minute timer in the bridge (first look a minute after start). */
-export function startWatchdog({ bots, panes, every = WATCHDOG_EVERY_MS } = {}) {
+export function startWatchdog({ bots, panes, every = WATCHDOG_EVERY_MS, record = null } = {}) {
   const flagged = new Map();
   const run = async () => {
-    try { return checkStalls({ bots, panes: await panes(), flagged }); } catch (error) { console.error('[watchdog]', error.message); return []; }
+    try { return checkStalls({ bots, panes: await panes(), flagged, record }); } catch (error) { console.error('[watchdog]', error.message); return []; }
   };
   const first = setTimeout(run, 60_000);
   const timer = setInterval(run, every);

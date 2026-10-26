@@ -56,13 +56,19 @@ const stateOf = (pane) => (!pane ? 'closed' : pane.turn === 'waiting' ? 'waiting
  */
 export function helperState(bot, panes, now = Date.now(), { bots } = {}) {
   const ids = new Set((bot.helpers || []).filter((h) => h?.paneId && followActive(h) && now - Number(h.at || 0) < 12 * 3600_000).map((h) => h.paneId));
-  let waitingOn = 0, helpersAsking = 0;
+  let waitingOn = 0, helpersAsking = 0, helperNow = '';
   for (const id of ids) {
-    const state = stateOf(panes.find((p) => p.id === id));
+    const pane = panes.find((p) => p.id === id);
+    const state = stateOf(pane);
     if (state !== 'closed' && bots && openTerminalAsk(bots, bot.id, id)) helpersAsking++;
-    else if (state === 'working') waitingOn++;
+    else if (state === 'working') {
+      waitingOn++;
+      // What that agent is doing, so "Waiting on 1 agent" is not the whole story (#24).
+      const now = pane.sessionAuthority && pane.sessionViewV2?.now && !pane.sessionViewV2.now.stale ? String(pane.sessionViewV2.now.label || '') : '';
+      if (!helperNow) helperNow = String(now || pane.task || pane.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    }
   }
-  return { waitingOn, helpersAsking };
+  return { waitingOn, helpersAsking, helperNow };
 }
 
 /**
