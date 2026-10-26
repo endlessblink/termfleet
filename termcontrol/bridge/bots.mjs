@@ -8,12 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { BotMemory, searchChat } from './memory.mjs';
 import { contextFill } from './context-fill.mjs';
 import { claudeTranscript } from './paths.mjs';
+import { stalledFor, conversationMtime } from './session-status.mjs';
 import { asksForFile } from '../../scripts/termfleet-asks.mjs';
 import { uploadDir } from './uploads.mjs';
 import { skillPrompt } from './skills.mjs';
 import { parseQuestion, findMedia, MEDIA_RULE, QUESTION_RULE, markRepeatedQuestions, markRepeatedTerminalAsks, markWithdrawnQuestions, needsLink, sameQuestion, nearDuplicate, NOTHING_NEW, alreadyAnsweredNote } from './bot-questions.mjs';
 import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bot-checklist.mjs';
-import { defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
+import { defaultDaemonSocket, requestDaemon } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements, messageProblem, structureProblem } from './requirements.mjs';
@@ -522,6 +523,7 @@ export class Bots {
     this.resumed = new Set();   // bots whose interrupted turn is being re-run (only once)
     this.echoes = new Map();    // id -> Set of 'bot:<id>' / 'group:<id>' where Noam tagged it; its next answer is shown there too
     this.groups = new BotGroups({ dir: path.join(dir, 'groups'), now: this.now, botExists: (id) => Boolean(this.read(id)) });
+    this.live = { at: 0, ids: null }; // running terminals, refreshed in the background (a turn never waits for it)
   }
 
   folder(id) {
@@ -726,7 +728,36 @@ export class Bots {
     try { return JSON.parse(fs.readFileSync(path.join(this.folder(id), 'helpers.json'), 'utf8')).slice(-20); } catch { return []; }
   }
 
-  terminalDigest(id) {
+  /** When a helper's own conversation record was last written; 0 when unknown. */
+  recordAt(pane) { return pane.sessionId ? conversationMtime(pane) : 0; }
+
+  /** Terminals whose program still runs, from the terminal service; null when it cannot be asked. */
+  async liveTerminalIds() {
+    try {
+      const res = await requestDaemon({ type: 'listSessions' }, defaultDaemonSocket());
+      if (res?.ok !== true) return null;
+      return new Set((res.value?.sessions || []).filter((s) => s.lastExit == null).map((s) => s.id));
+    } catch { return null; }
+  }
+
+  /**
+   * The running terminals as last seen (under a minute old), else null. A turn must claim its bot
+   * synchronously (drain is guarded by `running`), so it reads this and starts a refresh for later.
+   */
+  liveNow() {
+    const refresh = () => {
+      if (this.live.busy) return;
+      this.live.busy = true;
+      this.liveTerminalIds().then((ids) => { Object.assign(this.live, { at: this.now(), ids, busy: false }); }, () => { this.live.busy = false; });
+    };
+    // Kept warm from the first use on, so the next turn reads a fresh list.
+    if (!this.live.timer) { this.live.timer = setInterval(refresh, 15_000); this.live.timer.unref?.(); }
+    if (this.now() - this.live.at > 15_000) refresh();
+    return this.now() - this.live.at < 60_000 ? this.live.ids : null;
+  }
+
+  /** `live`: the running terminals; a closed one is left out (it used to be listed by its last word, "working"). */
+  terminalDigest(id, live = null) {
     const helpers = this.helpers(id);
     const active = helpers.filter((h) => !h.ended);
     if (!active.length) return '';
@@ -737,6 +768,7 @@ export class Bots {
     for (const h of active) {
       if (seen.has(h.paneId)) continue;
       seen.add(h.paneId);
+      if (live && !live.has(h.paneId)) continue;
       let s = null;
       try { s = JSON.parse(fs.readFileSync(path.join(dir, `pane-${fnv(h.paneId)}.json`), 'utf8')); } catch { /* no status file */ }
       const fresh = s && typeof s.updatedAt === 'number' && now - s.updatedAt < 30 * 60_000;
@@ -745,6 +777,10 @@ export class Bots {
       const turn = s?.turn || (fresh && s?.turnEventAt && now - s.turnEventAt < 5 * 60_000 ? 'working' : 'unknown');
       const provider = h.provider || s?.provider || '';
       const name = h.paneId.length > 30 ? h.paneId.slice(9, 21) : h.paneId;
+      // "working" is only the agent's last word about itself; a crashed agent never takes it back
+      // (2026-10-26: this bot was told a dead Codex was working for 2 hours). Its own record decides.
+      const stalled = turn === 'working' ? stalledFor({ turn, updatedAt: s?.updatedAt }, {}, 0, now, this.recordAt({ provider, sessionId: s?.sessionId, cwd: s?.cwd || h.cwd })) : 0;
+      if (stalled) { lines.push(`- ${name} (${provider}, STUCK: no progress for ${Math.round(stalled / 60_000)} minutes, the agent has most likely crashed. Close it (termfleet-team close ${h.paneId}) and start a fresh one for its task${task ? `: ${task.slice(0, 100)}` : ''})`); continue; }
       lines.push(`- ${name} (${provider}, ${turn}${activity ? `, now: ${activity}` : ''}${task && task !== activity ? `, task: ${task.slice(0, 100)}` : ''})`);
     }
     if (!lines.length) return '';
@@ -1256,7 +1292,7 @@ export class Bots {
         since = lastWaited >= 0 ? chat.slice(lastWaited + 1).filter((m) => m.role === 'bot' && !m.side && m.text).pop() || null : null;
       }
       // Messages that arrived while the bot was busy go in together, oldest first.
-      const digest = this.terminalDigest(id);
+      const digest = this.terminalDigest(id, this.liveNow());
       const text = this.withSideNotes(id, (digest ? `${digest}\n\n` : '') + (since ? `${alreadyAnsweredNote(since.text)}\n\n` : '') + (texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n')));
       const echo = [...(this.echoes.get(id) || [])];
       this.echoes.delete(id);
@@ -1423,7 +1459,7 @@ export class Bots {
           .map((m) => ({ who: m.role === 'operator' ? 'Noam' : m.guest?.name || bot.name, text: m.text }));
         const openWork = this.openWork(id);
         let terminals = '';
-        try { terminals = this.terminalDigest(id); } catch { terminals = ''; }
+        try { terminals = this.terminalDigest(id, this.liveNow()); } catch { terminals = ''; }
         const copy = provider === 'claude' && process.env.TC_SIDE_FORK !== '0' && bot.sessions?.claude?.started && bot.sessions.claude.id
           ? { session: bot.sessions.claude.id, addDirs: [uploadDir()] } : {};
         const prompt = sidePrompt({ bot, task: current.task, startedAt: current.startedAt, steps: current.steps || [], said: current.said || [], chat, incoming: batch.map((e) => e.text), openWork, terminals, forked: Boolean(copy.session), now: this.now() });

@@ -4,7 +4,8 @@ import path from 'node:path';
 import { listPanes, reconcileLivePanes, readWorkspace } from './inventory.mjs';
 import { withSleepingLives } from './sleep.mjs';
 import { liveness } from './liveness.mjs';
-import { readSessionStatus, applyVendorStatus } from './session-status.mjs';
+import { readSessionStatus, applyVendorStatus, stalledFor, conversationMtime } from './session-status.mjs';
+import { pendingAsk } from './asks.mjs';
 import { readFeed } from './feed.mjs';
 import { sendToPane } from './send.mjs';
 import { PATHS } from './paths.mjs';
@@ -56,10 +57,17 @@ export async function fleetPanes({ workspace = readWorkspace() } = {}) {
     const pane = applyVendorStatus({ ...p, ...readSessionStatus(p) });
     const life = byId.get(p.id);
     const side = sidecarOf(p.id);
+    // Measured from the agent's own conversation record, the same rule the app shows (2026-10-26:
+    // a dead Codex read "working" for hours, so its bot kept messaging it and could not close it).
+    const stalledForMs = life && !life.sleeping ? stalledFor(pane, life, 0, Date.now(), conversationMtime(pane)) : 0;
+    // A question or approval left open is Noam's to answer, never a crash (read only when stalled).
+    const ask = stalledForMs ? pendingAsk(pane) : null;
     return {
       ...pane,
       alive: Boolean(life),
       producing: life?.producing ?? false,
+      stalledForMs,
+      ...(ask ? { attention: { kind: ask.kind, title: ask.title } } : {}),
       ...(life?.sleeping ? { sleeping: true, turn: 'idle' } : {}),
       goal: pane.operatorGoal?.text || side.declaredGoal || side.statedGoal || null,
       statedTask: side.statedTask || null,
@@ -72,12 +80,18 @@ export async function fleetPanes({ workspace = readWorkspace() } = {}) {
   });
 }
 
-/** Plain state word for one pane: working, waiting (needs a person), idle, closed. */
+/** Plain state word for one pane: working, stuck (no progress, likely crashed), waiting (needs a person), idle, closed. */
 export function stateOf(pane) {
   if (!pane.alive) return 'closed';
   if (pane.turn === 'waiting') return 'waiting';
+  if (pane.turn === 'working' && pane.stalledForMs > 0) return pane.attention ? 'waiting' : 'stuck';
   if (pane.turn === 'working' || pane.producing) return 'working';
   return 'idle';
+}
+
+/** What a stuck terminal means for the agent that owns it. */
+export function stuckNote(pane) {
+  return `No progress for ${Math.round((Number(pane.stalledForMs) || 0) / 60_000)} minutes: the agent has most likely crashed. Close it (termfleet-team close ${pane.id}) and start a fresh one for its task.`;
 }
 
 /**
@@ -162,6 +176,7 @@ export async function waitForReply(paneId, { since = Date.now(), timeoutMs = 10 
     const state = stateOf(pane);
     if (state === 'working') { sawWork = true; calm = 0; continue; }
     if (state === 'waiting') return { state, pane, reply: lastReply(pane, { since }), note: 'The agent is waiting for a person (a question or an approval).' };
+    if (state === 'stuck') return { state, pane, reply: lastReply(pane, { since }), note: stuckNote(pane) };
     calm += 1;
     const reply = lastReply(pane, { since });
     if (calm >= 2 && (reply || sawWork)) return { state, pane, reply };

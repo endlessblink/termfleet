@@ -3139,7 +3139,7 @@ function botMenu(id,bot,state,start='menu'){
     +item('hide',bot?.hidden?ui('Show in list','הצגה ברשימה'):ui('Hide','הסתרה'))
     +item('del',ui('Delete bot','מחיקת הבוט'),'','danger');
   const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),ready:ui('ready to try','מוכן לבדיקה'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
-  const stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),closed:ui('closed','נסגר')};
+  const stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),stuck:ui('stuck, likely crashed','תקוע, כנראה קרס'),closed:ui('closed','נסגר')};
   const back=`<button type="button" class="menu-item menu-back" data-act="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="menu-label">${ui('Bot menu','תפריט הבוט')}</span></button>`;
   // Requests (Noam 2026-10-24: "לא ברור מה פתוח מה סגור"): open first, then ready for him to try,
   // then done folded away. One short line of his own words each, newest first.
@@ -3827,7 +3827,7 @@ async function openBot(id,{motion=null}={}){
     const pinButton=chatStatus.querySelector('.bot-pin');if(pinButton)pinButton.textContent=bot.pinned?ui('Unpin','ביטול הצמדה'):ui('Pin','הצמדה');
     const hideButton=chatStatus.querySelector('.bot-hide');if(hideButton)hideButton.textContent=bot.hidden?ui('Show in list','הצגה ברשימה'):ui('Hide','הסתרה');
     const memCount=chatStatus.querySelector('.bot-memory-count');if(memCount)memCount.textContent=bot.memoryPending?` · ${ui(`${bot.memoryPending} to review`,`${bot.memoryPending} לבדיקה`)}`:'';
-    const helpers=bot.helpers || [],stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),closed:ui('closed','נסגר')};
+    const helpers=bot.helpers || [],stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),stuck:ui('stuck, likely crashed','תקוע, כנראה קרס'),closed:ui('closed','נסגר')};
     const active=helpers.filter(h=>h.state==='working' || h.state==='needs-you').length;
     const helpersMarkup=helpers.length?`<details class="helpers-chip"><summary>${esc(ui(`Terminal agents it started: ${helpers.length}${active?` (${active} working)`:''}`,`סוכני מסוף שהפעיל: ${helpers.length}${active?` (${active} עובדים)`:''}`))} ▾</summary><ul>${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul></details>`:'';
     let schedules=[];try{const r=await fetch(`/api/routines?pane=${encodeURIComponent('bot:'+id)}`,{signal:AbortSignal.timeout(6000)});if(r.ok)schedules=(await r.json()).routines || [];}catch{}

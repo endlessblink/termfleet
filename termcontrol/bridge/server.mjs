@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { getTokenSummary } from './token-monitor.mjs';
 import { canvasSidebarView, listPanes, reconcileLivePanes, readWorkspace, inventoryVersion } from './inventory.mjs';
-import { transcriptPath as codexTranscript, rolloutForStart, promptToken } from './adapters/codex.mjs';
+import { rolloutForStart, promptToken } from './adapters/codex.mjs';
 import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } from './auth.mjs';
@@ -31,7 +31,7 @@ import { pendingAsk, screenPermissionAsk, matchesAsk, questionResults } from './
 import { deskRoot, readDesk } from './desk.mjs';
 import { ChoiceReceipts } from './choice-receipts.mjs';
 import { visibleScreenOf, liveScreenOf } from './screen.mjs';
-import { readSessionStatus, subscribeSessionEventHeads, applyVendorStatus, stalledFor } from './session-status.mjs';
+import { readSessionStatus, subscribeSessionEventHeads, applyVendorStatus, stalledFor, conversationMtime } from './session-status.mjs';
 import { readUsageLimits } from './usage-limits.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
@@ -139,19 +139,6 @@ function serveStatic(res, name) {
  * If the daemon cannot be reached we show everything rather than an empty
  * screen, and say so.
  */
-/**
- * When a conversation file was last written is the plainest "last used" there
- * is, and it exists even for agents that never wrote a status record (a Codex
- * started by hand, say). 0 when the terminal has no conversation yet.
- */
-function conversationMtime(pane) {
-  try {
-    const file = pane.provider === 'codex' ? codexTranscript(pane)
-      : pane.provider === 'claude' ? claudeTranscript(pane.cwd, pane.sessionId)
-      : null;
-    return file ? fs.statSync(file).mtimeMs : 0;
-  } catch { return 0; }
-}
 
 /** Last resort for a terminal nothing else has news of: when its process began. */
 function startedAt(pid) {
@@ -795,7 +782,7 @@ const handle = async (req, res) => {
         view.messages = view.messages.map(m => m.role === 'terminal-ask' && !live.has(m.pane) ? { ...m, settled: true, terminalClosed: true } : m);
       }
       view.bot.helpers ||= [];
-      view.bot.helpers = view.bot.helpers.map((h) => { const p = panes.find((x) => x.id === h.paneId); return { ...h, state: !p ? 'closed' : p.attention ? 'needs-you' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null }; });
+      view.bot.helpers = view.bot.helpers.map((h) => { const p = panes.find((x) => x.id === h.paneId); return { ...h, state: !p ? 'closed' : p.attention ? 'needs-you' : (p.turn === 'working' && p.stalledForMs > 0) ? 'stuck' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null }; });
     }
     if (view && view.bot.provider !== 'codex') {
       const raw = bots.read(view.bot.id);

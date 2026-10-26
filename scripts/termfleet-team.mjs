@@ -41,7 +41,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
-  fleetPanes, resolvePane, stateOf, recentMessages, delegate, waitForReply, framedMessage,
+  fleetPanes, resolvePane, stateOf, stuckNote, recentMessages, delegate, waitForReply, framedMessage,
 } from '../termcontrol/bridge/orchestrate.mjs';
 import { endFollows } from '../termcontrol/bridge/follows.mjs';
 import { resolveCaller } from './termfleet-child.mjs';
@@ -162,6 +162,7 @@ export function describe(pane, selfId) {
   return [
     `${pane.id}${who}`,
     `  ${pane.profile?.name ? `${pane.profile.name}${pane.profile.job ? ` (${pane.profile.job})` : ''} · ` : ''}${pane.project} · ${pane.provider} · ${stateOf(pane)}${parent}`,
+    stateOf(pane) === 'stuck' ? `  ${stuckNote(pane)}` : null,
     pane.goal ? `  Goal: ${short(pane.goal)}` : null,
     pane.statedTask ? `  Task: ${short(pane.statedTask)}` : null,
   ].filter(Boolean).join('\n');

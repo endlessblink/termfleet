@@ -6,6 +6,21 @@ import {reduceSessionEnvelope} from '../../shared/sessionEnvelope.mjs';
 import fs from 'node:fs';
 import { transcriptPath as codexTranscriptPath } from './adapters/codex.mjs';
 import { tailLines } from './tail.mjs';
+import { claudeTranscript } from './paths.mjs';
+
+/**
+ * When a conversation file was last written is the plainest "last used" there
+ * is, and it exists even for agents that never wrote a status record (a Codex
+ * started by hand, say). 0 when the terminal has no conversation yet.
+ */
+export function conversationMtime(pane) {
+  try {
+    const file = pane.provider === 'codex' ? codexTranscriptPath(pane)
+      : pane.provider === 'claude' ? claudeTranscript(pane.cwd, pane.sessionId)
+      : null;
+    return file ? fs.statSync(file).mtimeMs : 0;
+  } catch { return 0; }
+}
 
 const cache = new Map();
 
