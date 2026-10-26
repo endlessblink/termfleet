@@ -162,6 +162,25 @@ Known limit: Codex quick replies cannot use a forked copy. `codex exec resume --
 4. **Less history loss (M6).** Codex compacts at 250k instead of 100k. The messages held for busy agents (already live) are measured here too.
 5. **No silent drops (M7).** Already live: broken hand-off promises and unfinished requests on finished or crashed terminals are caught. The scorecard confirms 0 drops left unflagged.
 
+### Baseline measured 26 Oct, before lighter tracking (commit 4838cc7)
+
+Data covers the politic-fighter bot pipeline over 48 h, compared with a hand-started Claude session on the same repo.
+
+| Measure | Bot pipeline | Plain session |
+|---|---|---|
+| Time from Noam's message to the first file edit (median) | 7.3 min | 3.6 min |
+| Commits that touch no code | 52% (320 of 611) | 0% |
+| Helper tool time: coordination / making proof / edits / deploys | 32% / 28% / 12% / 1% | — |
+| Stop-gate blocks | 534 across 91 helper sessions, with about half of their output after a block | — |
+| Noam's own words as a share of what workers read | under 2% | — |
+| Items finished | 109 of 594 (18%) | — |
+| Ready time, median / p90 | 24 / 76 min | — |
+| Open items | 142, median age 21 h | — |
+
+Re-measure on 27 Oct evening with the same scripts (`.dev-tmp/.../inv4/`). Success means fewer non-code commits, a shorter time to first edit, a larger deploy share, and no rise in dropped requests.
+
+A lesson from the same evening: holding messages until a Codex turn ends (334d5d4) left 65 messages undelivered for up to 1.5 h, because those turns never ended. It was turned off in e4d0aae, and the bot was handed its 7 lost instructions.
+
 ## Proof required before calling any step done
 - Measured before/after numbers (start time, reply time, failed hand-offs per day) from the bots' own chat records.
 - Noam confirms on the phone. Nothing is "fixed" until he says so.
