@@ -98,6 +98,32 @@ Model endpoint pointed at a dead local port for every probe, so no cloud model c
 13. Pin Codex auto-update to off-hours so it never restarts the shared service mid-work; prove/deny the #27 link.
 14. Split the test suite: a 60-second "bots core" gate that must be green, the slow GUI suite nightly. Fix the 9 failures.
 
+## Afternoon findings (15:00–16:00) — why bot-started terminals fail
+
+A read-only investigation of 93 helper terminals that bots started between 19 and 26 Oct (from helpers.json, chat.jsonl, transcripts and journals). 75 were closed on purpose after finishing. These are the real failures:
+
+| Cause | Cases | Proof | Status |
+|---|---|---|---|
+| Claude's "trust this folder?" was never answered. The screen reader dropped cursor moves (`ESC[nG`), so the question read "Isthisaproject…", and Claude 2.x shows the menu without numbers. A later message's Enter picked "No, exit". | 8 died, 12 "NOT started" | Real screen bytes of a fresh Claude; Down+Enter accepted live on a throwaway | Fixed, c0b6dc8 |
+| The shared Codex app-server daemon was restarted by its updater, and every TUI attached to it died ("Reconnect failed"). | 4 (11:30, 11:42, 11:43, 12:45) | Rollout last-write times, screens, daemon logs | Fixed 13:49 by the `--no-daemon` wrapper. 0 cases since. One pre-wrapper Codex is still exposed. |
+| A dead agent was reported as "working" to its bot and to `termfleet-team`. Close refused it, and it counted toward the 3-terminal limit. | 2 | politic-figther_dev was told its dead helper was working for 2 h+ | Fixed, 7e8882b ("stuck" from the conversation record) |
+| The terminal service was replaced on 24 Oct at 20:57. Helpers are not tagged as agent terminals, so they come back as plain shells. | 3 | Transcripts stop at 20:56; the daemon started at 20:57; 71/93 have `recoveryKind:null` | Open: tag helpers at spawn |
+
+Ruled out with data: OOM kills (0), bot-turn scopes killing helpers (helpers live in their own pane cgroups), the 3-terminal limit (0 refusals), sleep (0), and auto-cleanup closing a busy terminal (0).
+
+Images (every path checked on real data):
+- Claude bot turn: sees images (140/142 opened).
+- Codex bot turn: gets the path as text only, with no `-i`.
+- Quick reply: gets no path at all. This is the main gap.
+- Bot → helper terminal: partial (Codex opened 4/34).
+- Direct pane chat and Ctrl+V: see images.
+
+Next, in order:
+1. Quick reply and Codex image delivery.
+2. Tag helpers for resume.
+3. Codex folder-trust.
+4. Auto-replace a stuck helper. Agent-Manager's healthcheck agent is building this on `stateOf === 'stuck'`.
+
 ## Proof required before calling any step done
 - Measured before/after numbers (start time, reply time, failed hand-offs per day) from the bots' own chat records.
 - Noam confirms on the phone. Nothing is "fixed" until he says so.
