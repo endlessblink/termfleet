@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T09:40:20.191Z",
+  "updatedAt": "2026-10-26T10:25:14.934Z",
   "issues": [
     {
       "id": "TF-001",
@@ -12823,27 +12823,27 @@
     {
       "id": "TF-110",
       "title": "Desktop map and TermControl show different terminal counts",
-      "state": "reproducing",
+      "state": "verifying",
       "severity": "medium",
       "surface": "desktop-runtime",
-      "matrixRefs": [],
+      "matrixRefs": ["TF-110"],
       "symptom": "Owner reported 51 map terminals versus 9 in TermControl; current saved map has 10 cards but only 9 are live and map-owned.",
-      "rootCause": "",
+      "rootCause": "Bridge workspace reads retained orphan and empty-tab canvas nodes; original reported desktop count is not reproduced and this bridge-only projection does not change desktop rendering.",
       "guard": "Read-only map ownership and daemon identity comparison; inventory-parity and layout-ownership tests",
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-10-26T09:24:06.117Z",
-          "note": "Desktop MagicCanvas uses workspace canvas nodes and tabs; normalizeCanvasState removes nodes without tabs, but reconciliation retains saved tabs absent from the live daemon. TermControl buildCurrentPanes combines daemon liveness with sleep markers and reconcileLivePanes filters to non-retired map-owned live sessions."
+          "at": "2026-10-26T10:25:14.823Z",
+          "note": "Read-only readWorkspace projection filters orphan/terminal-less canvas cards after split ownership recovery; preserves reconnecting cards and saved data. Registered runtime PID3155189 verified with proc before edits; no activation authorized. This does not change desktop map rendering."
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-26T09:24:06.171Z",
-          "note": "Baseline diagnosis only: node --test termcontrol/test/inventory-parity.test.mjs termcontrol/test/layout-ownership.test.mjs passed 7/7. This is not fix approval or visual evidence."
+          "at": "2026-10-26T10:25:14.879Z",
+          "note": "New readWorkspace regression fails before fix on four stale cards; focused inventory/layout/stale tests pass 8/8, expanded canonical verify:termcontrol-mobile passes 31/31. Node syntax checks pass. Production desktop/phone comparison remains unverified."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Inspect the authenticated desktop map and TermControl together; identify whether the reported 51 is still visible before changing saved cards.",
+      "nextAction": "Obtain explicit termcontrol-only restart authorization, verify loaded candidate, then compare authenticated production phone and desktop map identities; keep original complaint open until real surface proof exists.",
       "history": [
         {
           "at": "2026-10-26T09:24:05.963Z",
@@ -12875,6 +12875,39 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Baseline diagnosis only: node --test termcontrol/test/inventory-parity.test.mjs termcontrol/test/layout-ownership.test.mjs passed 7/7. This is not fix approval or visual evidence."
+        },
+        {
+          "at": "2026-10-26T10:23:06.030Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "New stale-canvas-nodes readWorkspace fixture fails on four obsolete cards before production changes; checks restored split ownership and read-only disk behavior."
+        },
+        {
+          "at": "2026-10-26T10:23:06.087Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Apply ownership-only read projection after layout recovery. Do not gate card retention on temporary daemon liveness."
+        },
+        {
+          "at": "2026-10-26T10:25:14.824Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Read-only readWorkspace projection filters orphan/terminal-less canvas cards after split ownership recovery; preserves reconnecting cards and saved data. Registered runtime PID3155189 verified with proc before edits; no activation authorized. This does not change desktop map rendering."
+        },
+        {
+          "at": "2026-10-26T10:25:14.879Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "New readWorkspace regression fails before fix on four stale cards; focused inventory/layout/stale tests pass 8/8, expanded canonical verify:termcontrol-mobile passes 31/31. Node syntax checks pass. Production desktop/phone comparison remains unverified."
+        },
+        {
+          "at": "2026-10-26T10:25:14.933Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Local candidate guarded and validated. Await explicit termcontrol-only restart authority; then inspect authenticated production and actual desktop counts. Do not mark original complaint resolved."
         }
       ]
     },

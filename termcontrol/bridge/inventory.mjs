@@ -45,7 +45,18 @@ export function readWorkspace() {
   if (mtimeMs === lastWorkspace.mtimeMs && lastWorkspace.value) return lastWorkspace.value;
   const fresh = readJson(PATHS.workspace);
   if (fresh && Array.isArray(fresh.tabs)) {
-    lastWorkspace = { mtimeMs, value: withLayoutTerminals(fresh) };
+    const workspace = withLayoutTerminals(fresh);
+    if (Array.isArray(workspace.canvasState?.nodes)) {
+      const retired = retiredTerminalIds(workspace);
+      const ownedTabs = new Set(workspace.tabs
+        .filter((tab) => (tab.terminals || []).some((terminal) => terminal?.id && !retired.has(terminal.id)))
+        .map((tab) => tab.id));
+      // Filter the read-only view after recovering split ownership. A missing
+      // daemon session alone must never hide a card waiting to reconnect.
+      workspace.canvasState = { ...workspace.canvasState, nodes: workspace.canvasState.nodes
+        .filter((node) => node?.type !== 'terminal' || ownedTabs.has(node.terminalTabId)) };
+    }
+    lastWorkspace = { mtimeMs, value: workspace };
     return lastWorkspace.value;
   }
   return lastWorkspace.value;
