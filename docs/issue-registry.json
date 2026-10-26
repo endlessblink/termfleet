@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-25T18:04:28.669Z",
+  "updatedAt": "2026-10-26T09:24:06.172Z",
   "issues": [
     {
       "id": "TF-001",
@@ -12817,6 +12817,64 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Working pulse, idle/waiting none, reduced motion none, stable node: focused6/6. Live PID303273 idle none. Visually reviewed /tmp/termfleet-bot-provider-working.png. Physical owner trial pending."
+        }
+      ]
+    },
+    {
+      "id": "TF-110",
+      "title": "Desktop map and TermControl show different terminal counts",
+      "state": "reproducing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Owner reported 51 map terminals versus 9 in TermControl; current saved map has 10 cards but only 9 are live and map-owned.",
+      "rootCause": "",
+      "guard": "Read-only map ownership and daemon identity comparison; inventory-parity and layout-ownership tests",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-26T09:24:06.117Z",
+          "note": "Desktop MagicCanvas uses workspace canvas nodes and tabs; normalizeCanvasState removes nodes without tabs, but reconciliation retains saved tabs absent from the live daemon. TermControl buildCurrentPanes combines daemon liveness with sleep markers and reconcileLivePanes filters to non-retired map-owned live sessions."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T09:24:06.171Z",
+          "note": "Baseline diagnosis only: node --test termcontrol/test/inventory-parity.test.mjs termcontrol/test/layout-ownership.test.mjs passed 7/7. This is not fix approval or visual evidence."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Inspect the authenticated desktop map and TermControl together; identify whether the reported 51 is still visible before changing saved cards.",
+      "history": [
+        {
+          "at": "2026-10-26T09:24:05.963Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T09:24:06.030Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Registered termcontrol checkout and active bridge PID 1670314 verified; original 51-card state is not reproduced in current saved workspace."
+        },
+        {
+          "at": "2026-10-26T09:24:06.074Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Baseline only: /tmp/tf-map-audit.json proves 10 saved map cards, 9 live owned terminals, one missing starting card and one cardless live Codex pane. No production changes or releases."
+        },
+        {
+          "at": "2026-10-26T09:24:06.118Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Desktop MagicCanvas uses workspace canvas nodes and tabs; normalizeCanvasState removes nodes without tabs, but reconciliation retains saved tabs absent from the live daemon. TermControl buildCurrentPanes combines daemon liveness with sleep markers and reconcileLivePanes filters to non-retired map-owned live sessions."
+        },
+        {
+          "at": "2026-10-26T09:24:06.172Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Baseline diagnosis only: node --test termcontrol/test/inventory-parity.test.mjs termcontrol/test/layout-ownership.test.mjs passed 7/7. This is not fix approval or visual evidence."
         }
       ]
     }
