@@ -54,6 +54,11 @@ try {
   sync('note', '--project', 'fixture', '--agent', 'agent-a', '--text', 'Changed a.txt; verifying the hook', '--cwd', game);
   assert.equal(hook('Stop', game, 'sess-a', 'pane-a'), null);
   console.log('PASS repeated Stop payload blocks unposted changes and permits a posted turn');
+  hook('SessionStart', outside, 'sess-b-resumed');
+  writeFileSync(join(outside, 'a.txt'), 'resumed agent change\n');
+  hook('SessionStart', outside, 'sess-b-resumed');
+  assert.equal(hook('Stop', outside, 'sess-b-resumed')?.decision, 'block');
+  console.log('PASS resumed SessionStart establishes a baseline and cannot erase unposted changes');
   assert.equal(hook('SessionStart', dir, 'unregistered'), null);
   console.log('PASS unregistered projects remain silent');
 } finally { rmSync(dir, { recursive: true, force: true }); }
