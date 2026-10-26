@@ -138,6 +138,30 @@ Next, in order:
 
 Known limit: Codex quick replies cannot use a forked copy. `codex exec resume --ephemeral` was shown to write into the original conversation; the probe's lines were removed and a backup is in `.backups/`.
 
+## Verifiable plan: bots as productive as a plain Claude Code session (Noam, 26 Oct evening)
+
+**Step 0 — the scorecard.** One script reads the bots' own records (chat, request ledger, agent transcripts, git) and prints a daily score per bot. It runs on the last 7 days first; that run is the baseline. Every later step is judged only by these numbers moving. The plain Claude Code sessions on the same projects are scored side by side for comparison.
+
+| # | Measure | Today (baseline) | Target |
+|---|---|---|---|
+| M1 | Noam's requests finished per day, and the time from his message to "ready" | from scorecard | 2x faster, near a plain session |
+| M2 | Minutes from his message to the first real file change | from scorecard | under 10 minutes |
+| M3 | Hand-offs between his words and the worker | from scorecard | at most 1 |
+| M4 | "Done/ready" claims he contradicts within 6 h | Agent-Manager 20% (30/148) | under 5% |
+| M5 | Share of real work running on the top model and full reasoning | from scorecard | 100% of building tasks |
+| M6 | Codex compactions per long thread; share of tokens spent on agents relaying messages | 1,547 compactions; relay share 57.6% | half |
+| M7 | Requests dropped (assigned, then never finished and never touched again) | 206 per week | 0; each one is flagged within 1 h |
+
+**Steps.** Each step is one change. It must pass /sure HIGH and leave the full test suite with no new failures, then the scorecard is checked 24 h later.
+1. **Top model on real work (M5, M1).** Helpers that change files start on the top model: Claude Opus, and Codex at high reasoning. Haiku and Sonnet are used only for reading and reporting. *Costs more per task; Noam decides.*
+2. **His words reach the worker as he wrote them (M3, M4).** Every hand-off attaches his exact words automatically, not the bot's retelling. A bot does small changes itself instead of relaying them.
+3. **"Ready" means checked (M4).**
+   - A request can be marked ready only with a check made after the change and specific to that request: a test that names it, or a fresh screenshot of that exact screen that no other request already uses.
+   - Reusing one screenshot for many requests is refused.
+   - The bot opens the result itself before telling Noam.
+4. **Less history loss (M6).** Codex compacts at 250k instead of 100k. The messages held for busy agents (already live) are measured here too.
+5. **No silent drops (M7).** Already live: broken hand-off promises and unfinished requests on finished or crashed terminals are caught. The scorecard confirms 0 drops left unflagged.
+
 ## Proof required before calling any step done
 - Measured before/after numbers (start time, reply time, failed hand-offs per day) from the bots' own chat records.
 - Noam confirms on the phone. Nothing is "fixed" until he says so.
