@@ -1421,12 +1421,8 @@ export class Bots {
         const runner = { ...bot, provider, model: provider === bot.provider ? (bot.model || null) : null };
         const chat = this.messages(id).filter((m) => (m.role === 'operator' || m.role === 'bot') && m.text && !batch.some((e) => e.msgId === m.id)).slice(-10)
           .map((m) => ({ who: m.role === 'operator' ? 'Noam' : m.guest?.name || bot.name, text: m.text }));
-        let openWork = [], terminals = '';
-        try {
-          openWork = [...loadRequirements({ dir: this.reqDir() }).items.values()]
-            .filter((item) => item.source === `bot:${id}` && !item.locked && !['done', 'ready', 'answered', 'context', 'dropped'].includes(item.status))
-            .map((item) => ({ status: item.status, words: item.words, where: item.assigned?.at(-1)?.pane || null }));
-        } catch { /* no ledger: the answer says so */ }
+        const openWork = this.openWork(id);
+        let terminals = '';
         try { terminals = this.terminalDigest(id); } catch { terminals = ''; }
         const prompt = sidePrompt({ bot, task: current.task, startedAt: current.startedAt, steps: current.steps || [], said: current.said || [], chat, incoming: batch.map((e) => e.text), openWork, terminals, now: this.now() });
         const cwd = path.join(this.folder(id), 'side');
@@ -1614,10 +1610,27 @@ export class Bots {
     return { unfinished: [...this.running.keys()] };
   }
 
+  /** Noam's requests this bot owns that are not finished, newest first (what its header counts as open). */
+  openWork(id) {
+    try {
+      return [...loadRequirements({ dir: this.reqDir() }).items.values()]
+        .filter((item) => item.source === `bot:${id}` && !item.locked && !['done', 'ready', 'answered', 'context', 'dropped'].includes(item.status))
+        .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))
+        .map((item) => ({ id: item.id, status: item.status, words: item.words, where: item.assigned?.at(-1)?.pane || null }));
+    } catch { return []; }
+  }
+
   /** One brain turn on whichever plan the bot is on now. */
   async turn(id, text) {
     let bot = this.read(id);
     if (!bot) return { error: 'That bot no longer exists.' };
+    // Noam 2026-10-26: the header showed 8 open tasks the bot never worked on and could not name.
+    // Every turn now carries the open list, so the orchestrator owns it instead of only the newest message.
+    const open = this.openWork(id);
+    if (open.length) {
+      const shown = open.slice(0, 15).map((w) => `- ${w.id} [${w.status}] ${String(w.words || '').replace(/\s+/g, ' ').slice(0, 180)}${w.where ? ` (handed to ${w.where})` : ''}`).join('\n');
+      text = `${text}\n\n[Your open requests from Noam: ${open.length}${open.length > 15 ? ' (newest 15 shown; `termfleet-asks items` lists all)' : ''}. You own every one. Before ending this turn, each must be moving: handed to a working terminal, finished and marked, asked about, or marked dropped/context if it is not a task. Never tell Noam you do not know what is open.\n${shown}]`;
+    }
     const extras = { card: this.memory(id).card(), handover: bot.handover || '' };
     // The chosen model belongs to the main plan; on the backup plan it uses that plan's default.
     const runner = { ...bot, provider: bot.active || bot.provider, model: (bot.active || bot.provider) === bot.provider ? (bot.model || null) : null, ...(this.side ? { steerFolder: this.folder(id) } : {}) };
