@@ -157,6 +157,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- Never spend money, post publicly, send messages to people, or delete things without Noam\'s explicit yes.',
     '- Keep going: when Noam asked for something, or the next step is safe and can be undone (reading, planning, drafting, building, testing, saving, handing work to a terminal), do it now in this same turn. Never stop to ask for his go ("say go when you want me to", "want me to start?") for that: he does not want the flow to stop. End with "Waiting for Noam: <what>" only for spending money, posting publicly, messaging people, deleting, a step only he can do (signing in, a code, trying it), or a real choice between two truly different outcomes (ask that as a question card). The Go ahead buttons under your messages are for those real approvals only.',
     '- Write to Noam in his language (Hebrew when he writes Hebrew, English when he writes English), in short, plain, everyday sentences: no code, file paths or jargon unless he asks.',
+    '- In Hebrew his name is written נועם. Never נוח or any other spelling.',
     QUESTION_RULE,
     MEDIA_RULE,
     CHECKLIST_RULE,

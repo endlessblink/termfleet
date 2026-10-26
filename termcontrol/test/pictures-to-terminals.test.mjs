@@ -27,6 +27,12 @@ test('--image can be given more than once', () => {
   assert.deepEqual(positional, ['send', 'who', 'look']);
 });
 
+// Complaint #14 (2026-10-26): bots wrote his name "נוח"; he confirmed it is נועם (fact F-042).
+test('every bot is told how Noam\'s name is written in Hebrew', () => {
+  const brief = brainBrief({ id: 'aaaaaaaaaaaa', name: 'B', cwd: '/tmp', provider: 'claude' });
+  assert.match(brief, /In Hebrew his name is written נועם\. Never נוח/);
+});
+
 test('bots are told to pass the picture itself with --image', () => {
   const brief = fs.readFileSync(new URL('../bridge/bots.mjs', import.meta.url), 'utf8');
   assert.match(brief, /add `--image <full path>` \(once per picture\) to `termfleet-team send`, `ask` or `start`/);
