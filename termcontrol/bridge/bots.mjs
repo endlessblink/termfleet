@@ -239,6 +239,8 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
     '--permission-mode', 'dontAsk',
     ...(bot.model ? ['--model', bot.model] : []),
     '--mcp-config', JSON.stringify({ mcpServers: { browser: browserMcp(bot) } }),
+    // Only the bot's own browser tool: the ~18 global tool servers it may not use cost ~1.7 s per turn (2026-10-26).
+    ...(process.env.TC_BOT_FULL_TOOLS === '1' ? [] : ['--strict-mcp-config']),
     '--allowedTools', ...CLAUDE_TOOLS,
     '--disallowedTools', ...CLAUDE_DENY,
     // Noam's mid-turn instructions reach the running turn after its next tool step (R-7173).
@@ -377,6 +379,8 @@ export function brainEnv(bot, env = process.env) {
     ...(bot.steerFolder ? { TERMFLEET_BOT_STEER: bot.steerFolder } : {}),   // the bot's folder; its steer/ inbox is inside
     PATH: `${path.join(os.homedir(), '.local', 'bin')}:${env.PATH || '/usr/bin:/bin'}`,
     PAGER: 'cat', GIT_PAGER: 'cat', GIT_EDITOR: 'true', EDITOR: 'true', GIT_TERMINAL_PROMPT: '0', DEBIAN_FRONTEND: 'noninteractive',
+    // Bots do not use lean-ctx; its per-step hooks cost ~0.6 s on every tool call (2026-10-26).
+    ...(env.TC_BOT_FULL_TOOLS === '1' ? {} : { LEAN_CTX_DISABLED: '1' }),
   };
 }
 
