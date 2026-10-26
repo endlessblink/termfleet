@@ -211,6 +211,16 @@ export const BROWSER_MCP = { command: process.execPath, args: [fileURLToPath(new
 // only a few of its settings, so the bot is named in the arguments, not the settings).
 export const browserMcp = (bot) => ({ command: BROWSER_MCP.command, args: [...BROWSER_MCP.args, '--bot', String(bot?.id || ''), '--bot-name', String(bot?.name || '')] });
 
+const HANDOFF_PROMISE = /\b(?:i'?ll|i will|i'?m going to)\s+(?:have|get|ask|send|hand|start|open|spin up|put|assign)\b[^.\n]{0,80}\b(?:agent|terminal|helper)s?\b|(?:אעביר|אפתח|אתן ל|אשלח ל|אבקש מ)[^.\n]{0,60}(?:סוכן|טרמינל|מסוף)/i;
+
+/** The hand-off a reply promises, when no hand-off was recorded since the turn began; else null. */
+export function brokenHandoff(text, chat, turnStart) {
+  const m = HANDOFF_PROMISE.exec(String(text || ''));
+  if (!m) return null;
+  const handed = (chat || []).some((x) => x.role === 'handoff' && Number(x.at) >= turnStart && !/^NOT /.test(String(x.text || '')));
+  return handed ? null : m[0].trim();
+}
+
 /** The pictures the bridge's own "[Noam attached N picture(s)…: a , b]" notes name in a message, that exist. */
 export function attachedPictures(text) {
   const out = [];
@@ -538,6 +548,7 @@ export class Bots {
     this.echoes = new Map();    // id -> Set of 'bot:<id>' / 'group:<id>' where Noam tagged it; its next answer is shown there too
     this.groups = new BotGroups({ dir: path.join(dir, 'groups'), now: this.now, botExists: (id) => Boolean(this.read(id)) });
     this.live = { at: 0, ids: null }; // running terminals, refreshed in the background (a turn never waits for it)
+    this.handoffNudged = new Map(); // id -> when it was last told to keep a hand-off promise
   }
 
   folder(id) {
@@ -1427,6 +1438,12 @@ export class Bots {
          const structure = structureProblem(msg);
          if (structure) {
            console.error(`[${bot.name}] Message structure issue: ${structure}`);
+         }
+         // Told Noam it would hand this to an agent, and did not (10 of 20 such promises in a week).
+         const promise = brokenHandoff(msg, this.messages(id), answered || 0);
+         if (promise && this.now() - (this.handoffNudged.get(id) || 0) > 10 * 60_000) {
+           this.handoffNudged.set(id, this.now());
+           this.wake(id, `You just told Noam "${promise}", but no terminal got that work in this turn. Hand it over now (termfleet-team start or send), or tell him plainly that you will not.`);
          }
        }
       // Tagged elsewhere: the same answer also shows there, under this bot's name.
