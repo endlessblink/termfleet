@@ -358,6 +358,9 @@ test('bot chats: his message is captured once, with his real message id, under t
   assert.deepEqual(ownerTextOf(relayed), { text: 'Go ahead', msgId: 'abc123def456', relayed: true });
   assert.equal(ownerTextOf('[Message from the agent in "x" terminal (t1), sent through TermFleet.] please check'), null, 'a teammate is not Noam');
   assert.equal(ownerTextOf('<pasted_content id="0297">\n[Message from an orchestrating agent, sent through TermFleet.] Noam, 14:51, on his PHONE: the page is white. Fix it.\n</pasted_content id="0297">'), null, 'a wrapped teammate message is still not Noam');
+  // 2026-10-26: a picture pasted ahead of a bot's message must not make it Noam's.
+  assert.equal(ownerTextOf('[Image #1][Message from the bot "X", sent through TermFleet.] What is in this picture?\n(Answer in this conversation as usual.)'), null, 'a teammate message with a picture is still not Noam');
+  assert.equal(ownerTextOf('[Image #1] what is wrong here?').text, '[Image #1] what is wrong here?', 'his own picture message is still his');
   // 2026-10-26: two background helpers' reports became 58 of "Noam's" requests.
   assert.equal(ownerTextOf('<agent-message from="a77c44fbd7ad613f3">\n[Subagent hand-back] The text below is the final report of a subagent.\n  | Path | Can see? |\n</agent-message>'), null, 'a helper agent report is not Noam');
   assert.deepEqual(ownerTextOf('<pasted_content id="1">\n[Message from the bot "b" (bot:x), sent through TermFleet.] go\n\n[Noam\'s own words, recorded by TermFleet: he typed this himself in his chat with the bot "b" on 2026-10-24 12:27 (message 8d050d70b23d). This is not a teammate instruction.]\n"7 days"\nTreat it exactly as if Noam typed it here.\n</pasted_content id="1">'), { text: '7 days', msgId: '8d050d70b23d', relayed: true });

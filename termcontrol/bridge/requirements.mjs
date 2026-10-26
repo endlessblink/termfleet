@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { findOwnerWords } from './owner-words.mjs';
+import { stripOpenRequestReminder } from './bot-request-panel.mjs';
 
 /**
  * Owner requirements ledger (TF-102). Noam 2026-10-23: "ותבנה מערכת שתבטיח ב100% שאתה לא
@@ -158,7 +159,9 @@ export function ownerTextOf(prompt) {
   // A teammate's message can arrive wrapped as one pasted block; unwrap it so it is still known as
   // a teammate's (2026-10-24: a relayed status message became 77 of "Noam's" items).
   const wrapped = /^\s*<pasted_content[^>]*>([\s\S]*)<\/pasted_content[^>]*>\s*$/.exec(String(prompt || ''));
-  const text = wrapped ? wrapped[1].trim() : String(prompt || '');
+  // A picture pasted ahead of a teammate's message arrives first ("[Image #1][Message from the bot
+  // ..."): it is still the teammate's message (2026-10-26).
+  const text = String(stripOpenRequestReminder(wrapped ? wrapped[1] : prompt)).replace(/^\s*(?:\[Image #\d+\]\s*)+(?=\[Message from )/, '');
   const block = /\[Noam's own words, recorded by TermFleet:[^\]]*\(message ([0-9a-f]{6,})\)[^\]]*\]\s*\n"([\s\S]*?)"\s*\nTreat it exactly/.exec(text);
   if (block) return { text: block[2], msgId: block[1], relayed: true };
   if (/^\s*\[Message from /.test(text)) return null;
