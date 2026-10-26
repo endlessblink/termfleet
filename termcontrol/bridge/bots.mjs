@@ -579,6 +579,8 @@ export class Bots {
     const chat = this.messages(id);
     const last = [...chat].reverse().find((m) => m.role !== 'activity');
     const working = this.running.get(id);
+    const openTasks = [...loadRequirements({ dir: this.reqDir() }).items.values()].filter((item) =>
+      item.source === `bot:${id}` && !item.locked && !['done', 'ready', 'answered', 'context', 'dropped'].includes(item.status)).length;
     return {
       memoryPending: this.memory(id).pendingCount(),
       pinned: Boolean(bot.pinned), hidden: Boolean(bot.hidden), notify: bot.notify !== false,
@@ -586,14 +588,15 @@ export class Bots {
       helpers: this.helpers(id),
       mainResetsAt: (bot.active && bot.active !== bot.provider) ? (this.health()[bot.provider]?.limitedUntil || null) : null,
       id: bot.id, name: bot.name, job: bot.job, provider: bot.provider, model: bot.model || null, fallback: bot.fallback || null, active: bot.active || bot.provider, cwd: bot.cwd, ownFolder: path.dirname(bot.cwd || '') === path.resolve(BOTS_HOME()), createdAt: bot.createdAt,
-      state: working ? 'working' : bot.blocked ? 'needs-you' : last?.role === 'error' ? 'failed' : 'idle',
+      state: working ? 'working' : bot.blocked ? 'needs-you' : last?.role === 'error' ? 'failed' : openTasks ? 'pending' : 'idle',
+      openTasks,
       blocked: bot.blocked ? { ask: bot.blocked.ask, at: bot.blocked.at } : null,
       waitingForReset: bot.retry ? bot.retry.at : null,
       health: bot.blocked ? { level: 'bad', text: 'Needs you' }
         : last?.role === 'error' ? { level: 'bad', text: 'Last reply failed' }
           : bot.retry ? { level: 'warn', text: 'Waiting for a plan to reset' }
             : (bot.active && bot.active !== bot.provider) ? { level: 'warn', text: `On its backup plan` }
-              : working ? { level: 'busy', text: 'Working' } : { level: 'ok', text: 'Ready' },
+              : working ? { level: 'busy', text: 'Working' } : openTasks ? { level: 'warn', text: `${openTasks} open tasks` } : { level: 'ok', text: 'Ready' },
       activity: working?.activity || null,
       activitySince: working ? (working.activityAt || working.startedAt || null) : null,
       queued: (this.queues.get(id) || []).length,

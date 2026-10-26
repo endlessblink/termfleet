@@ -41,11 +41,8 @@ export function helperState(bot, panes, now = Date.now(), { bots } = {}) {
   let waitingOn = 0, helpersAsking = 0;
   for (const id of ids) {
     const state = stateOf(panes.find((p) => p.id === id));
-    if (state === 'working') waitingOn++;
-    else if (state === 'waiting') {
-      if (bots) { if (openTerminalAsk(bots, bot.id, id)) helpersAsking++; }
-      else helpersAsking++;
-    }
+    if (state !== 'closed' && bots && openTerminalAsk(bots, bot.id, id)) helpersAsking++;
+    else if (state === 'working') waitingOn++;
   }
   return { waitingOn, helpersAsking };
 }

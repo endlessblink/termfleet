@@ -768,7 +768,7 @@ const handle = async (req, res) => {
         view.messages = view.messages.map(m => m.role === 'terminal-ask' && !live.has(m.pane) ? { ...m, settled: true, terminalClosed: true } : m);
       }
       view.bot.helpers ||= [];
-      view.bot.helpers = view.bot.helpers.map((h) => { const p = panes.find((x) => x.id === h.paneId); return { ...h, state: !p ? 'closed' : p.turn === 'waiting' ? 'needs-you' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null }; });
+      view.bot.helpers = view.bot.helpers.map((h) => { const p = panes.find((x) => x.id === h.paneId); return { ...h, state: !p ? 'closed' : p.attention ? 'needs-you' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null }; });
     }
     if (view && view.bot.provider !== 'codex') {
       const raw = bots.read(view.bot.id);

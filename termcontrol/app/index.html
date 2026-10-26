@@ -1707,7 +1707,7 @@ function setTheme(theme){document.documentElement.dataset.theme=theme;localStora
 setTheme(localStorage.getItem('termcontrol-theme')==='light'?'light':'dark');
 themeButton.onclick=()=>setTheme(document.documentElement.dataset.theme==='light'?'dark':'light');
 const groupColor=color=>/^#[0-9a-f]{3,8}$/i.test(String(color || ''))?color:'var(--muted)';
-const avatarState=p=>p.sleeping?'sleeping':p.turn==='waiting' || p.attention?'needs-you':p.alive===false || ['exited','ended','crashed','completed','finished'].includes(p.turn)?'exited':p.producing?'producing':p.turn==='working'?'working':'idle';
+const avatarState=p=>p.sleeping?'sleeping':p.attention?'needs-you':p.alive===false || ['exited','ended','crashed','completed','finished'].includes(p.turn)?'exited':p.producing?'producing':p.turn==='working'?'working':'idle';
 // Blob family: soft silhouettes in one project colour, white pill eyes. The shape is chosen from a stable hash of
 // the agent id (never list position); the eyes carry the state. Inline SVG, no network.
 const blobHues=['#e8457f','#7c5ce6','#3b7ae8','#0b9fc4','#0f9f74','#c93fd0','#5b5fd6','#0e9a98'];
@@ -2737,8 +2737,8 @@ async function fleet(background=false,{fromCache=false}={}) {
   const lastUsed = (p) => Number(p.lastActiveAt || p.updatedAt || 0);
   // Anything waiting on you stays visible whatever the window says.
   const everything = r.panes;
-  const panes = everything.filter((p) => !cutoff || p.turn === 'waiting' || lastUsed(p) >= cutoff);
-  const waiting = panes.filter((p) => p.turn === 'waiting');
+  const panes = everything.filter((p) => !cutoff || p.attention || lastUsed(p) >= cutoff);
+  const waiting = panes.filter((p) => p.attention);
   if(!background)sub.textContent = lastFleetSub = r.daemon === false
     ? ui('Cannot check TermFleet right now — showing last known status','לא ניתן לבדוק את TermFleet כרגע — מוצג המצב האחרון הידוע')
     : (waitingItems.length || waiting.length)
@@ -2746,7 +2746,7 @@ async function fleet(background=false,{fromCache=false}={}) {
       : ui(`${panes.length} terminal${panes.length === 1 ? '' : 's'}`,panes.length === 1 ? 'מסוף אחד' : `${panes.length} מסופים`);
 
 
-  const attention = panes.filter((p) => p.attention || p.turn==='waiting');
+  const attention = panes.filter((p) => p.attention);
   const attentionOpen = sessionStorage.getItem('termcontrol-attention-open') !== 'closed';
   const attentionPanel = attention.length ? `<details data-key="attention" class="attention-panel"${attentionOpen ? ' open' : ''}>
       <summary><span>${ui('Needs you','דורשים מענה')}</span><span class="attention-count">${attention.length}</span>${attention.length>1?`<button type="button" class="open-inbox">${ui('Answer all here','מענה לכולם כאן')}</button>`:''}</summary>
@@ -2777,7 +2777,7 @@ async function fleet(background=false,{fromCache=false}={}) {
   // Groups keep the map's grouping; sorting reorders the groups and the cards
   // inside them, so "last used" puts the terminal you touched most recently first.
   const byRecent = (a, b) => Number(b.lastUsedAt || 0) - Number(a.lastUsedAt || 0);
-  const byNeed = (a, b) => (a.turn === 'waiting' ? 0 : 1) - (b.turn === 'waiting' ? 0 : 1) || byRecent(a, b);
+  const byNeed = (a, b) => (a.attention ? 0 : 1) - (b.attention ? 0 : 1) || byRecent(a, b);
   const paneOrder = sortBy === 'recent' ? byRecent : sortBy === 'needs' ? byNeed : null;
   const shownGroups = (r.groups || [])
     .map((g) => ({ ...g, panes: g.panes.filter((p) => rest.includes(p) || rest.some((q) => q.id === p.id)) }))
@@ -3294,6 +3294,7 @@ function botsHomeHtml(data){
       :b.state==='failed'?['needs-you',ui('Something went wrong','משהו השתבש'),ui('open to see','פתחו לפרטים')]
       :n?['agents',ui(`Waiting on ${n} agent${n>1?'s':''}`,n>1?`ממתין ל-${n} סוכנים`:'ממתין לסוכן'),'']
       :b.waitingForReset?['idle',ui('Waiting for a plan to reset','ממתין לאיפוס של תוכנית'),'']
+      :b.openTasks?['pending',ui(`${b.openTasks} open task${b.openTasks>1?'s':''}`,b.openTasks===1?'משימה פתוחה אחת':`${b.openTasks} משימות פתוחות`),said]
       :unread?['done',ui('Done','הסתיים'),said]
       :['idle',ui('Idle','פנוי'),said];
     const line=stateChip(kind,words)+(detail?`<span class="rs-detail" dir="auto">${detail}</span>`:'');

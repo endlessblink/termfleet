@@ -1,3 +1,11 @@
+## 2026-10-26 — TermControl complaints #5 and #2 (IN_PROGRESS; restart authorization required)
+
+Only answerable pending cards cause Needs you. Unfinished bot owner requests display an open-task count instead of Idle, without pretending that a brain is running. TF-111/TF-112 remain verifying.
+
+Evidence: `node --test termcontrol/test/status-complaints.test.mjs`3/3 after baseline failures; `node --test termcontrol/test/status-complaints-browser.test.mjs`1/1 authenticated isolated browser at390/1600px; `npm run build`PASS; `npm run verify:termcontrol-mobile`25/25. Related bot suites37/38; unchanged HEAD reproduces the one disallowedTools failure. Doctor's unrelated desktop release mismatch is recorded in the regression matrix. No Rust changes, no desktop/daemon restart, no messaging.
+
+Registry termcontrol verified against registered checkout: active source service PID1670314 since2026-10-26 10:07:31 IST, local login HTTP200. These backend edits are not yet loaded. Next: obtain explicit approval for only termcontrol.service restart, then verify authenticated production statuses and real dashboard visual evidence at https://control.in-theflow.com. Source and fixture proof do not complete delivery.
+
 ## 2026-10-23 — TF-102: Owner requirements ledger: nothing Noam says can be missed, every part delivered end to end (BUILT, live)
 
 Noam: 'ותבנה מערכת שתבטיח ב100% שאתה לא יכול לפספס דברים שאני אומר ושמחייבת אותך ליישם אותם מקצה לקצה' ('Go ahead', verified owner words 1f62a93b9544). Spec docs/specs/owner-requirements-ledger.md; design docs/specs/owner-requirements-ledger-design.md.

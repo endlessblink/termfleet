@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T09:24:06.172Z",
+  "updatedAt": "2026-10-26T09:40:20.191Z",
   "issues": [
     {
       "id": "TF-001",
@@ -12875,6 +12875,168 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Baseline diagnosis only: node --test termcontrol/test/inventory-parity.test.mjs termcontrol/test/layout-ownership.test.mjs passed 7/7. This is not fix approval or visual evidence."
+        }
+      ]
+    },
+    {
+      "id": "TF-111",
+      "title": "TermControl shows Needs you without an answerable card",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [
+        "TermControl status complaints #5 and #2 (2026-10-26)"
+      ],
+      "symptom": "Tool waiting status alone paints Needs you",
+      "rootCause": "Raw waiting was used instead of pending card presence",
+      "guard": "termcontrol/test/status-complaints.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T09:40:20.106Z",
+          "note": "Three fail-first status guards pass; browser fixture passes at390/1600px; /tmp/termcontrol-complaints-browser.log. Live gate remains."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-26T09:40:20.165Z",
+          "note": "Card presence controls helper counts, terminal badges, attention count and helper detail."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Obtain termcontrol-only restart authorization, then authenticated production status and visual read-back",
+      "history": [
+        {
+          "at": "2026-10-26T09:32:29.954Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T09:35:33.468Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed cardless waiting badge"
+        },
+        {
+          "at": "2026-10-26T09:36:12.798Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused test failed before fix"
+        },
+        {
+          "at": "2026-10-26T09:36:12.826Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Card-presence guard added"
+        },
+        {
+          "at": "2026-10-26T09:36:12.854Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Require detected card"
+        },
+        {
+          "at": "2026-10-26T09:36:12.887Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source guards pass; deployment gate pending"
+        },
+        {
+          "at": "2026-10-26T09:40:20.106Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Three fail-first status guards pass; browser fixture passes at390/1600px; /tmp/termcontrol-complaints-browser.log. Live gate remains."
+        },
+        {
+          "at": "2026-10-26T09:40:20.165Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Card presence controls helper counts, terminal badges, attention count and helper detail."
+        }
+      ]
+    },
+    {
+      "id": "TF-112",
+      "title": "Controlbot looks idle with unfinished owner requests",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [
+        "TermControl status complaints #5 and #2 (2026-10-26)"
+      ],
+      "symptom": "Idle row hides unfinished requests",
+      "rootCause": "Bot summary did not consult unfinished owner requests",
+      "guard": "termcontrol/test/status-complaints.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T09:40:20.131Z",
+          "note": "Ledger pending and ready lifecycle guard passes; browser open-task row passes at390/1600px; /tmp/termcontrol-complaints-browser.log. Live gate remains."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-26T09:40:20.190Z",
+          "note": "Existing cached owner ledger supplies pending count; running, blocked and failed precedence preserved."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Obtain termcontrol-only restart authorization, then authenticated production status and visual read-back",
+      "history": [
+        {
+          "at": "2026-10-26T09:32:29.991Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T09:35:33.496Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed idle with open owner items"
+        },
+        {
+          "at": "2026-10-26T09:36:12.918Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused test failed before fix"
+        },
+        {
+          "at": "2026-10-26T09:36:12.946Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Open-items guard added"
+        },
+        {
+          "at": "2026-10-26T09:36:12.977Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Existing ledger supplies pending count"
+        },
+        {
+          "at": "2026-10-26T09:36:13.011Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source guards pass; deployment gate pending"
+        },
+        {
+          "at": "2026-10-26T09:40:20.131Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Ledger pending and ready lifecycle guard passes; browser open-task row passes at390/1600px; /tmp/termcontrol-complaints-browser.log. Live gate remains."
+        },
+        {
+          "at": "2026-10-26T09:40:20.191Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Existing cached owner ledger supplies pending count; running, blocked and failed precedence preserved."
         }
       ]
     }
