@@ -28,6 +28,31 @@ test('a bot wakes when a terminal agent it started finishes', async () => {
   assert.match(woke[0], /terminal agent you started for "run phone tests" has finished/);
 });
 
+// 2026-10-26: a dead Codex helper read "working" for two hours; its bot was never told.
+test('a bot is told once when its terminal agent stops making progress, and again only after it recovered', async () => {
+  const { bots, bot, woke } = setup();
+  const seen = new Map();
+  const look = (pane) => checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn: 'working', ...pane }], readAsk: async () => null, notify: () => {} });
+  await look({ stalledForMs: 0 });
+  assert.equal(woke.length, 0);
+  await look({ stalledForMs: 25 * 60_000 });
+  await look({ stalledForMs: 26 * 60_000 });
+  assert.equal(woke.length, 1, 'told once, not every check');
+  assert.match(woke[0], /"run phone tests" has made no progress for 25 minutes.*most likely crashed.*termfleet-team close terminal-h.*start a fresh terminal for the same task/);
+  assert.equal(bots.messages(bot.id).filter((m) => m.role === 'stuck').length, 1, 'one line in the chat');
+  assert.ok(!woke.some((w) => /has finished/.test(w)), 'a crash is not reported as finished');
+  await look({ stalledForMs: 0 });
+  await look({ stalledForMs: 21 * 60_000 });
+  assert.equal(woke.length, 2, 'a new stall after real progress is told again');
+});
+
+test('a stalled terminal with a question open is waiting on Noam, never reported as crashed', async () => {
+  const { bots, woke } = setup();
+  const seen = new Map();
+  await checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn: 'working', stalledForMs: 40 * 60_000, attention: { kind: 'permission' } }], readAsk: async () => null, notify: () => {} });
+  assert.ok(!woke.some((w) => /crashed/.test(w)));
+});
+
 // Noam 2026-10-20: a prompt in a terminal a bot runs is shown to him in the bot's chat
 // with the terminal's own choices; it is never answered for him, not even after a wait.
 test('a prompt in a bot\'s terminal is posted once in its chat with its choices, the bot is told, nothing is answered', async () => {

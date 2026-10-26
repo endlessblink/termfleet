@@ -28,7 +28,12 @@ export function gitHead(dir) {
   } catch { return null; }
 }
 
-const stateOf = (pane) => (!pane ? 'closed' : pane.turn === 'waiting' ? 'waiting' : (pane.producing || pane.turn === 'working') ? 'working' : 'idle');
+// "stuck": its status still says working, but its own conversation record has not moved for 20
+// minutes and no question is open (2026-10-26: a dead Codex read "working" for two hours, so its
+// bot was never told and the work stalled until Noam noticed).
+const stateOf = (pane) => (!pane ? 'closed' : pane.turn === 'waiting' ? 'waiting'
+  : (pane.turn === 'working' && pane.stalledForMs > 0 && !pane.attention) ? 'stuck'
+  : (pane.producing || pane.turn === 'working') ? 'working' : 'idle');
 
 /**
  * For the bot's row (Noam 2026-10-20): how many of the terminal agents it handed
@@ -214,6 +219,15 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
           }
         }
       }
+      // Crashed (no progress while "working"): the bot is told once to replace it, Noam sees one line.
+      let { crashed = false } = before;
+      if (state === 'stuck' && !crashed && !h.followed) {
+        crashed = true;
+        const minutes = Math.round((Number(pane.stalledForMs) || 0) / 60_000);
+        bots.append(b.id, { role: 'stuck', pane: h.paneId, text: `Terminal "${label}" has made no progress for ${minutes} minutes and has most likely crashed.` });
+        bots.wake(b.id, `Your terminal agent for "${label}" has made no progress for ${minutes} minutes: its own record stopped while it still says it is working, so it has most likely crashed (Noam already sees one line about it). Close it (termfleet-team close ${h.paneId}) and start a fresh terminal for the same task, telling it to check git log and the working tree for what was already done. Then tell Noam in one plain sentence.`);
+        alert({ title: `${b.name}: a terminal crashed`, body: `"${label}" made no progress for ${minutes} min`.slice(0, 200), url: `/#bot:${b.id}` });
+      } else if (state === 'working' || state === 'idle') crashed = false;
       // Stopped on an error, a limit or a blocked command: Noam hears it now, once per problem.
       let { stuck = null } = before;
       if (state === 'idle' && pane) {
@@ -228,7 +242,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
         stuck = stuckKey;
       } else if (state === 'working') stuck = null;
       if (state === 'closed' && away >= 2) seen.delete(key);
-      else seen.set(key, { state, away, finishedAt, blocked, workRun, stuck });
+      else seen.set(key, { state, away, finishedAt, blocked, workRun, stuck, crashed });
     }
     for (const w of bots.watches(b.id)) {
       if (w.paused) continue; // paused when Noam closed the bot; kept so it can be turned back on
