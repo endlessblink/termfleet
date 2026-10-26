@@ -162,7 +162,7 @@ export function ownerTextOf(prompt) {
   const block = /\[Noam's own words, recorded by TermFleet:[^\]]*\(message ([0-9a-f]{6,})\)[^\]]*\]\s*\n"([\s\S]*?)"\s*\nTreat it exactly/.exec(text);
   if (block) return { text: block[2], msgId: block[1], relayed: true };
   if (/^\s*\[Message from /.test(text)) return null;
-  if (/^\s*(<(system-reminder|command-|local-command|task-notification|user-prompt-submit-hook|environment_context|user_instructions|turn_aborted)|\[SYSTEM NOTIFICATION|\[Event, not from|\(You were cut off by a restart|\[System notice|Caveat:|This session is being continued)/i.test(text)) return null;
+  if (/^\s*(<(system-reminder|agent-message|command-|local-command|task-notification|user-prompt-submit-hook|environment_context|user_instructions|turn_aborted)|\[SYSTEM NOTIFICATION|\[Event, not from|\(You were cut off by a restart|\[System notice|Caveat:|This session is being continued)/i.test(text)) return null;
   // Pasted blocks are someone else's text; what he typed around them is his.
   const own = text.replace(/<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g, ' ').trim();
   return own ? { text: own, msgId: null, relayed: false } : null;
