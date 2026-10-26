@@ -211,7 +211,7 @@ async function buildCurrentPanes() {
         startedAt: startedAt(life.pid) || null,
         // "Working" with no output and no conversation change for a long time is
         // how a hung run looks; say so instead of showing a calm "working".
-        stalledForMs: stalledFor(pane, life, lastActiveAt),
+        stalledForMs: stalledFor(pane, life, lastActiveAt, Date.now(), conversationMtime(p)),
         // How full the agent's working memory is; predicts a squeeze or a handover.
         contextPercent: contextFill(pane)?.percent ?? null,
         producing: life.producing,
