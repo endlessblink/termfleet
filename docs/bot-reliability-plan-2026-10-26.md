@@ -16,6 +16,31 @@ Source complaints: Obsidian "Complaints Tracker" (27 items; #7, #12, #13, #15, #
 | Codex disconnects (#27) | All Codex terminals share one background service; it restarted ~11:54 and auto-update ran 12:05 | Likely cause of "Server connection could not be restored" (hypothesis, not yet proven) |
 | Tests | 171 test files; full run exceeds 10 min; 9 failures seen, incl. "bot brain cannot edit" (bots can now Edit/Write) | The safety net is slow and red, so regressions ship |
 
+## ROOT CAUSE (systematic-debugging, 14:00, traced on a live failure)
+
+**The system has no positive proof that an agent is alive and progressing, and nothing but the bot's language model owns a request.** Every status shown and every bot decision is built from three proxies, and a dead agent passes all three:
+
+| Layer | What it reported for the crashed politic-fighter Codex terminal (TUI pid 3663269, started 12:20) | Truth |
+|---|---|---|
+| Agent's own status hook (sidecar `turn`) | `working`, last written 12:45 | The agent can't write anything once its backend is gone, so the last claim stands forever |
+| Daemon output growth (`producing`) | `producing=true, quiet=0s` | The error screen's ticking timer ("Reconnect failed … 1h 23m 35s") repaints every second |
+| Screen reader (`snapshotSession`) | `ok`: a ruler of dots, no error text | It reads raw scrollback, not the drawn grid; Codex's cursor-drawn error isn't readable |
+| Codex backend link | — | TUI holds only its own internal socket pairs; the shared daemon it used died after 13:05 (new daemon pid 302981 has no link to it) |
+
+The consequence chain:
+1. `bot-events.mjs` `stateOf()` = `producing || turn==='working'` → the pane reads **working forever**.
+2. The "finished" wake-up fires only on a working→idle transition → **never fires** → the bot following it is never woken.
+3. The watchdog only looks at `working` panes silent 30 min–2 h by the same proxies → **sees nothing** (producing=true).
+4. The request ledger is a passive record; no code moves an item when its terminal dies → **request silently dropped**, the header still counts it, and the bot can't name it (it was never told).
+
+Complaints this one cause explains: #5/#24 (fake activity), #10 watchdog, #12 dropped message, #13 "claims handled", #15 stuck terminal unnoticed, #16 wrong counts, #20 manager idles, #21 stuck terminals, #22/#25 bot doesn't know, #27 disconnects shown as working.
+
+Fixes made so far today (Codex `--no-daemon`, quick-answer context, open list per turn) are **symptom-level**; three fix attempts without this cause = the debugging process says stop and change the architecture.
+
+**Architecture fix (needs Noam's go):**
+- A. **Positive liveness**: an agent is "working" only with fresh proof of progress from its own conversation record (new transcript/rollout entries) within N seconds — never from byte growth or a stale hook claim. Read the screen from the rendered grid (the app already has it: `grid_*`/cockpit snapshot), not raw scrollback.
+- B. **A request supervisor in code** (bridge, every 30 s): each open request is a state machine (new → delivered → progressing → done/needs-Noam) checked against A. On "no progress" or "dead" it acts deterministically: wake the owning bot with the exact fault, re-dispatch once, then surface to Noam. The UI shows the supervisor's state, not agent claims.
+
 ## Measured follow-up (13:00–13:25) — where bot time really goes
 
 Model endpoint pointed at a dead local port for every probe, so no cloud model call was made.
