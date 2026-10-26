@@ -1421,7 +1421,14 @@ export class Bots {
         const runner = { ...bot, provider, model: provider === bot.provider ? (bot.model || null) : null };
         const chat = this.messages(id).filter((m) => (m.role === 'operator' || m.role === 'bot') && m.text && !batch.some((e) => e.msgId === m.id)).slice(-10)
           .map((m) => ({ who: m.role === 'operator' ? 'Noam' : m.guest?.name || bot.name, text: m.text }));
-        const prompt = sidePrompt({ bot, task: current.task, startedAt: current.startedAt, steps: current.steps || [], said: current.said || [], chat, incoming: batch.map((e) => e.text), now: this.now() });
+        let openWork = [], terminals = '';
+        try {
+          openWork = [...loadRequirements({ dir: this.reqDir() }).items.values()]
+            .filter((item) => item.source === `bot:${id}` && !item.locked && !['done', 'ready', 'answered', 'context', 'dropped'].includes(item.status))
+            .map((item) => ({ status: item.status, words: item.words, where: item.assigned?.at(-1)?.pane || null }));
+        } catch { /* no ledger: the answer says so */ }
+        try { terminals = this.terminalDigest(id); } catch { terminals = ''; }
+        const prompt = sidePrompt({ bot, task: current.task, startedAt: current.startedAt, steps: current.steps || [], said: current.said || [], chat, incoming: batch.map((e) => e.text), openWork, terminals, now: this.now() });
         const cwd = path.join(this.folder(id), 'side');
         try { fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); } catch { /* the folder is there */ }
         const t0 = this.now();

@@ -26,12 +26,13 @@ export const SIDE_MODEL = { claude: process.env.TC_SIDE_MODEL_CLAUDE || 'sonnet'
 export const SIDE_TIMEOUT_MS = Number(process.env.TC_SIDE_TIMEOUT_MS) || 90_000;
 
 /** Everything the side responder knows, as one prompt. It sees only this. */
-export function sidePrompt({ bot, task = '', startedAt = null, steps = [], said = [], chat = [], incoming = [], now = Date.now() }) {
+export function sidePrompt({ bot, task = '', startedAt = null, steps = [], said = [], chat = [], incoming = [], openWork = [], terminals = '', now = Date.now() }) {
   const mins = startedAt ? Math.max(0, Math.round((now - startedAt) / 60000)) : null;
   const lines = [
     `You are the quick side responder for "${bot.name}", a bot in TermFleet, Noam's agent cockpit. ${bot.name} is busy with a long piece of work right now and cannot read new messages until it finishes. Noam just wrote to it. Answer him now, as ${bot.name}, in 1 to 4 short plain sentences.`,
     '',
     'Rules:',
+    '- When he asks about open tasks or what is happening, answer from the open requests and terminal agents listed below: name them and their state. Never say you have no information when they are listed.',
     '- Answer his question directly and honestly: what you are doing right now, how far along you are, yes or no, a rough estimate when he asks for one. If the notes below do not tell you, say plainly that you do not know yet.',
     '- Use only what is written below. Never say something was done, checked, found or decided unless the steps or chat below show it. Never invent results or numbers.',
     '- You cannot act or change anything. If he asks for something to be done, changes or corrects the plan, say you passed it on to the work in progress (it picks it up at its next step); never promise the result.',
@@ -46,6 +47,13 @@ export function sidePrompt({ bot, task = '', startedAt = null, steps = [], said 
     'Its steps so far, oldest first:',
     steps.length ? steps.slice(-25).map((s) => `- ${hhmm(s.at)} ${clip(s.text, 160)}`).join('\n') : '- (none yet; it has just started)',
     said.length ? `\nWhat it wrote along the way (not sent to Noam):\n${said.slice(-3).map((t) => `- ${clip(t, 500)}`).join('\n')}` : '',
+    '',
+    // Noam 2026-10-26: the quick answer said it knew nothing about the bot's 8 open tasks while the
+    // header showed them. It now gets the same open list and terminal state the bot has.
+    `Noam's requests to ${bot.name} that are not finished yet (${openWork.length}):`,
+    openWork.length ? openWork.slice(0, 15).map((w) => `- [${w.status}] ${clip(w.words, 160)}${w.where ? ` (handed to ${clip(w.where, 60)})` : ''}`).join('\n') : '- (none)',
+    '',
+    terminals ? `Its terminal agents right now:\n${clip(terminals, 1500)}` : 'Its terminal agents right now: (none running)',
     '',
     'The recent chat, oldest first:',
     chat.length ? chat.map((m) => `${m.who}: ${clip(m.text, 500)}`).join('\n') : '(empty)',
