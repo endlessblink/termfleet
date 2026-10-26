@@ -133,10 +133,13 @@ export async function screenOf(id, rows = 24) {
  * the common one), and missing those leaves litter like "[0 q" scattered
  * through the text.
  */
-function stripControlCodes(raw) {
+export function stripControlCodes(raw) {
   return raw
     // Operating-system commands: window titles and the like.
     .replace(/\u001b\][\s\S]*?(?:\u0007|\u001b\\)/g, '')
+    // A move along the line is the gap between words: Claude Code draws its spaces that way, and
+    // dropping them turned its folder-trust question into "Isthisaprojectyoucreated..." (2026-10-26).
+    .replace(/\u001b\[\d*[CG]/g, ' ')
     // Control sequences, including any intermediate bytes.
     .replace(/\u001b\[[0-9;?<>=]*[\u0020-\u002f]*[\u0040-\u007e]/g, '')
     // Single-character and character-set escapes.

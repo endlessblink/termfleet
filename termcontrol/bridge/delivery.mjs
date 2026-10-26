@@ -120,9 +120,23 @@ export function trustDecision(screen, { pending, home, root, cwd = null, folderR
 export function claudeFolderTrustPrompt(screen) {
   const s = String(screen || '');
   if (!/trust the files in this folder|project you created or one you trust|Do you trust this folder|trust this folder\?/i.test(s)) return null;
+  // The menu itself must be drawn: the words alone also appear in messages that talk about this
+  // question (2026-10-26: a message about it made a busy agent read as stuck on it).
+  const lines = s.split('\n');
+  const noAt = lines.findLastIndex((l) => /^\s*(?:[›>❯]\s*)?(?:\d[.)]\s*)?No,? exit\s*$/i.test(l));
+  if (noAt < 0) return null;
   const yes = /(?:^|\n)\s*(?:[›>❯]\s*)?(\d)[.)]\s*Yes,? (?:proceed|I trust this folder|trust)/i.exec(s);
   const no = /(?:^|\n)\s*(?:[›>❯]\s*)?(\d)[.)]\s*No,? exit/i.exec(s);
-  return { yesOption: yes ? yes[1] : null, noOption: no ? no[1] : null };
+  if (yes) return { yesOption: yes[1], noOption: no ? no[1] : null };
+  // Claude Code 2.x draws it without numbers ("❯ No, exit" / "Yes, I trust this folder"): Yes is
+  // reached with Down presses from the line the ❯ marks (proven on a fresh folder 2026-10-26).
+  // Menu rows only: the raw screen can carry an empty line after each drawn row.
+  const block = lines.slice(Math.max(0, noAt - 6), noAt + 7).filter((l) => /^\s*(?:[›>❯]\s*)?(?:\d[.)]\s*)?(?:Yes|No)\b/i.test(l));
+  const yesAt = block.findIndex((l) => /^\s*(?:[›>❯]\s*)?Yes,? (?:proceed|I trust this folder|trust)/i.test(l));
+  const cursorAt = block.findIndex((l) => /^\s*[›>❯]/.test(l));
+  if (yesAt < 0 || cursorAt < 0) return { yesOption: null, noOption: null };
+  const steps = yesAt - cursorAt;
+  return { yesOption: null, noOption: null, yesKeys: steps >= 0 ? '\u001b[B'.repeat(steps) : '\u001b[A'.repeat(-steps) };
 }
 
 /**
@@ -150,8 +164,8 @@ export function folderTrustDecision(prompt, { cwd, roots }) {
   const where = cwd ? path.resolve(cwd) : null;
   const inside = where && roots.some((r) => where === r || where.startsWith(`${r}/`));
   if (!inside) return { error: `The new Claude terminal is asking whether to trust its folder${where ? ` (${where})` : ''}, which is not inside a folder Noam already trusts projects in. It will not start until he answers; ask him in one plain sentence. Do not send that terminal anything meanwhile: typing into the question can choose "No, exit".` };
-  if (!prompt.yesOption) return { error: 'The new Claude terminal is asking whether to trust its folder, but its Yes choice is not on screen; it will not start until someone answers it.' };
-  return { press: prompt.yesOption, note: `Answered Claude's folder-trust question with Yes: ${where} is inside ${roots.find((r) => where === r || where.startsWith(`${r}/`))}, where Noam already trusts his projects.` };
+  if (!prompt.yesOption && prompt.yesKeys == null) return { error: 'The new Claude terminal is asking whether to trust its folder, but its Yes choice is not on screen; it will not start until someone answers it.' };
+  return { press: prompt.yesOption || prompt.yesKeys, note: `Answered Claude's folder-trust question with Yes: ${where} is inside ${roots.find((r) => where === r || where.startsWith(`${r}/`))}, where Noam already trusts his projects.` };
 }
 
 /**
@@ -175,8 +189,8 @@ export async function confirmReceipt(pane, { token, wasBusy = false, timeoutMs =
     const shown = await screen(pane.id);
     const trust = trustDecision(shown, { pending: pending ? pending(now) : undefined, cwd: now.cwd || null, folderRoots: deps.folderRoots });
     if (trust?.error) return { received: false, reason: 'trust-prompt', message: trust.error, notes };
-    if (trust?.press && answered < 2) {
-      await write(pane.id, trust.press);
+    if (typeof trust?.press === 'string' && answered < 2) {
+      if (trust.press) await write(pane.id, trust.press);
       await new Promise((r) => setTimeout(r, 200));
       await write(pane.id, '\r');
       answered += 1;
@@ -202,8 +216,8 @@ export async function confirmStarted(paneId, { token = null, timeoutMs = 90000, 
     const shown = await screen(paneId);
     const trust = trustDecision(shown, { pending: pending ? pending(pane) : undefined, cwd: pane.cwd || null, folderRoots: deps.folderRoots });
     if (trust?.error) return { started: false, reason: 'trust-prompt', message: trust.error, notes };
-    if (trust?.press && answered < 2) {
-      await write(paneId, trust.press);
+    if (typeof trust?.press === 'string' && answered < 2) {
+      if (trust.press) await write(paneId, trust.press);
       await new Promise((r) => setTimeout(r, 200));
       await write(paneId, '\r');
       answered += 1;
