@@ -12,6 +12,10 @@ export const IDLE_MIN_MS = 15 * 60_000;
 export const BOT_IDLE_MIN_MS = 5 * 60_000;
 // Noam 2026-10-22: his own terminals only 'לאחר הצגתם לי אם הם לא פעילים הרבה זמן', '2 hours'.
 export const OWN_IDLE_MIN_MS = 2 * 60 * 60_000;
+// Noam 2026-10-26: "doest kill them when not used". A frozen agent's screen clock ticks every second,
+// so screen motion said "working" for 9 hours. Its own conversation record is the truth: silent this
+// long (far past the 20-minute stuck notice, past any single long step) means it is not in use.
+export const STUCK_AGENT_MS = 2 * 60 * 60_000;
 const AGENTS_SERVICE = /termcontrol\/bridge\/server\.mjs/;
 const AGENT_PROVIDERS = new Set(['claude', 'codex', 'opencode']);
 
@@ -102,9 +106,16 @@ export function startedByCommand(command) {
  * (`lastWorkedAt`: its agent's record, its conversation, or output that kept moving), since an
  * idle agent repaints its screen now and then (R-7214). Noam's own count any screen change.
  */
-function lastUsedFor(pane, starter) {
+function lastUsedFor(pane, starter, now = Date.now()) {
+  if (frozenAgent(pane, now)) return Number(pane.recordAt);
   if (starter && pane.lastWorkedAt != null) return Number(pane.lastWorkedAt) || 0;
   return Number(pane.lastActiveAt) || 0;
+}
+
+/** An agent whose own conversation (`recordAt`) has not moved for STUCK_AGENT_MS, whatever its screen does. */
+function frozenAgent(pane, now) {
+  const recordAt = Number(pane.recordAt) || 0;
+  return AGENT_PROVIDERS.has(pane.provider) && recordAt > 0 && now - recordAt >= STUCK_AGENT_MS;
 }
 
 /**
@@ -114,8 +125,8 @@ function lastUsedFor(pane, starter) {
  */
 function reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter, byBot }) {
   if (pane.turn === 'waiting' || pane.attention) return 'Waiting for you';
-  if (pane.turn === 'working' || pane.producing || pane.live === 'producing') return 'Working right now';
-  const lastActive = lastUsedFor(pane, starter);
+  if (!frozenAgent(pane, now) && (pane.turn === 'working' || pane.producing || pane.live === 'producing')) return 'Working right now';
+  const lastActive = lastUsedFor(pane, starter, now);
   if (!lastActive && pane.cardless) return 'Cannot tell when it was last used';
   if (lastActive && now - lastActive < (byBot ? BOT_IDLE_MIN_MS : IDLE_MIN_MS)) return 'Used in the last few minutes';
   if (!starter && lastActive && now - lastActive < OWN_IDLE_MIN_MS) return 'Yours, used in the last 2 hours';
@@ -145,7 +156,7 @@ export function cleanupPlan({ panes, now = Date.now(), unsaved = () => [], proce
     const base = { id: pane.id, name: terminalName(pane), folder: pane.cwd ? path.basename(pane.cwd) : clip(pane.project || ''), provider: pane.provider || 'shell', startedBy: starter };
     const reason = reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter, byBot: Boolean(starter && startedByBot(pane)) });
     if (reason) { keep.push({ ...base, reason }); continue; }
-    const idleMs = Math.max(0, now - (lastUsedFor(pane, starter) || Number(pane.startedAt) || now));
+    const idleMs = Math.max(0, now - (lastUsedFor(pane, starter, now) || Number(pane.startedAt) || now));
     const warning = unsavedWarning(pane, unsaved);
     offer.push({ ...base, idleMs, idleText: idleText(idleMs), checked: !warning, ...(warning ? { warning } : {}) });
   }
@@ -208,6 +219,7 @@ export function cardlessSessions({ liveById, ownedIds, agents = new Map(), now =
       turn: status === 'busy' ? 'working' : status === 'waiting' ? 'waiting' : 'idle',
     };
     pane.title = `Hidden terminal in ${pane.project} (no card on the map)`;
+    pane.recordAt = Number(lastUsed(pane)) || 0;
     pane.lastActiveAt = Math.max(Number(lastUsed(pane)) || 0, life.quietForMs != null ? now - life.quietForMs : 0);
     pane.lastWorkedAt = Math.max(Number(lastUsed(pane)) || 0, life.busyQuietForMs != null ? now - life.busyQuietForMs : 0);
     // Started by an agent: termfleet-child gives every helper a task file to read.

@@ -191,3 +191,28 @@ test('a finished bot terminal is offered after 5 idle minutes, an agent one stil
   assert.deepEqual(p.offer.map((o) => o.id), ['bot1']);
   assert.deepEqual(p.keep.map((k) => k.id).sort(), ['agent1', 'mine']);
 });
+
+// Noam 2026-10-26: "it still opens terminals willy nilly and doest kill them when not used". A Codex
+// an agent started at 00:08 froze at 11:30 (its conversation stopped) while its screen clock kept
+// ticking every second, so it read as "Working right now" for 9 hours and was never closed.
+test('a frozen agent whose screen keeps ticking is judged by its own conversation, not the screen', async () => {
+  const { cleanupPlan: plan, cardlessSessions, STUCK_AGENT_MS } = await import('../bridge/idle-cleanup.mjs');
+  assert.equal(STUCK_AGENT_MS, 2 * H);
+  const ticking = { turn: 'working', producing: true, live: 'producing', lastActiveAt: NOW - 1000, lastWorkedAt: NOW - 1000 };
+  const p = plan({ panes: [
+    pane('terminal-frozen', { ...ticking, provider: 'codex', recordAt: NOW - 9 * H }),
+    pane('terminal-long-step', { ...ticking, provider: 'codex', recordAt: NOW - 90 * 60_000 }),
+    pane('terminal-frozen-asks', { ...ticking, recordAt: NOW - 9 * H, attention: { kind: 'question', title: 'Allow?' } }),
+    pane('terminal-frozen-mine', { ...ticking, recordAt: NOW - 9 * H }),
+    pane('terminal-shell-clock', { ...ticking, provider: 'shell', recordAt: NOW - 9 * H }),
+  ], now: NOW, ...quiet, startedBy: (x) => (x.id === 'terminal-frozen-mine' ? null : 'an agent') });
+  assert.deepEqual(p.offer.map((o) => [o.id, o.idleText]), [['terminal-frozen', 'idle 9 hours'], ['terminal-frozen-mine', 'idle 9 hours']]);
+  assert.deepEqual(Object.fromEntries(p.keep.map((k) => [k.id, k.reason])), {
+    'terminal-long-step': 'Working right now', 'terminal-frozen-asks': 'Waiting for you', 'terminal-shell-clock': 'Working right now' });
+  // The same Codex with no card: its conversation time travels with the hidden pane.
+  const [hidden] = cardlessSessions({ liveById: new Map([['terminal-eec5', { pid: 9, producing: true, quietForMs: 0, busyQuietForMs: 0, initialCwd: '/w/politic' }]]),
+    ownedIds: new Set(['terminal-card']), now: NOW, agents: new Map([['terminal-eec5', { provider: 'codex', sessionId: 's9' }]]),
+    lastUsed: () => NOW - 9 * H, commandOf: () => "bash -lc codex 'Read /h/.local/share/terminal-workspace/child-tasks/x.md and carry out'" });
+  assert.equal(hidden.recordAt, NOW - 9 * H);
+  assert.deepEqual(plan({ panes: [hidden], now: NOW, ...quiet, startedBy: (x) => x.startedBy || null }).offer.map((o) => [o.id, o.startedBy]), [['terminal-eec5', 'an agent']]);
+});

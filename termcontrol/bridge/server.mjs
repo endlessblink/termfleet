@@ -199,6 +199,10 @@ async function buildCurrentPanes() {
         alive: true,
         lastActiveAt,
         lastWorkedAt,
+        // When the agent itself last moved (its report or conversation), never the screen: the cleanup
+        // judges a frozen agent with a ticking clock by this (Noam 2026-10-26). 0 when its conversation
+        // is not found: a stale report alone must never make a working agent look frozen.
+        recordAt: conversationMtime(p) ? Math.max(Number(p.updatedAt) || 0, conversationMtime(p)) : 0,
         pid: life.pid ?? null,
         startedAt: startedAt(life.pid) || null,
         // "Working" with no output and no conversation change for a long time is
@@ -249,7 +253,7 @@ function withCodexRecord(p, table) {
   if (!hit.found) return p;
   let mtime = 0;
   try { mtime = fs.statSync(hit.found.file).mtimeMs; } catch { return p; }
-  return { ...p, sessionId: hit.found.sessionId, lastActiveAt: Math.max(Number(p.lastActiveAt) || 0, mtime), lastWorkedAt: Math.max(Number(p.lastWorkedAt) || 0, mtime) };
+  return { ...p, sessionId: hit.found.sessionId, recordAt: Math.max(Number(p.recordAt) || 0, mtime), lastActiveAt: Math.max(Number(p.lastActiveAt) || 0, mtime), lastWorkedAt: Math.max(Number(p.lastWorkedAt) || 0, mtime) };
 }
 
 /** What "Clean up idle terminals" offers, judged now; `starters` says who started each terminal. */
