@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T16:30:01.983Z",
+  "updatedAt": "2026-10-26T16:50:05.048Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13555,6 +13555,142 @@
           "type": "evidence",
           "kind": "source",
           "note": "Activated registered bridge only: PID197114 ->529229 at18:28IST; actual host process/command/cwd/start time/source hashes and local login200 read back in /tmp/termfleet-TF118-activation.json. Public agent request403; no browser surfaces available, so production authenticated visual remains blocked."
+        }
+      ]
+    },
+    {
+      "id": "TF-119",
+      "title": "Chat testing links fail to open from the PC app",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Owner reports message and Try now links do nothing; Try now bypasses embedded browser opener",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/chat-link-opening.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T16:50:02.339Z",
+          "note": "22/22 focused chat checks pass in /tmp/tf119-focused.log: PC dispatch and visible opener failure, Chromium desktop/phone, WebKit phone and trusted long-press. Latest owner removed Try now; actual PC and physical phone unverified."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify message links in the actual PC chat and physical phone after refresh; automated Chromium/WebKit destinations pass, latest owner removed Try now",
+      "history": [
+        {
+          "at": "2026-10-26T16:38:30.156Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T16:40:11.747Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Embedded PC selector excludes Try now anchors."
+        },
+        {
+          "at": "2026-10-26T16:40:12.599Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused red: embedded message passes, Try now dispatch absent; desktop and phone new-tab destinations pass."
+        },
+        {
+          "at": "2026-10-26T16:40:13.213Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "node --test termcontrol/test/chat-link-opening.test.mjs reproduces failure before production edit."
+        },
+        {
+          "at": "2026-10-26T16:40:13.872Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Route Try now through existing PC opener and show opener failure."
+        },
+        {
+          "at": "2026-10-26T16:42:18.349Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "PC Try now opener dispatch now passes. Expanded WebKit touch test is under diagnosis before accepting phone claim."
+        },
+        {
+          "at": "2026-10-26T16:50:02.340Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "22/22 focused chat checks pass in /tmp/tf119-focused.log: PC dispatch and visible opener failure, Chromium desktop/phone, WebKit phone and trusted long-press. Latest owner removed Try now; actual PC and physical phone unverified."
+        }
+      ]
+    },
+    {
+      "id": "TF-120",
+      "title": "Remove unwanted testing panel from bot chat",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Owner rejects the panel of 107 ready items and missing-link warnings",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/bot-try-now-panel.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T16:50:05.048Z",
+          "note": "22/22 focused checks, including authenticated 107-record desktop/phone panel-absence regression; screenshots /tmp/termfleet-TF119-proof/panel-removed-1600.png and panel-removed-390.png. Live HTTP200 source matches disk: /tmp/termfleet-TF119-live.json. Actual production visual remains open."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Confirm panel absence in actual production chat after refresh; live-served source and isolated107-record desktop/phone tests already pass",
+      "history": [
+        {
+          "at": "2026-10-26T16:44:06.130Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T16:44:07.433Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "New owner instruction supersedes TF-118 list UI; reply link checks stay."
+        },
+        {
+          "at": "2026-10-26T16:44:09.341Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Existing panel and warnings reproduced; 107-record authenticated absence regression added."
+        },
+        {
+          "at": "2026-10-26T16:44:10.569Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Source absence guard fails before renderer deletion: /tmp/tf119-panel-red.log"
+        },
+        {
+          "at": "2026-10-26T16:44:12.047Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Deleted renderer, styles and feed insertion; canonical ledger retained."
+        },
+        {
+          "at": "2026-10-26T16:47:21.071Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Panel removed from live-served HTTP200 HTML; authenticated desktop and phone fixtures retain107records without panel/warnings. Actual production visual unavailable."
+        },
+        {
+          "at": "2026-10-26T16:50:05.048Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "22/22 focused checks, including authenticated 107-record desktop/phone panel-absence regression; screenshots /tmp/termfleet-TF119-proof/panel-removed-1600.png and panel-removed-390.png. Live HTTP200 source matches disk: /tmp/termfleet-TF119-live.json. Actual production visual remains open."
         }
       ]
     }
