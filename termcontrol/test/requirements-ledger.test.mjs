@@ -59,7 +59,8 @@ test('failure 1: a four-part message was ONE request and a vague "partial" dropp
   assert.equal(stopProblem({ source: 'conv-a', askMarks: [{ status: 'partial', n: 1 }] }, { dir }), null, 'every part is accounted for');
 });
 
-test('failure 1 through the real hook: the message is split on submit, and Stop blocks every time (not once) until the items are taken', () => {
+// Noam chose lighter tracking (2026-10-26): repeated blocks cost about half of the helpers' output.
+test('failure 1 through the real hook: the message is split on submit, and Stop blocks once when items are untaken', () => {
   const dir = tmp();
   const env = { TERMFLEET_REQ_DIR: dir, TERMFLEET_PROJECT: 'politic-fighter' };
   const lines = [];
@@ -75,20 +76,8 @@ test('failure 1 through the real hook: the message is split on submit, and Stop 
   const first = hook(payload('Stop'), { readLines: () => lines, env });
   assert.equal(first.decision, 'block');
   const again = hook(payload('Stop', { stop_hook_active: true }), { readLines: () => lines, env });
-  assert.equal(again?.decision, 'block', 'the old reminder mode let the second stop through');
-});
-
-test('the gate cannot loop forever: after repeated blocks it lets go but puts the problem in Noam\'s own list', () => {
-  const dir = tmp();
-  const env = { TERMFLEET_REQ_DIR: dir, TERMFLEET_PROJECT: 'p' };
-  const lines = [user('Make the header blue. Also add a logout button.')];
-  hook({ hook_event_name: 'UserPromptSubmit', transcript_path: '/conv/c.jsonl', prompt: 'Make the header blue. Also add a logout button.' }, { readLines: () => [], env });
-  const stop = () => hook({ hook_event_name: 'Stop', transcript_path: '/conv/c.jsonl', stop_hook_active: true }, { readLines: () => lines, env });
-  for (let i = 0; i < 4; i++) assert.equal(stop()?.decision, 'block');
-  assert.equal(stop(), null);
-  const view = itemsView({ project: 'p' }, { dir });
-  assert.equal(view.escalations.length, 1);
-  assert.match(view.escalations[0].reason, /2 items nobody has taken/);
+  assert.equal(again, null, 'reminded once; the items stay open and the bot still sees them');
+  assert.equal(loadLedger({ dir }).items.size, 5, 'nothing is dropped from the ledger');
 });
 
 test('failure 2: the earlier "fill the strip and loop endlessly" was lost when the strip broke; now his earlier words on the topic travel with the new item', () => {

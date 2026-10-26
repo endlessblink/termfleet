@@ -43,10 +43,17 @@ test('each new message re-shows unfinished requests verbatim and asks for a read
   assert.match(ctx, /#3 is new\. If it is a new or unclear request, first read it back/);
 });
 
-test('a plain "go" adds nothing new but still re-shows what is open', () => {
-  const out = run({ hook_event_name: 'UserPromptSubmit', prompt: 'go' }, [user('Fix the header')]);
-  assert.match(out.hookSpecificOutput.additionalContext, /#1 \[open\] "Fix the header"/);
-  assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /is new/);
+// Noam chose lighter tracking (2026-10-26): the list on every prompt was most of what agents read.
+test('a plain "go" adds nothing, and the list is not shown again', () => {
+  assert.equal(run({ hook_event_name: 'UserPromptSubmit', prompt: 'go' }, [user('Fix the header')]), null);
+});
+
+test('a new message shows the list, at most 5 unfinished requests', () => {
+  const older = Array.from({ length: 8 }, (_, i) => user(`Request number ${i + 1} about the header`));
+  const text = run({ hook_event_name: 'UserPromptSubmit', prompt: 'Make the footer blue' }, older).hookSpecificOutput.additionalContext;
+  assert.match(text, /#9 is new/);
+  assert.equal((text.match(/^#\d+ \[/gm) || []).length, 5);
+  assert.match(text, /older unfinished requests not shown/);
 });
 
 test('after a compaction his words come back, even though the summary dropped them', () => {

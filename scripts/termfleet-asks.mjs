@@ -358,13 +358,13 @@ export function summaryLine(asks) {
 }
 
 /** What the agent is shown: every unfinished request verbatim, finished ones counted. */
-export function ledgerText(allAsks, { newest = null, maxChars = 6000 } = {}) {
+export function ledgerText(allAsks, { newest = null, maxChars = 6000, limit = 15 } = {}) {
   const asks = allAsks.filter((a) => isRealRequest(a.text));
   if (!asks.length) return '';
   const unfinished = asks.filter((a) => a.status === 'open' || a.status === 'partial' || a.status === 'ready');
   const lines = [`Noam's requests, his words (${summaryLine(asks)}):`];
-  for (const a of unfinished.slice(-15)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 80)}` : ''}]${a.itemIds?.length ? ` (items ${a.itemIds.join(', ')})` : ''} "${clip(askTitle(a.text), 200)}"`);
-  if (unfinished.length > 15) lines.push(`(${unfinished.length - 15} older unfinished requests not shown)`);
+  for (const a of unfinished.slice(-limit)) lines.push(`#${a.n} [${a.status}${a.note ? `: ${clip(a.note, 80)}` : ''}]${a.itemIds?.length ? ` (items ${a.itemIds.join(', ')})` : ''} "${clip(askTitle(a.text), 200)}"`);
+  if (unfinished.length > limit) lines.push(`(${unfinished.length - limit} older unfinished requests not shown)`);
   if (newest) lines.push(`#${newest.n} is new. If it is a new or unclear request, first read it back in his words; ask at most 2 questions about real gaps.`);
   lines.push('Mark them: termfleet-asks done|ready|partial|dropped <n> "<proof or note>". Use ready (not partial) when it is built and live but Noam has not tried it yet; the note says exactly what he should try, in a few words. It stays quiet (no notification, not in his "Waiting for you" list, which is only for approvals and questions that block work). When he says it works, mark it done.');
   const text = lines.join('\n');
@@ -442,18 +442,24 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
         for (const a of asks) if (byAsk.has(a.n)) a.itemIds = byAsk.get(a.n);
       } catch { /* the requests still show */ }
     }
-    const text = [ledgerText(asks, { newest }), items].filter(Boolean).join('\n\n');
+    // Only when he wrote something new, and short: the list on every prompt was most of what the
+    // workers read (his words were under 2% of it, 2026-10-26; Noam chose lighter tracking).
+    const text = [newest ? ledgerText(asks, { newest, limit: 5 }) : '', items].filter(Boolean).join('\n\n');
     return text ? { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } } : null;
   }
   if (/^SessionStart$/i.test(event) || event === 'session_start') {
     // After a compaction or a resume, the summary may have lost his words.
     const source = payload.source || '';
-    if (!/compact|resume|clear/.test(source) && asks.length === 0) return null;
-    const text = ledgerText(asks);
+    // A resume keeps the conversation, so the list is not needed again (it was re-sent on every bot turn).
+    if (/resume/.test(source) || (!/compact|clear/.test(source) && asks.length === 0)) return null;
+    const text = ledgerText(asks, { limit: 5 });
     return text ? { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: `After ${source || 'a restart'}: ${text}` } } : null;
   }
   if (/^Stop$/i.test(event) || event === 'stop') {
     const last = String(payload.last_assistant_message || '') || lastAssistantText(lines);
+    // Once per finish (Noam chose lighter tracking, 2026-10-26): repeated blocks cost about half of
+    // the helpers' output (534 blocks in 91 sessions). Open items stay open and visible to the bot.
+    if (payload.stop_hook_active || payload.stopHookActive) return null;
     if (env.TERMFLEET_BOT_ID) {
       const since = Number(env.TERMFLEET_BOT_TURN_STARTED_AT) || Date.now() - 30 * 60_000;
       const markedReady = readyThisTurn([...loadLedger({ dir: reqDir(env) }).items.values()], env.TERMFLEET_BOT_ID, since).length > 0;

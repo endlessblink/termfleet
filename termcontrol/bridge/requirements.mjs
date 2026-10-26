@@ -638,12 +638,12 @@ const itemLine = (it) => `- ${it.id}${it.topics.length ? ` (${it.topics.join(', 
 
 export function briefBlock({ named, open, locked }, { delivery = null } = {}) {
   const out = [
-    `${BRIEF_HEADER} Work through EVERY item below. Attach the evidence to each item in the list (below); your final reply is 1-3 plain sentences: what is now true, what is not done yet, what to try. No item ids, no quoted words, no table: the chat shows the per-item list under Details.]`,
+    `${BRIEF_HEADER} Work through EVERY item below. Ship the change first; then mark the items with ONE link that shows it (the tester link or a test run; one link may cover several items). Do not make or commit separate proof files. your final reply is 1-3 plain sentences: what is now true, what is not done yet, what to try. No item ids, no quoted words, no table: the chat shows the per-item list under Details.]`,
     ...named.map(itemLine),
   ];
   if (open.length) out.push('Still open on the same topic (his earlier words, keep them in mind):', ...open.map(itemLine));
   if (locked.length) out.push('Locked: Noam confirmed these work. Re-check each one on the live result before you mark anything on this topic ready:', ...locked.map(itemLine));
-  out.push('Mark each item: termfleet-asks ready|done <id> --evidence "<screenshot path or test output>"; partial needs --open "<what is still open>"; a question for Noam: termfleet-asks waiting <id> "<question>". Re-check a locked item: termfleet-asks reverify <id> --for <your id> --evidence "<proof>".');
+  out.push('Mark each item: termfleet-asks ready|done <id> --evidence "<the tester link or test output>"; partial needs --open "<what is still open>"; a question for Noam: termfleet-asks waiting <id> "<question>". Re-check a locked item: termfleet-asks reverify <id> --for <your id> --evidence "<proof>".');
   if (delivery) out.push(`[delivery ${delivery}]`);
   return out.join('\n');
 }
