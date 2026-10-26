@@ -28,6 +28,19 @@ export function gitHead(dir) {
   } catch { return null; }
 }
 
+/**
+ * Noam's requests that terminal still holds unfinished, as a closing sentence for its bot's wake.
+ * 162 of 206 dropped bot requests in a week were 'partial' on a terminal that then got new work or
+ * was closed, and nobody looked at them again (2026-10-26).
+ */
+export function leftOpen(bots, botId, paneId) {
+  let items = [];
+  try { items = (bots.openWork?.(botId) || []).filter((w) => w.where === paneId); } catch { items = []; }
+  if (!items.length) return '';
+  const list = items.slice(0, 8).map((w) => `${w.id} (${w.status}): "${String(w.words || '').replace(/\s+/g, ' ').slice(0, 100)}"`).join('; ');
+  return ` It still holds ${items.length} of Noam's requests that are not finished: ${list}${items.length > 8 ? `; and ${items.length - 8} more` : ''}. Before closing it, send them back to it or to another terminal (termfleet-team send --req <ids>), or mark each one honestly.`;
+}
+
 // "stuck": its status still says working, but its own conversation record has not moved for 20
 // minutes and no question is open (2026-10-26: a dead Codex read "working" for two hours, so its
 // bot was never told and the work stalled until Noam noticed).
@@ -171,7 +184,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
           finishedAt = now;
           bots.wake(b.id, `The terminal agent you started for "${label}" has finished. Read its result (termfleet-team read ${h.paneId}), check it, and tell Noam in plain words. ` + (blocked
             ? `It cannot be closed yet: it has unsaved work (${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}). Have it commit, or leave it; you will be told once, when it can be closed. Do not try to close it before that.`
-            : `Then close it (termfleet-team close ${h.paneId}) unless you are sending it more work now.`));
+            : `Then close it (termfleet-team close ${h.paneId}) unless you are sending it more work now.`) + leftOpen(bots, b.id, h.paneId));
         }
       } else if (finishedAt && blocked && state === 'idle' && !closeCheck(pane, h).length) {
         // The one reminder after that: closing has become possible.
@@ -225,7 +238,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
         crashed = true;
         const minutes = Math.round((Number(pane.stalledForMs) || 0) / 60_000);
         bots.append(b.id, { role: 'stuck', pane: h.paneId, text: `Terminal "${label}" has made no progress for ${minutes} minutes and has most likely crashed.` });
-        bots.wake(b.id, `Your terminal agent for "${label}" has made no progress for ${minutes} minutes: its own record stopped while it still says it is working, so it has most likely crashed (Noam already sees one line about it). Close it (termfleet-team close ${h.paneId}) and start a fresh terminal for the same task, telling it to check git log and the working tree for what was already done. Then tell Noam in one plain sentence.`);
+        bots.wake(b.id, `Your terminal agent for "${label}" has made no progress for ${minutes} minutes: its own record stopped while it still says it is working, so it has most likely crashed (Noam already sees one line about it). Close it (termfleet-team close ${h.paneId}) and start a fresh terminal for the same task, telling it to check git log and the working tree for what was already done. Then tell Noam in one plain sentence.` + leftOpen(bots, b.id, h.paneId));
         alert({ title: `${b.name}: a terminal crashed`, body: `"${label}" made no progress for ${minutes} min`.slice(0, 200), url: `/#bot:${b.id}` });
       } else if (state === 'working' || state === 'idle') crashed = false;
       // Stopped on an error, a limit or a blocked command: Noam hears it now, once per problem.
