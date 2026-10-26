@@ -557,11 +557,11 @@ Live read-back after the single coordinated termcontrol-only restart (PID 303273
 Build passes; canonical `npm run verify:termcontrol-mobile` passes25/25. Related bot-events/bots suite passes37/38 with user bus configured; the unchanged HEAD reproduces the remaining Claude disallowedTools assertion failure (`/tmp/termcontrol-complaints-baseline.log`). `npm run doctor` reports a desktop release build older than the fresh frontend build and existing keeper/app age warnings; no desktop or keeper restart performed. Logs: `/tmp/termcontrol-complaints-{browser,build,mobile,unit-bus,doctor}.log`.
 
 
-### Bot request panel follows the owner ledger (2026-10-26)
-
 ### Bot helpers continue unfinished work (2026-10-26, TF-116)
 
 Nine-minute shared stuck threshold and nine-minute idle assignment age, polled every thirty seconds. A bounded reminder retains the exact conversation and notifies its owning bot; durable receipts prevent repeats. Approval, waiting, sleeping, unknown progress and reassigned work are protected. Focused recovery/status/death suites pass49/49; canonical `verify:terminal-health` passes51/51 (`/tmp/termfleet-TF116-{focused,canonical}.log`). Controlled-clock real PTY trial delivered to the original UUID; `/tmp/termfleet-TF116-live.json` explicitly reports resumption false because TF-115 Stop-hook looping continued. Disposable card cleanup confirmed `/tmp/termfleet-TF116-cleanup.json`. Full TermControl suite stopped on existing cleanup EISDIR in run.mjs:902 (`/tmp/termfleet-TF116-full-suite.log`); doctor reports pre-existing desktop release age. Actual resumed progress remains unverified; no silence-based termination was added.
+
+### Bot request panel follows the owner ledger (2026-10-26)
 
 | Issue | Symptom and cause | Guard and fresh evidence | Remaining gate |
 | --- | --- | --- | --- |
