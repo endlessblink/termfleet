@@ -91,24 +91,30 @@ export function withPassedOn(reply, forward, incoming = []) {
 }
 
 /** The command for one side answer: the bot's plan, no tools, no hooks, no saved session. */
-export function sideCommand(bot, prompt, { bins = {}, cwd, session = null, addDirs = [] } = {}) {
+export function sideCommand(bot, prompt, { bins = {}, cwd, session = null, addDirs = [], images = [] } = {}) {
+  // Pictures Noam sent with the message (2026-10-26: the quick reply was handed his words only, never
+  // the picture, and answered "I don't see any picture").
+  const pictures = images.filter((p) => p && fs.existsSync(p));
   if (bot.provider === 'codex') {
     const model = bot.model || SIDE_MODEL.codex;
     return {
       bin: bins.codex || 'codex',
       args: ['exec', '--json', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-s', 'read-only', '-C', cwd,
-        ...(model ? ['-m', model] : []), '-c', 'model_reasoning_effort="low"', '-c', 'approval_policy="never"', prompt],
+        ...(model ? ['-m', model] : []), '-c', 'model_reasoning_effort="low"', '-c', 'approval_policy="never"', ...pictures.map((p) => `--image=${p}`), prompt],
     };
   }
   // With the bot's own conversation the responder is a copy of the bot (forked, never saved), so it
-  // knows the history and can open pictures (Read); without one it stays the note-only responder.
-  const copy = session ? ['--resume', session, '--fork-session', ...addDirs.flatMap((d) => ['--add-dir', d])] : [];
+  // knows the history and can open pictures (Read); without one it stays the note-only responder,
+  // except that it may open the pictures sent with the message.
+  const dirs = [...new Set([...(session ? addDirs : []), ...pictures.map((p) => path.dirname(p))])];
+  const copy = [...(session ? ['--resume', session, '--fork-session'] : []), ...dirs.flatMap((d) => ['--add-dir', d])];
+  const readable = Boolean(session) || pictures.length > 0;
   return {
     bin: bins.claude || 'claude',
     args: ['-p', prompt, ...copy, '--output-format', 'json', '--model', SIDE_MODEL.claude,
       '--no-session-persistence', '--restricted', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
       '--settings', '{"disableAllHooks":true}', '--permission-mode', 'dontAsk',
-      '--disallowedTools', 'Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'Skill', ...(session ? [] : ['Read', 'Grep', 'Glob']), 'TodoWrite', 'TaskCreate', 'TaskUpdate'],
+      '--disallowedTools', 'Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'Skill', ...(readable ? [] : ['Read', 'Grep', 'Glob']), 'TodoWrite', 'TaskCreate', 'TaskUpdate'],
   };
 }
 
@@ -129,10 +135,10 @@ export function sideOutput(provider, stdout) {
 }
 
 /** Runs one side answer as a child process. Never throws; resolves with { text } or { error }. */
-export function runSide(bot, prompt, { bins = {}, env = process.env, timeoutMs = SIDE_TIMEOUT_MS, cwd = os.tmpdir(), session = null, addDirs = [] } = {}) {
+export function runSide(bot, prompt, { bins = {}, env = process.env, timeoutMs = SIDE_TIMEOUT_MS, cwd = os.tmpdir(), session = null, addDirs = [], images = [] } = {}) {
   // A forked copy must run in the bot's own folder: that is where its conversation is filed.
   if (session && bot.cwd) cwd = bot.cwd;
-  const command = sideCommand(bot, prompt, { bins, cwd, session, addDirs });
+  const command = sideCommand(bot, prompt, { bins, cwd, session, addDirs, images });
   const { bin, args } = env.TERMFLEET_GENTLE_BRAINS === '0' ? command
     : gentleCommand(command.bin, command.args, { unit: `termfleet-side-${String(bot.id).replace(/[^A-Za-z0-9]/g, '')}-${Date.now()}` });
   return new Promise((resolve) => {

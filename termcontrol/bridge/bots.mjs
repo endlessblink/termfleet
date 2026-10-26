@@ -209,6 +209,15 @@ export const BROWSER_MCP = { command: process.execPath, args: [fileURLToPath(new
 // only a few of its settings, so the bot is named in the arguments, not the settings).
 export const browserMcp = (bot) => ({ command: BROWSER_MCP.command, args: [...BROWSER_MCP.args, '--bot', String(bot?.id || ''), '--bot-name', String(bot?.name || '')] });
 
+/** The pictures the bridge's own "[Noam attached N picture(s)…: a , b]" notes name in a message, that exist. */
+export function attachedPictures(text) {
+  const out = [];
+  for (const m of String(text || '').matchAll(/\[Noam attached \d+ pictures?\.[^\]:]*: ([^\]]+)\]/g)) {
+    for (const p of m[1].split(' , ').map((s) => s.trim())) if (p && !out.includes(p) && fs.existsSync(p)) out.push(p);
+  }
+  return out;
+}
+
 export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
   if (bot.provider === 'codex') {
     const bin = bins.codex || 'codex';
@@ -227,9 +236,12 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
     const config = ['-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(roots)}`, '-c', 'sandbox_workspace_write.network_access=true', '-c', 'approval_policy="never"',
       '-c', `mcp_servers.browser.command=${JSON.stringify(BROWSER_MCP.command)}`, '-c', `mcp_servers.browser.args=${JSON.stringify(browserMcp(bot).args)}`, '-c', 'mcp_servers.browser.disabled_tools=["browser_run_code_unsafe"]',
       '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"', '-c', 'mcp_servers.node_repl.enabled=false', '-c', 'plugins."unified-computer-use@openai-bundled".enabled=false'];
+    // A path in the words is not a picture to Codex: attached, it is (0 of the pictures sent to Codex
+    // bots were ever viewed; 2026-10-26). `=` keeps the flag to one file, so the prompt stays the prompt.
+    const images = attachedPictures(text).map((p) => `--image=${p}`);
     const args = first
-      ? ['exec', '--json', '--skip-git-repo-check', '-C', bot.cwd, '-s', 'workspace-write', ...(bot.model ? ['-m', bot.model] : []), ...config, prompt]
-      : ['exec', 'resume', bot.sessions.codex, '--json', '--skip-git-repo-check', ...(bot.model ? ['-m', bot.model] : []), ...config, prompt];
+      ? ['exec', '--json', '--skip-git-repo-check', '-C', bot.cwd, '-s', 'workspace-write', ...(bot.model ? ['-m', bot.model] : []), ...config, ...images, prompt]
+      : ['exec', 'resume', bot.sessions.codex, '--json', '--skip-git-repo-check', ...(bot.model ? ['-m', bot.model] : []), ...config, ...images, prompt];
     return { bin, args };
   }
   const bin = bins.claude || 'claude';
@@ -1086,7 +1098,7 @@ export class Bots {
     if (this.handed.size > 300) this.handed.delete(this.handed.keys().next().value);
     if (owner) this.append(id, { role: 'activity', text: 'קיבלתי, עובד על זה...' });
     if (owner && this.side && this.running.has(id)) {
-      this.sideAnswer(id, { at: msg.at, msgId: msg.id, text: said0, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
+      this.sideAnswer(id, { at: msg.at, msgId: msg.id, text: said0, pictures, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
       return { ok: true, message: msg, queued: true, side: true };
     }
     const queue = this.queues.get(id) || [];
@@ -1462,14 +1474,14 @@ export class Bots {
         try { terminals = this.terminalDigest(id, this.liveNow()); } catch { terminals = ''; }
         const copy = provider === 'claude' && process.env.TC_SIDE_FORK !== '0' && bot.sessions?.claude?.started && bot.sessions.claude.id
           ? { session: bot.sessions.claude.id, addDirs: [uploadDir()] } : {};
-        const prompt = sidePrompt({ bot, task: current.task, startedAt: current.startedAt, steps: current.steps || [], said: current.said || [], chat, incoming: batch.map((e) => e.text), openWork, terminals, forked: Boolean(copy.session), now: this.now() });
+        const prompt = sidePrompt({ bot, task: current.task, startedAt: current.startedAt, steps: current.steps || [], said: current.said || [], chat, incoming: batch.map((e) => (e.pictures?.length ? `${e.text}\n[Noam attached ${e.pictures.length} picture${e.pictures.length === 1 ? '' : 's'}. Open each one before answering: ${e.pictures.join(' , ')}]` : e.text)), openWork, terminals, forked: Boolean(copy.session), now: this.now() });
         const cwd = path.join(this.folder(id), 'side');
         try { fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); } catch { /* the folder is there */ }
         const t0 = this.now();
         let res;
         // Claude bots answer from a forked copy of their own conversation (2026-10-26: the note-only
         // responder said "I don't know" in 296 of 446 quick replies). Off: TC_SIDE_FORK=0.
-        try { res = this.available(provider) ? await this.side(runner, prompt, { bins: this.bins, cwd, ...copy }) : { error: 'plan limited' }; } catch (e) { res = { error: String(e?.message || e) }; }
+        try { res = this.available(provider) ? await this.side(runner, prompt, { bins: this.bins, cwd, ...copy, images: batch.flatMap((e) => e.pictures || []) }) : { error: 'plan limited' }; } catch (e) { res = { error: String(e?.message || e) }; }
         const ms = this.now() - t0;
         const parsed = res?.text ? parseSide(res.text) : null;
         if (!parsed?.reply) {
