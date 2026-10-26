@@ -133,6 +133,14 @@ Every key has an environment override, which wins over the file:
 | `TERMFLEET_PROJECT_ROOTS` | `projectRoots` (colon-separated) |
 | `TERMFLEET_AGENT_OPS_ROOT` | `agentOpsRoot` |
 
+The existing `termfleet-asks --hook` also forwards SessionStart, UserPromptSubmit
+and Stop to `agent_sync.py hook` in the configured shared queue checkout. The
+external agent-ops system owns registered projects, coordination rules and release
+locks; TermFleet combines its context and Stop reasons with request tracking.
+This uses existing hook registrations, including sessions outside TermFleet.
+Verify the connection without changing live project state with
+`node scripts/verify-agent-sync-hook.mjs`. Unconfigured installations stay silent.
+
 A copy of the example lives at `docs/config.example.json`. Helper and
 verification scripts follow the same rule: they read their paths from the
 environment and fail with a clear message rather than assuming a layout.

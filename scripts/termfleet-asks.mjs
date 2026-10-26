@@ -26,6 +26,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mergeHookResults, projectSyncHook } from './lib/agent-sync-hook.mjs';
 import { stripOpenRequestReminder } from '../termcontrol/bridge/bot-request-panel.mjs';
 import {
   captureMessage, ownerTextOf, projectOf, stopProblem, escalate, briefedIds, briefItems, briefBlock, ledgerDir,
@@ -709,6 +710,7 @@ if (startedAsCommand) {
     try { payload = JSON.parse(readFileSync(0, 'utf8') || '{}'); } catch { process.exit(0); }
     let result = null;
     try { result = hook(payload); } catch { result = null; }
+    result = mergeHookResults(result, projectSyncHook(payload));
     if (result) process.stdout.write(JSON.stringify(result) + '\n');
     process.exit(0);
   }

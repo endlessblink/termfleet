@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T15:25:42.475Z",
+  "updatedAt": "2026-10-26T15:51:19.304Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13391,6 +13391,85 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Focused49/49 and canonical51/51 pass in /tmp/termfleet-TF116-{focused,canonical}.log. Real same-conversation delivery proven; resumed progress unconfirmed. Full suite fails existing EISDIR cleanup."
+        }
+      ]
+    },
+    {
+      "id": "TF-117",
+      "title": "Codex project coordination hooks are missing",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Codex sessions do not receive shared project updates or Stop coordination gates",
+      "rootCause": "",
+      "guard": "Compose existing request hooks with external agent-ops sync output and preserve both gates",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T15:41:47.708Z",
+          "note": "38/38 focused regressions including trusted CLI; /tmp/termfleet-TF117-focused.log"
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-26T15:51:19.304Z",
+          "note": "Configured external authority adapter and both gate merge reviewed; real integration proof /tmp/termfleet-TF117-integration.log"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify live Codex next-prompt baseline, participant acknowledgements and enforced deploy refusal/receipt with agent-ops owner",
+      "history": [
+        {
+          "at": "2026-10-26T15:34:47.951Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T15:38:34.540Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Hook composition is the bounded candidate; existing registrations remain intact"
+        },
+        {
+          "at": "2026-10-26T15:40:10.480Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "New adapter regression failed with ERR_MODULE_NOT_FOUND before production changes"
+        },
+        {
+          "at": "2026-10-26T15:40:37.286Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Failing adapter regression captured; 38 focused tests now pass including the actual trusted CLI entry"
+        },
+        {
+          "at": "2026-10-26T15:41:02.433Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Composing external coordination output through the existing trusted Codex request hook"
+        },
+        {
+          "at": "2026-10-26T15:41:47.709Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "38/38 focused regressions including trusted CLI; /tmp/termfleet-TF117-focused.log"
+        },
+        {
+          "at": "2026-10-26T15:48:35.770Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "38 focused tests and isolated real two-agent Codex integration pass; live all-participant enforcement remains open"
+        },
+        {
+          "at": "2026-10-26T15:51:19.304Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Configured external authority adapter and both gate merge reviewed; real integration proof /tmp/termfleet-TF117-integration.log"
         }
       ]
     }
