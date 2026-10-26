@@ -700,6 +700,12 @@ export class Bots {
     if ('pinned' in patch) next.pinned = Boolean(patch.pinned);
     if ('notify' in patch) next.notify = Boolean(patch.notify);
     if ('hidden' in patch) next.hidden = Boolean(patch.hidden);
+    // How many terminals this bot may run at once (#8); the default 3 applies when unset.
+    if ('maxTerminals' in patch) {
+      const n = Math.round(Number(patch.maxTerminals));
+      if (!Number.isFinite(n) || n < 1 || n > 8) return { error: 'Pick a number of terminals from 1 to 8.' };
+      next.maxTerminals = n;
+    }
     if ('rules' in patch) next.rules = clean(patch.rules, LIMITS.rules);
     if ('provider' in patch && PROVIDERS.includes(patch.provider)) { next.provider = patch.provider; if (!next.active || next.active === bot.provider) next.active = patch.provider; if (patch.provider !== bot.provider) next.model = null; }
     if ('model' in patch) {

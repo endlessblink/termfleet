@@ -39,3 +39,22 @@ test('open-request harness reminders cannot become numbered requests or ledger o
   const env = { TERMFLEET_REQ_LEDGER: 'off' };
   assert.equal(hook({ hook_event_name: 'UserPromptSubmit', prompt: reminder }, { env }), null);
 });
+
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Bots } from '../bridge/bots.mjs';
+import { botTerminalLimit } from '../../scripts/lib/spawn-guards.mjs';
+
+test('a bot\'s terminal limit can be set (1 to 8), is kept, and is what the spawn guard reads (#8)', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-limit-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const bots = new Bots({ dir, checks: { home: os.homedir() }, fill: () => null });
+  const { bot } = bots.create({ name: 'Limit test', cwd: os.tmpdir() });
+  assert.equal(botTerminalLimit({ env: {}, bot: bots.read(bot.id) }), 3, 'default is 3');
+  assert.equal(bots.update(bot.id, { maxTerminals: 5 }).error, undefined);
+  assert.equal(botTerminalLimit({ env: {}, bot: bots.read(bot.id) }), 5);
+  assert.ok(bots.update(bot.id, { maxTerminals: 0 }).error);
+  assert.ok(bots.update(bot.id, { maxTerminals: 9 }).error);
+  assert.equal(bots.read(bot.id).maxTerminals, 5, 'a bad value changes nothing');
+});
