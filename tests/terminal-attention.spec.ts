@@ -59,7 +59,7 @@ test("a tool-permission prompt on screen means the pane is waiting for you", () 
   ].join("\n");
   expect(terminalScreenAttention(screen)).toBe("waiting");
   expect(terminalNeedsOperatorAnswer(screen)).toBe(true);
-  expect(paneBadgeAttention({ terminalVisibleText: screen })).toBe("waiting");
+  expect(paneBadgeAttention({ terminalVisibleText: screen, terminalVisibleTextUpdatedAt: Date.now() })).toBe("waiting");
 });
 
 test("an answered permission prompt does not keep the pane amber", () => {

@@ -287,10 +287,10 @@ test("regular split header renders an explicit pane-owned outcome Goal", async (
     outputLines: ["bash-5.2$"],
   });
 
-  await expect(page.getByTestId("split-terminal-summary-goal")).toContainText(
+  await expect(page.getByTestId("split-pane-goal")).toContainText(
     "Keep terminal-summary evidence separated from transient command output",
   );
-  await expect(page.getByTestId("split-terminal-summary-goal")).not.toContainText(
+  await expect(page.getByTestId("split-pane-goal")).not.toContainText(
     "Make Termfleet work clear and dependable",
   );
 });
@@ -361,7 +361,7 @@ test.fixme("regular split header stays visible before the first status summary a
   });
 
   await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(opening);
-  await expect(page.getByTestId("split-terminal-summary-goal")).toContainText(opening);
+  await expect(page.getByTestId("split-pane-goal")).toContainText(opening);
   await expect(page.getByTestId("split-terminal-summary-now")).toBeVisible();
 });
 
@@ -383,7 +383,7 @@ test.fixme("regular split header keeps the sidecar Now after reconnect", async (
   });
 
   await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(opening);
-  await expect(page.getByTestId("split-terminal-summary-goal")).toContainText(opening);
+  await expect(page.getByTestId("split-pane-goal")).toContainText(opening);
   await expect(page.getByTestId("split-terminal-summary-now")).toContainText("frontend build passed");
 });
 
@@ -426,7 +426,7 @@ test.fixme("regular split header rejects a generic sidecar Now and keeps Task an
   });
 
   await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(aboutWhat);
-  await expect(page.getByTestId("split-terminal-summary-goal")).toContainText(aboutWhat);
+  await expect(page.getByTestId("split-pane-goal")).toContainText(aboutWhat);
   await expect(page.getByTestId("split-terminal-summary-now")).not.toContainText("Running...");
 });
 

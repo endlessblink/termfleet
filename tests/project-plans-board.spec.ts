@@ -18,9 +18,9 @@ const plan = `
 
 test("formatted project plan IDs remain readable tasks", () => {
   expect(parseMasterPlanTasks(plan)).toEqual([
-    { id: "TASK-081", title: "Prove food flow", status: "in-progress", rawStatus: "IN PROGRESS" },
-    { id: "FEATURE-001", title: "Streaming responses", status: "done", rawStatus: "DONE" },
-    { id: "TASK-018", title: "Session export", status: "todo", rawStatus: "PENDING" },
+    { id: "TASK-081", title: "Prove food flow", status: "in-progress", rawStatus: "IN PROGRESS", priority: "P0" },
+    { id: "FEATURE-001", title: "Streaming responses", status: "done", rawStatus: "DONE", priority: "P1" },
+    { id: "TASK-018", title: "Session export", status: "todo", rawStatus: "PENDING", priority: "P2" },
   ]);
 });
 
@@ -32,7 +32,7 @@ test("short rows and changing table columns do not discard the whole plan", () =
 | ID | Title | Status |
 | TASK-002 | Next table | TODO |
 `)).toEqual([
-    { id: "TASK-001", title: "Missing status", status: "unknown", rawStatus: "Unknown" },
+    { id: "TASK-001", title: "Missing status", status: "unknown", rawStatus: "Unknown", priority: "P2" },
     { id: "TASK-002", title: "Next table", status: "todo", rawStatus: "TODO" },
   ]);
 });
@@ -165,4 +165,43 @@ test("project board stays inside a narrow workspace with no overlapping cards", 
   await page.screenshot({ path: "/tmp/tf072-board-desktop.png" });
   await board.getByLabel("Choose project", { exact: true }).click();
   await page.screenshot({ path: "/tmp/tf072-board-picker.png" });
+});
+
+test("plan rows read as short headlines with their priority, size and real status", () => {
+  const long = "The cockpit task line is always true, always current, always readable — the operator's four invariants: never blank, never invented, never stale, always plain.";
+  const tasks = parseMasterPlanTasks(`
+| ID | Priority | Effort | Status | Task |
+|----|----------|--------|--------|------|
+| TC-202 | P0 | M | VERIFYING | Focus-based MRU and status fixes |
+
+| ID | Title | Priority | Status |
+|----|-------|----------|--------|
+| TC-060 | ${long} | P0 | IN_PROGRESS (core shipped 2026-07-22) |
+| TC-078 | Retention for releases, pane screenshots and saved sessions (P0, S–M) | | TODO |
+`);
+  expect(tasks).toEqual([
+    { id: "TC-202", title: "Focus-based MRU and status fixes", status: "in-progress", rawStatus: "VERIFYING", priority: "P0", size: "M" },
+    { id: "TC-060", title: "The cockpit task line is always true, always current, always readable", detail: long, status: "in-progress", rawStatus: "IN_PROGRESS (core shipped 2026-07-22)", priority: "P0" },
+    { id: "TC-078", title: "Retention for releases, pane screenshots and saved sessions", status: "todo", rawStatus: "TODO", priority: "P0", size: "S–M" },
+  ]);
+});
+
+test("board leads with what is moving and groups the rest by urgency", async ({ page }) => {
+  await page.setViewportSize({ width: 1500, height: 950 });
+  const board = await mountBoard(page, `
+| ID | Title | Priority | Status |
+|----|-------|----------|--------|
+| TC-1 | Ship the board | P0 | IN PROGRESS |
+| TC-2 | Low thing | P3 | TODO |
+| TC-3 | Urgent thing | P0 | TODO |
+| TC-4 | Waiting on legal | P1 | BLOCKED |
+`);
+  await expect(board.getByRole("region", { name: "In Progress" }).getByText("Ship the board")).toBeVisible();
+  await expect(board.getByRole("region", { name: "Blocked" }).getByText("Waiting on legal")).toBeVisible();
+  const upNext = board.getByRole("region", { name: "To Do" });
+  const groups = await upNext.locator(".pb-group > h3 > span:first-child").allTextContents();
+  expect(groups).toEqual(["P0 · Urgent", "P3 · Low"]);
+  await board.getByRole("group", { name: "Filter by priority" }).getByRole("button", { name: "P3" }).click();
+  await expect(upNext.getByText("Urgent thing")).toHaveCount(0);
+  await expect(upNext.getByText("Low thing")).toBeVisible();
 });

@@ -56,7 +56,14 @@ test("a well-formed request is accepted", () => {
 test("malformed, stale, or unsafe requests are refused with a reason", () => {
   const cases: Array<[Record<string, unknown> | string, string]> = [
     ["{not json", "not-json"],
-    [{ ...good, version: 2 }, "unsupported-version"],
+    // Oct 7 handoff capsule: version 3 is now the protected "handoff" kind, so the
+    // first unknown version is 4; a bare v3 without a hash-bound descriptor is
+    // refused, and a v1/v2 request cannot smuggle a handoff prompt or descriptor.
+    [{ ...good, version: 4 }, "unsupported-version"],
+    [{ ...good, version: 3 }, "bad-handoff-descriptor"],
+    [{ ...good, version: 3, kind: "handoff", replace: true }, "bad-handoff-descriptor"],
+    [{ ...good, kind: "handoff" }, "handoff-requires-version-3"],
+    [{ ...good, task: "TermFleet handoff v1 {}\nread it" }, "handoff-requires-version-3"],
     [{ ...good, requestId: "../../etc" }, "bad-request-id"],
     [{ ...good, parentPaneId: "pane-1" }, "bad-parent-pane-id"],
     [{ ...good, provider: "bash -c rm" }, "unsupported-provider"],
@@ -249,6 +256,19 @@ test("a long prompt travels as a private file, not on the command line", async (
   expect(parsed.request.task.length).toBeLessThan(300);
   writeFileSync(join(dir, `${parsed.request.requestId}.result.json`), JSON.stringify({ ok: true }));
   await run.done();
+  // The card's Goal comes from --goal, carried in front of the pointer.
+  const goalRun = runCli(["spawn", "--provider", "claude", "--task-file", promptFile, "--goal", "Fix the silent search failures", "--timeout", "5"], { XDG_DATA_HOME: dataHome });
+  let goalFile: string | undefined;
+  for (let i = 0; i < 80 && !goalFile; i += 1) {
+    goalFile = readdirSync(dir).find((name) => name.endsWith(".request.json") && name !== requestFile);
+    if (!goalFile) await new Promise((wait) => setTimeout(wait, 50));
+  }
+  if (!goalFile) throw new Error("no goal request written");
+  const withGoal = parseChildRequest(readFileSync(join(dir, goalFile), "utf8"));
+  if (!withGoal.ok) throw new Error(withGoal.reason);
+  expect(withGoal.request.task).toMatch(/^Goal: Fix the silent search failures\nFull instructions: Read .*child-tasks\/.*\.md and carry out/);
+  writeFileSync(join(dir, `${withGoal.request.requestId}.result.json`), JSON.stringify({ ok: true }));
+  await goalRun.done();
   rmSync(dataHome, { recursive: true, force: true });
 });
 
@@ -271,6 +291,44 @@ test("a helper starts its agent on the task, then stays a usable terminal", () =
   expect(childStartupCommand("codex", "it's done")).toBe(`codex 'it'\\''s done'; exec "\${SHELL:-bash}" -l`);
   expect(childStartupCommand("opencode", "x")).toBe(`opencode --prompt 'x'; exec "\${SHELL:-bash}" -l`);
   expect(childStartupCommand("shell", "echo hi")).toBe(`echo hi; exec "\${SHELL:-bash}" -l`);
+});
+
+// Noam 2026-10-24: "קלוד מאבד טוקנים ... אין routing למודלים זולים", "לא רוצה הארדקודינג!!!". A Claude
+// helper starts on the model its task needs unless --model names another; the model is a name only.
+test("a Claude helper starts on the model its task needs, or the one it was given", async () => {
+  expect(childStartupCommand("claude", "Fix the dialog", undefined, "haiku")).toBe(`claude --model 'haiku' 'Fix the dialog'; exec "\${SHELL:-bash}" -l`);
+  expect(childStartupCommand("codex", "x", undefined, "haiku")).toBe(`codex 'x'; exec "\${SHELL:-bash}" -l`);
+  expect(parseChildRequest(JSON.stringify({ ...good, model: "opus" }), now)).toMatchObject({ ok: true, request: { model: "opus" } });
+  expect(parseChildRequest(JSON.stringify({ ...good, model: "opus; rm -rf ~" }), now)).toEqual({ ok: false, reason: "bad-model" });
+  expect(parseChildRequest(JSON.stringify({ ...good, provider: "codex", model: "opus" }), now)).toEqual({ ok: false, reason: "bad-model" });
+  const dataHome = mkdtempSync(join(tmpdir(), "tf-child-"));
+  const dir = beat(dataHome);
+  const seen: Record<string, unknown>[] = [];
+  const cases: [string, string[]][] = [
+    ["Check the status of the daemon and list open terminals", []],
+    ["Fix the bug in the save button", []],
+    ["Design the architecture for a multi-file refactor of the sync engine", []],
+    ["Design the architecture for a multi-file refactor of the sync engine", ["--model", "haiku"]],
+  ];
+  for (const [task, extra] of cases) {
+    const run = runCli(["spawn", "--provider", "claude", "--task", task, "--timeout", "5", ...extra], { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "" });
+    let file: string | undefined;
+    for (let i = 0; i < 80 && !file; i += 1) {
+      file = readdirSync(dir).find((name) => name.endsWith(".request.json") && !seen.some((r) => `${r.requestId}.request.json` === name));
+      if (!file) await new Promise((wait) => setTimeout(wait, 50));
+    }
+    if (!file) throw new Error("no request written");
+    const parsed = parseChildRequest(readFileSync(join(dir, file), "utf8"));
+    if (!parsed.ok) throw new Error(parsed.reason);
+    seen.push(parsed.request as unknown as Record<string, unknown>);
+    writeFileSync(join(dir, `${parsed.request.requestId}.result.json`), JSON.stringify({ ok: true }));
+    expect((await run.done()).code).toBe(0);
+  }
+  expect(seen.map((r) => r.model)).toEqual(["haiku", "sonnet", "opus", "haiku"]);
+  const bad = await runCli(["spawn", "--provider", "claude", "--task", "Hello", "--model", "x;y", "--no-start-app"], { XDG_DATA_HOME: dataHome }).done();
+  expect(bad.code).not.toBe(0);
+  expect(bad.stderr).toContain("--model must be");
+  rmSync(dataHome, { recursive: true, force: true });
 });
 
 test("a handover takes over the parent's own spot, and older sessions are capped at three", () => {

@@ -48,6 +48,10 @@ const liveHeaderVerifier = readFileSync(
   "utf8",
 );
 
+const contextPanel = readFileSync(new URL('../src/components/PaneContextPanel.tsx',import.meta.url),'utf8');
+const contextCss = readFileSync(new URL('../src/components/PaneContextPanel.css',import.meta.url),'utf8');
+const topicSource = readFileSync(new URL('../src/lib/terminalTopic.ts',import.meta.url),'utf8');
+
 test("map card context rows use one compact visual rhythm", () => {
   const style = magicCanvas.match(
     /terminalStatusTitle:\s*\{[\s\S]*?\n {2}\},/,
@@ -59,78 +63,30 @@ test("map card context rows use one compact visual rhythm", () => {
 });
 
 test("map card headline row always renders a label and a value", () => {
-  // The empty state used to render null, collapsing the row by ~9px.
-  const titleStart = magicCanvas.indexOf("terminalStatusTitle: {");
-  const titleBlock = magicCanvas.slice(titleStart, titleStart + 2600);
-  expect(titleStart).toBeGreaterThan(-1);
-  expect(titleBlock.length).toBeGreaterThan(0);
-  expect(titleBlock, "empty headline must not unmount the row").not.toMatch(
-    /\)\s*:\s*null\}/,
-  );
-  // The headline now ALWAYS carries the goal, so it has no empty state of its own to
-  // reserve — the reserved/hidden row moved below it, to the "Now:" line (pinned by
-  // "the card shows the goal on top and the moment under it, always").
-  const style = magicCanvas.match(
-    /terminalStatusTitle:\s*\{[\s\S]*?\n {2}\},/,
-  )?.[0];
-  expect(style).toMatch(/padding:\s*"8px 0 6px"/);
+  expect(contextPanel).toContain('pane-context-label');
+  expect(contextPanel).toContain('{value}');
+  expect(contextPanel).toContain("'Goal not yet known'");
+  expect(magicCanvas).toContain('<PaneContextPanel');
 });
 
 test("map card task line is a FIXED two-line box", () => {
-  // Changed deliberately 2026-07-28: the operator asked for two lines so a real goal is
-  // readable ("exercise-demo-gif-pipeline" told them nothing a week later). The jiggle
-  // came from a row whose height VARIED with the text, not from two lines as such — so
-  // wrapping is allowed only while the height stays fixed and the text stays clamped.
-  const style = magicCanvas.match(
-    /terminalTaskValue:\s*\{[\s\S]*?\n {2}\},/,
-  )?.[0];
-  expect(style, "terminalTaskValue style block").toBeTruthy();
-  expect(style).toMatch(/WebkitLineClamp:\s*2/);
-  expect(style, "the box must not grow with the text").toMatch(
-    /height:\s*"[\d.]+em"/,
-  );
-  expect(style, "a minimum lets the row grow again").not.toMatch(
-    /minHeight:/,
-  );
-
-  const bigRow = magicCanvas.match(
-    /terminalNowActiveValue:\s*\{[\s\S]*?\n {2}\},/,
-  )?.[0];
-  expect(bigRow, "terminalNowActiveValue style block").toBeTruthy();
-  expect(bigRow).toMatch(/WebkitLineClamp:\s*3/);
+  // Compact Goal/Task/Now band (owner-approved Oct 6 design): fixed two-line value boxes.
+  expect(contextCss).toContain('-webkit-line-clamp:2');
+  expect(contextCss).toContain('min-height:44px');
+  expect(contextCss).toContain('line-height:22px');
 });
 
 test("fleet list tasks reserve two readable lines without changing height", () => {
-  // The compact one-line version cut ordinary task names after three or four words.
-  // Two fixed lines keep the list stable while making each card useful at a glance.
-  expect(sidebar).not.toContain("sidebar-map-node-now-row");
-  const style = sidebar.match(/sidebarHeaderTask:\s*\{[\s\S]*?\n {2}\},/)?.[0];
-  expect(style, "sidebarHeaderTask style block").toBeTruthy();
-  expect(style).toMatch(/WebkitLineClamp:\s*2/);
-  expect(style).toMatch(/height:\s*"2\.8em"/);
-  expect(style).not.toMatch(/whiteSpace:\s*"nowrap"/);
-  expect(sidebar).toContain("header.hasCapturedGoal");
-  expect(sidebar).toContain("truncateAtWordBoundary");
+  expect(sidebar).toContain('const sidebarTaskLabel = topic.text');
+  expect(sidebar).toContain('title={terminalTopicDetails(topic)}');
+  expect(topicSource).toContain('words.slice(0,5)');
+  expect(topicSource).not.toContain('terminalVisibleText');
 });
 
 test("the card shows the goal on top and the moment under it, always", () => {
-  // The operator's chosen layout (2026-07-28): "Goal on top, current step under it".
-  // Before this the two swapped places depending on whether an activity existed, so the
-  // big line was sometimes the goal and sometimes the moment.
-  const bigRow = magicCanvas.slice(
-    magicCanvas.indexOf('data-testid="canvas-terminal-node-task-row"'),
-  );
-  expect(bigRow.slice(0, 1200)).toContain("terminalNowActiveLabel");
-  expect(
-    bigRow.slice(0, 1200),
-    "the big row must not switch between Task and Now",
-  ).not.toContain("Now Active:");
-
-  const nowRow = magicCanvas.slice(
-    magicCanvas.indexOf('data-testid="canvas-terminal-node-now-row"'),
-  );
-  expect(nowRow.slice(0, 1600)).toContain(">\n                Now:\n              <");
-  expect(nowRow.slice(0, 1600)).toContain("terminalHeaderNowDisplay");
+  expect(contextPanel.indexOf('`${prefix}-goal`')).toBeLessThan(contextPanel.indexOf('`${prefix}-task-row`'));
+  expect(contextPanel.indexOf('`${prefix}-task-row`')).toBeLessThan(contextPanel.indexOf('`${prefix}-now-row`'));
+  expect(contextPanel).toContain("hebrew?'עכשיו':'Now'");
 });
 
 test("cards do not rename missing values or manufacture a task-shaped Now row", () => {
@@ -147,22 +103,16 @@ test("cards do not rename missing values or manufacture a task-shaped Now row", 
 });
 
 test("a missing goal keeps honest Task, Goal, and Now rows mounted", () => {
-  expect(magicCanvas).toContain("terminalHeader.contextLabel");
-  expect(magicCanvas).toContain('visibility: "visible"');
-  expect(magicCanvas).not.toContain("This session is focused on");
-  expect(magicCanvas).toContain('"Now not captured"');
-  expect(magicCanvas).toContain("taskSource:");
-  expect(magicCanvas).toContain("contextSource:");
-  expect(magicCanvas).not.toContain("No task assigned to this terminal");
-  expect(magicCanvas).not.toContain("Project context: ${terminalHeader.workspace} · no goal set");
+  expect(contextPanel).toContain("'Goal not yet known'");
+  for(const row of ['goal','task-row','now-row'])expect(contextPanel).toContain('`${prefix}-'+row+'`');
+  expect(magicCanvas).not.toContain('This session is focused on');
 });
 
 test("map cards keep the broad Goal separate from the specific Task and Now rows", () => {
-  expect(magicCanvas).toContain("terminalHeaderContextDescription");
-  expect(magicCanvas).toContain("workstream?.statusSummary ?? linkedTerminal?.statusSummary");
-  expect(magicCanvas).toContain('data-testid="canvas-terminal-node-goal"');
-  expect(magicCanvas).toContain("Goal:");
-  expect(magicCanvas).toContain("terminalHeader.contextLabel");
+  expect(magicCanvas).toMatch(/goal=\{terminalPanelGoal\}[\s\S]{0,120}task=\{stabilizedTerminalHeaderTask\}[\s\S]{0,120}now=\{terminalPanelNow\}/);
+  expect(contextPanel).toContain('`${prefix}-goal`');
+  expect(contextPanel).toContain('`${prefix}-task-row`');
+  expect(contextPanel).toContain('`${prefix}-now-row`');
 });
 
 test("map cards explain missing context without collapsing the three rows", () => {
@@ -199,13 +149,9 @@ test("map cards reject tool and prompt chrome from the Now row", () => {
 });
 
 test("canvas terminal Task keeps a concrete render-time fallback when stabilization is empty", () => {
-  expect(magicCanvas).toContain(
-    ").title || terminalHeaderTaskDescription || canvasTaskFallback;",
-  );
-  expect(magicCanvas).toContain('data-testid="canvas-terminal-node-task-row"');
-  expect(magicCanvas).not.toContain('data-testid="canvas-terminal-node-goal-task"');
-  expect(magicCanvas).not.toContain('data-testid="canvas-terminal-node-task-kicker"');
-  expect(magicCanvas).toContain("Task:");
+  expect(magicCanvas).toContain('const terminalHeaderTaskDescription =');
+  expect(magicCanvas).toContain('task={stabilizedTerminalHeaderTask}');
+  expect(contextPanel).toContain('`${prefix}-task-row`');
 });
 
 test("snapshot writes discard stale panes without dropping current dock evidence", () => {
@@ -232,14 +178,10 @@ test("snapshot probe coalesces all rendered-state churn behind its heartbeat", (
 });
 
 test("split terminal headers show a compact stable Goal line when context exists", () => {
-  expect(splitPane).toContain("contextLabel");
-  expect(splitPane).toContain('data-testid="split-terminal-summary-goal"');
-  expect(splitPane).toContain('data-testid="split-agent-pane-goal"');
-  expect(splitPane).toContain(">\n                            Goal\n");
-  expect(splitPane).toContain('displayedHeaderContext !== "Context not captured"');
-  expect(splitPane).toContain("contextSource");
-  expect(splitPane).not.toContain("fallbackPaneGoal(");
-  expect(splitPane).not.toContain("statusSummaryGoalFallback");
+  expect(splitPane).toContain('presentPaneGoal(');
+  expect(splitPane).toContain('<PaneContextPanel goal={panelGoal}');
+  expect(splitPane).toContain('prefix="split-pane" compact');
+  expect(contextPanel).toContain('`${prefix}-goal`');
 });
 
 test("split headers never promote a missing-goal placeholder into the Task row", () => {
@@ -252,42 +194,16 @@ test("split headers never promote a missing-goal placeholder into the Task row",
 });
 
 test("every split header Goal row uses the render-time fallback", () => {
-  const goalRows = splitPane.match(/data-testid=\"split-(?:agent-pane|terminal-summary)-goal\"[\s\S]{0,900}?displayedHeaderContext/g) ?? [];
-  expect(goalRows.length).toBeGreaterThanOrEqual(3);
-  expect(splitPane).not.toContain("title={headerContext}");
-  expect(splitPane).not.toContain("{headerContext}\n");
+  expect(splitPane).toContain('const panelGoal = presentPaneGoal(');
+  expect(splitPane).toContain('goal={panelGoal}');
+  expect(contextPanel).toContain("goal.text || (hebrew?'המטרה עדיין לא ידועה':'Goal not yet known')");
 });
 
 test("agent split headers keep the live work, broad goal, and current moment legible together", () => {
-  const agentHeader = splitPane.slice(
-    splitPane.indexOf("{isAgentPane && agentStatusSummary ?"),
-    splitPane.indexOf(") : shellStatusSummary ?", splitPane.indexOf("{isAgentPane && agentStatusSummary ?")),
-  );
-
-  expect(agentHeader, "the agent header branch must exist").toContain("Task:");
-  expect(agentHeader, "the agent Task and Goal must occupy separate visible columns").toContain(
-    'gridColumn: "3 / 4"',
-  );
-  expect(agentHeader, "the agent Task column must remain visible").toContain("minWidth: 150");
-  expect(agentHeader).toContain('gridColumn: "4 / -1"');
-  expect(agentHeader, "the broad goal must have its own labeled row").toContain(
-    'data-testid="split-agent-pane-goal"',
-  );
-  expect(agentHeader, "the agent Goal block must carry a visible Task line").toContain(
-    'data-testid="split-agent-pane-goal-task"',
-  );
-  expect(agentHeader, "the current moment must have its own labeled row").toContain(
-    'data-testid="split-agent-pane-now"',
-  );
-  expect(agentHeader, "the agent branch must not hide the moment in an inline strip").toContain(
-    "Now",
-  );
-  expect(splitPane).toContain("const agentTaskLabel = isAgentPane");
-  expect(splitPane).toContain('const visibleAgentTaskLabel = agentTaskLabel ?? "Task not captured"');
-  expect(agentHeader).toContain("{visibleAgentTaskLabel}");
-  expect(splitPane).toContain("? agentTaskLabel");
-  expect(splitPane).toContain("(isAgentPane ? agentTaskLabel : shellTaskLabel)");
-  expect(splitPane).toContain("? agentHeader?.contextLabel");
+  expect(splitPane).toContain('goal={panelGoal} task={isAgentPane?visibleAgentTaskLabel:shellTaskLabel');
+  expect(splitPane).toContain('now={panelNow}');
+  expect(splitPane).toContain('fontSize:15');
+  expect(contextCss).toContain('font-size:16px');
 });
 
 test("agent split Task never falls back to the broad Goal when live work is missing", () => {
@@ -304,24 +220,13 @@ test("agent split Task never falls back to the broad Goal when live work is miss
 test("map agent cards render the shared Task, Goal, and Now rows", () => {
   const agentBlock = magicCanvas.slice(
     magicCanvas.indexOf('data-testid="canvas-agent-status-block"'),
-    magicCanvas.indexOf(') : node.type === "terminal" && workstream?.kind !== "agent"'),
+    magicCanvas.indexOf(') : node.type === "terminal" && (!isAgentTerminal'),
   );
-
-  expect(agentBlock, "the agent card must use the shared Task label").toContain(
-    "agentCardTask",
-  );
-  expect(agentBlock, "the agent card must render a separate Goal row").toContain(
-    'data-testid="canvas-agent-node-goal"',
-  );
-  expect(agentBlock, "the agent card must render a separate Now row").toContain(
-    'data-testid="canvas-agent-status-now"',
-  );
-  expect(agentBlock, "the card must not bypass the shared state with stale summary text").not.toContain(
-    "{agentStatusSummary.now}",
-  );
-  expect(magicCanvas, "the agent card must not copy the project Goal into Now").toContain(
-    "headerTextsEquivalent(restoredAgentNow, canvasGoalFallback)",
-  );
+  expect(agentBlock).toContain('<PaneContextPanel goal={terminalPanelGoal} task={agentCardTask} now={terminalPanelNow} prefix="canvas-agent-node"');
+  expect(contextPanel).toContain('`${prefix}-goal`');
+  expect(contextPanel).toContain('`${prefix}-now-row`');
+  expect(agentBlock, "the card must not bypass current state with stale summary text").not.toContain("{agentStatusSummary.now}");
+  expect(magicCanvas).toContain('attention: terminalHeaderAttentionState');
 });
 
 test("status-summary Now cannot repeat the Task before the final row guard", () => {
@@ -342,9 +247,10 @@ test("split header Now is distinct before telemetry is written", () => {
 });
 
 test("split header values wrap instead of hiding Task, Goal, and Now", () => {
-  expect(splitPane).toContain('overflowWrap: "anywhere"');
-  expect(splitPane).toContain('whiteSpace: "normal"');
-  expect(splitPane).toContain('textOverflow: "clip"');
+  expect(contextCss).toContain('overflow-wrap:anywhere');
+  expect(contextCss).toContain('flex-wrap:wrap');
+  expect(contextPanel).toContain('<details');
+  expect(contextPanel).toContain('Show full text');
 });
 
 test("map header Task, Goal, and Now values do not use single-line ellipsis", () => {
@@ -390,27 +296,16 @@ test("shell split Task uses the active task step instead of the broad Goal", () 
 });
 
 test("regular split headers keep the current moment visible beside the path", () => {
-  const shellStart = splitPane.indexOf(") : shellStatusSummary ?");
-  const shellHeader = splitPane.slice(shellStart);
-
-  expect(shellHeader).toContain('data-testid="split-terminal-summary-now"');
-  expect(shellHeader).not.toContain('display: "none"');
-  expect(shellHeader).toContain('gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)"');
+  expect(splitPane).toContain('now={panelNow}');
+  expect(splitPane).toContain('agentStatusSummary?.path ?? shellHeaderPath ?? paneCwd');
+  expect(contextPanel).toContain('`${prefix}-now-row`');
 });
 
 test("shell split headers keep honest Task, Goal, and Now rows when values are sparse", () => {
-  expect(splitPane).not.toContain("headerGoalFallback");
-  expect(splitPane).toContain("const displayedHeaderContext");
-  expect(splitPane).not.toContain("This session is focused on");
-  expect(splitPane).toContain('data-testid="split-terminal-summary-now-inline"');
-  expect(splitPane).toContain('? 72');
-  expect(splitPane).toContain('data-testid="split-terminal-summary-task-row"');
-  expect(splitPane).toContain('gridColumn: "3 / 4"');
-  expect(splitPane).toContain(
-    '"auto auto minmax(150px, 1fr) minmax(0, 1fr) auto"',
-  );
-  expect(splitPane).toContain("title={`Task: ${shellTaskLabel}`}");
-  expect(splitPane).toContain("{shellTaskLabel}");
+  expect(splitPane).toContain('{!isPreviewPane ? (');
+  expect(splitPane).toContain('shellTaskLabel ?? "Task not yet known"');
+  expect(contextPanel).toContain("'Goal not yet known'");
+  expect(contextPanel).toContain('`${prefix}-now-row`');
 });
 
 test("map headers never render a missing-goal placeholder", () => {
@@ -487,12 +382,14 @@ test("map Task fallback never consumes the broad Goal", () => {
   );
 });
 
-test("agent context rows share one label column and one value rhythm", () => {
-  expect(magicCanvas).toContain('gridTemplateColumns: "48px minmax(0, 1fr)"');
-  expect(magicCanvas).toContain('padding: "7px 0"');
-  expect(magicCanvas).toContain('lineHeight: "17px"');
-  expect(magicCanvas).toContain('data-testid="canvas-agent-status-now"');
-  expect(magicCanvas).toContain('style={styles.agentWorkingLine}');
+test("agent context rows share one readable and bounded label/value rhythm", () => {
+  expect(magicCanvas).toContain('prefix="canvas-agent-node"');
+  // Design B: Goal → Task → Now side by side, small caps labels above values.
+  expect(contextCss).toContain('.pane-context-panel { display:flex; flex-wrap:wrap');
+  expect(contextCss).toContain('text-transform:uppercase; letter-spacing:var(--label-caps-tracking)');
+  expect(contextCss).toContain('font-size:15px; line-height:22px');
+  expect(contextCss).toContain('-webkit-line-clamp:2');
+  expect(contextCss).not.toContain('min-height:90px');
 });
 
 test("same-group agent cards render pane-owned Task and Now values", () => {

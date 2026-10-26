@@ -8,6 +8,11 @@ import type { AgentBudgetSnapshot } from "./agentBudget";
 import { selectPlanPurpose } from "./taskPurpose";
 
 export interface TranscriptFacts {
+  /** The goal the operator set with Claude Code's /goal command, shortened for a card. */
+  declaredGoal?: string;
+  /** TF-091: the newest "Goal: ..." / "Task: ..." line the agent wrote in its reply. */
+  statedGoal?: string;
+  statedTask?: string;
   /** A short session title the vendor wrote itself. Never composed here. */
   title?: string;
   /** The operator's own last request, verbatim. The floor rule's source. */
@@ -193,6 +198,12 @@ export function opensAsRequest(text: string | undefined): string | undefined {
   // The words before the shortcut are the request; the shortcut belongs to the composer.
   const value = text
     .trim()
+    // Launcher plumbing, not the ask: the bot-registry trailer, and the "read this brief
+    // file" pointer a helper is started with. A bare pointer names no work; the "Goal:"
+    // line in front of it does (report 2026-10-14: the card showed a guessed goal).
+    .replace(/\s*Bot registry reference:[\s\S]*$/i, "")
+    .replace(/\s*(?:Full instructions:\s*)?Read \S+\.md and carry out the instructions in it\.?/i, "")
+    .replace(/^Goal:\s*/i, "")
     .replace(/\s+(?:and\s+)?[$/][a-z][\w:-]*\s*$/i, "")
     .trim();
   if (value.length < 12) return undefined;
@@ -210,6 +221,8 @@ export function opensAsRequest(text: string | undefined): string | undefined {
   // Codex's approval reviewer and scripted runs ("Read-only planning replay",
   // "Read-only evaluation", "Read-only challenge review" …) open with fixed preambles.
   if (/^(?:the following is the codex agent history\b|read-only\b)/i.test(value)) return undefined;
+  // Claude's after-compaction summary is written as a user message but is not an ask.
+  if (/^this session is being continued from a previous conversation\b/i.test(value)) return undefined;
   if (/^(?:caveat:|you are\b|##\s|base directory for this skill:)/i.test(value))
     return undefined;
   // Bracketed harness notices ride inside user messages ("[Request interrupted by user
@@ -251,6 +264,75 @@ const REFERENCES_ONLY_EXISTING_WORK =
 
 export function refersOnlyToExistingWork(text: string): boolean {
   return REFERENCES_ONLY_EXISTING_WORK.test(text.trim());
+}
+
+/**
+ * A helper started by termfleet-child opens with "Read <brief file> and carry out the
+ * instructions in it." That names no work, and Claude titles the session from it before
+ * it has read the brief (every such card read "bot registry verification"). The brief
+ * file itself holds the goal.
+ */
+export function briefPointerPath(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  return /Read (\/\S*\/child-tasks\/[\w-]+\.md) and carry out the instructions in it/.exec(text)?.[1];
+}
+
+/** The goal a brief states: its "Goal:" line, else its first "# heading". */
+export function briefFileGoal(text: string): string | undefined {
+  const line =
+    /^\s*\**Goal:?\**:?\s*(.+)$/im.exec(text)?.[1] ?? /^#\s+(.+)$/m.exec(text)?.[1];
+  const goal = line?.replace(/\s+/g, " ").trim().slice(0, 160);
+  return goal || undefined;
+}
+
+/**
+ * Claude Code's /goal condition, cut to the part a person reads at a glance: the first
+ * sentence up to its colon, without parentheses or plan-file names. The full condition
+ * ("Work the lanes ... (TASK-2155 first ...) and do not stop until every lane is done:
+ * fix each root cause ...") is a checklist for the agent, not a card line.
+ */
+export function shortDeclaredGoal(condition: unknown): string | undefined {
+  if (typeof condition !== "string") return undefined;
+  let text = condition.replace(/\s+/g, " ").trim();
+  text = text.split(/(?<=[.!?])\s/)[0] ?? text;
+  const head = text.split(":")[0]?.trim() ?? text;
+  if (head.split(/\s+/).length >= 4) text = head;
+  text = text
+    .replace(/\s*\([^()]*\)/g, "")
+    .replace(/\s+in\s+[\w./-]+\.md\b/gi, "")
+    .replace(/[\s,;.]+$/, "")
+    .trim();
+  if (text.length > 160) text = `${text.slice(0, 157).replace(/\s+\S*$/, "")}…`;
+  return text || undefined;
+}
+
+const STATED_LINE =
+  /^[ \t]*(?:[-*>][ \t]*)?(?:\*\*|__)?(goal|task)(?:\*\*|__)?[ \t]*[:：][ \t]*(?:\*\*|__)?[ \t]*(.+?)[ \t]*$/gim;
+
+/**
+ * TF-091: the agent declares its goal and current step as plain "Goal: ..." and
+ * "Task: ..." lines. The newest of each wins. Nothing is guessed from chat text.
+ */
+export function statedLines(text: unknown): { goal?: string; task?: string } {
+  const found: { goal?: string; task?: string } = {};
+  if (typeof text !== "string") return found;
+  for (const match of text.matchAll(STATED_LINE)) {
+    const value = match[2]
+      .replace(/[*_`]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/[.\s]+$/, "")
+      .slice(0, 160);
+    if (value.split(/\s+/).length < 2) continue;
+    found[match[1].toLowerCase() as "goal" | "task"] = value;
+  }
+  return found;
+}
+
+function applyStatedLines(facts: TranscriptFacts, text: unknown) {
+  const stated = statedLines(text);
+  if (stated.goal) facts.statedGoal = stated.goal;
+  if (stated.task) facts.statedTask = stated.task;
 }
 
 /** The text of a Claude `user` record, whether it is a string or content blocks. */
@@ -335,6 +417,11 @@ export function parseClaudeTranscript(text: string): TranscriptFacts {
         facts.title = next;
       }
     }
+    const attachment = record.attachment as { type?: string; condition?: unknown; met?: unknown } | undefined;
+    if (attachment?.type === "goal_status") {
+      // The operator's own declared goal; once met it no longer describes the work.
+      facts.declaredGoal = attachment.met === true ? undefined : shortDeclaredGoal(attachment.condition);
+    }
     if (record.type === "last-prompt") {
       // Gated like every other operator message: this record holds whatever was typed
       // last, including "go", "$done" and "this keeps reseting" — none of which name the
@@ -361,6 +448,14 @@ export function parseClaudeTranscript(text: string): TranscriptFacts {
     const content = message?.content;
     if (!Array.isArray(content)) return;
     for (const block of content) {
+      if (
+        record.type === "assistant" &&
+        block &&
+        typeof block === "object" &&
+        (block as { type?: string }).type === "text"
+      ) {
+        applyStatedLines(facts, (block as { text?: unknown }).text);
+      }
       if (
         block &&
         typeof block === "object" &&
@@ -439,6 +534,8 @@ export function parseCodexRollout(text: string): TranscriptFacts {
       }
       case "thread_goal_updated":
         facts.title = cleanText(payload.goal) ?? facts.title;
+        // Codex's goal command: the operator's declared goal.
+        facts.declaredGoal = shortDeclaredGoal(payload.goal) ?? facts.declaredGoal;
         break;
       case "user_message": {
         // Same rule as Claude: a thin follow-up must not erase the real request, and it
@@ -450,6 +547,7 @@ export function parseCodexRollout(text: string): TranscriptFacts {
       }
       case "agent_message":
         facts.agentSaid = firstSentence(payload.message) ?? facts.agentSaid;
+        applyStatedLines(facts, payload.message);
         break;
       case "message": {
         if (record.type !== "response_item" || !Array.isArray(payload.content)) break;
@@ -463,6 +561,10 @@ export function parseCodexRollout(text: string): TranscriptFacts {
           if (asked) facts.operatorRequest = asked;
         } else if (payload.role === "assistant") {
           facts.agentSaid = firstSentence(blockText("output_text")) ?? facts.agentSaid;
+          applyStatedLines(facts, (payload.content as unknown[])
+            .map((block) => (block as { text?: unknown })?.text)
+            .filter((text) => typeof text === "string")
+            .join("\n"));
         }
         break;
       }

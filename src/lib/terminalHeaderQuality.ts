@@ -640,6 +640,16 @@ export function qualityCheckUserAskLabel(
   if (/^(?:and\s+)?(?:this|that|these|those|both)$/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
   }
+  // "but it has a lot of unneeded content" answers the previous turn; it is a
+  // reaction, never the pane's task (TF-094).
+  if (/^but\s/i.test(text)) return { ok: false, reason: "prompt-fragment" };
+  // A pasted menu choice ("- All at once: I find out ...") is the agent's own
+  // option wording handed back, not what the operator asked for (TF-094).
+  // The stored copy may have lost its bullet, so a short option label followed by
+  // the agent's "I will/I only/I find ..." voice is the same pasted choice.
+  if (/^[-*\u2022]\s+[^:]{1,40}:\s/.test(text) ||
+      /^[^:]{1,30}:\s+I(?:['\u2019]ll|\s+(?:will|only|find|check|change|raise|look|keep|leave|switch|move|add|remove|build|make))\b/.test(text))
+    return { ok: false, reason: "prompt-fragment" };
   if (/^i just need\b/i.test(text) || /\banything else is just\b/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
   }
@@ -681,13 +691,17 @@ export function qualityCheckUserAskLabel(
     return { ok: false, reason: "package-script" };
   const commandShaped =
     text.split(/\s+/).length < 5 ||
-    /(?:^|\s)-{1,2}[a-z]|\/|\$|\||&|=/.test(text);
+    /(?:^|\s)-{1,2}[a-z]|\/|\$[({A-Z_]|\||&|=/.test(text);
   if (looksLikeCommand(text) && commandShaped)
     return { ok: false, reason: "command-like" };
   if (looksLikeCode(text)) return { ok: false, reason: "command-like" };
   if (looksLikePath(text))
     return { ok: false, reason: "implementation-detail" };
-  if (/\$\w|`/.test(text)) return { ok: false, reason: "command-like" };
+  // Only shell syntax is refused. A request may name a price ("raise the limit to $3
+  // a day") or a skill ("port the $about-what skill") — both read as plain words
+  // (TF-094: such panes showed "Goal not yet known" for hours).
+  if (/`|\$[({]|\$[A-Z_][A-Z0-9_]*\b|\$\d+(?![\d.,]*\s*(?:a|an|per|each|\/|usd|dollars?|bucks|k|m)\b)/.test(text))
+    return { ok: false, reason: "command-like" };
   if (lacksDecisionObject(text)) return { ok: false, reason: "vague" };
   if (looksLikeGenericResult(text)) return { ok: false, reason: "vague" };
   if (looksGibberish(text)) return { ok: false, reason: "gibberish" };

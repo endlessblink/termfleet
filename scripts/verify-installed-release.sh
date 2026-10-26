@@ -26,6 +26,10 @@ expected_prefix="$(readlink -m "$INSTALL_ROOT/releases")/"
 [[ -x "$resolved" ]] || fail "installed TermFleet release is not executable: $resolved"
 [[ -f "$INSTALL_ROOT/current/manifest.env" ]] ||
   fail "installed release manifest is missing"
+[[ ! -L "$INSTALL_ROOT/current/manifest.env" && ! -L "$INSTALL_ROOT/current/termfleet" ]] ||
+  fail "installed release binary or manifest is redirected"
+[[ "$(readlink -f "$INSTALL_ROOT/current/termfleet")" == "$resolved" ]] ||
+  fail "installed command and current release differ"
 
 case "$resolved" in
   "$APP_ROOT"/*|*/run-dev.sh|*/run-release.sh|*/node_modules/*|*/target/*)
@@ -61,6 +65,20 @@ fi
 [[ "$installed_frontend_sha" == "$expected_frontend_sha" ]] ||
   fail "installed frontend checksum does not match the current build"
 
+release_dir="$(dirname "$resolved")"
+resources_sha="$(python3 "$APP_ROOT/scripts/release-resources.py" manifest-checksum "$release_dir")" ||
+  fail "installed resource checksum declaration is malformed"
+if [[ "$resources_sha" == absent && "${TERMFLEET_ALLOW_LEGACY_RESOURCES:-0}" == 1 &&
+      ! -e "$release_dir/resources.json" && ! -L "$release_dir/resources.json" ]]; then
+  # Only the installer's prior/rollback path requests legacy file-release proof.
+  # Default verification never accepts a binary-only new release.
+  resources_sha=legacy-no-resources
+else
+  [[ "$resources_sha" =~ ^[0-9a-f]{64}$ ]] || fail "installed release has no unique resource checksum"
+  python3 "$APP_ROOT/scripts/release-resources.py" verify "$release_dir" "$resources_sha" >/dev/null ||
+    fail "installed immutable resources failed verification"
+fi
+
 [[ -L "$DESKTOP_LAUNCHER" ]] || fail "desktop launcher must be an installed symlink"
 launcher_resolved="$(readlink -f "$DESKTOP_LAUNCHER")"
 [[ "$launcher_resolved" == "$INSTALL_ROOT/libexec/termfleet-desktop-launcher" ]] ||
@@ -86,4 +104,4 @@ if [[ -d "$PLASMA_ICON_DIR" ]]; then
   shopt -u nullglob
 fi
 
-printf 'TERMFLEET_INSTALLED_RELEASE_OK binary=%s sha256=%s\n' "$resolved" "$actual_sha"
+printf 'TERMFLEET_INSTALLED_RELEASE_OK binary=%s sha256=%s resources=%s\n' "$resolved" "$actual_sha" "$resources_sha"

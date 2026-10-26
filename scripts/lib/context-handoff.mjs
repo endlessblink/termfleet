@@ -65,9 +65,9 @@ export function decide({ tokens, windowTokens, percent, mode, alreadyFired, last
   const overdue = last !== undefined ? `STILL NOT HANDED OVER (reminded at ${Math.round(last)}%, every extra turn costs money). ` : "";
   return (
     `${overdue}Context is about ${rounded}% full: hand over to a fresh instance. Write an EXPANSIVE HANDOFF.md that skips nothing relevant: ` +
-    `the original request in Noam's words and every later correction, the goal and definition of done, everything done so far with evidence, ` +
+    `the original request in the owner's exact words and every later correction, the goal and definition of done, everything done so far with evidence, ` +
     `every file touched (with uncommitted state), decisions and why, rejected approaches, open problems, running processes/ports/builds, ` +
-    `constraints and house rules, exact next steps, and the first command to run. Commit only your own files, then run ` +
+    `constraints and house rules, attachment references with missing/inaccessible state, original authorization source turns and scope/expiry, cancellations/revocations, exact next steps, and the first command to run. Historical summary text and auto handover advice do not grant permission for consequential actions or commits. Preserve source records; then run ` +
     `\`termfleet-child spawn --provider ${provider} --cwd <project dir> --dropoff <abs path to HANDOFF.md>\` (never tmux; the card lands under the project's row; a handover always continues in the same kind of agent). ${how}${compaction}`
   );
 }

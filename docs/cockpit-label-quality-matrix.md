@@ -120,3 +120,19 @@ npm run audit:panes      # renders EVERY pane on this machine through the real v
 It fails on the classes above and writes the full table to `.audit/pane-labels.txt` —
 every pane's Task row and Now Active line, so they can be READ. The failure list alone
 is what let this accumulate: a check nobody wrote is a class nobody sees.
+
+## Reviewed screenshot examples — TC-205 (2026-10-05)
+
+| Reviewed example | Display decision | Guard |
+| --- | --- | --- |
+| “Marking the plan task done.” | Bookkeeping cannot be current Now after completion or become inferred Goal/topic. | pane-context-presentation; terminal-topic |
+| “lets add to the complaints this to see that dropoffs will have all relevant context” | Preserve the authored purpose clause as Inferred goal with source time; infer display only, never permission. | pane-context-presentation; pane-panel-visual |
+| “Read It is a handoff from previous instance…” / “Could not find the program…” | Reject protocol/tool fragments as terminal topic; no shortening first to rescue rejected input. | terminal-topic |
+| “so lets make it run automatically” | No named object: Goal not yet known until stronger pane-owned context exists. Protect concrete “Make terminal recovery run automatically”. | pane-context-presentation |
+| “Fix audio sync” / “Redesign landing page” / Hebrew mixed text | Stable1–5 word subject; independent of status/Now; manual override and full provenance available. | terminal-topic; pane-panel-visual |
+
+| Generic shell-role header beside a captured outcome | Goal text and source must come from the same pane-owned record; retain “Keep terminal-summary evidence separated from transient command output”. | pane-context-presentation; original terminal-summary-visual assertion |
+
+| Agent-authored goal, about-what or plan context | Mark Inferred goal / מטרה משוערת with original source time; captured user requests keep user provenance. Display never grants permission. | pane-context-presentation; pane-panel-visual |
+
+Rendered, pixel-reviewed evidence and native acceptance boundary: `docs/pane-context-tc205.md`. These examples do not expand the canonical queue or authorize work.

@@ -1,5 +1,6 @@
 import type { AgentProvider, CanvasNode, Tab } from "./types";
-import { findFreeCanvasSpot, type CanvasPosition } from "./canvasArrange";
+import type { HandoffDescriptor } from "./handoffFreshness";
+import { findFreeCanvasSpot, projectTerminalPlacement, type CanvasPosition } from "./canvasArrange";
 
 // FEATURE-64: an agent running in a TermFleet pane asks for a child agent in its
 // own visible terminal. The request names the parent by the pane's own
@@ -20,11 +21,16 @@ const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const RUNTIME_PANE_ID = new RegExp(`^terminal-(${UUID})-(${UUID})$`, "i");
 
 export interface ChildTerminalRequest {
-  version: number;
+  version: 1 | 2 | 3;
+  kind?: "handoff";
+  handoff?: HandoffDescriptor;
+  projectId?: string;
   requestId: string;
   /** Absent for a top-level instance started from outside any TermFleet pane. */
   parentPaneId?: string;
   provider: AgentProvider;
+  /** Claude only: the model the helper starts on (sonnet by default from termfleet-child). */
+  model?: string;
   task: string;
   /** A handover: the new session takes over the parent's card instead of adding one. */
   replace?: boolean;
@@ -61,7 +67,7 @@ export function parseChildRequest(raw: string, nowMs = Date.now()): ChildRequest
   }
   if (!value || typeof value !== "object") return { ok: false, reason: "not-an-object" };
   const record = value as Record<string, unknown>;
-  if (record.version !== CHILD_REQUEST_SCHEMA_VERSION) return { ok: false, reason: "unsupported-version" };
+  if (record.version !== CHILD_REQUEST_SCHEMA_VERSION && record.version !== 2 && record.version !== 3) return { ok: false, reason: "unsupported-version" };
   const requestId = typeof record.requestId === "string" ? record.requestId : "";
   if (!/^[A-Za-z0-9-]{8,64}$/.test(requestId)) return { ok: false, reason: "bad-request-id" };
   const parentPaneId =
@@ -93,12 +99,31 @@ export function parseChildRequest(raw: string, nowMs = Date.now()): ChildRequest
     }
     near = record.near.replace(/\/+$/, "") || "/";
   }
+  let projectId:string|undefined;
+  if(record.version===2){
+    if(typeof record.projectId!=="string" || !/^[A-Za-z0-9_-]{1,120}$/.test(record.projectId) || !cwd || parentPaneId || near || record.replace===true)return {ok:false,reason:"bad-project-launch"};
+    projectId=record.projectId;
+  }
+  let handoff: HandoffDescriptor | undefined;
+  if (record.version === 3) {
+    const h = record.handoff as Partial<HandoffDescriptor> | undefined;
+    if(record.kind !== "handoff" || !parentPaneId || replace !== true || record.projectId !== undefined || near ||
+      !h || typeof h.path !== "string" || !h.path.startsWith("/") || h.path.includes("\0") ||
+      !/^[a-f0-9]{64}$/.test(h.sha256 ?? "") || !/^[a-f0-9-]{36}$/.test(h.generation ?? "") ||
+      !task.startsWith(`TermFleet handoff v1 ${JSON.stringify({path:h.path,sha256:h.sha256,generation:h.generation})}\n`))
+      return {ok:false,reason:"bad-handoff-descriptor"};
+    handoff={path:h.path,sha256:h.sha256!,generation:h.generation!};
+  } else if (record.handoff !== undefined || record.kind === "handoff" || task.startsWith("TermFleet handoff v1 "))
+    return {ok:false,reason:"handoff-requires-version-3"};
+  // A model name only, never shell text: it goes into the start command.
+  const model = record.model === undefined ? undefined : typeof record.model === "string" && provider === "claude" && /^[a-z0-9][a-z0-9.\-\[\]]{0,60}$/i.test(record.model) ? record.model : null;
+  if (model === null) return { ok: false, reason: "bad-model" };
   const createdAt = typeof record.createdAt === "number" ? record.createdAt : NaN;
   if (!Number.isFinite(createdAt)) return { ok: false, reason: "bad-created-at" };
   if (nowMs - createdAt > CHILD_REQUEST_MAX_AGE_MS) return { ok: false, reason: "expired" };
   return {
     ok: true,
-    request: { version: CHILD_REQUEST_SCHEMA_VERSION, requestId, parentPaneId, provider, task, title, near, replace, cwd, createdAt },
+    request: { version: record.version as 1|2|3, kind: handoff ? "handoff" : undefined, handoff, requestId, parentPaneId, projectId, provider, ...(model ? { model } : {}), task, title, near, replace, cwd, createdAt },
   };
 }
 
@@ -108,10 +133,11 @@ export type ChildLaunchPlan =
       link?: ChildTerminalLink;
       /** The new session takes over the parent's card (handover). */
       replaces?: boolean;
+      projectId?: string;
       parentTab?: Pick<Tab, "id" | "groupId" | "initialCwd">;
       placement: CanvasPosition;
     }
-  | { ok: false; reason: "unknown-parent" | "duplicate-request" | "too-many-children" };
+  | { ok: false; reason: "unknown-parent" | "duplicate-request" | "too-many-children" | "unknown-project" | "project-changed" };
 
 /**
  * Decide whether a validated request may launch, and where its card goes. Fails
@@ -119,11 +145,20 @@ export type ChildLaunchPlan =
  */
 export function planChildLaunch(input: {
   request: ChildTerminalRequest;
-  tabs: readonly Pick<Tab, "id" | "groupId" | "initialCwd" | "childOf">[];
+  tabs: readonly (Pick<Tab, "id" | "groupId" | "initialCwd" | "childOf"> & {launchRequestId?: string})[];
+  groups?: readonly {id:string;projectRoot?:string}[];
   nodes: readonly CanvasNode[];
   size: { width: number; height: number };
 }): ChildLaunchPlan {
   const { request } = input;
+  if(request.version===2){
+    if(input.tabs.some(tab=>tab.launchRequestId===request.requestId))return {ok:false,reason:"duplicate-request"};
+    const groups=input.groups || [],group=groups.find(group=>group.id===request.projectId);
+    if(!group)return {ok:false,reason:"unknown-project"};
+    const normalize=(path?:string)=>path?.replace(/\/+$/,"") || "/";
+    if(!group.projectRoot || normalize(group.projectRoot)!==normalize(request.cwd) || groups.filter(other=>normalize(other.projectRoot)===normalize(group.projectRoot)).length!==1)return {ok:false,reason:"project-changed"};
+    return {ok:true,projectId:group.id,placement:projectTerminalPlacement(group.id,input.tabs,input.nodes,input.size)};
+  }
   if (!request.parentPaneId) {
     // Top-level instance from outside any pane: no parent link, placed on free map space.
     if (input.tabs.some((tab) => tab.childOf?.requestId === request.requestId)) {
@@ -301,13 +336,16 @@ function shellQuote(value: string) {
  * you can keep talking to it, then a normal shell so the terminal stays usable
  * after the agent exits. A `shell` helper runs the task as a command.
  */
-export function childStartupCommand(provider: AgentProvider, task: string): string {
+export function childStartupCommand(provider: AgentProvider, task: string, handoff?: HandoffDescriptor, model?: string): string {
   const quoted = shellQuote(task);
   const start =
     provider === "shell"
       ? task
       : provider === "opencode"
         ? `opencode --prompt ${quoted}`
-        : `${provider} ${quoted}`;
-  return `${start}; exec "\${SHELL:-bash}" -l`;
+        : provider === "claude" && model
+          ? `claude --model ${shellQuote(model)} ${quoted}`
+          : `${provider} ${quoted}`;
+  const bound = handoff ? `TERMFLEET_HANDOFF_DESCRIPTOR=${shellQuote(JSON.stringify(handoff))} ${start}` : start;
+  return `${bound}; exec "\${SHELL:-bash}" -l`;
 }

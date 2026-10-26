@@ -21,16 +21,16 @@ test("rows read like a chat: oldest first, newest last; in work only while the a
   const parsed = parseAsksSidecar(raw)!;
   const busy = railRows(parsed.asks, parsed.working);
   expect(busy.map((r) => `${r.word}|${r.text}`)).toEqual([
-    "\u2713 Done|first",
-    "Partly done|second",
-    "Waiting|third",
     "In work|fourth",
+    "Waiting|third",
+    "Partly done|second",
+    "\u2713 Done|first",
   ]);
   const idle = railRows(parsed.asks, false);
   expect(idle.filter((r) => r.tone === "working")).toHaveLength(0);
   // a status change shows in the next reading
   const moved = railRows(parsed.asks.map((a) => (a.n === 4 ? { ...a, status: "done" } : a)), true);
-  expect(moved.at(-1)?.word).toBe("\u2713 Done");
+  expect(moved.at(-1)?.word).toBe("\u2713 Done"); // finished rows go last
 });
 
 test("bad or empty files give no panel", () => {
@@ -51,9 +51,24 @@ test("the row being worked on shows what is happening now as its main line; the 
     { n: 2, text: "Widen the approval", status: "open" },
   ];
   const rows = railRows(asks, true, "termfleet: bringing the panel back");
-  expect(rows[0]).toMatchObject({ main: "Fix the login page", sub: "✓ Done · checked" });
-  expect(rows[1].main).toBe("termfleet: bringing the panel back");
-  expect(rows[1].sub).toBe("In work · Widen the approval");
+  expect(rows[1]).toMatchObject({ main: "Fix the login page", sub: "✓ Done · checked" });
+  expect(rows[0].main).toBe("termfleet: bringing the panel back");
+  expect(rows[0].sub).toBe("In work · Widen the approval");
   // nobody working: the row keeps its title and says it is waiting
-  expect(railRows(asks, false, "x")[1]).toMatchObject({ main: "Widen the approval", sub: "Waiting" });
+  expect(railRows(asks, false, "x")[0]).toMatchObject({ main: "Widen the approval", sub: "Waiting" });
+});
+
+test("working first, then not finished newest first, finished last", () => {
+  const rows = railRows(
+    [
+      { n: 1, text: "a", status: "done" },
+      { n: 2, text: "b", status: "open" },
+      { n: 3, text: "c", status: "done" },
+      { n: 4, text: "d", status: "partial" },
+      { n: 5, text: "e", status: "open" },
+    ],
+    true,
+    "x",
+  );
+  expect(rows.map((r) => r.text)).toEqual(["e", "d", "b", "c", "a"]);
 });

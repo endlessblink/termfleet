@@ -23,7 +23,9 @@ function pairedMarkerIndex(value: string, startPattern: RegExp, endPattern: RegE
  * or interrupted turn stuck on Waiting. Ordinary prose and question marks never count.
  */
 export function terminalScreenAttention(value?: string | null): TerminalScreenAttention | null {
-  const tail = String(value ?? "").replace(/\r/g, "\n").slice(-4000);
+  const tail = String(value ?? "").replace(/\r/g, "\n").slice(-4000)
+    .replace(/```[^\n]*\n[\s\S]*?(?:```|$)/g, match=>" ".repeat(match.length))
+    .replace(/^[ \t]*>[^\n]*/gm, match=>" ".repeat(match.length));
   if (!tail) return null;
 
   const markers: ScreenMarker[] = [];
@@ -96,9 +98,21 @@ export function terminalScreenAttention(value?: string | null): TerminalScreenAt
     /\(\s*\d+\s*[smh][^)\n]{0,120}\besc to interrupt\b/gi,
   ));
 
+  // Claude auto mode omits "esc to interrupt" and rotates its spinner verb.
+  // Require the actual line-leading spinner, ellipsis and elapsed-time chrome;
+  // prose and the persistent OMC "thinking" status bar are not lifecycle evidence.
+  add("running", lastMatchIndex(
+    tail,
+    /^[ \t]*[✶✻✢✽✳✴✷✸✹✺✼✾]\s*[\p{L}-]+(?:…|\.\.\.)\s*\(\s*\d+\s*[smh][^)\n]{0,120}\)/gmu,
+  ));
+
   add("idle", lastMatchIndex(
     tail,
     /(?:Worked|Cooked|Baked)\s+for\s+\d+\s*[smh]/gi,
+  ));
+  add("idle", lastMatchIndex(
+    tail,
+    /^[ \t]*[✶✻✢✽✳✴✷✸✹✺✼✾]\s*[\p{L}-]+\s+for\s+\d+\s*[smh][^\n]{0,120}\b(?:done\s+\d{1,2}:\d{2})\b/gmu,
   ));
   add("idle", lastMatchIndex(
     tail,

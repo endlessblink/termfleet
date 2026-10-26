@@ -1,4 +1,7 @@
 @import "./theme.css";
+@import "@fontsource/ibm-plex-sans/latin-300.css";
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
 @import "@fontsource/rubik/latin-300.css";
 @import "@fontsource/rubik/latin-400.css";
 @import "@fontsource/rubik/latin-500.css";

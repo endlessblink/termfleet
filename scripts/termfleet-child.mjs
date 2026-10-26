@@ -19,10 +19,12 @@ import { basename, join, resolve } from "node:path";
 import { paneSidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
 import { ancestors, argv as procArgv, isProviderProcess } from "./lib/single-chat-owner.mjs";
 import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
-import { appendUserWords, findTranscript, userMessagesForAny } from "./lib/handoff-user-words.mjs";
+import { findTranscript } from "./lib/handoff-user-words.mjs";
+import { enumerateSessionSourceJournals } from './lib/session-event-journal.mjs';
+import { createHandoffCapsule, handoffTask, capsuleFreshness } from "./lib/handoff-capsule.mjs";
 import { checkBotTask, botTaskContext } from "./lib/bot-workflow-preflight.mjs";
 import { memoryGuard } from "./lib/spawn-guards.mjs";
-import { explainProviderRoute } from "./lib/task-router.mjs";
+import { explainTaskRoute, explainProviderRoute } from "./lib/task-router.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -32,13 +34,14 @@ const USAGE = `termfleet-child ${VERSION} - start an agent instance as a visible
 
 usage:
   termfleet-child spawn [--provider <${PROVIDERS.join("|")}>] (--task "<text>" | --task-file FILE | --dropoff FILE)
-                        [--title "<card title>"] [--near PROJECT_DIR] [--separate | --replace] [--allow-thin] [--allow-no-words] [--cwd DIR] [--bot REGISTRY_ID] [--timeout SECONDS] [--no-start-app]
+                        [--goal "<one plain sentence>"] [--title "<card title>"] [--model sonnet|haiku|opus] [--project-id ID | --near PROJECT_DIR] [--separate | --replace] [--allow-thin] [--allow-no-words] [--cwd DIR] [--bot REGISTRY_ID] [--timeout SECONDS] [--no-start-app]
   (no --provider: a new terminal starts in Codex, or Claude when its task needs complex reasoning or a conversation)
   termfleet-child status
   termfleet-child --help | --version
 
 Inside a TermFleet pane the new terminal is linked as that pane's child. Elsewhere it
 is a top-level instance. Long prompts: use --task-file (not argv).
+--goal is the one plain sentence the card shows as the helper's Goal (else the brief's "# heading").
 HELPER (you keep running, a new card is added): --task / --task-file.
 HANDOVER (your own card is replaced by a fresh instance): --dropoff <your HANDOFF.md>.
 A handover always continues in the same agent you are (Codex stays Codex, Claude stays Claude).
@@ -149,6 +152,16 @@ async function ensureListener(dir, allowStart) {
   );
 }
 
+/** The one plain sentence the card shows as a stashed brief's Goal. */
+function briefGoal(text, options) {
+  const clean = (value) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, 160) : "");
+  const explicit = clean(options.goal);
+  if (explicit) return explicit;
+  const heading = /^#\s+(.+)$/m.exec(text);
+  if (heading) return clean(heading[1]);
+  return clean(options.title);
+}
+
 function resolveTask(options) {
   const given = ["task", "task-file", "dropoff"].filter((key) => options[key] !== undefined);
   if (given.length !== 1) fail(`give exactly one of --task, --task-file, --dropoff\n${USAGE}`);
@@ -159,7 +172,15 @@ function resolveTask(options) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = join(dir, `${randomUUID()}.md`);
     writeFileSync(file, text, { mode: 0o600 });
-    return { task: `Read ${file} and carry out the instructions in it.`, title: label };
+    // A bare "Read <file>" pointer names no work, so the card had nothing to show as the
+    // helper's Goal and fell back to the agent's own guess (report 2026-10-14). The goal
+    // rides in front of the pointer, where the opening-request reader finds it.
+    const goal = briefGoal(text, options);
+    if (!goal) {
+      writeSync(2, 'termfleet-child: warning: no --goal and no "# heading" in the brief, so the card will show no Goal. Pass --goal "<one plain sentence>".\n');
+    }
+    const pointer = `Read ${file} and carry out the instructions in it.`;
+    return { task: goal ? `Goal: ${goal}\nFull instructions: ${pointer}` : pointer, title: label };
   };
   if (options.dropoff !== undefined) {
     const file = resolve(options.dropoff);
@@ -302,10 +323,14 @@ async function spawnCommand(options) {
   } catch (error) {
     fail(error.message, 2);
   }
-  const caller = resolveCaller();
+  const projectId=options["project-id"];
+  if(projectId!==undefined && (!/^[A-Za-z0-9_-]{1,120}$/.test(projectId) || !options.cwd || options.near || options.replace || options.dropoff))fail("--project-id requires --cwd and a new task; it cannot inherit, replace or hand over a card",2);
+  const caller = projectId ? {} : resolveCaller();
   const parentPaneId = caller.paneId;
   const { task: baseTask, title, handover, file: handoffFile } = resolveTask(options);
-  const task = baseTask + botTaskContext(botWorkflow);
+  let task = baseTask + botTaskContext(botWorkflow);
+  let handoff;
+  let retainedManifest;
   let provider = options.provider;
   // A handover continues in the SAME kind of agent: a Codex session that hits its limit
   // continues in Codex, a Claude session in Claude, whatever --provider was typed.
@@ -322,6 +347,17 @@ async function spawnCommand(options) {
     writeSync(2, `termfleet-child: ${provider} for this task (${picked.reasons.join("; ")}); --provider claude|codex overrides.\n`);
   }
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
+  // Claude helpers start on the model their task needs (Noam 2026-10-24: "קלוד מאבד טוקנים ... אין
+  // routing למודלים זולים", "לא רוצה הארדקודינג!!!"): the task router reads the task text and picks
+  // haiku (read-only), sonnet (ordinary changes) or opus (hard jobs). --model always wins.
+  // A handover keeps the agent it continues (no default), so only a named --model changes it there.
+  const routed = provider === "claude" && typeof options.model !== "string" && !handover ? explainTaskRoute(baseTask) : undefined;
+  const model = provider !== "claude" ? undefined
+    : typeof options.model === "string" ? options.model.trim()
+    : routed?.model;
+  if (routed) writeSync(2, `termfleet-child: model ${routed.model} for this task (${routed.reasons.slice(0, 3).join("; ")}); --model overrides.\n`);
+  if (model !== undefined && !/^[a-z0-9][a-z0-9.\-\[\]]{0,60}$/i.test(model)) fail(`--model must be sonnet, haiku, opus or a Claude model name\n${USAGE}`);
+  if (options.model !== undefined && provider !== "claude") writeSync(2, `termfleet-child: --model applies to Claude helpers only; ${provider} starts on its own default.\n`);
   // A new terminal is refused when memory is low; a handover only replaces the caller's own card.
   if (!handover) {
     const memory = memoryGuard();
@@ -334,38 +370,19 @@ async function spawnCommand(options) {
     fail("cannot identify your TermFleet card; the handover was not started. Do NOT retry with --separate: it leaves your old card running and adds a second one. Do NOT stop either: keep working on your task right here in this terminal (TF-102: a failed handover used to halt the work until someone noticed). Mention in your final reply that the handover could not start.", 2);
   }
   if (handover && handoffFile) {
-    // TF-076: Noam's own recent words, copied verbatim, so the dying agent cannot drop them.
-    // Fail closed: a handover that silently loses Noam's last words is worse than no handover.
-    let count = 0;
+    let fromPane;
+    try { fromPane = JSON.parse(readFileSync(paneSidecarPath(parentPaneId), "utf8"))?.sessionId; } catch {}
+    const fromEnv = provider === "codex"
+      ? (process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID ?? "").trim()
+      : (process.env.CLAUDE_CODE_SESSION_ID ?? "").trim();
     try {
-      let fromPane;
-      try {
-        fromPane = JSON.parse(readFileSync(paneSidecarPath(parentPaneId), "utf8"))?.sessionId;
-      } catch {
-        fromPane = undefined;
-      }
-      const fromEnv =
-        caller.provider === "codex"
-          ? (process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID ?? "").trim()
-          : (process.env.CLAUDE_CODE_SESSION_ID ?? "").trim();
-      count = appendUserWords(
-        handoffFile,
-        userMessagesForAny({ provider: caller.provider, sessionIds: [fromEnv, fromPane] }),
-      );
-    } catch {
-      count = 0;
-    }
-    if (count > 0) {
-      writeSync(2, `termfleet-child: added Noam's last ${count} messages, verbatim, to the handoff.\n`);
-    } else if (options["allow-no-words"] === true) {
-      writeSync(2, "termfleet-child: warning: Noam's recent messages were NOT added to the handoff (--allow-no-words).\n");
-    } else {
-      fail(
-        "could not find your session record, so Noam's recent messages cannot be added to the handoff and the handover was not started. " +
-          "Anything he wrote just before this would be lost. Add them to the handoff by hand, then retry with --allow-no-words.",
-        2,
-      );
-    }
+      const observedSources=await enumerateSessionSourceJournals({paneId:parentPaneId,provider,dir:statusDir()});
+      const capsule = createHandoffCapsule({summaryPath:handoffFile,provider,observedSources,observedSourceDir:statusDir(),
+        sessionIds:[fromEnv,fromPane],root:join(dataRoot(),"handoff-capsules"),parentPaneId});
+      handoff = capsule.descriptor; retainedManifest = capsule.manifest;
+      task = handoffTask(handoff) + botTaskContext(botWorkflow);
+      writeSync(2, `termfleet-child: retained ${capsule.manifest.ownerCount} owner records in generation ${handoff.generation}; original handoff untouched.\n`);
+    } catch(error) { fail(error.message,2); }
   }
   const timeoutSeconds = Number(options.timeout ?? 20);
   if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) fail("--timeout must be a positive number of seconds");
@@ -382,7 +399,16 @@ async function spawnCommand(options) {
   // running. --separate opts out of a handover, --replace asks for one explicitly.
   const replace = parentPaneId && !options.separate && (options.replace === true || handover === true) ? true : undefined;
   const near = options.near ? resolve(options.near) : undefined;
-  const request = { version: 1, requestId, parentPaneId, provider, task, title, near, replace, cwd, createdAt: Date.now() };
+  // A v3 handoff always replaces the caller's own card; the app rejects any
+  // other shape after it is queued, so refuse here with a reason instead.
+  if (handoff && replace !== true) {
+    fail("a handover replaces your own card, so it cannot be combined with --separate; use --task-file for a helper instead. The handover was not started.", 2);
+  }
+  if (handoff) {
+    const freshness = capsuleFreshness(retainedManifest);
+    if (!freshness.ok) fail(`handoff source changed before queue publication: ${freshness.reason}`,2);
+  }
+  const request = { version: handoff ? 3 : projectId ? 2 : 1, kind: handoff ? "handoff" : undefined, handoff, requestId, parentPaneId, projectId, provider, ...(model ? { model } : {}), task, title, near, replace, cwd, createdAt: Date.now() };
   // Write then rename, so the app never reads a half-written request.
   writeFileSync(`${requestPath}.tmp`, JSON.stringify(request), { mode: 0o600 });
   renameSync(`${requestPath}.tmp`, requestPath);

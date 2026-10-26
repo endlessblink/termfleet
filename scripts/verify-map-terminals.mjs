@@ -121,7 +121,7 @@ const checks = [
       /\{!immersiveTerminal\.enabled && <WorkbenchHeader \/>}/.test(app) &&
       /\{!immersiveTerminal\.enabled && <WorkbenchSidebar \/>}/.test(app) &&
       /\{!immersiveTerminal\.enabled && <StatusBar \/>}/.test(app) &&
-      /const effectiveWorkspaceMode = restoredPanelMode === "tasks"\s*\? "tasks"\s*:\s*immersiveTerminal\.enabled\s*\? "split"\s*:\s*restoredPanelMode;/.test(workspaceSurface) &&
+      /const effectiveWorkspaceMode = restoredPanelMode === "tasks"\s*\? "tasks"\s*:\s*(?:restoredPanelMode === "agents"\s*\? "agents"\s*:\s*)?immersiveTerminal\.enabled\s*\? "split"\s*:\s*restoredPanelMode;/.test(workspaceSurface) &&
       /!immersiveTerminal\.enabled && !sidebarMapPanelOpen && <CanvasSidebar \/>/.test(workspaceSurface) &&
       /const immersivePaneId =[\s\S]*immersiveTerminal\.enabled && immersiveTerminal\.tabId === tab\.id/.test(splitPane) &&
       /window\.addEventListener\("keydown", onKeyDown, true\);/.test(splitPane) &&

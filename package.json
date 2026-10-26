@@ -38,6 +38,7 @@
     "verify:installed-live-persistence": "node scripts/verify-installed-live-persistence.mjs",
     "verify:gamification-live": "node scripts/verify-impeccable-gamification.mjs && scripts/verify-gamification-live.sh",
     "opencode:install-plugin": "node scripts/termfleet-install-opencode-plugin.mjs",
+    "team:install": "mkdir -p \"$HOME/.local/bin\" && ln -sf \"$PWD/scripts/termfleet-team.mjs\" \"$HOME/.local/bin/termfleet-team\"",
     "child:install": "mkdir -p \"$HOME/.local/bin\" && ln -sf \"$PWD/scripts/termfleet-child.mjs\" \"$HOME/.local/bin/termfleet-child\"",
     "verify:opencode-status": "playwright test opencode-status-plugin",
     "verify:opencode-tui-resize": "python3 scripts/verify-opencode-tui-resize.py",
@@ -140,6 +141,7 @@
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
     "@fontsource/geist-mono": "^5.2.8",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "@fontsource/rubik": "^5.2.8",
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2",

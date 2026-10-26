@@ -4,7 +4,10 @@ import {
   badgeLivenessOverride,
   keepNewerReportedStatus,
 } from "../src/lib/badgeLiveness";
-import { paneBadgeAttention } from "../src/lib/sessionStatus";
+import { paneBadgeAttention as rawPaneBadgeAttention } from "../src/lib/sessionStatus";
+// The small legacy timestamps use a logical fixture clock, rather than epoch time.
+const paneBadgeAttention=(terminal:Parameters<typeof rawPaneBadgeAttention>[0])=>rawPaneBadgeAttention(terminal,undefined,1000);
+
 import { terminalScreenAttention } from "../src/lib/operatorQuestionState";
 import { nodeMatchesMapFilter, tabForMapNode } from "../src/lib/mapNodeFilters";
 import type { CanvasNode, Tab } from "../src/lib/types";
@@ -63,7 +66,7 @@ test("a Codex command-approval prompt reads Waiting on the map", () => {
       // The hook record is stale/idle — exactly the live case.
       statusSummary: { status: "idle", updatedAt: 900 },
       terminalVisibleText: CODEX_APPROVAL_SCREEN,
-      terminalVisibleTextUpdatedAt: 100,
+      terminalVisibleTextUpdatedAt: Date.now(),
     }],
   } as unknown as Tab;
   const flowNode = { id: "pane-flow", type: "terminal", terminalTabId: "tab-flow" } as unknown as CanvasNode;

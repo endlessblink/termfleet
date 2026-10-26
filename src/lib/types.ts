@@ -124,6 +124,11 @@ export interface TerminalState {
   terminalOutput?: string;
   terminalVisibleText?: string;
   terminalVisibleTextUpdatedAt?: number;
+  /** Exact identity and live-bottom provenance of the rendered excerpt. */
+  terminalVisibleTextPaneId?: string;
+  terminalVisibleTextSessionId?: string;
+  terminalVisibleTextRunId?: string;
+  terminalVisibleTextDisplayOffset?: number;
   statusSummary?: WorkstreamStatusSummary;
   statusSummaryUpdatedAt?: number;
   statusSummarySource?: WorkstreamStatusSummarySource;
@@ -158,6 +163,8 @@ export interface SplitNode {
 export interface Tab {
   id: string;
   title: string;
+  /** Operator-set topic, independent of status and automatic project titles. */
+  topicLabel?: string;
   emoji: string;
   color: string;
   groupId: string | null;
@@ -174,6 +181,8 @@ export interface Tab {
   activePaneId: string;
   /** Set when a parent agent's terminal opened this one as its helper (FEATURE-64). */
   childOf?: { parentPaneId: string; parentTabId: string; requestId: string };
+  /** Idempotent explicit project launch, independent of any parent terminal. */
+  launchRequestId?: string;
   /** Sessions that handed over to this card's current one; their agents have stopped. */
   earlierSessions?: EarlierSession[];
 }
@@ -316,6 +325,14 @@ export interface WorkstreamStatusSummary {
   // Main operator/user ask for this terminal or agent run. This is distinct from
   // `task`, which is the current activity/title summary.
   userTask?: string;
+  /** The operator's most recent request, verbatim from this pane's hook (TF-094).
+   *  Only a Goal fallback when the opening request is refused; never authority. */
+  latestRequest?: string;
+  /** TF-091: the only Goal a card shows — the operator's goal command, else the agent's
+   *  newest "Goal:" line, else a helper brief's goal. Absent = "No goal yet". */
+  statedGoal?: string;
+  /** TF-091: the agent's newest "Task:" line. Absent = "No task yet". */
+  statedTask?: string;
   /** Explicit sidecar goal, kept separate from the current task/activity line. */
   mainTask?: string;
   mainTaskSource?: "about-what" | "plan-explanation" | "goal-task" | "agent-goal" | "opening-request" | "user-prompt";
@@ -527,6 +544,8 @@ export interface CanvasNode {
   id: string;
   type: CanvasNodeType;
   title: string;
+  /** Operator-set terminal topic; inference never writes this field. */
+  topicLabel?: string;
   labelColor?: string;
   x: number;
   y: number;

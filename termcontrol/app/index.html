@@ -143,6 +143,18 @@
   }
   @media (prefers-reduced-motion: reduce){ .dot.producing{animation:none} }
 
+  /* Bot card working animation: pulsing glow when actively working */
+  .bot-row[data-state="working"]{
+    animation:bot-pulse 2s ease-in-out infinite;
+  }
+  @keyframes bot-pulse{
+    0%,100%{border-color:var(--line);box-shadow:none}
+    50%{border-color:var(--working);box-shadow:0 0 0 2px rgba(122,162,160,.3)}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .bot-row[data-state="working"]{animation:none;border-color:var(--working)}
+  }
+
   /* The terminal's own last line, changing as it prints. */
   .tail{
     display:flex;align-items:center;gap:8px;margin-top:9px;

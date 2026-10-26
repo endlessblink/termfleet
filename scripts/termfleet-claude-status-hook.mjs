@@ -22,7 +22,7 @@ import {
 } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
 import { plainCommandActivity } from "./lib/agent-status-activity.mjs";
-import { durableGoalForPrompt, isDurableGoalText, isRequestText } from "./lib/agent-status-goal.mjs";
+import { carryStatedLines, durableGoalForPrompt, isDurableGoalText, isRequestText, statedLinesNudge } from "./lib/agent-status-goal.mjs";
 import { closeOtherCopies } from "./lib/single-chat-owner.mjs";
 import { agentPid, logAgentEvent } from "./lib/agent-exit-log.mjs";
 
@@ -311,6 +311,28 @@ export function lastAssistantText(transcriptPath) {
   return text;
 }
 
+// Every assistant text in the recent record, oldest first (sidechains excluded), so a
+// "Goal:" line written a few messages back is still found (TF-091).
+export function recentAssistantTexts(transcriptPath) {
+  const texts = [];
+  for (const line of readTranscriptTail(transcriptPath).split("\n")) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry?.type !== "assistant" || entry?.isSidechain === true) continue;
+    const content = entry?.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block?.type === "text" && typeof block.text === "string") texts.push(block.text);
+    }
+  }
+  return texts.join("\n");
+}
+
 // Conversational lead-ins ("Now let me…", "I'll…", "Let's…", "First, …"). Stripped from a
 // chosen sentence so it reads as a plain activity phrase; also the marker that a sentence
 // is a statement of INTENT (what the agent is about to do) rather than a result.
@@ -393,13 +415,12 @@ function readExistingSidecar(filePath) {
   }
 }
 
-function readStdin() {
-  return new Promise((resolve) => {
-    let text = "";
-    stdin.setEncoding("utf8");
-    stdin.on("data", (chunk) => (text += chunk));
-    stdin.on("end", () => resolve(text));
-    stdin.on("error", () => resolve(""));
+export function readStdin(input = stdin) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    input.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    input.on("end", () => resolve(Buffer.concat(chunks)));
+    input.on("error", reject);
   });
 }
 
@@ -478,12 +499,23 @@ async function main() {
   const raw = await readStdin();
   let payload = {};
   try {
-    payload = raw ? JSON.parse(raw) : {};
+    payload = raw.length ? JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw)) : {};
   } catch {
     process.exit(0);
   }
   const cwd = sidecarKeyCwd(payload);
   const paneId = statusPaneId();
+  // Status filtering must not discard a complete observed input/result.
+  const captureWithoutStatus = async () => {
+    try {await publishSessionEvent({paneId,provider:"claude",payload,rawSource:raw,sidecar:{sessionId:payload.session_id},at:eventAt,captureOnly:true});}
+    catch(error) {console.error("termfleet source capture failed:",error.message);}
+  };
+  // These installed-supported protocol/failure events are complete observed
+  // source data. Error/decline/cancel never resolves a question or grants approval.
+  if (["PostToolUseFailure", "Elicitation", "ElicitationResult", "PermissionDenied"].includes(payload.hook_event_name)) {
+    await captureWithoutStatus();
+    process.exit(0);
+  }
   if (payload.hook_event_name === "SessionStart" || payload.hook_event_name === "SessionEnd") {
     // Timeline of agent sessions: how each one started and the reason Claude gives when it ends.
     logAgentEvent({
@@ -497,7 +529,7 @@ async function main() {
       agentPid: agentPid("claude"),
     });
     if (payload.hook_event_name === "SessionEnd") {
-      try {await publishSessionEvent({paneId,provider:"claude",payload,sidecar:{sessionId:payload.session_id},at:Date.now()});}catch(error){console.error("termfleet session end journal:",error.message);}
+      try {await publishSessionEvent({paneId,provider:"claude",payload,rawSource:raw,sidecar:{sessionId:payload.session_id},at:Date.now()});}catch(error){console.error("termfleet session end journal:",error.message);}
       process.exit(0);
     }
   }
@@ -506,7 +538,7 @@ async function main() {
     closeOtherCopies({ provider: "claude", conversationId: String(payload?.session_id ?? ""), paneId });
     if (payload.hook_event_name === "SessionStart") {
       stampProviderAtSessionStart({ payload, cwd, paneId });
-      try {await publishSessionEvent({paneId,provider:"claude",payload,sidecar:{sessionId:payload.session_id},at:Date.now()});}catch(error){console.error("termfleet session start journal:",error.message);}
+      try {await publishSessionEvent({paneId,provider:"claude",payload,rawSource:raw,sidecar:{sessionId:payload.session_id},at:Date.now()});}catch(error){console.error("termfleet session start journal:",error.message);}
       process.exit(0);
     }
   }
@@ -530,7 +562,7 @@ async function main() {
   let sidecar;
   if (payload.hook_event_name === "UserPromptSubmit") {
     const userTask = submittedUserTask;
-    if (!userTask) process.exit(0);
+    if (!userTask) {await captureWithoutStatus();process.exit(0);}
     const submittedSessionId = String(payload?.session_id ?? "");
     const { startsNewSession, mainTask, mainTaskSource } =
       durableGoalForPrompt({
@@ -582,7 +614,7 @@ async function main() {
     // preserve the current lifecycle; only concrete prompts become Waiting for you.
     const prev = prevAtStart;
     const turn = lifecycleFromNotification(payload, prev?.turn);
-    if (!turn) process.exit(0);
+    if (!turn) {await captureWithoutStatus();process.exit(0);}
     sidecar = {
       cwd,
       sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
@@ -631,7 +663,7 @@ async function main() {
     sidecar.todos = sidecar.todos.filter((todo) => !declaredGoalText(todo?.content));
     sidecar.mainTask = declaredGoal || previousMainTask;
   sidecar.mainTaskSource = declaredGoal ? "goal-task" : effectivePreviousMainTaskSource;
-    if (sidecar.todos.length === 0) process.exit(0);
+    if (sidecar.todos.length === 0) {await captureWithoutStatus();process.exit(0);}
   } else if (TASK_EVENT_TOOLS.has(payload.tool_name)) {
     // Modern task tools: fold this TaskCreate/TaskUpdate into the stateful list.
     const prev = prevAtStart;
@@ -641,7 +673,7 @@ async function main() {
     const todos = declaredGoal
       ? (Array.isArray(prev?.todos) ? prev.todos : [])
       : applyTaskEvent(prev?.todos, payload);
-    if (todos.length === 0 && !declaredGoal) process.exit(0);
+    if (todos.length === 0 && !declaredGoal) {await captureWithoutStatus();process.exit(0);}
     sidecar = {
       cwd,
       sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
@@ -667,7 +699,7 @@ async function main() {
     // An unlabelled tool (cd/ls, TaskList…) has no activity text, but it still proves
     // the turn is running. Skipping it left a pane on Waiting after the operator
     // approved a permission (TF-044); only skip when nothing would change.
-    if (!now && prev?.turn === "working") process.exit(0);
+    if (!now && prev?.turn === "working") {await captureWithoutStatus();process.exit(0);}
     sidecar = {
       cwd,
       sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
@@ -675,11 +707,29 @@ async function main() {
       source: "claude-tool",
       todos: Array.isArray(prev?.todos) ? prev.todos : [],
       now: now || cleanField(prev?.now) || undefined,
+      // The agent's newest own sentence about the work, refreshed DURING the turn. Only the
+      // Stop branch used to set it, so an agent with no task list showed "Task not
+      // captured" for a whole 30-minute turn while it kept saying what it was doing.
+      narration: narrationToNow(lastAssistantText(payload.transcript_path)) || undefined,
       mainTask: cleanField(prev?.mainTask, 220) || undefined,
       mainTaskSource: prev?.mainTaskSource,
       userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
     };
   }
+  // TF-091: the Goal/Task the agent declared in its own reply, newest wins.
+  Object.assign(
+    sidecar,
+    carryStatedLines({
+      text: recentAssistantTexts(payload.transcript_path),
+      prev: prevAtStart,
+      sessionId: sidecar.sessionId,
+    }),
+  );
+  if (payload.hook_event_name === "UserPromptSubmit" && paneId) {
+    const nudge = statedLinesNudge(sidecar);
+    if (nudge) process.stdout.write(`${nudge}\n`);
+  }
+  if (payload.hook_event_name === "UserPromptSubmit") sidecar.now = "Reading your message";
   sidecar.updatedAt = eventAt;
   sidecar.turnEventAt = eventAt;
   // Roll the agent's actual action into the recent-activity log (what it DID). On a Stop
@@ -731,7 +781,8 @@ async function main() {
   // Additive durable authority. Existing sidecar metadata remains the compatibility view.
   let head=null;
   try {
-    head=await publishSessionEvent({paneId,provider:"claude",payload,sidecar,at:sidecar.updatedAt});
+    head=await publishSessionEvent({paneId,provider:"claude",payload,rawSource:raw,sidecar,at:sidecar.updatedAt});
+    if(head?.version!==2 || !head.state) head=null; // A retained pending source is not a lifecycle snapshot.
   } catch(error) { console.error("termfleet session event journal:",error.message); }
   sidecar=sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on");
   if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {

@@ -1,7 +1,6 @@
 import { CSSProperties, useState, useCallback, useEffect, useRef } from "react";
 import {
   AlertCircle,
-  ArrowUpRight,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -20,7 +19,7 @@ const styles: Record<string, CSSProperties> = {
   section: {
     display: "flex",
     flexDirection: "column",
-    padding: "10px 10px 12px",
+    padding: "8px 10px",
     background: "linear-gradient(180deg, rgba(212, 164, 79, 0.07) 0%, transparent 100%)",
     borderBottom: "1px solid var(--border-subtle)",
     userSelect: "none",
@@ -30,7 +29,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   titleGroup: {
     display: "flex",
@@ -106,18 +105,24 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 11,
     fontWeight: 400,
   },
+  // TF-092: with many waiting chats this list outgrew the side panel, squeezed the
+  // scrolling map list below to nothing and could not scroll itself. About two
+  // cards stay visible; the rest scroll, so the map list keeps most of the panel.
   cardList: {
     display: "flex",
     flexDirection: "column",
-    gap: 7,
+    gap: 4,
+    maxHeight: "min(24vh, 190px)",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
   },
   card: {
     position: "relative",
     display: "flex",
     flexDirection: "column",
-    gap: 6,
-    padding: "9px 11px",
-    borderRadius: "var(--radius-md)",
+    gap: 2,
+    padding: "5px 9px",
+    borderRadius: "var(--radius-sm)",
     background: "var(--surface-raised)",
     borderLeft: "1px solid transparent",
     borderTop: "1px solid transparent",
@@ -160,7 +165,7 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 3,
-    padding: "1px 5px",
+    padding: "0 5px",
     borderRadius: "var(--radius-sm)",
     background: "rgba(212, 164, 79, 0.12)",
     color: "var(--accent-warning)",
@@ -169,17 +174,25 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     flexShrink: 0,
   },
+  // The agent name inherits the page's 16px otherwise and towers over the row.
+  agent: {
+    flexShrink: 0,
+    color: "var(--text-tertiary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+    fontWeight: 400,
+  },
   askRow: {
     display: "flex",
-    flexDirection: "column",
-    gap: 2,
+    alignItems: "center",
+    gap: 8,
     minWidth: 0,
   },
   headline: {
-    color: "var(--text-primary)",
+    color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 12,
-    fontWeight: 500,
+    fontSize: 11,
+    fontWeight: 400,
     lineHeight: 1.3,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -423,42 +436,17 @@ export function PendingApprovalsSection({
                   </span>
                 </div>
 
+                {/* TF-092: the operator wants only project, a one-line task,
+                    "Action Required" and the agent here; the card itself opens it. */}
                 <div style={styles.askRow}>
-                  <div style={styles.headline} dir="auto">
+                  <div style={{ ...styles.headline, flex: 1, minWidth: 0 }} dir="auto" title={item.headline}>
                     {item.headline}
                   </div>
-                  {item.detail && (
-                    <div style={styles.detail} dir="auto">
-                      {item.detail}
-                    </div>
-                  )}
-                </div>
-
-                <div style={styles.footerRow}>
-                  <div style={styles.footerMeta}>
-                    {item.provider && (
+                  {item.provider && (
+                    <span style={styles.agent}>
                       <AgentProviderIdentity provider={item.provider} />
-                    )}
-                    {item.targetSummary && (
-                      <span>{item.targetSummary}</span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    data-testid="pending-approval-jump"
-                    style={{
-                      ...styles.actionButton,
-                      background: isHovered ? "var(--surface-selected)" : "var(--surface-rail)",
-                      color: isHovered ? "var(--text-primary)" : "var(--text-secondary)",
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelect(item.node);
-                    }}
-                  >
-                    <span>Review</span>
-                    <ArrowUpRight size={10} strokeWidth={2} />
-                  </button>
+                    </span>
+                  )}
                 </div>
               </div>
             );

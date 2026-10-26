@@ -24,7 +24,7 @@ import {
   resolvePaneTaskLine,
   type PaneTaskLine,
 } from "./taskLine";
-import { opensAsRequest } from "./sessionTranscript";
+import { briefFileGoal, briefPointerPath, opensAsRequest } from "./sessionTranscript";
 import { selectPlanPurpose } from "./taskPurpose";
 import { stripComposerChrome } from "./terminalHeaderQuality";
 import { qualityCheckGoalLabel } from "./terminalHeaderQuality";
@@ -452,6 +452,23 @@ async function contextTaskTitleFor(
   return (await pending) ?? undefined;
 }
 
+const briefGoalByPath = new Map<string, string | null>();
+
+/** The goal written in a helper's brief file, read once per file. */
+async function briefGoalFor(path: string): Promise<string | undefined> {
+  const cached = briefGoalByPath.get(path);
+  if (cached !== undefined) return cached ?? undefined;
+  let goal: string | undefined;
+  try {
+    const text = await invoke<string>("fs_read_file", { path });
+    if (typeof text === "string") goal = briefFileGoal(text);
+  } catch {
+    // A removed brief leaves the ordinary ladder in control.
+  }
+  briefGoalByPath.set(path, goal ?? null);
+  return goal;
+}
+
 async function openingRequestFor(
   provider: "claude" | "codex",
   sessionId: string,
@@ -639,6 +656,8 @@ async function resolveTaskLineFor(
   provider?: "claude" | "codex";
   capturedGoal?: string;
   capturedGoalSource?: AgentStatusSidecar["mainTaskSource"];
+  statedGoal?: string;
+  statedTask?: string;
 }> {
   let facts = null;
   let transcriptProvider: "claude" | "codex" | undefined;
@@ -678,6 +697,21 @@ async function resolveTaskLineFor(
         // A changed vendor layout is not an error worth surfacing — fall through.
       }
     }
+  }
+  // A helper started from a brief file: the session title was written before the agent
+  // read the brief, so it describes the launch boilerplate, not the work. The brief's own
+  // goal replaces both the title and the empty opening request.
+  const briefPath = isTauriRuntime()
+    ? briefPointerPath(typeof sidecar?.userTask === "string" ? sidecar.userTask : undefined)
+    : undefined;
+  let briefGoal: string | undefined;
+  if (facts && briefPath) {
+    briefGoal = await briefGoalFor(briefPath);
+    facts = {
+      ...facts,
+      title: undefined,
+      ...(briefGoal ? { openingRequest: briefGoal } : {}),
+    };
   }
   const todos = sidecar?.todos ?? [];
   const activeTodo = todos.find((todo) => todo?.status === "in_progress");
@@ -788,12 +822,15 @@ async function resolveTaskLineFor(
     taskLine,
     nowLine: resolvePaneNowLine(ladderInput, taskLine.text),
     ...(() => {
-      const candidate = goalFromLongText(
+      // A goal the operator declared with /goal outranks every guess from chat text.
+      const candidate = effectiveFacts.declaredGoal ?? goalFromLongText(
         effectiveFacts.openingRequest?.trim() ??
           effectiveFacts.operatorRequest?.trim() ??
           "",
       );
-      const candidateSource = effectiveFacts.openingRequest
+      const candidateSource = effectiveFacts.declaredGoal
+        ? "goal-task"
+        : effectiveFacts.openingRequest
         ? "opening-request"
         : effectiveFacts.operatorRequest
           ? "user-prompt"
@@ -816,7 +853,19 @@ async function resolveTaskLineFor(
     })(),
     budget: facts?.budget,
     provider: transcriptProvider,
+    // TF-091: declared only. Operator's goal command > agent's newest Goal line > brief.
+    statedGoal:
+      facts?.declaredGoal ??
+      cleanStated(sidecar?.declaredGoal) ??
+      facts?.statedGoal ??
+      cleanStated(sidecar?.statedGoal) ??
+      briefGoal,
+    statedTask: facts?.statedTask ?? cleanStated(sidecar?.statedTask),
   };
+}
+
+function cleanStated(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.replace(/\s+/g, " ").trim().slice(0, 160) : undefined;
 }
 
 /**
@@ -909,7 +958,7 @@ export async function summarizeAgentStatus(
     options.transcriptReader === null
       ? null
       : (options.transcriptReader ?? tauriTranscriptReader());
-  const { taskLine, nowLine, capturedGoal, capturedGoalSource, budget, provider } = await resolveTaskLineFor(
+  const { taskLine, nowLine, capturedGoal, capturedGoalSource, budget, provider, statedGoal, statedTask } = await resolveTaskLineFor(
     input,
     rawSidecar,
     sidecarState === "stale",
@@ -927,9 +976,11 @@ export async function summarizeAgentStatus(
     provider && effectiveFallbackBase.provider === "shell"
       ? { ...effectiveFallbackBase, provider }
       : effectiveFallbackBase;
-  const effectiveFallback = budget
-    ? { ...providerFallback, budget }
-    : providerFallback;
+  const effectiveFallback = {
+    ...(budget ? { ...providerFallback, budget } : providerFallback),
+    statedGoal,
+    statedTask,
+  };
   // Keep only the shaped, quality-checked Goal. Reattaching rawSidecar.mainTask here
   // resurrects process narration after summaryFromSidecar has correctly rejected it.
   const rawSidecarGoal = rawSidecar
@@ -941,7 +992,9 @@ export async function summarizeAgentStatus(
   // record's opening request is the actual first ask. Declared goals still win.
   const sidecarGoalIsGuess = rawSidecar?.mainTaskSource === "opening-request";
   const preferRecordGoal =
-    Boolean(capturedGoal) && capturedGoalSource === "opening-request" && sidecarGoalIsGuess;
+    Boolean(capturedGoal) &&
+    (capturedGoalSource === "goal-task" ||
+      (capturedGoalSource === "opening-request" && sidecarGoalIsGuess));
   const capturedGoalValue = preferRecordGoal ? capturedGoal : sidecarGoal || capturedGoal;
   const capturedGoalSourceValue = preferRecordGoal
     ? capturedGoalSource
@@ -1006,10 +1059,12 @@ export async function summarizeAgentStatus(
     const summaryWithSidecarGoal = capturedGoalValue
       ? {
           ...summary,
+          statedGoal,
+          statedTask,
           mainTask: capturedGoalValue,
           mainTaskSource: capturedGoalSourceValue,
         }
-      : summary;
+      : { ...summary, statedGoal, statedTask };
     // The line rides on EVERY return path. It used to be attached only to the
     // no-endpoint branch, so any launch that configured the optional status worker
     // dropped the ladder line for every pane and the header fell back to its own

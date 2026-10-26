@@ -1,0 +1,38 @@
+[
+  {
+    "file": "tc205-map-agent-button-panel.png",
+    "sha256": "fa3b276fd93e7651d3dd3935541ab6711ef2fc3628c12b2f408092f40e905099"
+  },
+  {
+    "file": "tc205-map-panel-dark-inferred.png",
+    "sha256": "5fc1388e4cf693677df4db87817ab5f24c7479049575d9977d6be8a7204fcc19"
+  },
+  {
+    "file": "tc205-map-panel-light-hebrew-small.png",
+    "sha256": "6417aafafdf20e3fbf7a9bf187662468fff40219706a172cf5940ec8e455b101"
+  },
+  {
+    "file": "tc205-sidebar-default-collapsed.png",
+    "sha256": "9f86ed2c578d08376fe9d6905d189d948de0658e2c417a0969c4bac6d5a76301"
+  },
+  {
+    "file": "tc205-sidebar-scope-open-narrow.png",
+    "sha256": "a54419b13f895d8cd1063f8e136335e7880eb49bfaaf07c00db8ccb1967cb7c9"
+  },
+  {
+    "file": "tc205-sidebar-services-open-narrow.png",
+    "sha256": "07a53fb9221b1129d3c36d993b3d931ee71d00ce4750f940321d21f31514032c"
+  },
+  {
+    "file": "tc205-split-panel-first-window.png",
+    "sha256": "303a578a31bdd18b65a975686fa871e375847caa7a0888bd333f658343d0ddaa"
+  },
+  {
+    "file": "tc205-split-panel-second-window.png",
+    "sha256": "4dae5d913a801f9e8536de17ce97bdb973d3cde49d8be837dbde17c08bb618e8"
+  },
+  {
+    "file": "tc205-split-two-pane-isolation.png",
+    "sha256": "f621dddb93b2e7d8b8598c29d3f5e39865f6d87f1acfc642847fbdb9a0e421e8"
+  }
+]

@@ -8,9 +8,9 @@ import { terminalScreenAttention } from "./operatorQuestionState";
  *
  * Every UI surface (split header, sidebar row, map node) reads ONE value stored on the
  * terminal, reconciled here from the agent's reported status plus exact lifecycle chrome
- * on the current terminal screen. It uses no clock or freshness timeout. That is deliberate:
- *  - A time-based "went stale → idle" rule re-evaluated against the clock FLASHED the
- *    badge between Running and Idle as time crossed the threshold.
+ * on the current terminal screen. Reported lifecycle remains event-based. Screen
+ * overrides require a fresh, identity-matched viewport at the live bottom; an old
+ * render or scrollback view cannot revive work in a different conversation.
  *  - Generic prose never counts as state. The screen fallback recognizes only paired TUI
  *    prompts/completion markers, and the newest marker wins over visible history.
  * Hook state remains authoritative whenever the screen has no exact lifecycle marker.
@@ -60,9 +60,32 @@ export function sessionAttention(input: { summaryStatus?: string | null }): Atte
  * badge flicker (stored value vanished → view fell back → poll re-wrote it). A pure
  * render-time translation of the same store field has nothing to drop or resync.
  */
+export function livePaneScreen(terminal?: {
+  id?:string; providerSessionId?:string; activeRunId?:string;
+  terminalVisibleText?:string | null; terminalVisibleTextUpdatedAt?:number | null;
+  terminalVisibleTextPaneId?:string; terminalVisibleTextSessionId?:string;
+  terminalVisibleTextRunId?:string; terminalVisibleTextDisplayOffset?:number;
+} | null, nowMs=Date.now()):string | undefined {
+  const screenUpdatedAt=terminal?.terminalVisibleTextUpdatedAt ?? 0;
+  const screenBound = (!terminal?.terminalVisibleTextPaneId || terminal.terminalVisibleTextPaneId===terminal.id) &&
+    (!terminal?.terminalVisibleTextSessionId || terminal.terminalVisibleTextSessionId===terminal.providerSessionId) &&
+    (!terminal?.terminalVisibleTextRunId || terminal.terminalVisibleTextRunId===terminal.activeRunId) &&
+    !(terminal?.terminalVisibleTextDisplayOffset && terminal.terminalVisibleTextDisplayOffset>0);
+  const screenFresh = screenUpdatedAt>0 && screenUpdatedAt<=nowMs && nowMs-screenUpdatedAt<=120_000;
+  return screenBound && screenFresh ? terminal?.terminalVisibleText ?? undefined : undefined;
+}
+
 export function paneBadgeAttention(
   terminal?: {
     sessionStateV2?:SessionState;
+    id?:string;
+    providerSessionId?:string;
+    activeRunId?:string;
+    runClosed?:boolean;
+    terminalVisibleTextPaneId?:string;
+    terminalVisibleTextSessionId?:string;
+    terminalVisibleTextRunId?:string;
+    terminalVisibleTextDisplayOffset?:number;
     statusSummary?: {
       status?: string | null;
       updatedAt?: number | null;
@@ -73,11 +96,13 @@ export function paneBadgeAttention(
     terminalVisibleTextUpdatedAt?: number | null;
   } | null,
   fallbackStatus?: string | null,
+  nowMs = Date.now(),
 ): AttentionState {
   const view=authoritativeSessionView(terminal?.sessionStateV2);
   if (view) return view.attention === "needs-attention" ? "waiting" : view.attention;
-  const screenAttention = terminalScreenAttention(terminal?.terminalVisibleText);
   const screenUpdatedAt = terminal?.terminalVisibleTextUpdatedAt ?? 0;
+  const parsedScreen = terminalScreenAttention(livePaneScreen(terminal,nowMs));
+  const screenAttention = terminal?.runClosed && parsedScreen==='running' ? null : parsedScreen;
   // When the agent last REPORTED, not when the app last re-wrote the store: a view
   // re-stamping the store every refresh made a stale Running beat an on-screen
   // interrupt within seconds (TF-044).

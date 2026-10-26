@@ -1,3 +1,7 @@
+import {mapUtilityCollapsed, saveMapUtilityCollapsed} from '../lib/mapUtilityVisibility';
+import {terminalTopic,terminalTopicDetails,existingTerminalTopicLabel} from '../lib/terminalTopic';
+import {isDeclaredOnlyPane,presentPaneTask} from '../lib/paneContextPresentation';
+import './MapUtilities.css';
 import {
   CSSProperties,
   Fragment,
@@ -145,7 +149,6 @@ import {
   summarizeAgentLane,
 } from "../lib/agentWorkstreamLane";
 import { workstreamActivityText } from "../lib/workstreamActivity";
-import { truncateAtWordBoundary } from "../lib/textTruncation";
 import {
   formatWorkstreamOpsContext,
   promptWorkstreamIsolation,
@@ -175,6 +178,8 @@ import {
   buildProjectSidebarModel,
   type ProjectSidebarItem,
 } from "../lib/projectSidebarModel";
+// The "Agent runs" counter panels were removed as noise (owner, 2026-10-10).
+const SHOW_AGENT_RUN_COUNTERS = false;
 
 // Swatch hues are the six muted identity colours (--identity-1..6).
 const TERMINAL_COLORS = [...IDENTITY_COLORS];
@@ -1035,11 +1040,11 @@ const styles: Record<string, CSSProperties> = {
   compactUtilityHeader: {
     minWidth: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto auto",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
     gap: 8,
     alignItems: "center",
     color: "var(--text-primary)",
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 500,
   },
   compactUtilityMeta: {
@@ -1051,7 +1056,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 11,
   },
   compactToggle: {
-    height: 24,
+    minHeight: 28,
     minWidth: 34,
     display: "inline-flex",
     alignItems: "center",
@@ -1147,6 +1152,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 11,
   },
   serviceMetaLine: {
+    display: "block",
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -1805,7 +1811,7 @@ function TerminalContextMenu({
 
   const commitTitle = () => {
     const trimmed = title.trim();
-    if (trimmed && trimmed !== tab.title) updateTab(tab.id, { title: trimmed });
+    if (trimmed && trimmed !== tab.title) updateTab(tab.id, { title: trimmed, topicLabel: trimmed });
   };
 
   const copyInstanceReference = () => {
@@ -3354,7 +3360,7 @@ function SessionsPanel({
             })}
           </div>
         )}
-        {agentLane.total > 0 && (
+        {SHOW_AGENT_RUN_COUNTERS && agentLane.total > 0 && (
           <div
             style={styles.agentLanePanel}
             data-testid="sidebar-agent-lane-summary"
@@ -5052,8 +5058,8 @@ function SessionsPanel({
                 (node) =>
                   node.type === "terminal" && node.terminalTabId === tab.id,
               )?.labelColor ?? tab.color;
-            const sessionSummary =
-              header.hasCapturedGoal ? header.goalLabel : header.currentActivity;
+            const topic = terminalTopic({terminal,manualTitle:tab.topicLabel,savedTitle:existingTerminalTopicLabel(tab.title,header.workspace),capturedGoal:header.contextLabel});
+            const sessionSummary = topic.text;
             const agentProvider =
               tab.workstream?.provider ??
               terminal?.agentProvider ??
@@ -5124,8 +5130,17 @@ function SessionsPanel({
                         : "var(--text-secondary)",
                     }}
                   >
-                    {header.hasCapturedGoal ? header.goalLabel : header.workspace}
+                    {isDeclaredOnlyPane(terminal?.statusSummary) ? header.workspace : header.hasCapturedGoal ? header.goalLabel : header.workspace}
                   </div>
+                  {isDeclaredOnlyPane(terminal?.statusSummary) && (
+                    <div
+                      style={styles.sessionSummaryText}
+                      data-testid="sidebar-session-goal"
+                      title={terminalTopicDetails(topic)}
+                    >
+                      {sessionSummary}
+                    </div>
+                  )}
                   <div
                     style={styles.sessionSummary}
                     data-testid="sidebar-session-summary"
@@ -5169,9 +5184,11 @@ function SessionsPanel({
                     </span>
                     <span
                       style={styles.sessionSummaryText}
-                      title={sessionSummary}
+                      title={terminalTopicDetails(topic)}
+                      data-testid="sidebar-session-topic"
+                      data-topic-source={topic.source}
                     >
-                      {sessionSummary}
+                      {isDeclaredOnlyPane(terminal?.statusSummary) ? presentPaneTask(terminal?.statusSummary, sessionSummary) : sessionSummary}
                     </span>
                   </div>
                 </span>
@@ -5255,8 +5272,11 @@ function MapPanel({
       : loadGamificationRecord(undefined),
   );
   const [serviceActionStatus, setServiceActionStatus] = useState("");
-  const [servicesCollapsed, setServicesCollapsed] = useState(false);
-  const [scopeCollapsed, setScopeCollapsed] = useState(true);
+  const [servicesCollapsed, setServicesCollapsed] = useState(() => mapUtilityCollapsed('services'));
+  // TF-092: the sort/filter buttons took a large share of the side panel; they fold
+  // away to one summary line, remembered like the other map utilities.
+  const [filtersCollapsed, setFiltersCollapsed] = useState(() => mapUtilityCollapsed('filters'));
+  const [scopeCollapsed, setScopeCollapsed] = useState(() => mapUtilityCollapsed('scope'));
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
@@ -5816,6 +5836,23 @@ function MapPanel({
         approvals={pendingApprovals}
         onSelect={openCard}
       />
+      <div className="map-utility-header" style={{ ...styles.compactUtilityHeader, padding: "6px 8px" }} data-testid="map-view-options">
+        <span>View</span>
+        <span className="map-utility-meta" style={styles.compactUtilityMeta}>
+          {sortMode === "project" ? "By project" : "Manual"} · {MAP_FILTERS.find((filter) => filter.id === mapFilter)?.label ?? "All"} {filterCounts[mapFilter]}
+        </span>
+        <button
+          type="button"
+          style={styles.compactToggle}
+          data-testid="map-view-options-toggle"
+          aria-expanded={!filtersCollapsed}
+          aria-label={filtersCollapsed ? "Show view options" : "Hide view options"}
+          onClick={() => { saveMapUtilityCollapsed('filters', !filtersCollapsed); setFiltersCollapsed(!filtersCollapsed); }}
+        >
+          {filtersCollapsed ? "Show" : "Hide"}
+        </button>
+      </div>
+      {!filtersCollapsed && (<>
       <div style={styles.mapFilterBar} aria-label="Arrange terminals">
         {(
           [
@@ -5904,17 +5941,19 @@ function MapPanel({
           );
         })}
       </div>
+      </>)}
       <div style={styles.list}>
         {localServices.length > 0 && (
           <div
             style={{ ...styles.servicePanel, order: 2 }}
+            className="map-utility-panel"
             data-testid="map-local-services"
             aria-label="Local services"
             title={`${localServices.length} local service${localServices.length === 1 ? "" : "s"}`}
           >
-            <div style={styles.compactUtilityHeader}>
+            <div className="map-utility-header" style={styles.compactUtilityHeader}>
               <span>Services</span>
-              <span style={styles.compactUtilityMeta}>
+              <span className="map-utility-meta" style={styles.compactUtilityMeta}>
                 {localServices.length} detected
               </span>
               <button
@@ -5922,18 +5961,19 @@ function MapPanel({
                 style={styles.compactToggle}
                 data-testid="map-local-services-toggle"
                 aria-expanded={!servicesCollapsed}
+                aria-controls="map-local-services-content"
                 aria-label={
                   servicesCollapsed
                     ? "Show local services"
                     : "Hide local services"
                 }
-                onClick={() => setServicesCollapsed((collapsed) => !collapsed)}
+                onClick={() => { saveMapUtilityCollapsed('services',!servicesCollapsed); setServicesCollapsed(!servicesCollapsed); }}
               >
                 {servicesCollapsed ? "Show" : "Hide"}
               </button>
             </div>
             {!servicesCollapsed && (
-              <>
+              <div id="map-local-services-content" className="map-utility-content">
                 <div
                   style={styles.serviceActionStatus}
                   data-testid="map-local-service-action-status"
@@ -5956,6 +5996,7 @@ function MapPanel({
                       <div
                         key={service.id}
                         style={styles.serviceRow}
+                        className="map-service-row"
                         data-testid="map-local-service-row"
                         title={`Focus ${service.url}`}
                         onClick={() => {
@@ -5979,7 +6020,7 @@ function MapPanel({
                             {service.ownerTitle}
                           </span>
                         </span>
-                        <span style={styles.serviceActions}>
+                        <span className="map-service-actions" style={styles.serviceActions}>
                           <button
                             type="button"
                             style={styles.serviceActionButton}
@@ -6027,20 +6068,21 @@ function MapPanel({
                     );
                   })}
                 </div>
-              </>
+              </div>
             )}
           </div>
         )}
         {visibleNodes.length > 0 && (
           <div
             style={{ ...styles.utilityPanel, order: 3 }}
+            className="map-utility-panel"
             data-testid="map-workspace-summary"
             aria-label="Map workspace grouping summary"
             title={mapSummary.headline}
           >
-            <div style={styles.compactUtilityHeader}>
+            <div className="map-utility-header" style={styles.compactUtilityHeader}>
               <span>Scope</span>
-              <span style={styles.compactUtilityMeta}>
+              <span className="map-utility-meta" style={styles.compactUtilityMeta}>
                 {mapSummary.headline}
               </span>
               <button
@@ -6048,18 +6090,19 @@ function MapPanel({
                 style={styles.compactToggle}
                 data-testid="map-workspace-summary-toggle"
                 aria-expanded={!scopeCollapsed}
+                aria-controls="map-workspace-summary-content"
                 aria-label={
                   scopeCollapsed
                     ? "Show map scope summary"
                     : "Hide map scope summary"
                 }
-                onClick={() => setScopeCollapsed((collapsed) => !collapsed)}
+                onClick={() => { saveMapUtilityCollapsed('scope',!scopeCollapsed); setScopeCollapsed(!scopeCollapsed); }}
               >
                 {scopeCollapsed ? "Show" : "Hide"}
               </button>
             </div>
             {!scopeCollapsed && (
-              <>
+              <div id="map-workspace-summary-content" className="map-utility-content">
                 <div style={styles.agentLaneStats}>
                   <span
                     style={styles.agentLaneChip}
@@ -6137,11 +6180,11 @@ function MapPanel({
                     </span>
                   ))}
                 </div>
-              </>
+              </div>
             )}
           </div>
         )}
-        {agentLane.total > 0 && (
+        {SHOW_AGENT_RUN_COUNTERS && agentLane.total > 0 && (
           <div
             style={{ ...styles.agentLanePanel, order: 4 }}
             data-testid="map-agent-lane-summary"
@@ -8023,14 +8066,8 @@ function MapPanel({
                 ? header.sources.goal === "missing" ||
                   header.sources.goal === "none"
                 : false;
-              const sidebarTaskLabel = header
-                ? truncateAtWordBoundary(
-                    header.hasCapturedGoal
-                      ? header.goalLabel
-                      : header.currentActivity,
-                    52,
-                  )
-                : "";
+              const topic = terminalTopic({terminal:liveTerminal,manualTitle:node.topicLabel ?? linkedTab?.topicLabel,savedTitle:existingTerminalTopicLabel(node.title,header?.workspace) ?? existingTerminalTopicLabel(linkedTab?.title,header?.workspace),capturedGoal:header?.contextLabel});
+              const sidebarTaskLabel = topic.text;
               const agentProvider =
                 linkedTab?.workstream?.provider ??
                 liveTerminal?.agentProvider ??
@@ -8168,6 +8205,16 @@ function MapPanel({
                               ? linkedProjectName
                               : node.title}
                       </div>
+                      {header && isDeclaredOnlyPane(liveTerminal?.statusSummary) && (
+                        <div
+                          style={styles.sidebarHeaderTask}
+                          data-testid="sidebar-map-node-goal-row"
+                          data-topic-source={topic.source}
+                          title={terminalTopicDetails(topic)}
+                        >
+                          {sidebarTaskLabel}
+                        </div>
+                      )}
                       <div style={styles.rowMeta}>
                         {header ? (
                           <>
@@ -8222,7 +8269,9 @@ function MapPanel({
                               </span>
                             )}
                             {" · "}
-                            {pathTail(header.fullPath)}
+                            {isDeclaredOnlyPane(liveTerminal?.statusSummary)
+                              ? presentPaneTask(liveTerminal?.statusSummary, "")
+                              : pathTail(header.fullPath)}
                           </>
                         ) : node.type === "preview" ? (
                           (node.previewUrl ?? "Localhost preview")
@@ -8232,7 +8281,7 @@ function MapPanel({
                           `${Math.round(node.width)} x ${Math.round(node.height)}`
                         )}
                       </div>
-                      {header && (
+                      {header && !isDeclaredOnlyPane(liveTerminal?.statusSummary) && (
                         <div style={styles.sidebarHeaderLines}>
                           <div
                             style={{
@@ -8242,11 +8291,8 @@ function MapPanel({
                                 : null),
                             }}
                             data-testid="sidebar-map-node-task-row"
-                            title={
-                              header.hasCapturedGoal
-                                ? `Task: ${header.goalLabel}`
-                                : `Now: ${header.currentActivity}`
-                            }
+                            title={terminalTopicDetails(topic)}
+                            data-topic-source={topic.source}
                           >
                             {sidebarTaskLabel}
                           </div>

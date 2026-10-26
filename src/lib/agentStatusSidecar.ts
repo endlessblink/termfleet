@@ -64,6 +64,11 @@ export function cwdSidecarFileName(cwd: unknown): string {
 const SIDECAR_TTL_MS = 30 * 60 * 1000;
 
 export interface AgentStatusSidecar {
+  /** TF-091: the agent's newest declared "Goal:" / "Task:" lines (status hooks). */
+  statedGoal?: string;
+  statedTask?: string;
+  /** TF-091: a goal set with the agent's own goal command (Codex create_goal). */
+  declaredGoal?: string;
   source?: string;
   turnReason?: string;
   completedAt?: number;
@@ -649,6 +654,7 @@ export function summaryFromSidecar(
         : fallback.updatedAt,
     task: activityTitle,
     userTask: declaredUserTask || undefined,
+    latestRequest: capturedPromptTask || undefined,
     mainTask:
       durableExplicitGoal ||
       capturedOpeningGoal ||

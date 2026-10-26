@@ -1,34 +1,23 @@
 #!/usr/bin/env node
-// P-0037: when a Claude Code session nears ~40% of its context window, ask the
-// agent to write a dropoff and start the next instance on TermFleet.
-//
-// Signal: the UserPromptSubmit hook receives { session_id, transcript_path }. The
-// transcript JSONL carries each assistant turn's `usage`; input + cache tokens of
-// the LAST turn is the live context size. (The statusline JSON also exposes a
-// context percentage in newer Claude Code builds, but a statusline cannot inject
-// instructions; a hook can.)
-//
-// Safety: fires at most once per session (marker file), never spawns by itself in
-// the default "ask" mode — it only tells the agent to propose the handoff to the
-// user. Modes via TERMFLEET_CONTEXT_HANDOFF: "off" | "ask" | "auto" (default).
-// "auto" lets the agent run the documented handover without asking; still once per
-// session, and the successor session gets its own marker so no chain runs away
-// unless the user opts in. Threshold: TERMFLEET_CONTEXT_HANDOFF_PERCENT (default 25),
-// window: TERMFLEET_CONTEXT_WINDOW_TOKENS (default 1000000, what these sessions really have).
+// Claude prompt hook: configured threshold defaults to 25%, auto, with 15-point
+// repeat advice. Injection and source freshness remain active even with advice off.
+// PreToolUse checks late-source changes; usage advice still runs only on prompts.
+// There is no semantic comprehension receipt.
 import { contextTokens, decide, handoffAdvice } from "./lib/context-handoff.mjs";
-import { handoffInjection } from "./lib/handoff-inject.mjs";
+import { handoffInjection, handoffMonitor, handoffHookOutput } from "./lib/handoff-inject.mjs";
 
 export { contextTokens, decide };
 
 async function main() {
-  if ((process.env.TERMFLEET_CONTEXT_HANDOFF ?? "auto").toLowerCase() === "off") return;
   let input = "";
   for await (const chunk of process.stdin) input += chunk;
   const payload = JSON.parse(input || "{}");
-  const message = [handoffInjection(payload.prompt), handoffAdvice({ payload, provider: "claude" })].filter(Boolean).join("\n\n");
+  const event = payload.hook_event_name ?? payload.hookEventName ?? "UserPromptSubmit";
+  const injected = (event === "UserPromptSubmit" ? handoffInjection(payload.prompt) : null) ?? handoffMonitor(process.env,{payload,provider:'claude'});
+  const message = injected ?? (event === "UserPromptSubmit" ? handoffAdvice({payload,provider:"claude"}) : null);
   if (!message) return;
   process.stdout.write(
-    `${JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: message } })}\n`,
+    `${JSON.stringify(handoffHookOutput(event,message))}\n`,
   );
 }
 

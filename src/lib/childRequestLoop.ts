@@ -4,6 +4,7 @@
 // runs even while its card is off-screen, and marked with the parent link. The
 // outcome is written back so the waiting command can report it.
 import { checkAgentProvider } from "./agentProviders";
+import { checkHandoffFreshness } from "./handoffFreshness";
 import {
   childStartupCommand,
   HELPER_TERMINAL_COLOR,
@@ -11,7 +12,7 @@ import {
   planChildLaunch,
   requestIdOf,
 } from "./childTerminals";
-import { useWorkspaceStore } from "../stores/workspace";
+import { createDefaultTab, useWorkspaceStore } from "../stores/workspace";
 import type { Tab } from "./types";
 
 const POLL_INTERVAL_MS = 1_500;
@@ -59,15 +60,16 @@ async function handle(raw: string) {
     return;
   }
   recentLaunches.push(now);
-  const store = useWorkspaceStore.getState();
+  let store = useWorkspaceStore.getState();
   const parentNode = request.parentPaneId
     ? store.canvasState.nodes.find(
         (node) => node.terminalTabId && request.parentPaneId!.startsWith(`terminal-${node.terminalTabId}-`),
       )
     : undefined;
-  const plan = planChildLaunch({
+  let plan = planChildLaunch({
     request,
     tabs: store.tabs,
+    groups: store.groups,
     nodes: store.canvasState.nodes,
     size: parentNode ? { width: parentNode.width, height: parentNode.height } : DEFAULT_CHILD_SIZE,
   });
@@ -81,41 +83,70 @@ async function handle(raw: string) {
     return;
   }
 
+  const fence = async () => request.handoff
+    ? checkHandoffFreshness(request.handoff,request.provider,request.parentPaneId,
+      async path => (await import("@tauri-apps/api/core")).invoke<string>("fs_read_file",{path}),
+      async scope => (await import("@tauri-apps/api/core")).invoke<unknown>("agent_status_source_snapshot",{paneId:scope.paneId,provider:scope.provider}))
+    : ({ok:true} as const);
+  const initialFence = await fence();
+  if(!initialFence.ok){await complete(request.requestId,{ok:false,reason:initialFence.reason});return;}
+  if(request.version===2){
+    const fresh=useWorkspaceStore.getState();
+    plan=planChildLaunch({request,tabs:fresh.tabs,groups:fresh.groups,nodes:fresh.canvasState.nodes,size:DEFAULT_CHILD_SIZE});
+    if(!plan.ok){await complete(request.requestId,{ok:false,reason:plan.reason});return;}
+    store=fresh;
+  }
   const cwd = request.cwd ?? plan.parentTab?.initialCwd;
   const predecessor = plan.replaces ? store.tabs.find((candidate) => candidate.id === plan.parentTab?.id) : undefined;
+  const predecessorIdentity = predecessor ? handoffProjectionIdentity(predecessor) : undefined;
   let draft = "";
-  const command = childStartupCommand(request.provider, request.task);
+  let earlierText: string | undefined;
+  const command = childStartupCommand(request.provider, request.task, request.handoff, request.model);
   // Opening a helper must not pull the operator away from what they are doing.
   const previousTabId = store.activeTabId;
   const previousTerminalId = store.activeTerminalId;
   const knownTabIds = new Set(store.tabs.map((tab) => tab.id));
-  store.addTab({
+  const tabOptions: Partial<Tab> = {
     title: `${plan.link ? "Helper" : "Agent"}: ${request.title ?? request.task}`,
     emoji: "↳",
     color: HELPER_TERMINAL_COLOR,
     initialCwd: cwd,
     // A handover stays in the project (and slot) of the card it replaces, even when
     // the successor's shell starts in another folder.
-    projectCwd: predecessor
+    projectCwd: request.version===2 ? cwd : predecessor
       ? predecessor.projectCwd ??
         store.canvasState.nodes.find((node) => node.terminalTabId === predecessor.id)?.terminalCwd ??
         predecessor.initialCwd
       : undefined,
-    groupId: plan.parentTab?.groupId,
+    groupId: plan.projectId || plan.parentTab?.groupId,
+    launchRequestId: request.version===2 || request.handoff ? request.requestId : undefined,
     childOf: predecessor ? predecessor.childOf : plan.link,
-  }, plan.placement);
-  const after = useWorkspaceStore.getState();
-  const tab = after.tabs.find((candidate) => !knownTabIds.has(candidate.id));
+  };
+  let after = store;
+  let tab: Tab | undefined;
+  if(request.handoff) {
+    // Keep the reserved target off-store: mounting a card starts an ordinary PTY.
+    // Only the verified native receipt below permits publishing this exact identity.
+    tab=createDefaultTab(tabOptions);
+  } else {
+    try{store.addTab(tabOptions,plan.placement,request.version===2?{preserveProjectOwnership:true}:undefined);}catch(error){
+      await complete(request.requestId,{ok:false,reason:"project-changed",detail:String(error)});return;
+    }
+    after=useWorkspaceStore.getState();
+    tab=request.version===2
+      ? after.tabs.find((candidate) => candidate.launchRequestId===request.requestId)
+      : after.tabs.find((candidate) => !knownTabIds.has(candidate.id));
+  }
   if (!tab) {
     await complete(request.requestId, { ok: false, reason: "launch-failed" });
     return;
   }
   // Only the new card is placed; every card already on the map stays put.
-  after.updateCanvasNode(`terminal-map-${tab.id}`, plan.placement, "workspace-update");
+  if(!request.handoff)after.updateCanvasNode(`terminal-map-${tab.id}`, plan.placement, "workspace-update");
   // On a handover the card being watched is the one that gets replaced: the new card
   // stays selected in its place so the camera does not jump to some other card.
   if (
-    previousTabId &&
+    !request.handoff && previousTabId &&
     previousTabId !== predecessor?.id &&
     after.tabs.some((candidate) => candidate.id === previousTabId)
   ) {
@@ -145,9 +176,10 @@ async function handle(raw: string) {
     } catch {
       /* no screen to read: nothing to carry */
     }
-    after.archivePredecessor(predecessor.id, tab.id, clipEarlierSessionText(pieces.join("\n")) || undefined);
+    earlierText = clipEarlierSessionText(pieces.join("\n")) || undefined;
   }
   const childPaneId = `terminal-${tab.id}-${tab.activePaneId}`;
+  const childTabId=tab.id;
   // Start it now in the daemon; the card attaches to this same session later.
   // The daemon answers within 700ms, but starting a login shell can take longer:
   // the session still comes up, so asking again for the same id just reuses it.
@@ -157,6 +189,68 @@ async function handle(raw: string) {
   const cardSize = parentNode ? { width: parentNode.width, height: parentNode.height } : DEFAULT_CHILD_SIZE;
   const cols = Math.max(40, Math.floor((cardSize.width - 80) / 7.9));
   const rows = Math.max(12, Math.floor((cardSize.height - 260) / 17));
+  const beforeStartFence = await fence();
+  if(!beforeStartFence.ok){await complete(request.requestId,{ok:false,reason:beforeStartFence.reason,...(request.handoff?{childPaneId}: {})});return;}
+  if(request.handoff) {
+    const projectionMatches=()=>{
+      const current=useWorkspaceStore.getState();
+      const source=current.tabs.find(candidate=>candidate.id===predecessor?.id);
+      return Boolean(source && handoffProjectionIdentity(source)===predecessorIdentity &&
+        !current.tabs.some(candidate=>candidate.id===childTabId || candidate.launchRequestId===request.requestId ||
+          candidate.terminals.some(terminal=>terminal.id===childPaneId)) &&
+        !current.canvasState.nodes.some(node=>node.id===`terminal-map-${childTabId}` || node.terminalTabId===childTabId));
+    };
+    if(!projectionMatches()){
+      await complete(request.requestId,{ok:false,reason:"handoff-workspace-changed",childPaneId});return;
+    }
+    let lifecycleReceipt:unknown;
+    try {
+      const sourceSession='sourceSession' in beforeStartFence ? beforeStartFence.sourceSession:undefined;
+      const receipt=await invoke<unknown>("handoff_lifecycle_quarantine",{requestId:request.requestId,
+        descriptor:request.handoff,sourcePane:request.parentPaneId,targetPane:childPaneId,
+        sourceSession,
+        provider:request.provider,command,startupTask:request.task,cwd:cwd ?? null,cols,rows,earlierText,
+        unsentDraft:{text:draft,submitted:false}});
+      lifecycleReceipt=receipt;
+      if(!await verifiedLifecycleReceipt(receipt,request.handoff,request.parentPaneId,sourceSession,childPaneId,draft,request.task)) {
+        await complete(request.requestId,{ok:false,reason:"native-handoff-outcome-unverified",
+          detail:"Retain the lifecycle operation for reconciliation; do not retry.",
+          reconciliationRequired:true,childPaneId,lifecycleReceipt:receipt});
+        return;
+      }
+      if(!projectionMatches()){
+        await complete(request.requestId,{ok:false,reason:"native-handoff-projection-unverified",childPaneId,
+          detail:"Native lifecycle may be committed; workspace identity changed. Reconcile without retry.",
+          reconciliationRequired:true,lifecycleReceipt:receipt});return;
+      }
+      // Use the complete latest view, including notes/multi-selection and project
+      // filters. addTab preserves it atomically if the operator moved away.
+      const current=useWorkspaceStore.getState();
+      const sourceNode=current.canvasState.nodes.find(node=>node.terminalTabId===predecessor?.id);
+      const selectedIds=current.canvasState.selectedNodeIds ?? [];
+      const watchingSource=current.activeTabId===predecessor?.id && Boolean(sourceNode) &&
+        (!current.canvasState.selectedNodeId || current.canvasState.selectedNodeId===sourceNode!.id) &&
+        selectedIds.every(id=>id===sourceNode!.id);
+      current.addTab(tab,plan.placement,{preserveSelection:!watchingSource});
+      const published=useWorkspaceStore.getState();
+      const exact=published.tabs.filter(candidate=>candidate.id===childTabId);
+      if(exact.length!==1 || exact[0].activePaneId!==tab.activePaneId || exact[0].splitLayout.id!==tab.splitLayout.id){
+        throw Error("Published handoff card identity unverified; reconcile without retry.");
+      }
+      published.updateCanvasNode(`terminal-map-${tab.id}`,plan.placement,"workspace-update");
+      if(predecessor && !useWorkspaceStore.getState().archivePredecessorPreservingSessions(predecessor.id,tab.id,earlierText)) {
+        await complete(request.requestId,{ok:false,reason:"native-handoff-projection-unverified",
+          detail:"Native lifecycle may be committed. Reconcile this operation; do not retry.",
+          reconciliationRequired:true,childPaneId,lifecycleReceipt:receipt});
+        return;
+      }
+      await complete(request.requestId,{ok:true,childPaneId,provider:request.provider,lifecycleReceipt:receipt});
+    } catch(error) {
+      await complete(request.requestId,{ok:false,reason:lifecycleReceipt ? "native-handoff-projection-unverified":"native-handoff-boundary-denied",
+        detail:String(error),childPaneId,reconciliationRequired:true,...(lifecycleReceipt ? {lifecycleReceipt}:{})});
+    }
+    return;
+  }
   let startError: unknown = null;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
@@ -172,6 +266,9 @@ async function handle(raw: string) {
     await complete(request.requestId, { ok: false, reason: "start-failed", detail: String(startError), childPaneId });
     return;
   }
+  const afterStartFence = await fence();
+  if(!afterStartFence.ok){await complete(request.requestId,{ok:false,reason:afterStartFence.reason});return;}
+  if(predecessor) after.archivePredecessor(predecessor.id,tab.id,earlierText);
   if (draft) void carryDraft(childPaneId, draft);
   await complete(request.requestId, {
     ok: true,
@@ -181,6 +278,42 @@ async function handle(raw: string) {
     replacedTabId: predecessor?.id ?? null,
     provider: request.provider,
   });
+}
+
+/** UI projection identity only; the private host verifies native authority/scope. */
+function handoffProjectionIdentity(tab:Tab):string {
+  return JSON.stringify({id:tab.id,activePaneId:tab.activePaneId,groupId:tab.groupId ?? null,
+    initialCwd:tab.initialCwd ?? null,projectCwd:tab.projectCwd ?? null,childOf:tab.childOf ?? null,splitLayout:tab.splitLayout,
+    terminals:tab.terminals.map(terminal=>({id:terminal.id,paneId:terminal.paneId}))});
+}
+
+/** Check the durable host receipt; never infer success from a resolved invoke. */
+async function verifiedLifecycleReceipt(value:unknown,descriptor:{path:string;sha256:string;generation:string},
+  sourcePane:string|undefined,sourceSession:string|undefined,targetPane:string,draft:string,startupTask:string):Promise<boolean> {
+  if(!value || typeof value!=="object")return false;
+  const r=value as Record<string,any>,native=r.receipt;
+  const hash=(x:unknown)=>typeof x==="string"&&/^[a-f0-9]{64}$/.test(x);
+  const identity=(x:unknown)=>typeof x==="string"&&x.length>0;
+  if(!identity(r.operationId)||!hash(r.actionHash)||!hash(r.head)||!hash(r.checkpointHash)||!hash(r.decisionHash)||
+    !identity(r.generation)||!Number.isSafeInteger(r.through)||r.through<1||!native||
+    native.operationId!==r.operationId||native.actionHash!==r.actionHash||native.head!==r.head||
+    native.through!==r.through||native.generation!==r.generation||native.checkpointHash!==r.checkpointHash||
+    native.decisionHash!==r.decisionHash||!Number.isSafeInteger(native.epoch)||native.epoch<0||
+    !Number.isSafeInteger(native.decisionRevision)||native.decisionRevision<1||
+    native.sourcePane!==sourcePane||native.targetPane!==targetPane||
+    !identity(native.sourceSession)||!identity(native.targetSession)||native.sourceSession===native.targetSession||
+    (sourceSession && native.sourceSession!==sourceSession)||native.startOwnership!=="committed"||
+    native.archiveOwnership!=="committed"||native.descriptor?.path!==descriptor.path||
+    native.descriptor?.sha256!==descriptor.sha256||native.descriptor?.generation!==descriptor.generation)return false;
+  const bytes=new TextEncoder().encode(draft);
+  const draftHash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))).map(n=>n.toString(16).padStart(2,"0")).join("");
+  const taskBytes=new TextEncoder().encode(startupTask);
+  const taskHash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",taskBytes))).map(n=>n.toString(16).padStart(2,"0")).join("");
+  const task=native.startupTask;
+  if(task?.bytes!==taskBytes.byteLength || task.sha256!==taskHash || task.status!=="withheld" || task.submitted!==false)return false;
+  const kept=native.unsentDraft;
+  return kept?.sha256===draftHash&&kept.bytes===bytes.byteLength&&kept.targetPane===targetPane&&
+    kept.targetSession===native.targetSession&&kept.status==="retained-unsent"&&kept.submitted===false;
 }
 
 /** Type the operator's unsent text, without sending it, into the new agent's box once it is up. */
@@ -241,7 +374,7 @@ async function tick() {
       migrateEarlyHelpers();
     }
     const { invoke } = await import("@tauri-apps/api/core");
-    const requests = await invoke<string[]>("child_requests_take");
+    const requests = await invoke<string[]>("child_requests_take",{projectLaunchVersion:2});
     // One at a time: each placement must see the card the previous one added.
     for (const raw of requests) await handle(raw);
   } catch (error) {

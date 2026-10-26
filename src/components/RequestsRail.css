@@ -57,3 +57,16 @@
 .requests-rail__word { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .requests-rail__dot { display: inline-block; width: 7px; height: 7px; margin-inline-end: 6px; border-radius: 50%; background: #e8a25a; }
 .requests-rail__row--working .requests-rail__text { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* Its own column while open: the terminal gives up the space instead of being covered. Folded: only the small bar, over the corner, pushing nothing. */
+.terminal-block-shell:has(> .requests-rail--open:not([hidden])) {
+  grid-template-columns: 24px minmax(0, 1fr) 246px;
+}
+.requests-rail--open {
+  position: static;
+  grid-column: 3;
+  grid-row: 1;
+  align-self: end;
+  margin: 0 8px 8px 8px;
+  width: auto;
+}
+.requests-rail__list { max-height: 232px; }

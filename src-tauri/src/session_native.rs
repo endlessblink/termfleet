@@ -443,3 +443,10 @@ pub fn agent_status_runtime_event(pty_id: String, kind: String) -> Result<(), St
         Err("native observer requires Linux".into())
     }
 }
+
+/// Full captured-source observation for desktop handoff preflight; no effect/authority.
+#[tauri::command]
+pub async fn agent_status_source_snapshot(pane_id: String, provider: String) -> Result<serde_json::Value,String> {
+    tauri::async_runtime::spawn_blocking(move || crate::handoff_native_bridge::snapshot_observed_source(&pane_id,&provider))
+        .await.map_err(|e| e.to_string())?
+}

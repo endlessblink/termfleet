@@ -133,7 +133,7 @@ test.describe("canonical agent board", () => {
     expect(projectBoard).toContain('aria-label="Search projects"');
     expect(projectBoard).toContain('aria-label="Search project plan tasks"');
     expect(projectBoard).not.toContain('aria-label="Select project plan"');
-    expect(projectBoard).toContain("Copy task details");
+    expect(projectBoard).toContain("Copy for an agent");
     expect(projectBoard).toContain('fs_find_master_plan_roots');
     expect(operationsBoard).not.toContain("Shared agent queue");
     expect(sidebar).not.toContain('ui.primarySidebarPanel === "tasks" && <CanonicalAgentBoard />');

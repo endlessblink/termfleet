@@ -59,6 +59,12 @@ fn current_build_id() -> String {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum DaemonRequest {
     Status,
+    // Public proposal only. Handler requires a private host bridge before PTY effects.
+    HandoffLifecycleQuarantine { proposal:serde_json::Value },
+    HandoffUnsentRecover { proposal:serde_json::Value },
+    HandoffFramedInput { proposal:serde_json::Value },
+    HandoffProviderRegister { proposal:serde_json::Value },
+    HandoffProviderActivate { proposal:serde_json::Value },
     EnsureSession {
         id: Option<String>,
         cwd: Option<String>,
@@ -113,6 +119,8 @@ pub enum DaemonRequest {
         #[serde(default)]
         reviewed: bool,
     },
+    ForgetCheckpoint {id:String},
+    UpdateRecovery {id:String,update:crate::pty::AgentRecoveryManifestUpdate},
     ListSessions,
     ListSessionEvents,
 }
@@ -120,6 +128,11 @@ pub enum DaemonRequest {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum DaemonResponse {
+    HandoffLifecycle { receipt:serde_json::Value },
+    HandoffUnsent { recovery:serde_json::Value },
+    HandoffInput { receipt:serde_json::Value },
+    HandoffProvider { receipt:serde_json::Value },
+    RecoveryUpdated {ok:bool},
     Status(DaemonStatus),
     EnsureSession {
         id: String,
@@ -366,6 +379,34 @@ pub fn send_daemon_request(request: DaemonRequest) -> Result<DaemonResponse, Str
     serde_json::from_str::<DaemonResponse>(&response).map_err(|error| error.to_string())
 }
 
+/// Handoff transport cannot start/recycle a daemon or retry an unknown outcome.
+pub(crate) fn send_existing_handoff_request(request:DaemonRequest)->Result<DaemonResponse,String>{
+    send_existing_handoff_at(&daemon_socket_path(),request)
+}
+// Private transport seam also permits an isolated fake socket test. The public
+// command never accepts a socket path and always uses the existing daemon path.
+fn send_existing_handoff_at(socket_path:&std::path::Path,request:DaemonRequest)->Result<DaemonResponse,String>{
+    let request_id=match &request {
+        DaemonRequest::HandoffLifecycleQuarantine{proposal}=>proposal["requestId"].as_str().unwrap_or("unknown"),
+        DaemonRequest::HandoffUnsentRecover{proposal}=>proposal["operationId"].as_str().unwrap_or("unknown"),
+        DaemonRequest::HandoffFramedInput{proposal}=>proposal["payload"]["event"]["originalId"].as_str().unwrap_or("unknown"),
+        DaemonRequest::HandoffProviderRegister{proposal}|DaemonRequest::HandoffProviderActivate{proposal}=>proposal["payload"]["id"].as_str().unwrap_or("unknown"),
+        _=>return Err("handoff-only native transport rejects ordinary request".into()),
+    }.to_string();
+    let mut stream=daemon_ipc::connect(socket_path).map_err(|_|"existing daemon unavailable; no handoff effect initiated")?;
+    stream.set_read_timeout(Some(Duration::from_millis(700))).map_err(|e|e.to_string())?;
+    stream.set_write_timeout(Some(Duration::from_millis(700))).map_err(|e|e.to_string())?;
+    let frame=serde_json::to_vec(&request).map_err(|e|e.to_string())?;
+    if frame.len()>MAX_REQUEST_BYTES{return Err("handoff proposal exceeds native frame limit".into());}
+    stream.write_all(&frame).and_then(|_|stream.shutdown(Shutdown::Write))
+        .map_err(|_|format!("handoff outcome unverified for {request_id}; reconcile without retry"))?;
+    let mut response=Vec::new();
+    stream.take((MAX_REQUEST_BYTES+1) as u64).read_to_end(&mut response)
+        .map_err(|_|format!("handoff outcome unverified for {request_id}; reconcile without retry"))?;
+    if response.len()>MAX_REQUEST_BYTES{return Err(format!("handoff reply oversized for {request_id}; reconcile without retry"));}
+    serde_json::from_slice(&response).map_err(|_|format!("handoff reply unverified for {request_id}; reconcile without retry"))
+}
+
 pub fn daemon_stdio_bridge_argv(
     session_id: &str,
     cwd: Option<&str>,
@@ -610,6 +651,11 @@ pub fn run_daemon_forever() -> Result<(), String> {
     // scrollback to disk. If it is restarted (reboot, OOM, dev relaunch) it
     // rebuilds each session's content from those checkpoints on reattach.
     let pty_manager = Arc::new(PtyManager::persistent());
+    // Registration runs in the actual persistent daemon process, never the UI.
+    // An absent existing private authority keeps protected operations denied;
+    // ordinary sessions continue. No UID/cookie/JSON/env grants this authority.
+    crate::handoff_native_bridge::register_daemon_bridge()?;
+    let _protected_host_available=crate::handoff_native_host::initialize_daemon_host(pty_manager.clone())?;
     let reaper_manager = pty_manager.clone();
     std::thread::Builder::new()
         .name("pty-session-reaper".to_string())
@@ -902,6 +948,20 @@ fn handle_daemon_request(
     request: DaemonRequest,
 ) -> Result<(), String> {
     let response = match request {
+        DaemonRequest::HandoffLifecycleQuarantine{proposal}=>match crate::handoff_native_wire::commit(&proposal,pty_manager){
+            Ok(receipt)=>DaemonResponse::HandoffLifecycle{receipt},Err(message)=>DaemonResponse::Error{message}},
+        DaemonRequest::HandoffUnsentRecover{proposal}=>match crate::handoff_native_wire::recover(&proposal){
+            Ok(recovery)=>DaemonResponse::HandoffUnsent{recovery},Err(message)=>DaemonResponse::Error{message}},
+        DaemonRequest::HandoffFramedInput{proposal}=>match crate::handoff_native_wire::input(&proposal,pty_manager){
+            Ok(receipt)=>DaemonResponse::HandoffInput{receipt},Err(message)=>DaemonResponse::Error{message}},
+        DaemonRequest::HandoffProviderRegister{proposal}=>match crate::handoff_native_wire::register_provider(&proposal){
+            Ok(receipt)=>DaemonResponse::HandoffProvider{receipt},Err(message)=>DaemonResponse::Error{message}},
+        DaemonRequest::HandoffProviderActivate{proposal}=>match crate::handoff_native_wire::activate_provider(&proposal){
+            Ok(receipt)=>DaemonResponse::HandoffProvider{receipt},Err(message)=>DaemonResponse::Error{message}},
+        DaemonRequest::ForgetCheckpoint{id}=>match pty_manager.forget_owned_checkpoint(&id){
+            Ok(())=>DaemonResponse::RecoveryUpdated{ok:true},Err(message)=>DaemonResponse::Error{message}},
+        DaemonRequest::UpdateRecovery{id,update}=>match pty_manager.update_owned_recovery(&id,update){
+            Ok(())=>DaemonResponse::RecoveryUpdated{ok:true},Err(message)=>DaemonResponse::Error{message}},
         DaemonRequest::Status => DaemonResponse::Status(external_daemon_status(socket_path)),
         DaemonRequest::EnsureSession {
             id,
@@ -985,6 +1045,52 @@ fn handle_daemon_request(
     write_daemon_response(stream, &response)
 }
 
+// The input socket is a byte stream: a read can stop inside a UTF-8 scalar.
+// Forward complete text through the existing protected write boundary and carry
+// only the incomplete suffix. Invalid/truncated input is an error, never a
+// replacement character; completed writes are not replayed on any later error.
+fn forward_daemon_input_chunk(
+    pending: &mut Vec<u8>,
+    bytes: &[u8],
+    write: &mut impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    pending.extend_from_slice(bytes);
+    let valid_bytes = match std::str::from_utf8(pending) {
+        Ok(_) => pending.len(),
+        Err(error) if error.error_len().is_none() => error.valid_up_to(),
+        Err(_) => return Err("daemon input stream contains invalid UTF-8".to_string()),
+    };
+    if valid_bytes > 0 {
+        let text = std::str::from_utf8(&pending[..valid_bytes])
+            .map_err(|error| error.to_string())?;
+        write(text)?;
+        pending.drain(..valid_bytes);
+    }
+    debug_assert!(pending.len() <= 3);
+    Ok(())
+}
+
+fn forward_daemon_input_stream(
+    reader: &mut impl Read,
+    initial_data: &[u8],
+    mut write: impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut pending = Vec::with_capacity(8195);
+    forward_daemon_input_chunk(&mut pending, initial_data, &mut write)?;
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = reader.read(&mut buffer).map_err(|error| error.to_string())?;
+        if count == 0 {
+            return if pending.is_empty() {
+                Ok(())
+            } else {
+                Err("daemon input stream ended with incomplete UTF-8".to_string())
+            };
+        }
+        forward_daemon_input_chunk(&mut pending, &buffer[..count], &mut write)?;
+    }
+}
+
 fn handle_daemon_input_stream(
     stream: &mut LocalStream,
     pty_manager: &PtyManager,
@@ -996,31 +1102,15 @@ fn handle_daemon_input_stream(
         .map_err(|error| error.to_string())?;
     trace_pty("daemon.input_stream.open", format!("id={id}"));
 
-    if !initial_data.is_empty() {
-        let data = String::from_utf8_lossy(initial_data);
+    forward_daemon_input_stream(stream, initial_data, |data| {
         trace_pty(
             "daemon.input_stream.receive",
             format!("id={id} bytes={}", data.len()),
         );
-        pty_manager.write(id, &data)?;
-    }
-
-    let mut buffer = [0_u8; 8192];
-    loop {
-        let count = stream
-            .read(&mut buffer)
-            .map_err(|error| error.to_string())?;
-        if count == 0 {
-            trace_pty("daemon.input_stream.close", format!("id={id}"));
-            return Ok(());
-        }
-        let data = String::from_utf8_lossy(&buffer[..count]);
-        trace_pty(
-            "daemon.input_stream.receive",
-            format!("id={id} bytes={}", data.len()),
-        );
-        pty_manager.write(id, &data)?;
-    }
+        pty_manager.write(id, data)
+    })?;
+    trace_pty("daemon.input_stream.close", format!("id={id}"));
+    Ok(())
 }
 
 fn stream_daemon_session(

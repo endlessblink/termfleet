@@ -69,7 +69,27 @@ const READER_THREAD_STACK_BYTES: usize = 256 * 1024;
 /// freeze rather than one stuck session.
 const CHILD_REAP_TIMEOUT: Duration = Duration::from_secs(5);
 
+#[derive(Clone)]
+struct HandoffStartup {
+    task: crate::handoff_native::Draft,
+    activation_attempted: bool,
+    activated: bool,
+}
+#[derive(Clone)]
+struct NativeProviderBinding {
+    route: crate::handoff_native_binding::Route,
+    hash: String,
+    revision: u64,
+    generation: String,
+}
+
 struct PtyEntry {
+    runtime_run_id: String,
+    handoff_generation: Option<String>,
+    handoff_operation_id: Option<String>,
+    handoff_startup: Option<HandoffStartup>,
+    protected_source_operation: Option<String>,
+    provider_binding: Option<NativeProviderBinding>,
     master: Box<dyn MasterPty + Send>,
     // Behind its own mutex so `write` can release the registry lock before it
     // blocks on the PTY master. A PTY write blocks whenever the foreground
@@ -362,6 +382,13 @@ pub struct PtyManager {
     // two copies of the same provider conversation before the first PTY is
     // inserted. Codex rejects that second writer as an active-writer error.
     ensure_lock: Mutex<()>,
+    // Ordinary effects share a read lease; private host operations hold the write
+    // lease through the complete authority method, final publication and errors.
+    // This is exclusion, not human/provider authority.
+    native_operation_boundary: Arc<std::sync::RwLock<()>>,
+    // Runtime projection of existing durable broker intents, including uncertain
+    // starts that did not reach registry insertion. Never a new authority ledger.
+    native_handoff_reservations: Mutex<HashMap<String,String>>,
     session_events: Arc<Mutex<Vec<PtySessionEvent>>>,
     /// When set, sessions checkpoint their scrollback + metadata under this
     /// directory so they survive a daemon restart. `None` disables persistence
@@ -370,11 +397,27 @@ pub struct PtyManager {
     persist_dir: Option<PathBuf>,
 }
 
+// Process-private nonserializable capability: constructed only by a held real
+// manager lease, never by renderer JSON, UID, a boolean or an environment flag.
+struct NativeOperationLease<'a>{manager:&'a PtyManager}
+impl crate::handoff_native::NativeSessions for NativeOperationLease<'_>{
+    fn start_fresh(&self,i:&crate::handoff_native::Intent)->Result<crate::handoff_native::NativeRun,String>{self.manager.ensure_handoff_fresh(i)}
+    fn write_admitted(&self,i:&crate::handoff_native::InputIntent)->Result<(),String>{self.manager.write_admitted_frame(i)}
+    fn register_provider(&self,i:&crate::handoff_native_binding::Registration)->Result<(),String>{self.manager.register_native_provider(i)}
+    fn activate_provider(&self,i:&crate::handoff_native_binding::Activation)->Result<(),String>{self.manager.activate_native_provider(i)}
+}
+fn idle_provider_command(provider:&str)->Result<&'static str,String>{
+    match provider{"codex"=>Ok("codex"),"claude"=>Ok("claude"),"opencode"=>Ok("opencode"),
+        _=>Err("provider has no documented idle conversation startup".into())}
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PtySessionSummary {
     pub id: String,
     pub pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_run_id: Option<String>,
     pub initial_cwd: Option<String>,
     pub command: String,
     pub scrollback_bytes: usize,
@@ -644,6 +687,8 @@ impl PtyManager {
         Self {
             ptys: Mutex::new(HashMap::new()),
             ensure_lock: Mutex::new(()),
+            native_operation_boundary: Arc::new(std::sync::RwLock::new(())),
+            native_handoff_reservations: Mutex::new(HashMap::new()),
             session_events: Arc::new(Mutex::new(Vec::new())),
             persist_dir: None,
         }
@@ -661,6 +706,8 @@ impl PtyManager {
         Self {
             ptys: Mutex::new(HashMap::new()),
             ensure_lock: Mutex::new(()),
+            native_operation_boundary: Arc::new(std::sync::RwLock::new(())),
+            native_handoff_reservations: Mutex::new(HashMap::new()),
             session_events: Arc::new(Mutex::new(Vec::new())),
             persist_dir,
         }
@@ -672,9 +719,88 @@ impl PtyManager {
         Self {
             ptys: Mutex::new(HashMap::new()),
             ensure_lock: Mutex::new(()),
+            native_operation_boundary: Arc::new(std::sync::RwLock::new(())),
+            native_handoff_reservations: Mutex::new(HashMap::new()),
             session_events: Arc::new(Mutex::new(Vec::new())),
             persist_dir: Some(dir),
         }
+    }
+
+    pub(crate) fn forget_owned_checkpoint(&self,id:&str)->Result<(),String>{
+        let _operation=self.ordinary_operation()?;self.deny_protected_effect(id)?;
+        forget_persisted_session(id);Ok(())
+    }
+    pub(crate) fn update_owned_recovery(&self,id:&str,update:AgentRecoveryManifestUpdate)->Result<(),String>{
+        let _operation=self.ordinary_operation()?;self.deny_protected_effect(id)?;
+        update_agent_recovery_manifest(id,update)
+    }
+    fn ordinary_operation(&self)->Result<std::sync::RwLockReadGuard<'_,()>,String>{
+        self.native_operation_boundary.try_read().map_err(|_|"native host operation owns sessions; ordinary effect deferred".into())
+    }
+    fn deny_protected_effect(&self,id:&str)->Result<(),String>{
+        let ptys=self.ptys.lock().map_err(|_|"native registry unavailable")?;
+        if self.native_handoff_reservations.lock().map_err(|_|"native reservation projection unavailable")?.contains_key(id)||
+            ptys.get(id).is_some_and(|e|e.handoff_operation_id.is_some()||e.protected_source_operation.is_some()){
+            return Err("protected handoff session requires authenticated native host; no ordinary effect".into());
+        }Ok(())
+    }
+    pub(crate) fn with_host_owned_operation<T>(&self,operation:impl FnOnce(&dyn crate::handoff_native::NativeSessions)->Result<T,String>)->Result<T,String>{
+        let _guard=self.native_operation_boundary.try_write().map_err(|_|"native ownership boundary busy; no host effect")?;
+        // The authority's entire method runs while this lease is alive. If that
+        // method calls Node, it MUST wait through final broker publication/catch;
+        // a transport that replies early is not an installed supported bridge.
+        operation(&NativeOperationLease{manager:self})
+    }
+    fn register_native_provider(&self,i:&crate::handoff_native_binding::Registration)->Result<(),String>{
+        crate::handoff_native_binding::validate_registration(i)?;
+        let mut ptys=self.ptys.lock().map_err(|_|"native registry unavailable")?;
+        for route in std::iter::once(&i.source).chain(i.target.iter()){
+            let entry=ptys.get(&route.pane).ok_or("native provider route missing")?;
+            if entry.ended.load(Ordering::Acquire)||entry.runtime_run_id!=route.ownership.run_id||
+                entry.child.try_lock().ok().and_then(|mut c|if matches!(c.try_wait(),Ok(None)){c.process_id()}else{None})!=Some(route.ownership.pid){return Err("native provider run/PID changed".into());}
+        }
+        if let Some(target)=i.target.as_ref(){
+            let entry=ptys.get(&target.pane).ok_or("native target missing")?;
+            let same_mapping=entry.provider_binding.as_ref().map_or(true,|b|b.route==*target&&b.generation==i.generation);
+            // A fresh signed renewal can refresh this exact current projection;
+            // preserve released task state and never resubmit. An uncertain
+            // activation or a changed actual route remains blocked.
+            if entry.handoff_operation_id!=i.lifecycle_operation_id||entry.handoff_generation.as_ref()!=Some(&i.generation)||
+                !same_mapping||!entry.handoff_startup.as_ref().is_some_and(|s|!s.activation_attempted||s.activated){
+                return Err("native provider target mapping/lifecycle changed or activation uncertain".into());}
+        }
+        for route in std::iter::once(&i.source).chain(i.target.iter()){
+            let entry=ptys.get_mut(&route.pane).unwrap();
+            if entry.provider_binding.as_ref().is_some_and(|b|i.revision<=b.revision){return Err("native provider registration revision stale".into());}
+        }
+        for route in std::iter::once(&i.source).chain(i.target.iter()){
+            ptys.get_mut(&route.pane).unwrap().provider_binding=Some(NativeProviderBinding{route:route.clone(),hash:i.provider_binding_hash.clone(),revision:i.revision,generation:i.generation.clone()});
+        }Ok(())
+    }
+    fn activate_native_provider(&self,i:&crate::handoff_native_binding::Activation)->Result<(),String>{
+        crate::handoff_native_binding::validate_activation(i)?;
+        let writer={
+            let mut ptys=self.ptys.lock().map_err(|_|"native registry unavailable")?;
+            let entry=ptys.get_mut(&i.target_pane).ok_or("native activation target missing")?;
+            let binding=entry.provider_binding.as_ref().ok_or("native actual provider registration missing")?;
+            if entry.ended.load(Ordering::Acquire)||entry.runtime_run_id!=i.target_ownership.run_id||
+                entry.child.try_lock().ok().and_then(|mut c|if matches!(c.try_wait(),Ok(None)){c.process_id()}else{None})!=Some(i.target_ownership.pid)||
+                binding.route.actual_session!=i.target_session||binding.route.logical_route_session!=i.target_logical_route_session||
+                binding.hash!=i.provider_binding_hash||binding.revision!=i.provider_binding_revision||binding.generation!=i.provider_binding_generation||
+                entry.handoff_operation_id.as_ref()!=Some(&i.lifecycle_operation_id)||entry.handoff_generation.as_ref()!=Some(&i.provider_binding_generation){
+                return Err("native activation current actual provider/generation changed".into());
+            }
+            let startup=entry.handoff_startup.as_mut().ok_or("native startup task not retained")?;
+            if startup.activation_attempted||startup.task!=i.startup_task{return Err("native task already attempted or exact retained bytes changed; no retry".into());}
+            startup.activation_attempted=true;
+            entry.writer.clone()
+        };
+        let mut writer=writer.lock().map_err(|_|format!("native startup uncertain; operation={}; no retry",i.id))?;
+        writer.write_all(&i.wire).and_then(|_|writer.flush()).map_err(|_|format!("native startup write unknown; operation={}; no retry",i.id))?;
+        drop(writer);
+        let mut ptys=self.ptys.lock().map_err(|_|"native activation final projection unavailable; no retry")?;
+        ptys.get_mut(&i.target_pane).and_then(|e|e.handoff_startup.as_mut()).ok_or("native startup outcome lost; no retry")?.activated=true;
+        Ok(())
     }
 
     pub fn ensure<R: Runtime>(
@@ -703,8 +829,50 @@ impl PtyManager {
         cols: Option<u16>,
         rows: Option<u16>,
     ) -> Result<(String, bool), String> {
+        let _operation=self.ordinary_operation()?;
+        if let Some(id)=id.as_ref(){
+            let reserved=self.native_handoff_reservations.lock().map_err(|_|"native reservation unavailable")?.contains_key(id);
+            let ptys=self.ptys.lock().map_err(|_|"native registry unavailable")?;
+            if let Some(entry)=ptys.get(id){
+                if entry.handoff_operation_id.is_some()||entry.protected_source_operation.is_some(){
+                    if entry.ended.load(Ordering::Acquire){return Err("protected session ended; no ordinary relaunch".into());}
+                    return Ok((id.clone(),true));
+                }
+            }
+            if reserved{return Err("native handoff target outcome unknown; no ordinary launch/retry".into());}
+        }
+        self.ensure_with_sink_mode(event_sink,id,cwd,command,cols,rows,None)
+    }
+
+    fn ensure_with_sink_mode<S: PtyEventSink>(
+        &self,event_sink:S,id:Option<String>,cwd:Option<String>,command:Option<String>,
+        cols:Option<u16>,rows:Option<u16>,handoff:Option<&crate::handoff_native::Intent>,
+    ) -> Result<(String, bool), String> {
         let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let _ensure_guard = self.ensure_lock.lock().unwrap();
+        if let Some(intent)=handoff {
+            let ptys=self.ptys.lock().map_err(|_|"native session registry unavailable")?;
+            let source=ptys.get(&intent.source_pane).ok_or("native handoff source missing")?;
+            let pid=source.child.try_lock().ok().and_then(|mut child| if matches!(child.try_wait(),Ok(None)){child.process_id()}else{None});
+            if source.ended.load(Ordering::Acquire)||source.runtime_run_id!=intent.source_run_id||
+                pid!=Some(intent.source_pid)||ptys.contains_key(&id)||id!=intent.target_pane||
+                self.native_handoff_reservations.lock().map_err(|_|"native reservation unavailable")?.contains_key(&id) {
+                return Err("native handoff source instance changed or target already owned".into());
+            }
+            if self.persist_dir.as_ref().is_some_and(|dir|[meta_path(dir,&id),scrollback_path(dir,&id),
+                history_path(dir,&id),lifecycle_path(dir,&id)].iter().any(|path|path.exists())) {
+                return Err("native handoff target has retained ownership; reconcile without reuse".into());
+            }
+        }
+        if let Some(intent)=handoff {
+            let mut reserved=self.native_handoff_reservations.lock().map_err(|_|"native reservation unavailable")?;
+            reserved.insert(intent.source_pane.clone(),intent.operation_id.clone());
+            reserved.insert(intent.target_pane.clone(),intent.operation_id.clone());
+            drop(reserved);
+            self.ptys.lock().map_err(|_|"native source protection unavailable")?
+                .get_mut(&intent.source_pane).ok_or("native source missing before effect")?
+                .protected_source_operation=Some(intent.operation_id.clone());
+        }
         let ended_entry = {
             let mut ptys = self.ptys.lock().unwrap();
             match ptys.get(&id) {
@@ -738,10 +906,10 @@ impl PtyManager {
         // the grid (see the buffer build below) and the fresh shell reopens at the
         // saved working directory. The replay is made safe for dead full-screen
         // apps by appending RESTORE_NORMALIZE_SEQUENCE.
-        let mut persisted = self
+        let mut persisted = if handoff.is_some(){None}else{self
             .persist_dir
             .as_ref()
-            .and_then(|dir| load_persisted(dir, &id));
+            .and_then(|dir| load_persisted(dir, &id))};
         // TC-054: a hand-started agent (not launched via the agent button) leaves no
         // AgentTerminal manifest, so it would cold-restore as a bare shell. Its live
         // per-pane sidecar knows the conversation id — enrich from it so the existing
@@ -752,7 +920,7 @@ impl PtyManager {
             .as_ref()
             .map(|dir| is_sidecar_recovery_allowed(read_session_disposition(dir, &id)))
             .unwrap_or(true);
-        let needs_sidecar_recovery = sidecar_recovery_allowed
+        let needs_sidecar_recovery = handoff.is_none() && sidecar_recovery_allowed
             && persisted.as_ref().map_or(true, |entry| {
                 entry.recovery_kind != Some(SessionRecoveryKind::AgentTerminal)
                     && entry
@@ -780,7 +948,23 @@ impl PtyManager {
             .as_ref()
             .map(|entry| plan_agent_restore(entry, false));
         let recovery_command = recovery_plan.as_ref().and_then(|plan| plan.command.clone());
-        let cwd = cwd.or_else(|| persisted.as_ref().and_then(|entry| entry.cwd.clone()));
+        // TF-088: a resumed chat reopens in the folder the chat itself belongs to. The
+        // card's saved folder can be a different project (a shell that was `cd`-ed
+        // elsewhere before the agent started), which after the 2026-10-08 reboot put a
+        // film chat in the Linux-tools folder without its files or Blender connection.
+        let transcript_cwd = recovery_plan
+            .as_ref()
+            .filter(|plan| plan.status == AgentRestoreStatus::Resuming)
+            .and_then(|_| persisted.as_ref())
+            .and_then(|entry| {
+                provider_transcript_cwd(
+                    entry.provider.as_deref()?,
+                    entry.provider_session_id.as_deref()?,
+                )
+            });
+        let cwd = transcript_cwd
+            .or(cwd)
+            .or_else(|| persisted.as_ref().and_then(|entry| entry.cwd.clone()));
         let suppress_agent_relaunch = recovery_plan.as_ref().is_some_and(|plan| {
             matches!(
                 plan.status,
@@ -906,7 +1090,16 @@ impl PtyManager {
         // (`ensure`) and daemon-owned (`ensure_detached`) spawns — both route here.
         cmd.env("TERMFLEET_PANE_ID", &id);
         // A fresh PTY process has a fresh publisher run; reattach keeps this environment.
-        cmd.env("TERMFLEET_STATUS_RUN_ID", uuid::Uuid::new_v4().to_string());
+        let runtime_run_id=uuid::Uuid::new_v4().to_string();
+        cmd.env("TERMFLEET_STATUS_RUN_ID", &runtime_run_id);
+        if let Some(intent)=handoff {
+            // The known SessionStart injector reads this environment channel.
+            // Idle quarantine does not receive its task/context descriptor.
+            cmd.env_remove("TERMFLEET_HANDOFF_DESCRIPTOR");
+            cmd.env("TERMFLEET_HANDOFF_OPERATION_ID",&intent.operation_id);
+            cmd.env("TERMFLEET_HANDOFF_GENERATION",&intent.generation);
+            cmd.env("TERMFLEET_HANDOFF_TARGET_LOGICAL_ROUTE_SESSION",&intent.target_session);
+        }
 
         // Set working directory
         if let Some(dir) = &cwd {
@@ -1015,6 +1208,7 @@ impl PtyManager {
         let reader_persist_dir = self.persist_dir.clone();
         let reader_pane_cgroup = pane_cgroup.clone();
         let reader_was_resuming = resume_lock.is_some();
+        let reader_native_boundary=self.native_operation_boundary.clone();
         // An agent the operator actually used runs for more than a moment. A
         // clean exit inside this window is the resume command itself finishing,
         // not someone typing `/exit`, and must stay retryable.
@@ -1025,6 +1219,7 @@ impl PtyManager {
             .stack_size(READER_THREAD_STACK_BYTES)
             .spawn(move || {
                 let mut buf = [0u8; 4096];
+                let mut utf8_carry: Vec<u8> = Vec::new();
                 let end_event = loop {
                     if reader_stop_thread.load(Ordering::Relaxed) {
                         break Some(
@@ -1051,7 +1246,10 @@ impl PtyManager {
                                         .with_reason("shutdown requested after read"),
                                 );
                             }
-                            let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                            let data = decode_utf8_stream(&mut utf8_carry, &buf[..n]);
+                            if data.is_empty() {
+                                continue;
+                            }
                             append_pty_output(&output_reader, &data);
                             broadcast_pty_output(&subscribers_reader, &data);
                             if event_sink.emit_pty_data(&event_id, &data).is_err() {
@@ -1072,6 +1270,10 @@ impl PtyManager {
                     }
                 };
                 if let Some(mut event) = end_event {
+                    // Controlled reader kill/reap/metadata transition cannot run
+                    // during the whole private host operation. Natural process
+                    // exit remains possible and is checked in native receipts.
+                    let _native_reader_guard=reader_native_boundary.read().unwrap();
                     if !reader_stop_thread.load(Ordering::Relaxed) {
                         let mut child = child_reader.lock().unwrap();
                         let exit_status = match child.try_wait() {
@@ -1165,6 +1367,12 @@ impl PtyManager {
         let mut ptys = self.ptys.lock().unwrap();
         if ptys.contains_key(&id) {
             let mut loser = PtyEntry {
+                runtime_run_id:runtime_run_id.clone(),
+                handoff_generation:handoff.map(|i|i.generation.clone()),
+                handoff_operation_id:handoff.map(|i|i.operation_id.clone()),
+                handoff_startup:handoff.map(|i|HandoffStartup{task:i.startup_task.clone(),activation_attempted:false,activated:false}),
+                protected_source_operation:None,
+                provider_binding:None,
                 master: pair.master,
                 writer,
                 child,
@@ -1197,6 +1405,12 @@ impl PtyManager {
         ptys.insert(
             id.clone(),
             PtyEntry {
+                runtime_run_id,
+                handoff_generation:handoff.map(|i|i.generation.clone()),
+                handoff_operation_id:handoff.map(|i|i.operation_id.clone()),
+                handoff_startup:handoff.map(|i|HandoffStartup{task:i.startup_task.clone(),activation_attempted:false,activated:false}),
+                protected_source_operation:None,
+                provider_binding:None,
                 master: pair.master,
                 writer,
                 child,
@@ -1240,12 +1454,74 @@ impl PtyManager {
         self.ensure_with_sink(DetachedPtyEventSink, id, cwd, command, cols, rows)
     }
 
+    /// Called only inside a current private host-owned broker lifecycle commit.
+    /// It never reuses/restores/kills a source or target and never writes a draft.
+    fn ensure_handoff_fresh(&self,intent:&crate::handoff_native::Intent)->Result<crate::handoff_native::NativeRun,String>{
+        // The task-bearing command is NEVER executed. Only documented interactive
+        // bare binaries start idle; no invented provider flags or guessed UUID.
+        let idle=idle_provider_command(&intent.launch.provider)?;
+        let(id,reused)=self.ensure_with_sink_mode(DetachedPtyEventSink,Some(intent.target_pane.clone()),
+            intent.launch.cwd.clone(),Some(idle.into()),Some(intent.launch.cols),Some(intent.launch.rows),Some(intent))?;
+        {
+            let mut ptys=self.ptys.lock().map_err(|_|"native source protection unavailable")?;
+            ptys.get_mut(&intent.source_pane).ok_or("native source disappeared")?.protected_source_operation=Some(intent.operation_id.clone());
+        }
+        if reused{return Err("native handoff unexpectedly reused a session; reconcile without retry".into());}
+        let ptys=self.ptys.lock().map_err(|_|"native session registry unavailable after start")?;
+        let target=ptys.get(&id).ok_or("native handoff target outcome unavailable")?;
+        let pid=target.child.try_lock().ok().and_then(|mut child| if matches!(child.try_wait(),Ok(None)){child.process_id()}else{None}).ok_or("native target PID outcome unavailable")?;
+        if target.ended.load(Ordering::Acquire){return Err("native target ended; reconcile without retry".into());}
+        Ok(crate::handoff_native::NativeRun{pane:id,run_id:target.runtime_run_id.clone(),pid})
+    }
+
+    /// Private framed delivery only. Ordinary keyboard/write/stream paths stay unchanged.
+    fn write_admitted_frame(&self,intent:&crate::handoff_native::InputIntent)->Result<(),String>{
+        if intent.source_ownership.pane!=intent.source_pane||intent.target_ownership.pane!=intent.target_pane||
+            intent.wire.is_empty()||intent.wire.len()!=intent.wire_bytes||crate::handoff_native::sha256(&intent.wire)!=intent.wire_sha256 {
+            return Err("native admitted frame bytes/binding changed; no write initiated".into());
+        }
+        let _ensure_guard=self.ensure_lock.lock().map_err(|_|"native creation boundary unavailable")?;
+        let writer={
+            let ptys=self.ptys.lock().map_err(|_|"native session registry unavailable")?;
+            for ownership in [&intent.source_ownership,&intent.target_ownership] {
+                let entry=ptys.get(&ownership.pane).ok_or("native admitted session missing")?;
+                if entry.ended.load(Ordering::Acquire)||entry.runtime_run_id!=ownership.run_id||
+                    entry.child.try_lock().ok().and_then(|mut child| if matches!(child.try_wait(),Ok(None)){child.process_id()}else{None})!=Some(ownership.pid){
+                    return Err("native admitted run/PID ownership changed; no write initiated".into());
+                }
+            }
+            for (pane,actual,logical) in [(&intent.source_pane,&intent.source_session,&intent.source_logical_route_session),
+                (&intent.target_pane,&intent.target_session,&intent.target_logical_route_session)] {
+                let entry=ptys.get(pane).ok_or("native mapped session missing")?;
+                let binding=entry.provider_binding.as_ref().ok_or("actual provider mapping unavailable; no write initiated")?;
+                if binding.route.actual_session!=*actual || binding.route.logical_route_session!=*logical || binding.hash!=intent.provider_binding_hash {
+                    return Err("native actual provider mapping changed; no write initiated".into());
+                }
+            }
+            let target=ptys.get(&intent.target_pane).ok_or("native admitted target missing")?;
+            if target.handoff_startup.as_ref().is_some_and(|s|!s.activated){return Err("native target task quarantined; no write initiated".into());}
+            let binding_generation=target.provider_binding.as_ref().map(|b|b.generation.as_str());
+            if intent.generation.as_deref()!=binding_generation||target.handoff_operation_id!=intent.lifecycle_operation_id||
+                target.handoff_generation.as_ref().is_some_and(|g|Some(g)!=intent.generation.as_ref()) {
+                return Err("native admitted target lifecycle generation changed; no write initiated".into());
+            }
+            target.writer.clone()
+        };
+        // Keep the creation lock through this single write. No reopen or retry after
+        // partial/error write: the existing broker owns uncertainty/reconciliation.
+        let mut writer=writer.lock().map_err(|_|"native admitted writer unavailable")?;
+        let result=writer.write_all(&intent.wire).and_then(|_|writer.flush());
+        result.map_err(|_|format!("native framed write outcome unknown; operation={}; reconcile without retry",intent.id))
+    }
+
     #[cfg(test)]
     fn active_count(&self) -> usize {
         self.ptys.lock().unwrap().len()
     }
 
     pub fn write(&self, id: &str, data: &str) -> Result<(), String> {
+        let _operation=self.ordinary_operation()?;
+        self.deny_protected_effect(id)?;
         trace_pty(
             "pty.write.start",
             format!("id={id} bytes={}", data.len()),
@@ -1288,6 +1564,8 @@ impl PtyManager {
     }
 
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
+        let _operation=self.ordinary_operation()?;
+        self.deny_protected_effect(id)?;
         let mut ptys = self.ptys.lock().unwrap();
         let entry = ptys
             .get_mut(id)
@@ -1329,6 +1607,8 @@ impl PtyManager {
     }
 
     pub fn kill_with_disposition(&self, id: &str, user_requested: bool) -> Result<(), String> {
+        let _operation=self.ordinary_operation()?;
+        self.deny_protected_effect(id)?;
         let mut entry = {
             let mut ptys = self.ptys.lock().unwrap();
             ptys.remove(id)
@@ -1371,6 +1651,8 @@ impl PtyManager {
         id: &str,
         reviewed: bool,
     ) -> Result<(), String> {
+        let _operation=self.ordinary_operation()?;
+        self.deny_protected_effect(id)?;
         let dir = self
             .persist_dir
             .as_ref()
@@ -1513,6 +1795,7 @@ impl PtyManager {
                         entry.last_exit.clone(),
                         entry.initial_cwd.clone(),
                         entry.command.clone(),
+                        entry.runtime_run_id.clone(),
                     )
                 })
                 .collect()
@@ -1528,10 +1811,11 @@ impl PtyManager {
         handles
             .into_iter()
             .map(
-                |(id, child, output, subscribers, last_exit, initial_cwd, command)| {
+                |(id, child, output, subscribers, last_exit, initial_cwd, command, runtime_run_id)| {
                     PtySessionSummary {
                         id,
                         pid: child.try_lock().ok().and_then(|c| c.process_id()),
+                        runtime_run_id: Some(runtime_run_id),
                         initial_cwd,
                         command,
                         scrollback_bytes: output
@@ -1553,9 +1837,10 @@ impl PtyManager {
     /// Their scrollback and recovery metadata are persisted separately, so keeping
     /// these entries forever only makes inventory and reconciliation scan stale state.
     pub fn reap_ended_sessions(&self) -> usize {
+        let Ok(_operation)=self.ordinary_operation()else{return 0};
         let mut ptys = self.ptys.lock().unwrap();
         let before = ptys.len();
-        ptys.retain(|_, entry| !entry.ended.load(Ordering::Acquire));
+        ptys.retain(|_, entry| entry.handoff_operation_id.is_some() || entry.protected_source_operation.is_some() || !entry.ended.load(Ordering::Acquire));
         before.saturating_sub(ptys.len())
     }
 
@@ -2249,8 +2534,112 @@ pub fn data_root_dir() -> Option<PathBuf> {
         .map(|dir| dir.join("terminal-workspace"))
 }
 
+/// TF-093: decode PTY output without splitting a multibyte character across reads.
+/// Each read used to be decoded on its own, so a 3-byte box-drawing character cut
+/// between two reads became two U+FFFD cells; a full-width rule then wrapped and
+/// every later cell update of a cell-diff TUI (Claude Code) landed one row off.
+/// An incomplete trailing sequence (at most 3 bytes) waits for the next read;
+/// genuinely invalid bytes still become U+FFFD.
+fn decode_utf8_stream(carry: &mut Vec<u8>, chunk: &[u8]) -> String {
+    carry.extend_from_slice(chunk);
+    let mut out = String::with_capacity(carry.len());
+    let mut rest: &[u8] = carry;
+    loop {
+        match std::str::from_utf8(rest) {
+            Ok(text) => {
+                out.push_str(text);
+                rest = &[];
+                break;
+            }
+            Err(error) => {
+                let valid = error.valid_up_to();
+                out.push_str(std::str::from_utf8(&rest[..valid]).unwrap_or_default());
+                match error.error_len() {
+                    Some(bad) => {
+                        out.push('\u{FFFD}');
+                        rest = &rest[valid + bad..];
+                    }
+                    None => {
+                        rest = &rest[valid..];
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    let tail = rest.to_vec();
+    *carry = tail;
+    out
+}
+
 fn default_persist_dir() -> Option<PathBuf> {
     data_root_dir().map(|dir| dir.join("sessions"))
+}
+
+/// TF-088: the working folder recorded in a provider's own chat record (Claude
+/// `~/.claude/projects/*/<id>.jsonl`, Codex `~/.codex/sessions/**/rollout-*-<id>.jsonl`).
+/// Returns None unless the record names a folder that still exists.
+fn provider_transcript_cwd(provider: &str, session_id: &str) -> Option<String> {
+    let home = dirs::home_dir()?;
+    provider_transcript_cwd_in(&home, provider, session_id)
+}
+
+fn provider_transcript_cwd_in(home: &Path, provider: &str, session_id: &str) -> Option<String> {
+    use std::io::BufRead;
+    let session_id = session_id.trim();
+    if session_id.is_empty()
+        || !session_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return None;
+    }
+    let record = match provider {
+        "claude" => std::fs::read_dir(home.join(".claude").join("projects"))
+            .ok()?
+            .flatten()
+            .map(|entry| entry.path().join(format!("{session_id}.jsonl")))
+            .find(|path| path.is_file())?,
+        "codex" => find_codex_rollout(&home.join(".codex").join("sessions"), session_id, 3)?,
+        _ => return None,
+    };
+    let reader = std::io::BufReader::new(std::fs::File::open(record).ok()?);
+    for line in reader.lines().take(400).map_while(Result::ok) {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        let cwd = value
+            .get("cwd")
+            .or_else(|| value.get("payload").and_then(|payload| payload.get("cwd")))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|cwd| !cwd.is_empty() && Path::new(cwd).is_dir());
+        if let Some(cwd) = cwd {
+            return Some(cwd.to_string());
+        }
+    }
+    None
+}
+
+fn find_codex_rollout(dir: &Path, session_id: &str, depth: u8) -> Option<PathBuf> {
+    let suffix = format!("{session_id}.jsonl");
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if depth > 0 {
+                if let Some(found) = find_codex_rollout(&path, session_id, depth - 1) {
+                    return Some(found);
+                }
+            }
+        } else if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("rollout-") && name.ends_with(&suffix))
+        {
+            return Some(path);
+        }
+    }
+    None
 }
 
 /// Remove the durable checkpoint for an explicitly closed session. The current
@@ -2428,7 +2817,8 @@ pub fn list_persisted_sessions() -> Vec<PersistedSessionSummary> {
     sessions
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(rename_all="camelCase")]
 pub struct AgentRecoveryManifestUpdate {
     pub cwd: Option<String>,
     pub provider: Option<String>,
@@ -2846,6 +3236,81 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
         snapshot
+    }
+
+    #[test]
+    fn split_multibyte_character_survives_read_boundaries() {
+        let rule = "──x".as_bytes(); // e2 94 80 e2 94 80 78
+        let mut carry = Vec::new();
+        let mut out = String::new();
+        for split in [1usize, 2, 4, 5] {
+            carry.clear();
+            out.clear();
+            out.push_str(&super::decode_utf8_stream(&mut carry, &rule[..split]));
+            out.push_str(&super::decode_utf8_stream(&mut carry, &rule[split..]));
+            assert_eq!(out, "──x", "split at {split}");
+            assert!(carry.is_empty());
+        }
+        // Byte-at-a-time Hebrew and emoji.
+        carry.clear();
+        out.clear();
+        for byte in "שלום 👋".as_bytes() {
+            out.push_str(&super::decode_utf8_stream(&mut carry, std::slice::from_ref(byte)));
+        }
+        assert_eq!(out, "שלום 👋");
+        // Genuinely invalid bytes still become one replacement each, and do not stall.
+        carry.clear();
+        assert_eq!(super::decode_utf8_stream(&mut carry, b"a\xffb"), "a\u{FFFD}b");
+        assert!(carry.is_empty());
+    }
+
+    // TF-088: after the 2026-10-08 reboot a film chat resumed in the Linux-tools
+    // folder saved on its card. The chat's own record names the right folder.
+    #[test]
+    fn resumed_chat_folder_comes_from_the_providers_own_record() {
+        let home = std::env::temp_dir().join(format!("tf088-home-{}", std::process::id()));
+        let film = home.join("film");
+        let tools = home.join("tools");
+        std::fs::create_dir_all(&film).unwrap();
+        std::fs::create_dir_all(&tools).unwrap();
+        let claude_dir = home.join(".claude/projects/-film");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        std::fs::write(
+            claude_dir.join("beb2d3de-8c1c-4d28-bb64-a8133d3cfbc7.jsonl"),
+            format!(
+                "{{\"type\":\"last-prompt\"}}\nnot json\n{{\"cwd\":\"{}\",\"type\":\"user\"}}\n",
+                film.display()
+            ),
+        )
+        .unwrap();
+        let codex_dir = home.join(".codex/sessions/2026/10/08");
+        std::fs::create_dir_all(&codex_dir).unwrap();
+        std::fs::write(
+            codex_dir.join("rollout-2026-10-08T09-00-00-01a0c8a2-efba-7ae3-84d0-869f5aab532f.jsonl"),
+            format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{}\"}}}}\n",
+                tools.display()
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(
+            super::provider_transcript_cwd_in(&home, "claude", "beb2d3de-8c1c-4d28-bb64-a8133d3cfbc7"),
+            Some(film.display().to_string())
+        );
+        assert_eq!(
+            super::provider_transcript_cwd_in(&home, "codex", "01a0c8a2-efba-7ae3-84d0-869f5aab532f"),
+            Some(tools.display().to_string())
+        );
+        // Unknown chats, unsafe ids and folders that no longer exist fall back to the card.
+        assert_eq!(super::provider_transcript_cwd_in(&home, "claude", "missing-id"), None);
+        assert_eq!(super::provider_transcript_cwd_in(&home, "claude", "../escape"), None);
+        std::fs::remove_dir_all(&film).unwrap();
+        assert_eq!(
+            super::provider_transcript_cwd_in(&home, "claude", "beb2d3de-8c1c-4d28-bb64-a8133d3cfbc7"),
+            None
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[cfg(target_os = "linux")]

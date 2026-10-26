@@ -7,7 +7,7 @@ use crate::daemon_ipc::{self, LocalStream};
 use crate::platform_paths;
 use crate::user_config;
 use crate::pty::{
-    forget_persisted_session, list_persisted_sessions, update_agent_recovery_manifest,
+    list_persisted_sessions,
     AgentRecoveryManifestUpdate, PersistedSessionSummary, PtyManager, PtyOutputChunk,
     PtySessionEvent, PtySessionSummary,
 };
@@ -1121,12 +1121,53 @@ pub fn daemon_ensure_session(
     }
 }
 
+/// A renderer proposal cannot supply the private authenticated lifecycle bridge.
+#[tauri::command]
+pub fn handoff_lifecycle_quarantine(request_id:String,descriptor:serde_json::Value,source_pane:String,source_session:String,
+    target_pane:String,provider:String,command:String,startup_task:String,cwd:Option<String>,cols:u16,rows:u16,unsent_draft:serde_json::Value)->Result<serde_json::Value,String>{
+    let proposal=serde_json::json!({"requestId":request_id,"descriptor":descriptor,"sourcePane":source_pane,
+        "sourceSession":source_session,"targetPane":target_pane,"provider":provider,"command":command,"startupTask":startup_task,
+        "cwd":cwd,"cols":cols,"rows":rows,"unsentDraft":unsent_draft});
+    match crate::daemon::send_existing_handoff_request(DaemonRequest::HandoffLifecycleQuarantine{proposal})?{
+        DaemonResponse::HandoffLifecycle{receipt}=>Ok(receipt),DaemonResponse::Error{message}=>Err(message),
+        _=>Err("native handoff reply unverified; reconcile request without retry".into())}
+}
+
+#[tauri::command]
+pub fn handoff_unsent_recover(operation_id:String,target_pane:String,target_session:String)->Result<serde_json::Value,String>{
+    let proposal=serde_json::json!({"operationId":operation_id,"targetPane":target_pane,"targetSession":target_session});
+    match crate::daemon::send_existing_handoff_request(DaemonRequest::HandoffUnsentRecover{proposal})?{
+        DaemonResponse::HandoffUnsent{recovery}=>Ok(recovery),DaemonResponse::Error{message}=>Err(message),
+        _=>Err("native unsent recovery reply unverified".into())}
+}
+
+#[tauri::command]
+pub fn handoff_framed_input(proposal:serde_json::Value)->Result<serde_json::Value,String>{
+    match crate::daemon::send_existing_handoff_request(DaemonRequest::HandoffFramedInput{proposal})?{
+        DaemonResponse::HandoffInput{receipt}=>Ok(receipt),DaemonResponse::Error{message}=>Err(message),
+        _=>Err("native framed input reply unverified; reconcile without retry".into())}
+}
+
+/// Untrusted framed proposals. No verified flag/permit is accepted; the daemon
+/// private host validates its existing journal/authenticated source before effects.
+#[tauri::command]
+pub fn handoff_provider_register(proposal:serde_json::Value)->Result<serde_json::Value,String>{
+    match crate::daemon::send_existing_handoff_request(DaemonRequest::HandoffProviderRegister{proposal})?{
+        DaemonResponse::HandoffProvider{receipt}=>Ok(receipt),DaemonResponse::Error{message}=>Err(message),
+        _=>Err("native provider registration outcome unverified; no retry".into())}
+}
+#[tauri::command]
+pub fn handoff_provider_activate(proposal:serde_json::Value)->Result<serde_json::Value,String>{
+    match crate::daemon::send_existing_handoff_request(DaemonRequest::HandoffProviderActivate{proposal})?{
+        DaemonResponse::HandoffProvider{receipt}=>Ok(receipt),DaemonResponse::Error{message}=>Err(message),
+        _=>Err("native provider activation outcome unverified; no retry".into())}
+}
+
 #[tauri::command]
 pub fn daemon_update_agent_recovery_manifest(
     payload: AgentRecoveryManifestPayload,
 ) -> Result<(), String> {
-    update_agent_recovery_manifest(
-        &payload.id,
+    let update=
         AgentRecoveryManifestUpdate {
             cwd: payload.cwd,
             provider: payload.provider,
@@ -1138,8 +1179,10 @@ pub fn daemon_update_agent_recovery_manifest(
             sanitized_resume_command: payload.sanitized_resume_command,
             restore_status: payload.restore_status,
             restore_failure_reason: payload.restore_failure_reason,
-        },
-    )
+        };
+    match send_daemon_request(DaemonRequest::UpdateRecovery{id:payload.id,update})?{
+        DaemonResponse::RecoveryUpdated{ok:true}=>Ok(()),DaemonResponse::Error{message}=>Err(message),
+        _=>Err("native recovery update reply unverified".into())}
 }
 
 #[tauri::command]
@@ -1464,8 +1507,9 @@ pub fn pty_kill(state: State<'_, PtyManager>, id: String) -> Result<(), String> 
 
 #[tauri::command]
 pub fn pty_forget_persisted_session(id: String) -> Result<(), String> {
-    forget_persisted_session(&id);
-    Ok(())
+    match send_daemon_request(DaemonRequest::ForgetCheckpoint{id})?{
+        DaemonResponse::RecoveryUpdated{ok:true}=>Ok(()),DaemonResponse::Error{message}=>Err(message),
+        _=>Err("native checkpoint removal reply unverified".into())}
 }
 
 #[tauri::command]
@@ -1908,7 +1952,7 @@ fn valid_child_request_id(id: &str) -> bool {
 
 /// Take (read and remove) pending child-terminal requests, oldest name first.
 #[tauri::command(async)]
-pub fn child_requests_take() -> Result<Vec<String>, String> {
+pub fn child_requests_take(project_launch_version: Option<u32>) -> Result<Vec<String>, String> {
     const MAX_REQUESTS: usize = 16;
     const MAX_BYTES: u64 = 64 * 1024;
     // Heartbeat: lets `termfleet-child` tell "app listening" from "app closed / listener off"
@@ -1921,6 +1965,13 @@ pub fn child_requests_take() -> Result<Vec<String>, String> {
             .map(|d| d.as_millis().to_string())
             .unwrap_or_default(),
     );
+    if project_launch_version == Some(2) {
+        let updated_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        let temporary = child_requests_dir().join(format!(".project-launch-{}.tmp", uuid::Uuid::new_v4()));
+        let published = fs::write(&temporary, format!("{{\"version\":2,\"updatedAt\":{updated_at}}}"))
+            .and_then(|_| fs::rename(&temporary, child_requests_dir().join(".project-launch")));
+        if published.is_err() { let _ = fs::remove_file(&temporary); }
+    }
     let entries = match fs::read_dir(child_requests_dir()) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -1939,11 +1990,7 @@ pub fn child_requests_take() -> Result<Vec<String>, String> {
     paths.sort();
     let mut taken = Vec::new();
     for path in paths.into_iter().take(MAX_REQUESTS) {
-        let small = fs::metadata(&path).map(|meta| meta.len() <= MAX_BYTES).unwrap_or(false);
-        let text = if small { fs::read_to_string(&path).ok() } else { None };
-        // Remove even an unreadable/oversized request so it cannot wedge the queue.
-        let _ = fs::remove_file(&path);
-        if let Some(text) = text {
+        if let Some(text) = crate::child_request_claim::take(&path, MAX_BYTES) {
             taken.push(text);
         }
     }
@@ -2418,6 +2465,71 @@ pub fn fs_find_master_plan_roots() -> Result<Vec<String>, String> {
     roots.sort();
     roots.dedup();
     Ok(roots)
+}
+
+/// Project folders (git repositories) for the New agent picker, so a project that
+/// is not on the map yet can still be found by name. Walks the configured project
+/// roots, or else the folder the map's projects share. A repository is one
+/// project: its insides (libraries, worktrees) are not listed separately.
+#[tauri::command]
+pub fn fs_find_project_folders(hints: Vec<String>) -> Result<Vec<String>, String> {
+    let config = user_config::load();
+    let mut roots: Vec<PathBuf> = user_config::project_roots(&config)
+        .into_iter()
+        .map(PathBuf::from)
+        .collect();
+    if roots.is_empty() {
+        roots.extend(shared_project_parent(&hints));
+    }
+    let mut found = Vec::new();
+    for root in roots.iter().filter(|root| root.is_dir()) {
+        walk_project_folders(root, 0, &mut found);
+    }
+    found.sort();
+    found.dedup();
+    Ok(found)
+}
+
+const PROJECT_SCAN_MAX_DEPTH: usize = 6;
+const PROJECT_SCAN_MAX_RESULTS: usize = 2000;
+
+fn shared_project_parent(hints: &[String]) -> Option<PathBuf> {
+    let mut paths = hints.iter().map(PathBuf::from).filter(|path| path.is_absolute());
+    let mut common: Vec<std::ffi::OsString> = paths.next()?.parent()?.iter().map(|part| part.to_os_string()).collect();
+    for path in paths {
+        let parent: Vec<_> = path.parent().map(|parent| parent.iter().map(|part| part.to_os_string()).collect()).unwrap_or_default();
+        let shared = common.iter().zip(parent.iter()).take_while(|(a, b)| a == b).count();
+        common.truncate(shared);
+    }
+    // Never scan the whole disk or a bare mount point.
+    (common.len() >= 3).then(|| common.iter().collect())
+}
+
+fn skip_project_scan_dir(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    name.starts_with('.')
+        || matches!(lower.as_str(), "node_modules" | "target" | "dist" | "build" | "vendor" | "waha-sessions")
+        || lower.contains("archive")
+        || lower.contains("backup")
+}
+
+fn walk_project_folders(dir: &std::path::Path, depth: usize, found: &mut Vec<String>) {
+    if depth > PROJECT_SCAN_MAX_DEPTH || found.len() >= PROJECT_SCAN_MAX_RESULTS {
+        return;
+    }
+    if depth > 0 && dir.join(".git").exists() {
+        found.push(dir.to_string_lossy().to_string());
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) && !skip_project_scan_dir(&name) {
+            walk_project_folders(&entry.path(), depth + 1, found);
+        }
+    }
 }
 
 #[tauri::command]
@@ -2971,6 +3083,7 @@ mod tests {
             scrollback_bytes: 0,
             subscriber_count: 0,
             last_exit,
+            runtime_run_id: None,
         }
     }
 
@@ -4009,5 +4122,36 @@ mod tc060_tests {
         assert!(log_is_expired(now - two_days, now));
         assert!(!log_is_expired(now - (two_days - std::time::Duration::from_secs(1)), now));
         assert!(!log_is_expired(now + std::time::Duration::from_secs(1), now));
+    }
+}
+
+#[cfg(test)]
+mod project_folder_scan_tests {
+    use super::*;
+
+    #[test]
+    fn finds_repositories_once_and_skips_archives_and_insides() {
+        let root = std::env::temp_dir().join(format!("tf-project-scan-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for dir in ["a/app/.git", "a/app/libs/inner/.git", "b/deep/tool/.git", "Archive/old/.git", "c/node_modules/pkg/.git", "plain/notes"] {
+            fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        let mut found = Vec::new();
+        walk_project_folders(&root, 0, &mut found);
+        found.sort();
+        let rel: Vec<String> = found.iter().map(|path| path.trim_start_matches(&*root.to_string_lossy()).to_string()).collect();
+        assert_eq!(rel, vec!["/a/app".to_string(), "/b/deep/tool".to_string()]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn shared_parent_of_map_projects_is_the_scan_root() {
+        let hints = vec![
+            "/media/user/data/my-projects/ai-development/devops/termfleet".to_string(),
+            "/media/user/data/my-projects/productivity/flow-state/android".to_string(),
+        ];
+        assert_eq!(shared_project_parent(&hints), Some(PathBuf::from("/media/user/data/my-projects")));
+        assert_eq!(shared_project_parent(&["/a/b".to_string(), "/c/d".to_string()]), None, "never scans the whole disk");
+        assert_eq!(shared_project_parent(&[]), None);
     }
 }

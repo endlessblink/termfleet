@@ -130,6 +130,11 @@ export function resolveMapCardTaskRow(input: {
   taskLine?: string | null;
   durableActivityTask?: string | null;
   statusTask?: string | null;
+  // TF-089: a chat with no task list (or whose only known task IS the Goal) used to
+  // fall to "Task not captured" even though its latest request or the agent's own
+  // latest plain step was known. These are the last real candidates before it.
+  latestRequest?: string | null;
+  narration?: string | null;
 }): string | undefined {
   return (
     resolveDistinctHeaderNow(input.goal, input.lineupTask) ??
@@ -139,8 +144,26 @@ export function resolveMapCardTaskRow(input: {
       ? undefined
       : resolveDistinctHeaderNow(input.goal, input.statusTask)) ??
     (input.lineupTask?.trim() || undefined) ??
-    distinctStatusTask(input.goal, input.statusTask)
+    distinctStatusTask(input.goal, input.statusTask) ??
+    distinctStatusTask(input.goal, input.latestRequest) ??
+    distinctNarrationTask(input.goal, input.narration)
   );
+}
+
+// The agent's own latest plain-language step ("Logging this in the issue tracker
+// before I fix the cause."). Agent prose, so only the task gate applies, not the
+// user-ask gate.
+function distinctNarrationTask(goal?: string | null, value?: string | null) {
+  const candidate = value?.trim();
+  if (
+    !candidate ||
+    !qualityCheckAuthoritativeTaskLabel(candidate, { maxLength: 150 }).ok ||
+    isSupervisedMetaProcessTask(candidate) ||
+    headerTextsEquivalent(goal, candidate)
+  ) {
+    return undefined;
+  }
+  return candidate;
 }
 
 // The status summary's task is the pane's latest request or declared step, so it is

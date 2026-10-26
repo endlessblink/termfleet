@@ -7,7 +7,14 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { reconcileSessionStatus, paneBadgeAttention } from "../src/lib/sessionStatus";
+import { reconcileSessionStatus, paneBadgeAttention as rawPaneBadgeAttention } from "../src/lib/sessionStatus";
+// These legacy screen fixtures describe a freshly captured current viewport.
+// Supply an explicit clock so elapsed-age checks do not depend on wall time.
+const paneBadgeAttention = (terminal: Parameters<typeof rawPaneBadgeAttention>[0], fallback?:string) => {
+  const at=terminal?.terminalVisibleTextUpdatedAt ?? Date.now();
+  return rawPaneBadgeAttention(terminal ? {...terminal,terminalVisibleTextUpdatedAt:at} : terminal,fallback,Math.max(at,terminal?.statusSummary?.updatedAt ?? 0));
+};
+
 import { summaryFromSidecar } from "../src/lib/agentStatusSidecar";
 import { selectStatusPollTargets } from "../src/lib/statusPollTargets";
 import { activityAddsInfo } from "../src/lib/terminalHeaderViewModel";
@@ -22,9 +29,11 @@ const read = (p: string) => readFileSync(join(repo, p), "utf8");
 //    threshold; scrollback markers flipped the badge when the user scrolled.)
 // ---------------------------------------------------------------------------
 
-test("sessionStatus has no clock and only recognizes an explicit live question prompt", () => {
+test("reported status stays clock-free while screen overrides require fresh viewport evidence", () => {
   const src = read("src/lib/sessionStatus.ts");
-  expect(src).not.toMatch(/Date\.now\(/);
+  const reported=src.slice(src.indexOf("export function reconcileSessionStatus"),src.indexOf("export function livePaneScreen"));
+  expect(reported).not.toMatch(/Date\.now\(/);
+  expect(src).toContain("screenBound && screenFresh");
   expect(src).not.toMatch(/lastActivityAt|WORKING_STALE_MS|atRest|activelyRunning/);
   expect(src).not.toMatch(/terminalLooksActivelyWorking|terminalLooksAtRest/);
 });
@@ -61,7 +70,7 @@ test("paneBadgeAttention translates the pane's stored status directly", () => {
   expect(paneBadgeAttention({ statusSummary: { status: "working" } })).toBe("running");
   expect(paneBadgeAttention({ statusSummary: { status: "waiting" } })).toBe("waiting");
   expect(paneBadgeAttention({ statusSummary: { status: "done" } })).toBe("idle");
-  expect(paneBadgeAttention(null)).toBe("idle");
+  expect(paneBadgeAttention(null)).toBe("unavailable");
   // Agent-lane fallback status is honored only when the pane has no stored status.
   expect(paneBadgeAttention(null, "working")).toBe("running");
   expect(paneBadgeAttention({ statusSummary: { status: "idle" } }, "working")).toBe("idle");

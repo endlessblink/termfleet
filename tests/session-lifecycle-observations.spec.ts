@@ -6,13 +6,23 @@ import {recordSessionSoak} from '../scripts/lib/session-soak.mjs';
 const setup=()=>({dir:fs.mkdtempSync('/tmp/termfleet-lifecycle-'),paneId:'synthetic-pane',provider:'codex',runId:'synthetic-run'});
 async function start(options:any){return publishSessionEvent({...options,at:1000,payload:{session_id:'synthetic-chat',hook_event_name:'UserPromptSubmit'},sidecar:{turn:'working'}});}
 function observed(head:any,type:string,seq:number,changes:any={}){return {identity:head.identity,type,observer:'synthetic-backend',seq,at:1000+seq,processToken:'child-42-start-9',...changes};}
+// Oct 7 capsule contract: a rejected/stale observation is no longer dropped (null);
+// it is retained as an uninterpreted source record, but it must never be projected
+// into lifecycle state: same lifecycle, same ended flag, same conversation identity.
+function expectRejected(result:any,before:any){
+ expect(result).not.toBeNull();
+ if(result.captureReceipt?.projected!==undefined) expect(result.captureReceipt.projected).toBe(false);
+ else expect(result.event.kind).toBe('source.observed');
+ expect(result.state.lifecycle).toBe(before.state.lifecycle);expect(result.state.ended).toBe(before.state.ended);
+ expect(result.identity).toEqual(before.identity);
+}
 test('agent exit is durable while shell lives; wrong process and stale binding cannot end a session',async()=>{
  const options=setup();try{
   let head=await start(options);
   head=await publishSessionObservation({...options,observation:observed(head,'agent.started',1)});
   expect(head.state.lifecycle).toBe('working');
-  expect(await publishSessionObservation({...options,observation:observed(head,'agent.exited',2,{processToken:'other',exitCode:0})})).toBeNull();
-  expect(await publishSessionObservation({...options,observation:observed(head,'agent.exited',2,{identity:{...head.identity,runId:'old-run'},exitCode:0})})).toBeNull();
+  expectRejected(await publishSessionObservation({...options,observation:observed(head,'agent.exited',2,{processToken:'other',exitCode:0})}),head);
+  expectRejected(await publishSessionObservation({...options,observation:observed(head,'agent.exited',2,{identity:{...head.identity,runId:'old-run'},exitCode:0})}),head);
   head=await publishSessionObservation({...options,observation:observed(head,'agent.exited',2,{exitCode:0,shellAlive:true})});
   expect(head.state.lifecycle).toBe('ended');expect(head.state.ended).toBe(true);
   expect(JSON.parse(fs.readFileSync(path.join(options.dir,head.journal),'utf8').trim().split('\n').at(-1)!).kind).toBe('process.gone');
@@ -23,7 +33,7 @@ test('Esc and Ctrl+C intent alone do not cancel; only a matched observed interru
   let head=await start(options);head=await publishSessionObservation({...options,observation:observed(head,'agent.started',1)});
   head=await publishSessionObservation({...options,observation:observed(head,'interruption.intent',2,{intentId:'input-1',key:'Escape'})});
   expect(head.state.lifecycle).toBe('working');
-  expect(await publishSessionObservation({...options,observation:observed(head,'interruption.observed',3,{intentId:'wrong'})})).toBeNull();
+  expectRejected(await publishSessionObservation({...options,observation:observed(head,'interruption.observed',3,{intentId:'wrong'})}),head);
   head=await publishSessionObservation({...options,observation:observed(head,'interruption.observed',3,{intentId:'input-1'})});
   expect(head.state.lifecycle).toBe('interrupted');expect(head.state.ended).toBe(false);
   head=await publishSessionEvent({...options,at:1010,payload:{session_id:'synthetic-chat',hook_event_name:'UserPromptSubmit'},sidecar:{turn:'working'}});
@@ -54,9 +64,12 @@ test('source observation ordering survives snapshot loss and rejects duplicate e
   let head=await start(options);const initial=fs.readFileSync(path.join(options.dir,`events-${(await import('../scripts/lib/agent-status-paths.mjs')).fnv(options.paneId)}.json`));
   const observation=observed(head,'agent.started',1);head=await publishSessionObservation({...options,observation});
   fs.writeFileSync(path.join(options.dir,(await import('../scripts/lib/session-event-journal.mjs')).sessionEventHeadName(options.paneId)),initial);
-  expect(await publishSessionObservation({...options,observation})).toBeNull();
+  // Replay restores seq 2; the duplicate is retained as seq 3 (source record only),
+  // so ordering stays monotonic and the next real observation is seq 4.
+  const duplicate=await publishSessionObservation({...options,observation});
+  expectRejected(duplicate,head);expect(duplicate.seq).toBe(3);
   head=await publishSessionObservation({...options,observation:observed(head,'agent.exited',2,{exitCode:0})});
-  expect(head.seq).toBe(3);expect(head.state.lifecycle).toBe('ended');
+  expect(head.seq).toBe(4);expect(head.state.lifecycle).toBe('ended');
  }finally{fs.rmSync(options.dir,{recursive:true,force:true});}
 });
 test('authority compatibility has a sole derived status writer and fails closed without a head',()=>{
@@ -135,7 +148,7 @@ test('crash replay repairs a reconnect head even when the duplicate old-epoch ob
   let head=await start(options);const {sessionEventHeadName}=await import('../scripts/lib/session-event-journal.mjs');const file=path.join(options.dir,sessionEventHeadName(options.paneId));const initial=fs.readFileSync(file);
   const observation=observed(head,'transport.reconnected',1);head=await publishSessionObservation({...options,observation});
   fs.writeFileSync(file,initial);
-  expect(await publishSessionObservation({...options,observation})).toBeNull();
+  expectRejected(await publishSessionObservation({...options,observation}),head);
   const repaired=JSON.parse(fs.readFileSync(file,'utf8'));
   expect(repaired.identity.epoch).toBe(1);
   expect((await import('../shared/sessionSnapshot.mjs')).viewFromSessionSnapshot(repaired,{now:10,wallNow:1010})?.lifecycle).toBe('unknown');
@@ -155,7 +168,7 @@ test('bridge authority without durable evidence exposes Unknown rather than a le
 test('kernel exit evidence without a wait status is Ended, never fabricated Crashed or Finished',async()=>{
  const options=setup();try{
   let head=await start(options);head=await publishSessionObservation({...options,observation:observed(head,'agent.started',1)});
-  expect(await publishSessionObservation({...options,observation:observed(head,'agent.exited',2)})).toBeNull();
+  expectRejected(await publishSessionObservation({...options,observation:observed(head,'agent.exited',2)}),head);
   head=await publishSessionObservation({...options,observation:observed(head,'agent.exited',2,{exitObserved:true})});
   expect(head.state.lifecycle).toBe('ended');expect(head.state.completion).toBeNull();
  }finally{fs.rmSync(options.dir,{recursive:true,force:true});}

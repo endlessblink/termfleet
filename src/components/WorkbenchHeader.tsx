@@ -1139,6 +1139,16 @@ export function WorkbenchHeader() {
       </div>
       <button
         type="button"
+        className="workbench-copy-pane-details workbench-new-agent"
+        title="Start an agent in a new or existing project (Ctrl Alt N)"
+        aria-label="New agent"
+        onClick={() => setNewAgentOpen(true)}
+      >
+        <Bot size={13} strokeWidth={1.8} />
+        New agent
+      </button>
+      <button
+        type="button"
         className="workbench-copy-pane-details"
         title="Copy details from every visible pane"
         aria-label="Copy details from every visible pane"

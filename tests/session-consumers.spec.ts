@@ -71,9 +71,17 @@ test('OpenCode requires real non-summary completion and matches approval/input I
   expect(rejected.state.lifecycle).toBe('unknown');expect(rejected.state.question).toBeNull();
   writer.state.turn='idle';const idle=await publishOpenCodeEvent(writer,{type:'session.idle'},1006);expect(idle.state.completion).toBeNull();
   const info={role:'assistant',sessionID:'synthetic-chat',finish:'stop',time:{completed:1007}};
-  expect(await publishOpenCodeEvent(writer,{type:'message.updated',properties:{info:{...info,summary:true}}},1007)).toBeNull();
-  expect(await publishOpenCodeEvent(writer,{type:'message.updated',properties:{info:{...info,error:{}}}},1007)).toBeNull();
-  expect(await publishOpenCodeEvent(writer,{type:'message.updated',properties:{info:{...info,sessionID:'foreign-chat'}}},1007)).toBeNull();
+  // Oct 7 capsule contract: summary/error/foreign completions are retained as
+  // uninterpreted source records instead of being dropped, but none of them may
+  // be projected as a completion: lifecycle, completion and conversation stay put.
+  for(const rejectedInfo of [{...info,summary:true},{...info,error:{}},{...info,sessionID:'foreign-chat'}]) {
+   const retained=await publishOpenCodeEvent(writer,{type:'message.updated',properties:{info:rejectedInfo}},1007);
+   expect(retained).not.toBeNull();
+   if(retained.captureReceipt?.projected!==undefined) expect(retained.captureReceipt.projected).toBe(false);
+   else expect(retained.event.kind).toBe('source.observed');
+   expect(retained.state.lifecycle).toBe(idle.state.lifecycle);expect(retained.state.completion).toBeNull();
+   expect(retained.identity).toEqual(idle.identity);
+  }
   const done=await publishOpenCodeEvent(writer,{type:'message.updated',properties:{info}},1007);
   expect(done.state.lifecycle).toBe('finished');expect(done.state.completion.source).toBe('vendor-turn-complete');
   expect(applyEvent(writer,{type:'todo.updated',properties:{sessionID:'foreign-chat',todos:[]}})).toBe(false);
@@ -83,12 +91,15 @@ test('OpenCode requires real non-summary completion and matches approval/input I
 test('actual mobile card renders shared labels, escapes text, and keeps the legacy flag off',()=>{
  const html=fs.readFileSync(path.join(process.cwd(),'termcontrol/app/index.html'),'utf8');
  const source=html.slice(html.indexOf('function card(p) {'),html.indexOf('\nasync function chat(id)',html.indexOf('function card(p) {')));
+ const helpers=html.slice(html.indexOf('const groupColor='),html.indexOf('function patchFleet('));
+ const short=html.slice(html.indexOf('const shortTask='),html.indexOf('let visitNotice='));
+ const projectLabel=html.slice(html.indexOf('const projectLabel='),html.indexOf('const icons='));
  const context:any={esc:(s:any)=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'),localStorage:{getItem:()=>null},ago:()=>'',ui:(en:string)=>en,statusHtml:()=>'',technicalTask:()=>false,quietFor:()=>'',trace:()=>''};
- vm.createContext(context);vm.runInContext(source+';globalThis.renderCard=card;',context);
+ vm.createContext(context);vm.runInContext(short+projectLabel+helpers+source+';globalThis.renderCard=card;',context);
  const pane={id:'synthetic',provider:'claude',project:'checkout',turn:'completed',task:'Legacy task',producing:true,sessionAuthority:true,
   sessionViewV2:{lifecycle:'finished',task:{label:'Verify <payment>'},goal:{label:'Reliable checkout'},now:{label:'Checking receipts',stale:true}}};
- const rendered=context.renderCard(pane);expect(rendered).toContain('Task: Verify &lt;payment>');expect(rendered).toContain('Goal: Reliable checkout');expect(rendered).toContain('Last: Checking receipts');expect(rendered).toContain('completed');expect(rendered).not.toContain('Live now');
- const legacy=context.renderCard({...pane,sessionAuthority:false});expect(legacy).not.toContain('data-session-field');expect(legacy).toContain('Legacy task');
+ const rendered=context.renderCard(pane);expect(rendered).toContain('Verify &lt;payment>');expect(rendered).not.toContain('Verify <payment>');expect(rendered).toContain('data-avatar-state="exited"');expect(rendered).toContain('completed');expect(rendered).not.toContain('Live now');
+ const legacy=context.renderCard({...pane,sessionAuthority:false});expect(legacy).not.toContain('Verify &lt;payment>');expect(legacy).toContain('Legacy task');
 });
 
 test('pinned operator Goal reaches the phone only through exact owned-pane metadata',async()=>{

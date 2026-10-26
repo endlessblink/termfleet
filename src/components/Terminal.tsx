@@ -785,6 +785,10 @@ export function TerminalComponent({
             terminalVisibleTextUpdatedAt: updates.terminalVisibleText
               ? Date.now()
               : previous?.terminalVisibleTextUpdatedAt,
+            terminalVisibleTextPaneId: previous?.terminalVisibleTextPaneId,
+            terminalVisibleTextSessionId: previous?.terminalVisibleTextSessionId,
+            terminalVisibleTextRunId: previous?.terminalVisibleTextRunId,
+            terminalVisibleTextDisplayOffset: previous?.terminalVisibleTextDisplayOffset,
             statusSummary: previous?.statusSummary,
             statusSummaryUpdatedAt: previous?.statusSummaryUpdatedAt,
             statusSummarySource: previous?.statusSummarySource,
@@ -1214,8 +1218,9 @@ export function TerminalComponent({
     const snapshot = latestSnapshotRef.current;
     if (!snapshot) return;
     const excerpt = readableSnapshotExcerpt(snapshot);
-    if (!excerpt || latestSnapshotExcerptRef.current === excerpt) return;
-    latestSnapshotExcerptRef.current = excerpt;
+    const excerptKey = `${snapshot.displayOffset}:${excerpt}`;
+    if (!excerpt || latestSnapshotExcerptRef.current === excerptKey) return;
+    latestSnapshotExcerptRef.current = excerptKey;
     const store = useWorkspaceStore.getState();
     const tab = store.tabs.find((candidate) => candidate.id === tabId);
     if (tab) {
@@ -1227,6 +1232,10 @@ export function TerminalComponent({
             ...terminal,
             terminalVisibleText: excerpt,
             terminalVisibleTextUpdatedAt: updatedAt,
+            terminalVisibleTextPaneId: terminal.id,
+            terminalVisibleTextSessionId: terminal.providerSessionId,
+            terminalVisibleTextRunId: terminal.activeRunId,
+            terminalVisibleTextDisplayOffset: snapshot.displayOffset,
           };
         }),
       });

@@ -1,0 +1,9 @@
+.map-utility-panel { container-type:inline-size; flex-shrink:0; min-width:0; }
+.map-utility-content { min-width:0; }
+@container (max-width:250px) {
+  .map-utility-panel > .map-utility-header { grid-template-columns:minmax(0,1fr) auto !important; }
+  .map-utility-header > .map-utility-meta { grid-column:1 / -1; grid-row:2; white-space:normal !important; overflow-wrap:anywhere; }
+  .map-utility-header > button { grid-column:2; grid-row:1; }
+  .map-utility-content .map-service-row { grid-template-columns:minmax(0,1fr) !important; }
+  .map-service-row > .map-service-actions { justify-self:start !important; }
+}

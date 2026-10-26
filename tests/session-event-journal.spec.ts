@@ -61,9 +61,17 @@ test('panes in one folder and successive conversations have independent journals
   expect(first.journal).not.toBe(sibling.journal);
   const changed=await publishSessionEvent({...options,payload:payload('UserPromptSubmit',{session_id:'next-conversation'}),at:1002,sidecar:{turn:'working'}});
   expect(changed.seq).toBe(1);expect(changed.journal).not.toBe(first.journal);
-  expect(await publishSessionEvent({...options,payload:payload('Stop'),at:1003,sidecar:{turn:'idle'}})).toBeNull();
+  // Oct 7 capsule contract: a late event from the previous conversation is no longer
+  // dropped; it is retained in that conversation's own journal for handoff history,
+  // but it is never projected onto the current pane head (identity, seq, lifecycle).
+  const late=await publishSessionEvent({...options,payload:payload('Stop'),at:1003,sidecar:{turn:'idle'}});
+  expect(late.captureReceipt.projected).toBe(false);
+  expect(late.captureReceipt.reference.identity.sessionId).toBe('synthetic-conversation');
+  expect(late.captureReceipt.reference.journal).not.toBe(changed.journal);
+  expect(late.identity.sessionId).toBe('next-conversation');expect(late.seq).toBe(changed.seq);
+  expect(late.state.lifecycle).toBe('working');
   const stored=JSON.parse(fs.readFileSync(path.join(options.dir,sessionEventHeadName(options.paneId)),'utf8'));
-  expect(stored.identity.sessionId).toBe('next-conversation');
+  expect(stored.identity.sessionId).toBe('next-conversation');expect(stored.seq).toBe(changed.seq);expect(stored.state.lifecycle).toBe('working');
  } finally {fs.rmSync(options.dir,{recursive:true,force:true});}
 });
 test('partial crash tail is delimited; a stale sidecar cannot roll back completed plan items',async()=>{

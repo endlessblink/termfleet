@@ -29,7 +29,14 @@ for (const phase of ["hydration", "reconciliation"] as const) {
           invoke: async (cmd: string) => {
             calls.push(cmd);
             if (cmd === "workspace_layout_load") return JSON.stringify(disk);
-            if (cmd === "daemon_list_sessions") return [{ id: closedId, cwd: tab.initialCwd, providerSessionId: providerId, pid: 4201 }];
+            // TF-091: a chat-id tombstone only hides a chat that is not running in an
+            // unclosed pane; a live pane running that chat is shown (see
+            // live-chat-survives-closed-tombstone.spec.ts).
+            if (cmd === "daemon_list_sessions") {
+              return match === "provider"
+                ? [{ id: "pty-unrelated", cwd: "/tmp/elsewhere", pid: 4202 }]
+                : [{ id: closedId, cwd: tab.initialCwd, providerSessionId: providerId, pid: 4201 }];
+            }
             return null;
           },
           transformCallback: () => 1, unregisterCallback: () => {},

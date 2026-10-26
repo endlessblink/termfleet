@@ -24,10 +24,11 @@ import { paneSidecarPath, sidecarPath, statusDir, normalizeCwd } from "./lib/age
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
 import { plainCommandActivity } from "./lib/agent-status-activity.mjs";
 import { closeOtherCopies } from "./lib/single-chat-owner.mjs";
+import { takeSelfClose, startSelfCloseWaiter } from "./lib/self-close-handoff.mjs";
 import { handoffAdvice } from "./lib/context-handoff.mjs";
-import { handoffInjection } from "./lib/handoff-inject.mjs";
+import { handoffInjection, handoffMonitor, handoffHookOutput } from "./lib/handoff-inject.mjs";
 import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
-import { durableGoalForPrompt, isDurableGoalText, isRequestText, openingGoalFromPrompt } from "./lib/agent-status-goal.mjs";
+import { carryStatedLines, durableGoalForPrompt, isDurableGoalText, isRequestText, openingGoalFromPrompt, statedLinesNudge } from "./lib/agent-status-goal.mjs";
 import { lifecycleFromNotification, narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
 
 function cleanField(value, max = 200) {
@@ -172,13 +173,12 @@ function readExistingSidecar(filePath) {
   }
 }
 
-function readStdin() {
-  return new Promise((resolve) => {
-    let text = "";
-    stdin.setEncoding("utf8");
-    stdin.on("data", (chunk) => (text += chunk));
-    stdin.on("end", () => resolve(text));
-    stdin.on("error", () => resolve(""));
+export function readStdin(input = stdin) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    input.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    input.on("end", () => resolve(Buffer.concat(chunks)));
+    input.on("error", reject);
   });
 }
 
@@ -384,7 +384,7 @@ async function main() {
   if (!envPaneId()) process.exit(0);
   let payload = {};
   try {
-    payload = raw ? JSON.parse(raw) : {};
+    payload = raw.length ? JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw)) : {};
   } catch {
     process.exit(0);
   }
@@ -400,6 +400,15 @@ async function main() {
   // paint another terminal's card.
   const paneId = statusPaneId();
   if (!paneId) process.exit(0);
+  // `close self` inside Codex's box: its waiter died with the command, so the turn's end
+  // starts it again from here, outside the box (lib/self-close-handoff.mjs).
+  if ((payload?.hook_event_name ?? payload?.hookEventName) === "Stop") {
+    try {
+      if (takeSelfClose(paneId)) startSelfCloseWaiter(paneId);
+    } catch {
+      /* closing must never break the status hook */
+    }
+  }
   if ((payload?.hook_event_name ?? payload?.hookEventName) === "UserPromptSubmit") {
     // One chat, one terminal: an older copy of this chat in another terminal is closed.
     const conversationId = String(payload?.session_id ?? payload?.sessionId ?? "");
@@ -408,7 +417,8 @@ async function main() {
     // letting Codex compact on its own.
     try {
       const injected = handoffInjection(payload?.prompt ?? payload?.user_prompt ?? payload?.userPrompt ?? payload?.text ?? payload?.message);
-      const advice = [injected, handoffAdvice({ payload, provider: "codex" })].filter(Boolean).join("\n\n");
+      const statedSoFar = readExistingSidecar(statusFilePath(sidecarKeyCwd(payload))) ?? {};
+      const advice = [injected, handoffAdvice({ payload, provider: "codex" }), statedLinesNudge(statedSoFar)].filter(Boolean).join("\n\n");
       if (advice) {
         process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: advice } })}\n`);
       }
@@ -419,6 +429,10 @@ async function main() {
   // A goal run keeps working without any prompt being submitted, so the prompt hook above never
   // sees it and the chat compacts itself instead of handing over. Tool events do fire: remind there.
   const hookEvent = payload?.hook_event_name ?? payload?.hookEventName;
+  if(hookEvent==='PreToolUse') {
+    const paused=handoffMonitor(process.env,{payload,provider:'codex'});
+    if(paused)process.stdout.write(`${JSON.stringify(handoffHookOutput(hookEvent,paused))}\n`);
+  }
   if (hookEvent === "PostToolUse") {
     try {
       const advice = handoffAdvice({ payload, provider: "codex", throttleMs: 60_000, tailBytes: 4_000_000 });
@@ -433,8 +447,20 @@ async function main() {
   const filePath = statusFilePath(cwd);
   const prev = readExistingSidecar(filePath);
   let sidecar = buildCodexSidecar(payload, prev, eventAt);
-  if (!sidecar) process.exit(0);
+  if (!sidecar) {
+    try {await publishSessionEvent({paneId,provider:"codex",payload,rawSource:raw,sidecar:{sessionId:payload.session_id ?? payload.sessionId},at:eventAt,captureOnly:true});}
+    catch(error) {console.error("termfleet source capture failed:",error.message);}
+    process.exit(0);
+  }
 
+  // TF-091: the Goal/Task the agent declared in its own reply, newest wins. Codex's own
+  // goal command (create_goal) is the operator's declared goal and outranks both.
+  Object.assign(
+    sidecar,
+    carryStatedLines({ text: codexLastAgentMessage(payload), prev, sessionId: sidecar.sessionId }),
+  );
+  const goalObjective = payload?.tool_name === "create_goal" ? cleanField(payload?.tool_input?.objective, 160) : "";
+  sidecar.declaredGoal = goalObjective || (prev?.sessionId === sidecar.sessionId ? prev?.declaredGoal : undefined) || undefined;
   sidecar.recent = appendRecent(prev?.recent, sidecar.narration ?? sidecar.now, sidecar.updatedAt);
   if (paneId) sidecar.paneId = paneId;
   // TC-054: stamp the provider so the daemon can build the right resume command
@@ -453,7 +479,8 @@ async function main() {
   // Additive durable authority. Existing sidecar metadata remains the compatibility view.
   let head=null;
   try {
-    head=await publishSessionEvent({paneId,provider:"codex",payload,sidecar,at:sidecar.updatedAt});
+    head=await publishSessionEvent({paneId,provider:"codex",payload,rawSource:raw,sidecar,at:sidecar.updatedAt});
+    if(head?.version!==2 || !head.state) head=null; // A retained pending source is not a lifecycle snapshot.
   } catch(error) { console.error("termfleet session event journal:",error.message); }
   sidecar=sessionCompatibilitySidecar(sidecar,head,process.env.TERMFLEET_STATUS_AUTHORITY==="on");
   if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {

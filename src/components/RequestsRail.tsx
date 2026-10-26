@@ -25,7 +25,7 @@ export function RequestsRail({ sessionId }: { sessionId: string }) {
   const [wide, setWide] = useState(true);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
-  const stick = useRef<number | null>(null); // null = keep the newest in view
+  const stick = useRef<number | null>(null); // null = show the top (newest first)
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +58,7 @@ export function RequestsRail({ sessionId }: { sessionId: string }) {
 
   useLayoutEffect(() => {
     const list = listRef.current;
-    if (list) list.scrollTop = stick.current === null ? list.scrollHeight : stick.current;
+    if (list) list.scrollTop = stick.current === null ? 0 : stick.current;
   }, [rows, folded, wide]);
 
   const toggle = () => {
@@ -77,7 +77,7 @@ export function RequestsRail({ sessionId }: { sessionId: string }) {
   return (
     <div
       ref={rootRef}
-      className={`requests-rail${folded ? " requests-rail--folded" : ""}`}
+      className={`requests-rail${folded ? " requests-rail--folded" : " requests-rail--open"}`}
       hidden={!wide}
       data-testid="requests-rail"
       onPointerDownCapture={(event) => event.stopPropagation()}
@@ -92,7 +92,7 @@ export function RequestsRail({ sessionId }: { sessionId: string }) {
           className="requests-rail__list"
           onScroll={(event) => {
             const list = event.currentTarget;
-            stick.current = list.scrollHeight - list.scrollTop - list.clientHeight < 8 ? null : list.scrollTop;
+            stick.current = list.scrollTop < 8 ? null : list.scrollTop;
           }}
         >
           {rows.map((row) => (

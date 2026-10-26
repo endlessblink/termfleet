@@ -5489,24 +5489,26 @@
       "state": "verifying",
       "severity": "medium",
       "surface": "logic",
-      "matrixRefs": [],
+      "matrixRefs": [
+        "TC-205"
+      ],
       "symptom": "The cockpit replaces the real task or about-what answer with canned project descriptions and generic waiting text, making Task Goal Now appear disjointed.",
-      "rootCause": "",
+      "rootCause": "TC-205: Goal display discarded usable latest-request purpose when no accepted mainTask existed; completed narration obscured current Now. Display inference needs original pane provenance and must not become canonical Goal or authorization.",
       "guard": "A sidecar with no authoritative goal must preserve an empty goal and must never emit inferred project copy; a valid about-what answer must remain stable while Now changes.",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-10-04T23:47:44.869Z",
-          "note": "Independent Goal/Task/Now provenance, durable plan updates, no stale activity-as-Goal; raw artifact-path metadata rejected. Live durable map title precedence corrected; rendered guard pending. See v2 checkpoint."
+          "kind": "focused-test",
+          "at": "2026-10-05T19:30:40.475Z",
+          "note": "Final combined build passes; 570/570 relevant tests including Agents navigation/saved mode and immersive reload, 80 focused and 30 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
         },
         {
-          "kind": "focused-test",
-          "at": "2026-10-04T23:47:44.902Z",
-          "note": "Original screenshot/checklist/pre-Working/older-run pure assertions active/pass; 604 source subset and final50 producer/consumer pass. Browser map fixture still fixme, native/installed proof pending."
+          "kind": "source",
+          "at": "2026-10-05T21:08:58.503Z",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Verify isolated v2 hook/worker, map/mobile rendered and native Canvas2D/PTY acceptance; collect shadow soak evidence before activation and canonical Git promotion. Preserve all26 original WIP files. See docs/session-authority-v2-checkpoint.md.",
+      "nextAction": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence.",
       "history": [
         {
           "at": "2026-09-13T06:02:44.981Z",
@@ -5810,6 +5812,93 @@
           "at": "2026-10-04T23:47:44.962430+00:00",
           "type": "next-action",
           "note": "Verify isolated v2 hook/worker, map/mobile rendered and native Canvas2D/PTY acceptance; collect shadow soak evidence before activation and canonical Git promotion. Preserve all26 original WIP files. See docs/session-authority-v2-checkpoint.md."
+        },
+        {
+          "at": "2026-10-05T18:33:16.310Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 scoped parser, live viewport provenance, shared readable panel and stable topics; no TermControl production edit"
+        },
+        {
+          "at": "2026-10-05T18:33:16.351Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final status group 78/78 and new screenshot logic 28/28; logs in delegated task workspace"
+        },
+        {
+          "at": "2026-10-05T18:33:17.008Z",
+          "type": "next-action",
+          "note": "Retain existing session-authority acceptance gates; TC-205 inference is display-only with source time and canAuthorize:false. Complete approved dock/real-provider verification before resolving."
+        },
+        {
+          "at": "2026-10-05T18:50:56.813Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final code: full relevant 30-file suite 566/566, focused status/context 78/78 and screenshot logic 28/28 pass; candidate build and map/typography checks pass."
+        },
+        {
+          "at": "2026-10-05T18:51:24.872Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final code: full relevant 30-file suite 566/566, focused status/context 78/78 and screenshot logic 28/28 pass; candidate build and map/typography checks pass."
+        },
+        {
+          "at": "2026-10-05T19:00:51.889Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final Goal text/provenance correction: 79/79 focused, 567/567 full relevant, 29/29 screenshot logic; frontend build passes. Preserve native/installed acceptance gate."
+        },
+        {
+          "at": "2026-10-05T19:02:38.277Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final scoped source preserves captured Goal text/provenance together, retains explicit/inferred/unknown presentation, and fresh bound screen status. No release activation."
+        },
+        {
+          "at": "2026-10-05T19:23:17.814Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:23:17.868Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 569/569 relevant tests including Agents navigation/saved mode and immersive reload, 79 focused and 29 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T19:30:40.444Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:30:40.475Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 570/570 relevant tests including Agents navigation/saved mode and immersive reload, 80 focused and 30 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T20:08:34.036Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 tested source hashes and build inputs match; original TC-203 hunks retained. Owner-approved immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 promoted20:03:59 UTC; installed checksum verification passes. Dock relaunch paused before any restart for TermControl disappearance triage; all44 baseline PTY IDs/PIDs survive20:05:50 UTC, daemon/UI/bridge identities unchanged. Native acceptance remains open; report docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T20:08:34.335Z",
+          "type": "next-action",
+          "note": "Keep dock relaunch paused until the coordinating TermControl worker completes incident triage. Then relaunch only the promoted dock UI without restarting daemon/TermControl/support services, prove exact pane/conversation/PTYPID survival and inspect native map/split/provider/narrow views. Keep configuration authority unchanged."
+        },
+        {
+          "at": "2026-10-05T21:08:58.503Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T21:08:58.935Z",
+          "type": "next-action",
+          "note": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence."
         }
       ]
     },
@@ -6864,24 +6953,26 @@
       "state": "verifying",
       "severity": "medium",
       "surface": "logic",
-      "matrixRefs": [],
+      "matrixRefs": [
+        "TC-205"
+      ],
       "symptom": "Badge stays Running after interrupt/exit, Waiting after an approved permission, turns Idle during long tool calls; Codex panes blind after hooks were emptied",
-      "rootCause": "",
+      "rootCause": "Claude auto-mode rotates spinner verbs and omits the interrupt footer; legacy screen parser misses active chrome, allowing an older Idle sidecar to win. Old release remains running; screen provenance/age must fence overrides.",
       "guard": "Badge table test over interrupt, exit, permission, long tool, missing sidecar, plain shell, Codex without hooks",
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-10-05T04:54:10.477Z",
-          "note": "Native Linux observer now binds exact pane/provider/conversation and process birth, captures acknowledged input intent, journals transport changes, observes pidfd exit without fabricated wait status, and confirms Codex interruption only from bound explicit turn_aborted. Late rollout discovery is process-token fenced. Default authority remains off."
+          "at": "2026-10-05T21:08:58.558Z",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-05T04:54:10.776Z",
-          "note": "Final isolated native Tauri Canvas2D fixture23 acceptance checks pass including late rollout open after native binding, MRU/attention/New Agent dialog/Goal/Now and lifecycle through exit with parent shell alive. Cargo check and2 focused process tests pass. Earlier626 source,30 host hook/HTTP,10 navigation/provider,1 original map guard and1 phone HTML render pass. Installed dock, physical phone, real-provider soak and non-Codex cancellation remain open."
+          "at": "2026-10-11T21:49:20.990Z",
+          "note": "2026-10-12: Claude's own per-process status (~/.claude/sessions/<pid>.json idle/busy/waiting) now overrides hook/transcript guesses in TermControl. Live before: 1 pane waiting on operator shown as working. vendor-status.test.mjs 2/2, full termcontrol suite unchanged (10 known failures), run.mjs 67/67."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Complete installed dock and real-provider shadow soak/phone acceptance after clean canonical reconciliation. See docs/session-native-runtime-checkpoint.md.",
+      "nextAction": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence.",
       "history": [
         {
           "at": "2026-09-23T08:22:01.081Z",
@@ -7096,6 +7187,107 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Final isolated native Tauri Canvas2D fixture23 acceptance checks pass including late rollout open after native binding, MRU/attention/New Agent dialog/Goal/Now and lifecycle through exit with parent shell alive. Cargo check and2 focused process tests pass. Earlier626 source,30 host hook/HTTP,10 navigation/provider,1 original map guard and1 phone HTML render pass. Installed dock, physical phone, real-provider soak and non-Codex cancellation remain open."
+        },
+        {
+          "at": "2026-10-05T17:51:09.793Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Owner screenshot pixel-inspected: Claude rotating auto-mode spinner is unrecognized; exact pane and installed b4ecac5 provenance captured read-only. Preparing scoped parser and panel fix; no live activation."
+        },
+        {
+          "at": "2026-10-05T18:33:16.393Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source candidate prepared; do not equate browser proof with installed/native acceptance"
+        },
+        {
+          "at": "2026-10-05T18:33:16.432Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 scoped parser, live viewport provenance, shared readable panel and stable topics; no TermControl production edit"
+        },
+        {
+          "at": "2026-10-05T18:33:16.471Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final status group 78/78 and new screenshot logic 28/28; logs in delegated task workspace"
+        },
+        {
+          "at": "2026-10-05T18:33:17.008Z",
+          "type": "next-action",
+          "note": "Review TC-205 candidate and rendered evidence; after explicit approval promote immutable release and relaunch dock UI while preserving daemon/PTYs, then verify exact pane, map/split modes, real providers and native window sizes. Keep session authority configuration unchanged."
+        },
+        {
+          "at": "2026-10-05T18:51:24.951Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final code: full relevant 30-file suite 566/566, focused status/context 78/78 and screenshot logic 28/28 pass; candidate build and map/typography checks pass."
+        },
+        {
+          "at": "2026-10-05T19:00:51.983Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final Goal text/provenance correction: 79/79 focused, 567/567 full relevant, 29/29 screenshot logic; frontend build passes. Preserve native/installed acceptance gate."
+        },
+        {
+          "at": "2026-10-05T19:02:38.393Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final scoped source preserves captured Goal text/provenance together, retains explicit/inferred/unknown presentation, and fresh bound screen status. No release activation."
+        },
+        {
+          "at": "2026-10-05T19:23:17.907Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:23:17.959Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 569/569 relevant tests including Agents navigation/saved mode and immersive reload, 79 focused and 29 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T19:30:40.505Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:30:40.536Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 570/570 relevant tests including Agents navigation/saved mode and immersive reload, 80 focused and 30 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T20:08:34.084Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 tested source hashes and build inputs match; original TC-203 hunks retained. Owner-approved immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 promoted20:03:59 UTC; installed checksum verification passes. Dock relaunch paused before any restart for TermControl disappearance triage; all44 baseline PTY IDs/PIDs survive20:05:50 UTC, daemon/UI/bridge identities unchanged. Native acceptance remains open; report docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T20:08:34.335Z",
+          "type": "next-action",
+          "note": "Keep dock relaunch paused until the coordinating TermControl worker completes incident triage. Then relaunch only the promoted dock UI without restarting daemon/TermControl/support services, prove exact pane/conversation/PTYPID survival and inspect native map/split/provider/narrow views. Keep configuration authority unchanged."
+        },
+        {
+          "at": "2026-10-05T21:08:58.558Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T21:08:58.935Z",
+          "type": "next-action",
+          "note": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence."
+        },
+        {
+          "at": "2026-10-11T21:49:20.991Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-10-12: Claude's own per-process status (~/.claude/sessions/<pid>.json idle/busy/waiting) now overrides hook/transcript guesses in TermControl. Live before: 1 pane waiting on operator shown as working. vendor-status.test.mjs 2/2, full termcontrol suite unchanged (10 known failures), run.mjs 67/67."
         }
       ]
     },
@@ -8123,21 +8315,185 @@
     {
       "id": "TF-058",
       "title": "Map card says Goal not captured while the list shows the goal",
-      "state": "reported",
+      "state": "verifying",
       "severity": "medium",
       "surface": "canvas",
-      "matrixRefs": [],
+      "matrixRefs": [
+        "TC-205"
+      ],
       "symptom": "Showcase capture on release 949902b: the sidebar row shows 'Adding rate limiting to the orders API' but the same terminal's map card reads GOAL 'Not captured for this pane'; a split pane with an in-progress task shows 'Task not captured'",
-      "rootCause": "",
-      "guard": "none yet",
-      "evidence": [],
+      "rootCause": "Goal render drops latest-request context without accepted mainTask and hides equal/missing Goal; tiny rows and carried completed narration obscure purpose and current state.",
+      "guard": "tests/pane-context-presentation.spec.ts and tests/pane-panel-visual.spec.ts: always-visible explicit/inferred/unknown Goal, source freshness, independent Task/Now, both map branches and split.",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T19:30:40.601Z",
+          "note": "Final combined build passes; 570/570 relevant tests including Agents navigation/saved mode and immersive reload, 80 focused and 30 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-05T21:08:58.621Z",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-05T21:08:58.791Z",
+          "note": "TC205 prior8/8 safe browser renders retained. Additional actual native map andsplit with exact original pane andrealCanvas2Dbuffer inspected,18pxGoal/16pxTaskNow,inferred+unknownsource labels,idlecompletedprompt.1400x900native minimum enforced; no760pxphysical/light/multiwindow/liveRunningclaim. Actual screenshothashes activation/native-screenshot-hashes.json."
+        }
+      ],
       "owner": "termfleet",
-      "nextAction": "Make the map card and split header read the same pane-keyed goal and in-progress task as the sidebar",
+      "nextAction": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence.",
       "history": [
         {
           "at": "2026-09-24T16:17:32.547Z",
           "type": "created",
           "note": null
+        },
+        {
+          "at": "2026-10-05T17:51:09.879Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Owner asks larger Goal/Task/Now display with grounded labelled inferred Goal and honest unknown. Pixel artifacts retained; display inference will never alter authority."
+        },
+        {
+          "at": "2026-10-05T17:51:09.971Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Goal missing and 11/13px labels in exact reported map card; browser guard preparing."
+        },
+        {
+          "at": "2026-10-05T18:33:16.506Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Scoped source and browser candidate prepared; installed/native activation remains pending owner approval"
+        },
+        {
+          "at": "2026-10-05T18:33:16.542Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Scoped source and browser candidate prepared; installed/native activation remains pending owner approval"
+        },
+        {
+          "at": "2026-10-05T18:33:16.574Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Scoped source and browser candidate prepared; installed/native activation remains pending owner approval"
+        },
+        {
+          "at": "2026-10-05T18:33:16.609Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 scoped parser, live viewport provenance, shared readable panel and stable topics; no TermControl production edit"
+        },
+        {
+          "at": "2026-10-05T18:33:16.642Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final status group 78/78 and new screenshot logic 28/28; logs in delegated task workspace"
+        },
+        {
+          "at": "2026-10-05T18:33:17.008Z",
+          "type": "next-action",
+          "note": "Review TC-205 candidate and rendered evidence; after explicit approval promote immutable release and relaunch dock UI while preserving daemon/PTYs, then verify exact pane, map/split modes, real providers and native window sizes. Keep session authority configuration unchanged."
+        },
+        {
+          "at": "2026-10-05T18:36:23.746Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Seven actual browser fixtures pass, including Goal unknown/inference/manual, HE light tokens, independent windows and two pane identities; installed surface pending"
+        },
+        {
+          "at": "2026-10-05T18:51:25.024Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final code: full relevant 30-file suite 566/566, focused status/context 78/78 and screenshot logic 28/28 pass; candidate build and map/typography checks pass."
+        },
+        {
+          "at": "2026-10-05T18:51:25.076Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "TC-205 final 8/8 safe application renders pass: hand-started/agent-button map branches, split, HE/EN, light tokens, narrow utilities, two same-folder conversations and separate browser windows. Native/installed acceptance remains pending."
+        },
+        {
+          "at": "2026-10-05T19:00:52.042Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final Goal text/provenance correction: 79/79 focused, 567/567 full relevant, 29/29 screenshot logic; frontend build passes. Preserve native/installed acceptance gate."
+        },
+        {
+          "at": "2026-10-05T19:02:38.444Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final scoped source preserves captured Goal text/provenance together, retains explicit/inferred/unknown presentation, and fresh bound screen status. No release activation."
+        },
+        {
+          "at": "2026-10-05T19:23:18.009Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:23:18.062Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 569/569 relevant tests including Agents navigation/saved mode and immersive reload, 79 focused and 29 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T19:23:18.107Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Final combined source: 8/8 safe panel renders pass, both map branches and split, HE/EN, light tokens, narrow widths, window/pane isolation and keyboard expansion. Nine screenshot hashes recorded. No native/dock activation."
+        },
+        {
+          "at": "2026-10-05T19:30:40.570Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:30:40.601Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 570/570 relevant tests including Agents navigation/saved mode and immersive reload, 80 focused and 30 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T19:30:40.631Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Final combined source: 8/8 safe panel renders pass, both map branches and split, HE/EN, light tokens, narrow widths, window/pane isolation and keyboard expansion. Nine screenshot hashes recorded. No native/dock activation."
+        },
+        {
+          "at": "2026-10-05T20:08:34.162Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 tested source hashes and build inputs match; original TC-203 hunks retained. Owner-approved immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 promoted20:03:59 UTC; installed checksum verification passes. Dock relaunch paused before any restart for TermControl disappearance triage; all44 baseline PTY IDs/PIDs survive20:05:50 UTC, daemon/UI/bridge identities unchanged. Native acceptance remains open; report docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T20:08:34.335Z",
+          "type": "next-action",
+          "note": "Keep dock relaunch paused until the coordinating TermControl worker completes incident triage. Then relaunch only the promoted dock UI without restarting daemon/TermControl/support services, prove exact pane/conversation/PTYPID survival and inspect native map/split/provider/narrow views. Keep configuration authority unchanged."
+        },
+        {
+          "at": "2026-10-05T21:08:58.621Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T21:08:58.791Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "TC205 prior8/8 safe browser renders retained. Additional actual native map andsplit with exact original pane andrealCanvas2Dbuffer inspected,18pxGoal/16pxTaskNow,inferred+unknownsource labels,idlecompletedprompt.1400x900native minimum enforced; no760pxphysical/light/multiwindow/liveRunningclaim. Actual screenshothashes activation/native-screenshot-hashes.json."
+        },
+        {
+          "at": "2026-10-05T21:08:58.935Z",
+          "type": "next-action",
+          "note": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence."
         }
       ]
     },
@@ -9867,6 +10223,11 @@
           "kind": "focused-test",
           "at": "2026-10-03T12:28:25.012Z",
           "note": "tests/handover-end-to-end.spec.ts + handoff-user-words.spec.ts: 28 pass; end-to-end test fails when the fix is reverted"
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-11T22:54:23.585Z",
+          "note": "2026-10-12 audit: uncommitted working tree replaces appendUserWords (owner words appended to the handoff file) with handoff-capsule.mjs (owner records kept in data/handoff-capsules/<generation>, original handoff untouched). No capsule directory exists yet, so no live handover has run on the new path. The 2026-10-11 14:40 Desk handover file has no owner-words block (likely started as a helper via --task-file). Live proof still owed: next real --dropoff must produce a capsule with the owner's newest messages."
         }
       ],
       "owner": "termfleet",
@@ -9896,6 +10257,12 @@
           "from": "triaged",
           "to": "reproducing",
           "note": "handover chain lost newest words; fixed in fadfd11"
+        },
+        {
+          "at": "2026-10-11T22:54:23.585Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-10-12 audit: uncommitted working tree replaces appendUserWords (owner words appended to the handoff file) with handoff-capsule.mjs (owner records kept in data/handoff-capsules/<generation>, original handoff untouched). No capsule directory exists yet, so no live handover has run on the new path. The 2026-10-11 14:40 Desk handover file has no owner-words block (likely started as a helper via --task-file). Live proof still owed: next real --dropoff must produce a capsule with the owner's newest messages."
         }
       ]
     },
@@ -10038,18 +10405,18 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-10-05T04:43:13.362Z",
-          "note": "2026-10-05 exact supplied screenshot inspected privately; ordinary first choice in a three-question Claude form. Existing freshness gate rejects unchanged VT text despite a fresh exact-pane observation. Claude 2.1.288 digit handler advances directly, multi-question form has explicit final review, and daemon error replies must not be treated as write acknowledgments. Five scoped runtime files now installed; no desktop/core changes."
+          "at": "2026-10-06T10:27:50.313Z",
+          "note": "2026-10-06 10:21UTC: owner clarified Show answer choices. Installed only the hash-guarded disclosure/recovery HTML patch c27fbbc87eeca3cb19cfd5ab131a08fa72ca131a8080a7c04dce929df92e925d. Redundant Chat reload had erased the cached question on a non401 feed failure; reveal now uses the current question locally. GET-only status-aware retry/All agents/Copy details added. Installed HTML SHA256 81fac3a9dedf755016e872580047a1beb90af63688ff3320e3a0cd00bbf5fe1b; version1791282066482-175909. Nine protected bridge/native sources unchanged. Optional draft/native/full-answer slices excluded."
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-05T04:43:13.620Z",
-          "note": "Three regressions failed before fixes: stable exact-pane observation, Claude digit without Enter, and distinct final review. Final suite32/32 plus canonical24/24 and TypeScript/Vite build pass. Actual browser+HTTP disposable fixture proves all three choices, explicit submit, no duplicate/stale/failed writes, and matched provider result only; widths320/390/430/1280."
+          "at": "2026-10-06T10:27:50.389Z",
+          "note": "2026-10-06: clarified baseline3 red/1 preservation green -> final installed source4/4 with one intercepted synthetic mobile browser and zero send POSTs. Cached disclosure reads2->2, retains/open question; 403/404 recovery and disabled custom submission pass. Inline JS syntax, strict installed reverse-patch applicability and app diff whitespace pass. 10:25:59UTC: all48 exact PTY IDs/PIDs preserved, daemon18932/build1:1791020837725 and TermControl4051937/NRestarts0 unchanged. Broad builds/suites remain paused."
         },
         {
           "kind": "browser-render",
-          "at": "2026-10-05T04:43:13.886Z",
-          "note": "Original dark next-question and review previews inspected; current synthetic Library libfile_51a8e62019208191bdebb009e92d7785. Live version1791175109753-106037 source hashes match, bridge3017411 active, daemon18932 and35 exact IDs/PTY PIDs preserved, login200/API401. Exact owner pane observation now passes read-only; no real answer was sent. Actual owner/provider acceptance remains open."
+          "at": "2026-10-06T10:27:50.443Z",
+          "note": "2026-10-06: inspected final installed-source synthetic390x844 cached-disclosure and403-details captures. Normal unauthenticated local/public app GETs302/login; local and public login200 bodies identical. Authenticated app-byte delivery and actual phone/provider acceptance remain unverified. Prior investigation-client403/1010 is not proof of the phone cause; underlying network failure remains open. Next: owner reloads the existing phone page, checks disclosure and status/Copy recovery evidence, then completes relevant real ordinary-choice/review acceptance. Keep custom send disabled and TF-078 verifying. No restart, microphone, provider upload, live input, auth change, commit or push. Exact receipt: /home/endlessblink/Documents/Codex/2026-10-05/task-7/phone-control-repro-20261006/deployment/REPORT.md."
         }
       ],
       "owner": "termfleet",
@@ -10186,6 +10553,1692 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Ordinary-choice correction deployed under existing authorization; synthetic browser/HTTP and installed-source checks pass. Owner retries the actual marked choice and final review; no live provider action was performed for testing. Custom answers remain disabled."
+        },
+        {
+          "at": "2026-10-06T10:27:50.313Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-10-06 10:21UTC: owner clarified Show answer choices. Installed only the hash-guarded disclosure/recovery HTML patch c27fbbc87eeca3cb19cfd5ab131a08fa72ca131a8080a7c04dce929df92e925d. Redundant Chat reload had erased the cached question on a non401 feed failure; reveal now uses the current question locally. GET-only status-aware retry/All agents/Copy details added. Installed HTML SHA256 81fac3a9dedf755016e872580047a1beb90af63688ff3320e3a0cd00bbf5fe1b; version1791282066482-175909. Nine protected bridge/native sources unchanged. Optional draft/native/full-answer slices excluded."
+        },
+        {
+          "at": "2026-10-06T10:27:50.390Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-10-06: clarified baseline3 red/1 preservation green -> final installed source4/4 with one intercepted synthetic mobile browser and zero send POSTs. Cached disclosure reads2->2, retains/open question; 403/404 recovery and disabled custom submission pass. Inline JS syntax, strict installed reverse-patch applicability and app diff whitespace pass. 10:25:59UTC: all48 exact PTY IDs/PIDs preserved, daemon18932/build1:1791020837725 and TermControl4051937/NRestarts0 unchanged. Broad builds/suites remain paused."
+        },
+        {
+          "at": "2026-10-06T10:27:50.443Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "2026-10-06: inspected final installed-source synthetic390x844 cached-disclosure and403-details captures. Normal unauthenticated local/public app GETs302/login; local and public login200 bodies identical. Authenticated app-byte delivery and actual phone/provider acceptance remain unverified. Prior investigation-client403/1010 is not proof of the phone cause; underlying network failure remains open. Next: owner reloads the existing phone page, checks disclosure and status/Copy recovery evidence, then completes relevant real ordinary-choice/review acceptance. Keep custom send disabled and TF-078 verifying. No restart, microphone, provider upload, live input, auth change, commit or push. Exact receipt: /home/endlessblink/Documents/Codex/2026-10-05/task-7/phone-control-repro-20261006/deployment/REPORT.md."
+        }
+      ]
+    },
+    {
+      "id": "TF-079",
+      "title": "Build the approved roomy robot fleet and conversation",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [
+        "3.21k"
+      ],
+      "symptom": "The approved original STACK robots are still temporary letter shapes; verify roomy rows and both themes without losing session actions or avatar identity.",
+      "rootCause": "Temporary letter avatars did not integrate the approved native STACK kit. Header slots lacked immutable agent-ID keys, retaining the previous robot when switching conversations. Native SVG create/update now preserves per-pane anatomy and DOM identity.",
+      "guard": "node --test termcontrol/test/stack-avatars.test.mjs termcontrol/test/redesign-mobile.test.mjs; node termcontrol/test/run.mjs; node --test termcontrol/test/*.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-05T16:27:23.720Z",
+          "note": "Approved native kit version1 materialized and inspected. Inline native renderer and CSS replace temporary letter shapes; 58px rows,48px robots,36px compact header. Header keyed by agent identity after a focused failing conversation-switch guard; offline assets only."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T16:27:23.755Z",
+          "note": "node termcontrol/test/run.mjs final67/67; node --test termcontrol/test/*.test.mjs final58/58. New browser guard proves five states,twelve anatomies,actual animation,reduced motion,refresh/navigation identity and escaped messages. Obsolete esc(e.text) assertion replaced with execution of rich renderer. One Chromium screenshot failure passed in isolated rerun; final whole suite is green."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-05T16:28:04.951Z",
+          "note": "Eight dark/light synthetic JPEG scenes and nine-page PDF inspected.390x844 fleet shows8 complete58px rows with48px avatars,zero overflow and browser errors.1440x960 fleet/chat,permission/question,Copy,Chat/Screen,Back and synthetic refusals pass. Existing preview7899 and gallery8767 return200. Final npm build and native strict TypeScript contract pass. Production bridge6242 and daemon not restarted; physical phone acceptance remains open."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner refreshes the existing app and reviews the roomy native robots on the physical phone. Keep synthetic verification distinct from live provider acceptance; do not restart the bridge or daemon, commit or push without separate owner authorization.",
+      "history": [
+        {
+          "at": "2026-10-05T16:05:11.832Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T16:06:10.850Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T16:06:10.881Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T16:07:48.135Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused browser guard fails on 72px rows before integration; approved target is 58px with 48px native robots."
+        },
+        {
+          "at": "2026-10-05T16:07:48.165Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T16:27:23.720Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Approved native kit version1 materialized and inspected. Inline native renderer and CSS replace temporary letter shapes; 58px rows,48px robots,36px compact header. Header keyed by agent identity after a focused failing conversation-switch guard; offline assets only."
+        },
+        {
+          "at": "2026-10-05T16:27:23.756Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node termcontrol/test/run.mjs final67/67; node --test termcontrol/test/*.test.mjs final58/58. New browser guard proves five states,twelve anatomies,actual animation,reduced motion,refresh/navigation identity and escaped messages. Obsolete esc(e.text) assertion replaced with execution of rich renderer. One Chromium screenshot failure passed in isolated rerun; final whole suite is green."
+        },
+        {
+          "at": "2026-10-05T16:28:04.951Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Eight dark/light synthetic JPEG scenes and nine-page PDF inspected.390x844 fleet shows8 complete58px rows with48px avatars,zero overflow and browser errors.1440x960 fleet/chat,permission/question,Copy,Chat/Screen,Back and synthetic refusals pass. Existing preview7899 and gallery8767 return200. Final npm build and native strict TypeScript contract pass. Production bridge6242 and daemon not restarted; physical phone acceptance remains open."
+        },
+        {
+          "at": "2026-10-05T16:28:04.986Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Implementation,build and isolated browser proof complete; keep owner phone acceptance open. Existing bridge serves HTML directly without restart."
+        }
+      ]
+    },
+    {
+      "id": "TF-080",
+      "title": "Sidebar services and scope overlap in narrow space",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [
+        "TC-205"
+      ],
+      "symptom": "Owner screenshot shows Scope label underneath its summary and expanded Services consuming sidebar space.",
+      "rootCause": "Long auto-sized utility summary steals width from label; inline service metadata does not constrain overflow; Services starts expanded.",
+      "guard": "pane-panel-visual.spec.ts narrow sidebar default/open/close/reload geometry",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T19:30:40.695Z",
+          "note": "Final combined build passes; 570/570 relevant tests including Agents navigation/saved mode and immersive reload, 80 focused and 30 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-05T21:08:58.684Z",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-05T21:08:58.842Z",
+          "note": "TC205 prior8/8 safe browser renders retained. Additional actual native map andsplit with exact original pane andrealCanvas2Dbuffer inspected,18pxGoal/16pxTaskNow,inferred+unknownsource labels,idlecompletedprompt.1400x900native minimum enforced; no760pxphysical/light/multiwindow/liveRunningclaim. Actual screenshothashes activation/native-screenshot-hashes.json."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence.",
+      "history": [
+        {
+          "at": "2026-10-05T17:57:16.984Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T17:57:17.036Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Actual third Library screenshot inspected; auto summary track crushes title; Services starts expanded."
+        },
+        {
+          "at": "2026-10-05T17:57:17.073Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Responsive browser fixture will exercise actual sidebar with service URLs and long EN/HE owner labels."
+        },
+        {
+          "at": "2026-10-05T18:33:16.688Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Scoped source and browser candidate prepared; installed/native activation remains pending owner approval"
+        },
+        {
+          "at": "2026-10-05T18:33:16.727Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Scoped source and browser candidate prepared; installed/native activation remains pending owner approval"
+        },
+        {
+          "at": "2026-10-05T18:33:16.762Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Scoped source and browser candidate prepared; installed/native activation remains pending owner approval"
+        },
+        {
+          "at": "2026-10-05T18:33:16.798Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 scoped parser, live viewport provenance, shared readable panel and stable topics; no TermControl production edit"
+        },
+        {
+          "at": "2026-10-05T18:33:16.837Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final status group 78/78 and new screenshot logic 28/28; logs in delegated task workspace"
+        },
+        {
+          "at": "2026-10-05T18:33:17.008Z",
+          "type": "next-action",
+          "note": "Review TC-205 candidate and rendered evidence; after explicit approval promote immutable release and relaunch dock UI while preserving daemon/PTYs, then verify exact pane, map/split modes, real providers and native window sizes. Keep session authority configuration unchanged."
+        },
+        {
+          "at": "2026-10-05T18:36:23.785Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Actual Services/Scope collapsed/reveal/persistence and 190/220/260/300px geometry pass; no overlap or panel horizontal overflow"
+        },
+        {
+          "at": "2026-10-05T18:51:25.148Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final code: full relevant 30-file suite 566/566, focused status/context 78/78 and screenshot logic 28/28 pass; candidate build and map/typography checks pass."
+        },
+        {
+          "at": "2026-10-05T18:51:25.214Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "TC-205 final 8/8 safe application renders pass: hand-started/agent-button map branches, split, HE/EN, light tokens, narrow utilities, two same-folder conversations and separate browser windows. Native/installed acceptance remains pending."
+        },
+        {
+          "at": "2026-10-05T19:00:52.094Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final Goal text/provenance correction: 79/79 focused, 567/567 full relevant, 29/29 screenshot logic; frontend build passes. Preserve native/installed acceptance gate."
+        },
+        {
+          "at": "2026-10-05T19:02:38.497Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final scoped source preserves captured Goal text/provenance together, retains explicit/inferred/unknown presentation, and fresh bound screen status. No release activation."
+        },
+        {
+          "at": "2026-10-05T19:23:18.162Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:23:18.202Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 569/569 relevant tests including Agents navigation/saved mode and immersive reload, 79 focused and 29 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T19:23:18.256Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Final combined source: 8/8 safe panel renders pass, both map branches and split, HE/EN, light tokens, narrow widths, window/pane isolation and keyboard expansion. Nine screenshot hashes recorded. No native/dock activation."
+        },
+        {
+          "at": "2026-10-05T19:30:40.664Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:30:40.695Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 570/570 relevant tests including Agents navigation/saved mode and immersive reload, 80 focused and 30 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T19:30:40.731Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Final combined source: 8/8 safe panel renders pass, both map branches and split, HE/EN, light tokens, narrow widths, window/pane isolation and keyboard expansion. Nine screenshot hashes recorded. No native/dock activation."
+        },
+        {
+          "at": "2026-10-05T20:08:34.237Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 tested source hashes and build inputs match; original TC-203 hunks retained. Owner-approved immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 promoted20:03:59 UTC; installed checksum verification passes. Dock relaunch paused before any restart for TermControl disappearance triage; all44 baseline PTY IDs/PIDs survive20:05:50 UTC, daemon/UI/bridge identities unchanged. Native acceptance remains open; report docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T20:08:34.335Z",
+          "type": "next-action",
+          "note": "Keep dock relaunch paused until the coordinating TermControl worker completes incident triage. Then relaunch only the promoted dock UI without restarting daemon/TermControl/support services, prove exact pane/conversation/PTYPID survival and inspect native map/split/provider/narrow views. Keep configuration authority unchanged."
+        },
+        {
+          "at": "2026-10-05T21:08:58.684Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T21:08:58.842Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "TC205 prior8/8 safe browser renders retained. Additional actual native map andsplit with exact original pane andrealCanvas2Dbuffer inspected,18pxGoal/16pxTaskNow,inferred+unknownsource labels,idlecompletedprompt.1400x900native minimum enforced; no760pxphysical/light/multiwindow/liveRunningclaim. Actual screenshothashes activation/native-screenshot-hashes.json."
+        },
+        {
+          "at": "2026-10-05T21:08:58.935Z",
+          "type": "next-action",
+          "note": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence."
+        }
+      ]
+    },
+    {
+      "id": "TF-081",
+      "title": "Terminal rows lack short pane topics",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [
+        "TC-205"
+      ],
+      "symptom": "Sidebar rows repeat handoff, tool or raw request fragments instead of a stable one-to-five-word pane topic",
+      "rootCause": "Rows show long raw context or current process chatter; no shared stable bounded topic with source metadata.",
+      "guard": "tests/terminal-topic.spec.ts and tests/pane-panel-visual.spec.ts",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T19:30:40.797Z",
+          "note": "Final combined build passes; 570/570 relevant tests including Agents navigation/saved mode and immersive reload, 80 focused and 30 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-05T21:08:58.734Z",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-05T21:08:58.901Z",
+          "note": "TC205 prior8/8 safe browser renders retained. Additional actual native map andsplit with exact original pane andrealCanvas2Dbuffer inspected,18pxGoal/16pxTaskNow,inferred+unknownsource labels,idlecompletedprompt.1400x900native minimum enforced; no760pxphysical/light/multiwindow/liveRunningclaim. Actual screenshothashes activation/native-screenshot-hashes.json."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence.",
+      "history": [
+        {
+          "at": "2026-10-05T18:28:32.673Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T18:28:32.723Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Fourth owner screenshot pixels reviewed; stable topic is separate from activity"
+        },
+        {
+          "at": "2026-10-05T18:28:32.761Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Handoff and tool fragments captured as rejected examples"
+        },
+        {
+          "at": "2026-10-05T18:33:16.872Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Scoped source and browser candidate prepared; installed/native activation remains pending owner approval"
+        },
+        {
+          "at": "2026-10-05T18:33:16.909Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Scoped source and browser candidate prepared; installed/native activation remains pending owner approval"
+        },
+        {
+          "at": "2026-10-05T18:33:16.943Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Scoped source and browser candidate prepared; installed/native activation remains pending owner approval"
+        },
+        {
+          "at": "2026-10-05T18:33:16.974Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 scoped parser, live viewport provenance, shared readable panel and stable topics; no TermControl production edit"
+        },
+        {
+          "at": "2026-10-05T18:33:17.008Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final status group 78/78 and new screenshot logic 28/28; logs in delegated task workspace"
+        },
+        {
+          "at": "2026-10-05T18:33:17.008Z",
+          "type": "next-action",
+          "note": "Review TC-205 candidate and rendered evidence; after explicit approval promote immutable release and relaunch dock UI while preserving daemon/PTYs, then verify exact pane, map/split modes, real providers and native window sizes. Keep session authority configuration unchanged."
+        },
+        {
+          "at": "2026-10-05T18:36:23.826Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Map/split/sidebar bounded topics remain stable across activity changes and explicit rename; 7/7 isolated rendered cases"
+        },
+        {
+          "at": "2026-10-05T18:51:25.290Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final code: full relevant 30-file suite 566/566, focused status/context 78/78 and screenshot logic 28/28 pass; candidate build and map/typography checks pass."
+        },
+        {
+          "at": "2026-10-05T18:51:25.380Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "TC-205 final 8/8 safe application renders pass: hand-started/agent-button map branches, split, HE/EN, light tokens, narrow utilities, two same-folder conversations and separate browser windows. Native/installed acceptance remains pending."
+        },
+        {
+          "at": "2026-10-05T19:00:52.147Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "TC-205 final Goal text/provenance correction: 79/79 focused, 567/567 full relevant, 29/29 screenshot logic; frontend build passes. Preserve native/installed acceptance gate."
+        },
+        {
+          "at": "2026-10-05T19:02:38.564Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final scoped source preserves captured Goal text/provenance together, retains explicit/inferred/unknown presentation, and fresh bound screen status. No release activation."
+        },
+        {
+          "at": "2026-10-05T19:23:18.304Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:23:18.352Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 569/569 relevant tests including Agents navigation/saved mode and immersive reload, 79 focused and 29 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T19:23:18.400Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Final combined source: 8/8 safe panel renders pass, both map branches and split, HE/EN, light tokens, narrow widths, window/pane isolation and keyboard expansion. Nine screenshot hashes recorded. No native/dock activation."
+        },
+        {
+          "at": "2026-10-05T19:30:40.764Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 final preservation repair restores exact pre-existing TC-203 type/mode/sidebar hunks; all original scoped files audited against HEAD and pre-apply snapshot. Canonical source hash fence matches tested candidate; native/installed gate remains open."
+        },
+        {
+          "at": "2026-10-05T19:30:40.797Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined build passes; 570/570 relevant tests including Agents navigation/saved mode and immersive reload, 80 focused and 30 screenshot logic; canonical map/typography/diff/issue checks pass. Older integration 43 pass/6 unchanged baseline failures/18 existing skips. Fresh doctor OK; installed frontend checksum differs."
+        },
+        {
+          "at": "2026-10-05T19:30:40.827Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Final combined source: 8/8 safe panel renders pass, both map branches and split, HE/EN, light tokens, narrow widths, window/pane isolation and keyboard expansion. Nine screenshot hashes recorded. No native/dock activation."
+        },
+        {
+          "at": "2026-10-05T20:08:34.301Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC-205 tested source hashes and build inputs match; original TC-203 hunks retained. Owner-approved immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 promoted20:03:59 UTC; installed checksum verification passes. Dock relaunch paused before any restart for TermControl disappearance triage; all44 baseline PTY IDs/PIDs survive20:05:50 UTC, daemon/UI/bridge identities unchanged. Native acceptance remains open; report docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T20:08:34.335Z",
+          "type": "next-action",
+          "note": "Keep dock relaunch paused until the coordinating TermControl worker completes incident triage. Then relaunch only the promoted dock UI without restarting daemon/TermControl/support services, prove exact pane/conversation/PTYPID survival and inspect native map/split/provider/narrow views. Keep configuration authority unchanged."
+        },
+        {
+          "at": "2026-10-05T21:08:58.734Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TC205 exact tested immutable release e027bc0f9e5e-bc412b5825de-5207f2410302 active after approvedUI-only relaunch20:52:32UTC; no later canonical rebuild. Source scope0820ad8b retained in release evidence. All44 PTY IDs/PIDs, daemon18932 and exact conversation676fb3da/PTYPID809588 preserved through21:06:11UTC;10 map/tab bindings preserved. Native map/split real buffer/readableGoalTaskNow inspected; installed verifier anddoctorOK. LiveRunning real-provider gate remains partial. See docs/pane-context-tc205.md."
+        },
+        {
+          "at": "2026-10-05T21:08:58.901Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "TC205 prior8/8 safe browser renders retained. Additional actual native map andsplit with exact original pane andrealCanvas2Dbuffer inspected,18pxGoal/16pxTaskNow,inferred+unknownsource labels,idlecompletedprompt.1400x900native minimum enforced; no760pxphysical/light/multiwindow/liveRunningclaim. Actual screenshothashes activation/native-screenshot-hashes.json."
+        },
+        {
+          "at": "2026-10-05T21:08:58.935Z",
+          "type": "next-action",
+          "note": "Tested release is active and native map/split readability plus all44 PTY/exact-conversation survival are proved. Observe actual Running Claude/Codex/OpenCode transitions when available, and complete future physical narrower/separate-window/light coverage; preserve authority and do not manufacture agent input. Retain six unchanged older baseline failures as open evidence."
+        }
+      ]
+    },
+    {
+      "id": "TF-082",
+      "title": "TermControl hides a live restored map terminal",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "TF-082"
+      ],
+      "symptom": "A live TermFleet PTY disappears from TermControl while its exact card and split leaf remain.",
+      "rootCause": "Empty saved terminal arrays made the bridge omit live terminals despite an existing current map card and split leaf. Retired predecessor PTYs were correctly excluded.",
+      "guard": "termcontrol/test/layout-ownership.test.mjs and read-only live inventory comparison",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-05T21:37:34.130Z",
+          "note": "01 ownership projection repairs only current map leaves when saved terminal records are empty; retired and intentionally closed IDs stay excluded."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T21:37:34.173Z",
+          "note": "Original3 ownership failures become5 passing guards; installed inventory parity2/2; canonical mobile24/24."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-10-05T21:37:34.231Z",
+          "note": "01+02 service-only activation20:48:46 UTC;03+05 activation20:58:51 UTC. Installed inventory returns10 current cards, zero retired. Daemon18932 and all44 exact PTY IDs/PIDs survive."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Confirm the owner-selected original conversation on the authenticated phone. Installed inventory already proves the exact current TermFleet card returns and all44 baseline PTYs survive.",
+      "history": [
+        {
+          "at": "2026-10-05T20:12:04.734Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T20:12:04.785Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Live44 PTYs survive; exact map card/split leaf survives but saved terminals array is empty."
+        },
+        {
+          "at": "2026-10-05T20:12:04.830Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Preserved20:08UTC daemon/map audit and failing guards."
+        },
+        {
+          "at": "2026-10-05T20:12:04.878Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Three ownership cases failed before repair; same5 guards now pass."
+        },
+        {
+          "at": "2026-10-05T20:12:04.932Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Read-only bridge projection infers IDs only from existing empty-record card split leaves; closed and predecessor IDs stay excluded."
+        },
+        {
+          "at": "2026-10-05T20:12:04.992Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Isolated patch ready; installed authenticated readback and owner-selected pane confirmation remain."
+        },
+        {
+          "at": "2026-10-05T21:37:34.130Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "01 ownership projection repairs only current map leaves when saved terminal records are empty; retired and intentionally closed IDs stay excluded."
+        },
+        {
+          "at": "2026-10-05T21:37:34.174Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Original3 ownership failures become5 passing guards; installed inventory parity2/2; canonical mobile24/24."
+        },
+        {
+          "at": "2026-10-05T21:37:34.232Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "01+02 service-only activation20:48:46 UTC;03+05 activation20:58:51 UTC. Installed inventory returns10 current cards, zero retired. Daemon18932 and all44 exact PTY IDs/PIDs survive."
+        }
+      ]
+    },
+    {
+      "id": "TF-083",
+      "title": "TermControl voice capture fails on phone",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [
+        "TF-083"
+      ],
+      "symptom": "Owner reports phone dictation does not work; original URL and error are not yet known.",
+      "rootCause": "Reproduced media constructor/start cleanup failures, insecure-context errors and stalled/stale worker lifecycle handling. Original owner phone URL/error was not supplied, so its single triggering cause is unproved.",
+      "guard": "Synthetic mobile capture failures, local worker lifecycle and offline mobile container decode; physical-phone acceptance pending.",
+      "evidence": [
+        {
+          "kind": "browser-render",
+          "at": "2026-10-05T21:37:34.426Z",
+          "note": "Synthetic phone media success/failure/navigation fixtures pass. Owner independently confirms real phone dictation works; no microphone activation or private audio upload was performed by this worker."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-05T22:14:18.400Z",
+          "note": "07 integrated and activated22:12:34UTC, only termcontrol.service3116889→4051937. Bounded queue and queue-inclusive120s deadline, preparation only after owner starts recording,32 allowlisted server timing entries/20 numeric client entries. Existing local models/decoder/settings preserved. No real microphone or private audio operation. All44 PTY IDs/PIDs and daemon18932 unchanged."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T22:14:18.442Z",
+          "note": "54 combined isolated Node/browser/temporary bridge-daemon-CLI cases,5 Python timing/actual offline WAV-WebM-AAC decoder cases, tsc/Vite build, and7 canonical installed-source cases pass. Hebrew-model cold21.70s included13.93s load/7.45s inference on synthetic English input; this is timing evidence, not Hebrew accuracy or physical-phone speed acceptance."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner already confirms02 phone dictation works.07 timing/queue/preparation is installed; refresh phone and assess real Hebrew stop-to-text timings without exposing content. Physical performance acceptance stays open; synthetic timing is not an accuracy benchmark.",
+      "history": [
+        {
+          "at": "2026-10-05T20:30:50.868Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T20:30:51.019Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Scoped symptom preserved, no real recording or terminal closure."
+        },
+        {
+          "at": "2026-10-05T20:30:51.080Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Isolated regressions and runtime constraints captured."
+        },
+        {
+          "at": "2026-10-05T20:30:51.134Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused guards recorded before repairs; installed acceptance remains separate."
+        },
+        {
+          "at": "2026-10-05T20:30:51.181Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Candidate implemented; canonical repository and services untouched."
+        },
+        {
+          "at": "2026-10-05T20:30:51.235Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Synthetic source/browser/backend checks pass; live owner phone/desktop acceptance remains open."
+        },
+        {
+          "at": "2026-10-05T21:37:34.307Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "02 stops leaked streams, retains secure-context/support diagnostics, bounds worker timeout and prevents stale worker exit from corrupting its replacement."
+        },
+        {
+          "at": "2026-10-05T21:37:34.361Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Independent voice/mobile failure/worker lifecycle suites pass; actual offline synthetic WAV/WebM Opus/M4A AAC decode passes."
+        },
+        {
+          "at": "2026-10-05T21:37:34.426Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Synthetic phone media success/failure/navigation fixtures pass. Owner independently confirms real phone dictation works; no microphone activation or private audio upload was performed by this worker."
+        },
+        {
+          "at": "2026-10-05T22:14:18.400Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "07 integrated and activated22:12:34UTC, only termcontrol.service3116889→4051937. Bounded queue and queue-inclusive120s deadline, preparation only after owner starts recording,32 allowlisted server timing entries/20 numeric client entries. Existing local models/decoder/settings preserved. No real microphone or private audio operation. All44 PTY IDs/PIDs and daemon18932 unchanged."
+        },
+        {
+          "at": "2026-10-05T22:14:18.443Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "54 combined isolated Node/browser/temporary bridge-daemon-CLI cases,5 Python timing/actual offline WAV-WebM-AAC decoder cases, tsc/Vite build, and7 canonical installed-source cases pass. Hebrew-model cold21.70s included13.93s load/7.45s inference on synthetic English input; this is timing evidence, not Hebrew accuracy or physical-phone speed acceptance."
+        }
+      ]
+    },
+    {
+      "id": "TF-084",
+      "title": "TermControl groups unrelated conversations",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [
+        "TF-084"
+      ],
+      "symptom": "Fallback grouping combines chats by display project name when real map group is absent.",
+      "rootCause": "Display-name and live-folder fallbacks could merge unrelated chats; mixed inventory/status revisions could retain stale grouping.",
+      "guard": "termcontrol/test/project-identity.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-05T21:37:34.481Z",
+          "note": "03 uses authoritative map IDs, dedicated unassigned buckets and a coherent inventory version; preferences remain tied to existing shared project identity."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T21:37:34.521Z",
+          "note": "Project identity/version/reconnect guards and canonical mobile tests pass. Read-only current10 map/tab/PTy bindings agree; no bulk regrouping was performed."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Installed03 uses exact current map group IDs and coherent revisions. Current10 owned cards agree with the map; obtain exact identity of any remaining reported misgrouping before modifying ownership.",
+      "history": [
+        {
+          "at": "2026-10-05T20:30:50.917Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T20:30:51.281Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Scoped symptom preserved, no real recording or terminal closure."
+        },
+        {
+          "at": "2026-10-05T20:30:51.336Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Isolated regressions and runtime constraints captured."
+        },
+        {
+          "at": "2026-10-05T20:30:51.377Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused guards recorded before repairs; installed acceptance remains separate."
+        },
+        {
+          "at": "2026-10-05T20:30:51.426Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Candidate implemented; canonical repository and services untouched."
+        },
+        {
+          "at": "2026-10-05T20:30:51.484Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Synthetic source/browser/backend checks pass; live owner phone/desktop acceptance remains open."
+        },
+        {
+          "at": "2026-10-05T21:37:34.481Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "03 uses authoritative map IDs, dedicated unassigned buckets and a coherent inventory version; preferences remain tied to existing shared project identity."
+        },
+        {
+          "at": "2026-10-05T21:37:34.522Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Project identity/version/reconnect guards and canonical mobile tests pass. Read-only current10 map/tab/PTy bindings agree; no bulk regrouping was performed."
+        }
+      ]
+    },
+    {
+      "id": "TF-085",
+      "title": "TermControl cannot safely close a real terminal",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "TF-085"
+      ],
+      "symptom": "Owner requests long press and swipe closing; current ID-only daemon close lacks incarnation safety.",
+      "rootCause": "ID-only daemon close cannot safely distinguish a recycled session. Current daemon has no incarnation capability.",
+      "guard": "Disposable Rust PTYs, synthetic authenticated HTTP and gesture tests; installed dual-surface acceptance pending.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-05T21:37:34.566Z",
+          "note": "04 isolated atomic incarnation-bound close, explicit confirmation and durable intentional-close marker; legacy daemon fails closed."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T21:37:34.617Z",
+          "note": "Synthetic authenticated HTTP, close gestures/decision guards and disposable Rust close/protocol tests pass; installed destructive action remains unexercised."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "04 remains isolated and uninstalled. Separate owner authorization and coordinated desktop+daemon activation are required; do not activate during the TermControl-only incident work.",
+      "history": [
+        {
+          "at": "2026-10-05T20:30:50.960Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T20:30:51.536Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Scoped symptom preserved, no real recording or terminal closure."
+        },
+        {
+          "at": "2026-10-05T20:30:51.587Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Isolated regressions and runtime constraints captured."
+        },
+        {
+          "at": "2026-10-05T20:30:51.631Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused guards recorded before repairs; installed acceptance remains separate."
+        },
+        {
+          "at": "2026-10-05T20:30:51.686Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Candidate implemented; canonical repository and services untouched."
+        },
+        {
+          "at": "2026-10-05T20:30:51.738Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Synthetic source/browser/backend checks pass; live owner phone/desktop acceptance remains open."
+        },
+        {
+          "at": "2026-10-05T21:37:34.567Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "04 isolated atomic incarnation-bound close, explicit confirmation and durable intentional-close marker; legacy daemon fails closed."
+        },
+        {
+          "at": "2026-10-05T21:37:34.617Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Synthetic authenticated HTTP, close gestures/decision guards and disposable Rust close/protocol tests pass; installed destructive action remains unexercised."
+        }
+      ]
+    },
+    {
+      "id": "TF-086",
+      "title": "New TermControl agent cannot choose a dormant project",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "TF-086"
+      ],
+      "symptom": "Phone can only start agents inside a shown group; dormant PaperBot is unavailable.",
+      "rootCause": "Creation was only reachable inside visible groups and resolved a display name through live panes. Dormant PaperBot had a saved map project but no live pane. Generic native addTab normalized old geometry; a provider-check race could select another newly added card.",
+      "guard": "Project picker, authenticated HTTP, explicit CLI protocol, native planner and map preservation fixtures.",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T21:37:34.726Z",
+          "note": "Final project suite7/7 and integrated project/navigation/mobile36/36 pass; old helper/handover32/32. Before-fix global picker, old geometry resizing and concurrent target-selection guards fail and then pass. Source tsc/Vite/offline Cargo compile checks pass."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-05T22:14:18.490Z",
+          "note": "Actual owner JPEGs show Loading projects, empty Agent section and misleading connection error. Compatibility repair installed22:12:34: old/malformed bridge responses retain original group+ while global Start stays disabled without nativev2. Temporary bridge+daemon+CLI verifies legacy live-group success and ambiguity rejection; shrinking visualViewport/320px RTL-LTR regressions pass. Native immutable release remains uninstalled after automatic approval review rejected promotion twice; no retry/bypass/native capability2 or real agent claim."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Compatibility fix installed; refresh phone and use+beside an open project. Global project creation stays disabled until approved nativev2 dock activation and actual owner flow acceptance. Promotion was rejected twice by automatic approval review; do not retry or bypass.",
+      "history": [
+        {
+          "at": "2026-10-05T21:14:11.885Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T21:14:11.958Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Read-only map proves PaperBot group exists but has no current tab; current spawn endpoint only searches live panes by display project."
+        },
+        {
+          "at": "2026-10-05T21:23:06.691Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Global picker guard failed against installed behavior; exact map/PTY/project metadata captured without launching any agent."
+        },
+        {
+          "at": "2026-10-05T21:23:06.781Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Exact project/placement and HTTP/provider/CLI/browser regressions prepared; old global flow absent and baseline addTab resizes old map cards."
+        },
+        {
+          "at": "2026-10-05T21:23:06.867Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Protocol2 and native map authority place one new card while preserving all existing group overrides, histories and sizes."
+        },
+        {
+          "at": "2026-10-05T21:23:06.924Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Isolated source, build, Cargo and mocks prove behavior; native desktop activation/actual consented project session remains open."
+        },
+        {
+          "at": "2026-10-05T21:37:34.672Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "06 exact saved project ID/cwd protocol2, parent-free CLI, provider validation, whole-stack placement, old-map preservation policy, fresh provider-check state and exact launchRequestId targeting."
+        },
+        {
+          "at": "2026-10-05T21:37:34.726Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final project suite7/7 and integrated project/navigation/mobile36/36 pass; old helper/handover32/32. Before-fix global picker, old geometry resizing and concurrent target-selection guards fail and then pass. Source tsc/Vite/offline Cargo compile checks pass."
+        },
+        {
+          "at": "2026-10-05T21:47:36.163Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Release worker independently verifies all 252 candidate source hashes, binary/frontend checksums; canonical map guard and diff check pass. Supplied scoped suite 616/617 with unchanged baseline failure; project/mobile 36/36. Automatic approval review rejected promotion before execution. No installation, relaunch, capability2 or real agent claim. Prepared boundary evidence: task-3/project-activation/REPORT.md."
+        },
+        {
+          "at": "2026-10-05T21:51:13.890Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Candidate remains verified and uninstalled. Parent-directed exact promotion retry occurred once through normal approval review and was rejected before execution: forwarded owner transcript not accepted as trusted installation authorization. All44 PTY IDs/PIDs/daemon18932 preserved in fresh21:49:32 baseline. No further retry, workaround, relaunch or native2 claim. task-3/project-activation/REPORT.md records exact boundary."
+        },
+        {
+          "at": "2026-10-05T22:14:18.490Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Actual owner JPEGs show Loading projects, empty Agent section and misleading connection error. Compatibility repair installed22:12:34: old/malformed bridge responses retain original group+ while global Start stays disabled without nativev2. Temporary bridge+daemon+CLI verifies legacy live-group success and ambiguity rejection; shrinking visualViewport/320px RTL-LTR regressions pass. Native immutable release remains uninstalled after automatic approval review rejected promotion twice; no retry/bypass/native capability2 or real agent claim."
+        }
+      ]
+    },
+    {
+      "id": "TF-087",
+      "title": "Chat swipe does not follow the finger",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [
+        "TF-087"
+      ],
+      "symptom": "Owner confirms swipe navigation works but requests continuous movement and visible adjacent chat during drag.",
+      "rootCause": "Original gesture only showed a text preview and switched on release; no finger-tracking transforms or guarded settling animation existed.",
+      "guard": "termcontrol/test/chat-swipe-motion.test.mjs and chat-navigation.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-05T22:34:40.526Z",
+          "note": "05c frontend-only deployed from75c647 to50ac9c, patch6a49254840ef383068ce07679f5e6ff104fbaa63b36d58b8c720eff2b194fb94. Only app and two regression files changed.07/native gate preserved; no service, desktop or daemon restart. PID4051937 and all44 PTY IDs/PIDs/daemon18932 unchanged."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-05T22:34:40.578Z",
+          "note": "Fresh isolated and canonical combined gesture/navigation/picker/ownership21/21 pass;23 mobile/voice checks and TypeScript/Vite build pass. Native-touch fixture release pause247ms→62ms and20 loading frames→0, short slow drag snaps back, fast74px flick commits; recycled feed never changes target. Physical phone acceptance pending."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-05T22:34:40.632Z",
+          "note": "Worker provides16 synthetic phone screenshots/videos; integration worker inspects390 RTL/light drag rendering. Synthetic measurements/screenshots are not physical-phone acceptance. Owner refreshes phone to load50ac9c revision."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "05c frontend refinement deployed. Owner refreshes phone and assesses physical swipe feel; preserve current07 compatibility/native gate and all live sessions. Physical acceptance remains open.",
+      "history": [
+        {
+          "at": "2026-10-05T21:41:46.921Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-05T21:41:46.989Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Before-release movement guard failed before repair; isolated and canonical source checks pass, physical-phone acceptance remains pending."
+        },
+        {
+          "at": "2026-10-05T21:41:47.053Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Before-release movement guard failed before repair; isolated and canonical source checks pass, physical-phone acceptance remains pending."
+        },
+        {
+          "at": "2026-10-05T21:41:47.139Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Before-release movement guard failed before repair; isolated and canonical source checks pass, physical-phone acceptance remains pending."
+        },
+        {
+          "at": "2026-10-05T21:41:47.219Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Before-release movement guard failed before repair; isolated and canonical source checks pass, physical-phone acceptance remains pending."
+        },
+        {
+          "at": "2026-10-05T21:41:47.312Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Before-release movement guard failed before repair; isolated and canonical source checks pass, physical-phone acceptance remains pending."
+        },
+        {
+          "at": "2026-10-05T21:41:47.387Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "05b transform-only requestAnimationFrame drag, inert adjacent feed preview without visits/actions, cancellation guard,180ms guarded completion,220ms snapback and stationary reduced-motion preview. Scoped canonical21:40:42 integration preserves06 project picker."
+        },
+        {
+          "at": "2026-10-05T21:41:47.456Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "12 focused navigation/motion tests,24 mobile,14 layout/group/reconnect and fresh55 combined picker/motion/mobile checks pass; baseline red explicitly states chat must move before release."
+        },
+        {
+          "at": "2026-10-05T21:41:47.523Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "16 synthetic320/390 RTL/LTR dark/light phone screenshots inspected by05b worker; actual CDP touch tracks finger before release while vertical scrolling remains. Real physical phone refinement acceptance pending."
+        },
+        {
+          "at": "2026-10-05T22:34:40.526Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "05c frontend-only deployed from75c647 to50ac9c, patch6a49254840ef383068ce07679f5e6ff104fbaa63b36d58b8c720eff2b194fb94. Only app and two regression files changed.07/native gate preserved; no service, desktop or daemon restart. PID4051937 and all44 PTY IDs/PIDs/daemon18932 unchanged."
+        },
+        {
+          "at": "2026-10-05T22:34:40.578Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh isolated and canonical combined gesture/navigation/picker/ownership21/21 pass;23 mobile/voice checks and TypeScript/Vite build pass. Native-touch fixture release pause247ms→62ms and20 loading frames→0, short slow drag snaps back, fast74px flick commits; recycled feed never changes target. Physical phone acceptance pending."
+        },
+        {
+          "at": "2026-10-05T22:34:40.632Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Worker provides16 synthetic phone screenshots/videos; integration worker inspects390 RTL/light drag rendering. Synthetic measurements/screenshots are not physical-phone acceptance. Owner refreshes phone to load50ac9c revision."
+        }
+      ]
+    },
+    {
+      "id": "TF-088",
+      "title": "After a PC restart, agent chats come back in the wrong folder or not at all",
+      "state": "triaged",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "2026-10-08 reboot: 10 of 13 cards came back. The film chat (beb2d3de) resumed in cc-linux-enhancments instead of content-creation, so it lost Blender and file access. Lifeboat (5ed40d5f), paper-bot (5bb662b4, card saved as botson) and termfleet (1a651285, card saved as cc-linux) never restarted; their checkpoints were not touched after boot, so no restore attempt was made for them. Resume uses the card's saved folder, not the chat's own project folder.",
+      "rootCause": "",
+      "guard": "Resume a provider chat in the folder its transcript belongs to; prove with a reboot rehearsal covering a card whose shell folder differs from its chat's project",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-11T22:40:35.513Z",
+          "note": "2026-10-12 reboot rehearsal (current source, private keeper, stand-in agents, copies of live checkpoints): 19/19 open panes resume their conversation, 0 plain, 0 lost. Script fixed: blank XDG_DATA_HOME made it crash."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Make the restore planner take the folder from the chat's transcript; find why three cards were never asked to restore",
+      "history": [
+        {
+          "at": "2026-10-08T08:07:37.755Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-08T13:22:48.939Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "cause identified"
+        },
+        {
+          "at": "2026-10-11T22:40:35.513Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-10-12 reboot rehearsal (current source, private keeper, stand-in agents, copies of live checkpoints): 19/19 open panes resume their conversation, 0 plain, 0 lost. Script fixed: blank XDG_DATA_HOME made it crash."
+        }
+      ]
+    },
+    {
+      "id": "TF-089",
+      "title": "Map card Task row says 'Task not captured' although the latest request and agent step are known",
+      "state": "triaged",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "2026-10-08: a Claude chat with no task-list tool shows Goal = opening ask, Task = 'Task not captured', because every Task candidate equals the Goal and is dropped; the latest request and the agent's narrated step in its status file are never tried",
+      "rootCause": "",
+      "guard": "resolveMapCardTaskRow unit test: goal-equal candidates fall through to the latest request, then the agent's narration",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Add the two fallbacks, test, rebuild and promote the dock release, inspect the real card",
+      "history": [
+        {
+          "at": "2026-10-08T11:02:53.530Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-08T13:22:49.224Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "cause identified"
+        }
+      ]
+    },
+    {
+      "id": "TF-090",
+      "title": "Copy shortcut overwrites an agent's own copy with one character",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "paste-debug.log 2026-10-08 16:20: agent copied 996/987/858/478 chars itself (OSC 52, no ui copy line); Ctrl+Shift+C ~250ms later wrote chars=1 from TermFleet's zero-width click selection, so paste gave one character or nothing",
+      "rootCause": "",
+      "guard": "copySelection refuses a selection with no extent; test in tests",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-08T13:24:54.262Z",
+          "note": "copySelection returns early when the selection has no extent"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-08T13:24:54.613Z",
+          "note": "tests/copy-shortcut-keeps-agent-copy.spec.ts 2/2"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-10-08T13:24:55.185Z",
+          "note": "release 82ef8cfe6fb8-6e688d7aa707-65d790d869f5 promoted, verify OK"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "patch copySelection, focused test, release, check paste-debug.log after operator copies",
+      "history": [
+        {
+          "at": "2026-10-08T13:22:42.129Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-08T13:22:49.513Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "cause identified"
+        },
+        {
+          "at": "2026-10-08T13:24:53.337Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "paste log shows OSC52 copy then chars=1 overwrite"
+        },
+        {
+          "at": "2026-10-08T13:24:53.651Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "focused test"
+        },
+        {
+          "at": "2026-10-08T13:24:53.950Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": null
+        },
+        {
+          "at": "2026-10-08T13:24:54.262Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "copySelection returns early when the selection has no extent"
+        },
+        {
+          "at": "2026-10-08T13:24:54.613Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/copy-shortcut-keeps-agent-copy.spec.ts 2/2"
+        },
+        {
+          "at": "2026-10-08T13:24:55.185Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "release 82ef8cfe6fb8-6e688d7aa707-65d790d869f5 promoted, verify OK"
+        },
+        {
+          "at": "2026-10-08T13:24:55.739Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "needs operator relaunch + paste log check"
+        }
+      ]
+    },
+    {
+      "id": "TF-091",
+      "title": "A running chat's card vanishes on relaunch because its chat id was closed in an older card",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "2026-10-08 18:44 relaunch: content-creation film chat (pane 5080a117, claude --resume beb2d3de) kept running but its card disappeared; beb2d3de was in closedProviderSessionIds from closing an older dead card, and hydration drops any tab or live session whose chat id is tombstoned",
+      "rootCause": "",
+      "guard": "provider tombstones never hide a live pane; tombstone self-heals when the chat is live elsewhere",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-08T16:22:56.429Z",
+          "note": "chat-id tombstones cleared for chats live in unclosed panes; TermFleet-owned live chats with no card get one back (external sessions still never adopted)"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-08T16:22:56.721Z",
+          "note": "live-chat-survives-closed-tombstone 4/4, live-chat-card-returns 1/1, workspace-hydration + closed-session-authority + startup recovery 42/43 (1 failing before the change too)"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-10-08T16:22:57.010Z",
+          "note": "release 7f7c093eafba-ef17c9dc3eb4-a70c5dda2650 promoted, verify OK"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "patch hydration + reconcile, focused test, release, bring the card back",
+      "history": [
+        {
+          "at": "2026-10-08T15:56:40.337Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-08T15:56:40.651Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "cause found in workspace.json + hydration filter"
+        },
+        {
+          "at": "2026-10-08T16:22:55.425Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "workspace.json shows tab dropped + chat id tombstoned; fixture reproduces"
+        },
+        {
+          "at": "2026-10-08T16:22:55.814Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "workspace.json shows tab dropped + chat id tombstoned; fixture reproduces"
+        },
+        {
+          "at": "2026-10-08T16:22:56.111Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "workspace.json shows tab dropped + chat id tombstoned; fixture reproduces"
+        },
+        {
+          "at": "2026-10-08T16:22:56.429Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "chat-id tombstones cleared for chats live in unclosed panes; TermFleet-owned live chats with no card get one back (external sessions still never adopted)"
+        },
+        {
+          "at": "2026-10-08T16:22:56.721Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "live-chat-survives-closed-tombstone 4/4, live-chat-card-returns 1/1, workspace-hydration + closed-session-authority + startup recovery 42/43 (1 failing before the change too)"
+        },
+        {
+          "at": "2026-10-08T16:22:57.010Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "release 7f7c093eafba-ef17c9dc3eb4-a70c5dda2650 promoted, verify OK"
+        },
+        {
+          "at": "2026-10-08T16:22:57.317Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "needs relaunch; film + paper-bot cards should return"
+        }
+      ]
+    },
+    {
+      "id": "TF-092",
+      "title": "Map side panel can't scroll when many chats wait for approval",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "2026-10-09 screenshot: 7 pending approvals; the pending list grows past the panel, squeezes the scrolling map list to zero height and has no scroll of its own, so the wheel does nothing",
+      "rootCause": "",
+      "guard": "pending approval card list has a bounded height and scrolls itself",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-09T11:21:52.523Z",
+          "note": "pending list bounded (~2 cards) and scrolls; cards show only project, one-line task, Action Required, agent; sort/filter buttons fold to one remembered View line (open by default)"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-09T11:21:53.090Z",
+          "note": "pending-approvals-scroll 2/2, sidebar-order-options + map-first-impression-layout pass"
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-09T11:21:53.595Z",
+          "note": "test-results/tf-092-pending-approvals-scroll.png: 3 compact cards visible, list scrolls, panel below keeps its space"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "bound + scroll cardList, test, release with the integration",
+      "history": [
+        {
+          "at": "2026-10-09T11:14:33.670Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-09T11:14:33.984Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "cause: unbounded non-scrolling section above the flex:1 list"
+        },
+        {
+          "at": "2026-10-09T11:21:50.854Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "screenshots 2026-10-09 + fixture"
+        },
+        {
+          "at": "2026-10-09T11:21:51.430Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "screenshots 2026-10-09 + fixture"
+        },
+        {
+          "at": "2026-10-09T11:21:51.990Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "screenshots 2026-10-09 + fixture"
+        },
+        {
+          "at": "2026-10-09T11:21:52.523Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "pending list bounded (~2 cards) and scrolls; cards show only project, one-line task, Action Required, agent; sort/filter buttons fold to one remembered View line (open by default)"
+        },
+        {
+          "at": "2026-10-09T11:21:53.091Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "pending-approvals-scroll 2/2, sidebar-order-options + map-first-impression-layout pass"
+        },
+        {
+          "at": "2026-10-09T11:21:53.596Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "test-results/tf-092-pending-approvals-scroll.png: 3 compact cards visible, list scrolls, panel below keeps its space"
+        },
+        {
+          "at": "2026-10-09T11:21:54.047Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "release 7f7c093eafba-8c434d112090-2a49c4bbfa08 installed; needs operator relaunch"
+        }
+      ]
+    },
+    {
+      "id": "TF-093",
+      "title": "Agent terminal text duplicates and overlaps after a split drawing character",
+      "state": "fixing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "2026-10-09 freelance-desk Claude pane: duplicated paragraph, '* BreYour private Desk…' overlap; saved scrollback has exactly one corruption '──��──' in the rule above the question; PTY reader decodes each 4096-byte read with from_utf8_lossy so a 3-byte char split across reads becomes 2 cells, the 138-col rule wraps and every later cell-diff lands one row off",
+      "rootCause": "",
+      "guard": "cargo test: a character split across reads decodes intact",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-09T11:24:32.459Z",
+          "note": "PTY reader keeps an incomplete UTF-8 tail between reads (decode_utf8_stream); input side already fixed by the Oct 7 change set"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-09T11:24:32.911Z",
+          "note": "cargo test split_multibyte_character_survives_read_boundaries; full lib 234/234"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-10-09T13:38:14.139Z",
+          "note": "release 7f7c093eafba-0575bf99be72-56784633f9de-0c20e0f2432e (with Oct 7 handover/data-safety set); daemon-side fix activates on daemon restart"
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-10-10T11:04:43.144Z",
+          "note": "2026-10-10: operator screenshot (Claude input 'tou' leftover) reproduced exactly by replaying that pane's scrollback in pyte at 138 cols: a split rule char became two U+FFFD, the 139-wide rule wrapped, input box drew one row off. Running daemon (pid 23731, started Oct 8) predates the fix, so the fix is not live yet."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "carry incomplete UTF-8 tail between reads (daemon reader + input path), test, release; activates when the daemon restarts",
+      "history": [
+        {
+          "at": "2026-10-09T11:22:25.261Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-09T11:22:25.637Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "cause proven in scrollback bytes"
+        },
+        {
+          "at": "2026-10-09T11:24:31.314Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "scrollback bytes show the split rule"
+        },
+        {
+          "at": "2026-10-09T11:24:31.701Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "scrollback bytes show the split rule"
+        },
+        {
+          "at": "2026-10-09T11:24:32.077Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "scrollback bytes show the split rule"
+        },
+        {
+          "at": "2026-10-09T11:24:32.459Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "PTY reader keeps an incomplete UTF-8 tail between reads (decode_utf8_stream); input side already fixed by the Oct 7 change set"
+        },
+        {
+          "at": "2026-10-09T11:24:32.911Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "cargo test split_multibyte_character_survives_read_boundaries; full lib 234/234"
+        },
+        {
+          "at": "2026-10-09T13:38:14.139Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "release 7f7c093eafba-0575bf99be72-56784633f9de-0c20e0f2432e (with Oct 7 handover/data-safety set); daemon-side fix activates on daemon restart"
+        },
+        {
+          "at": "2026-10-10T11:04:43.144Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-10-10: operator screenshot (Claude input 'tou' leftover) reproduced exactly by replaying that pane's scrollback in pyte at 138 cols: a split rule char became two U+FFFD, the 139-wide rule wrapped, input box drew one row off. Running daemon (pid 23731, started Oct 8) predates the fix, so the fix is not live yet."
+        }
+      ]
+    },
+    {
+      "id": "TF-094",
+      "title": "Goal and Topic say 'not yet known' when the request mentions a dollar amount or a $skill",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "2026-10-09: cc-linux-enhancments card shows Topic/Goal not yet known and Task = a follow-up complaint ('but it has a loit of uneeded content'); the opening and latest requests were refused as command-like because they contain '$3' and '$about-what'",
+      "rootCause": "",
+      "guard": "qualityCheckUserAskLabel unit test: money amounts and $skill mentions in a sentence pass, shell variables still refused; follow-up 'but ...' complaints refused as Task",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-09T18:00:01.806Z",
+          "note": "user-ask gate allows prices/$skill names, refuses pasted menu choices and 'but ...' replies; summary carries latestRequest as Goal fallback"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-09T18:00:01.848Z",
+          "note": "pane-context-presentation TF-094 case + header-quality/task-line/sidecar suites: all pass"
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-09T18:00:06.612Z",
+          "note": "live installed app (not browser preview), 2026-10-09 20:55 after window-only relaunch: header trace for the cc-linux-enhancments card shows Goal kind=inferred source=latest-request; no screenshot taken"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Narrow the dollar rule, refuse 'but ...' follow-ups, test, release, inspect the real card",
+      "history": [
+        {
+          "at": "2026-10-09T11:25:08.611Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-09T11:26:26.251Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "cause: user-ask gate refused any '$' (prices, $skill names) as command-like; a pasted menu choice was the captured opening request; a 'but ...' follow-up was accepted as Task"
+        },
+        {
+          "at": "2026-10-09T11:26:43.861Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "reproduced from the live sidecar + session record: both requests rejected command-like"
+        },
+        {
+          "at": "2026-10-09T11:26:43.905Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "pane-context-presentation spec TF-094 case"
+        },
+        {
+          "at": "2026-10-09T11:26:43.944Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "narrowed dollar rule to shell syntax; refuse pasted menu bullets and 'but ...' follow-ups; 71/71 label tests"
+        },
+        {
+          "at": "2026-10-09T11:37:16.930Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "release promoted and verified; real card check pending app relaunch"
+        },
+        {
+          "at": "2026-10-09T18:00:01.806Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "user-ask gate allows prices/$skill names, refuses pasted menu choices and 'but ...' replies; summary carries latestRequest as Goal fallback"
+        },
+        {
+          "at": "2026-10-09T18:00:01.848Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "pane-context-presentation TF-094 case + header-quality/task-line/sidecar suites: all pass"
+        },
+        {
+          "at": "2026-10-09T18:00:06.612Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "live installed app (not browser preview), 2026-10-09 20:55 after window-only relaunch: header trace for the cc-linux-enhancments card shows Goal kind=inferred source=latest-request; no screenshot taken"
+        }
+      ]
+    },
+    {
+      "id": "TF-095",
+      "title": "Phone message with a photo can sit unsent in the agent's input box",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "sent.log 2026-10-10 21:23: photo + 'Here' typed into Claude, Enter swallowed while the image was taken in; submitted only at 21:53 together with the next message",
+      "rootCause": "",
+      "guard": "termcontrol/test/submit-confirm.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-11T21:43:08.598Z",
+          "note": "submit-confirm 5/5 green; live input-box read on 19 panes: no false 'held' detections; bridge restarted, terminals untouched"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner sends a photo from the phone and sees it answered without a second message",
+      "history": [
+        {
+          "at": "2026-10-11T21:43:08.312Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-11T21:43:08.599Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "submit-confirm 5/5 green; live input-box read on 19 panes: no false 'held' detections; bridge restarted, terminals untouched"
+        }
+      ]
+    },
+    {
+      "id": "TF-097",
+      "title": "Phone view drops on every bridge restart; bridge memory peaked at 5.2 GB",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Each deploy restart of the TermControl bridge cut the phone's live stream (tunnel 'unexpected EOF'); a 502 during the gap closed the browser event stream for good or showed an error screen. Before 11:52 on 2026-10-16 the bridge peaked at 5.2 GB + 4 GB swap.",
+      "rootCause": "",
+      "guard": "termcontrol/test/restart-invisible.test.mjs: an in-flight reply finishes across a restart; on a phone-size window the open chat stays and the live stream reconnects through a 502 gap (fails on the old code). Memory: per-conversation read cache, 1.5 GB self-restart, node heap 1 GB, systemd MemoryHigh 1.8G / MemoryMax 2.5G.",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Confirm on the real phone through the tunnel during the next deploy restart",
+      "history": [
+        {
+          "at": "2026-10-16T09:58:52.795Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-16T09:59:06.473Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "restart test + memory guard; deployed 12:58"
+        },
+        {
+          "at": "2026-10-16T09:59:11.655Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "leak-probe (5x RSS spikes on long conversation reads) + restart test fails on old code; fixed and deployed 12:58"
+        },
+        {
+          "at": "2026-10-16T09:59:12.003Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "leak-probe (5x RSS spikes on long conversation reads) + restart test fails on old code; fixed and deployed 12:58"
+        },
+        {
+          "at": "2026-10-16T09:59:12.346Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "leak-probe (5x RSS spikes on long conversation reads) + restart test fails on old code; fixed and deployed 12:58"
+        },
+        {
+          "at": "2026-10-16T09:59:12.698Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "leak-probe (5x RSS spikes on long conversation reads) + restart test fails on old code; fixed and deployed 12:58"
+        }
+      ]
+    },
+    {
+      "id": "TF-098",
+      "title": "Bot chat: no Reply on a message from its menu (Noam's own messages had no Reply at all)",
+      "state": "triaged",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Noam 2026-10-21: 'אני צריך להיות מסוגל להגיב להודעה הזו מכאן' - the message menu shows only Copy and Source text; the old Reply only pasted a quote and was missing on his own messages",
+      "rootCause": "",
+      "guard": "test/bot-message-reply.test.mjs plus live PC and phone check of the served app",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Reply in every bot-chat message menu, quoted preview with cancel, send linked by message id to the current bot, keep reply and draft on failure",
+      "history": [
+        {
+          "at": "2026-10-21T19:03:10.281Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-21T19:03:15.847Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": null
         }
       ]
     },
@@ -10265,6 +12318,331 @@
           "from": "fixing",
           "to": "verifying",
           "note": null
+        }
+      ]
+    },
+    {
+      "id": "TF-100",
+      "title": "Idle agent terminals hold 0.3-0.6 GB each while waiting",
+      "state": "triaged",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Every open claude/codex terminal keeps its whole program tree in memory while idle; Noam wants many agents available without the memory cost",
+      "rootCause": "",
+      "guard": "termcontrol/test/agent-sleep.test.mjs",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Sleep idle agents after 20 min; wake on open, typing or message with the same conversation",
+      "history": [
+        {
+          "at": "2026-10-22T08:03:26.381Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-22T08:03:34.367Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "sleep feature built; live-verified on a throwaway"
+        }
+      ]
+    },
+    {
+      "id": "TF-103",
+      "title": "Terminal questions not fully answerable from the Agents view",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Needs you and bot chat cards showed only one option or 'answer in the terminal' for pick-several, own-answer and several-question prompts; chat pick-several waited on the terminal for every tick and Submit sat below the fold; after question 1 of a two-question prompt the card kept showing question 1",
+      "rootCause": "",
+      "guard": "termcontrol/test/question-card-full.test.mjs, several-questions-current.test.mjs, multi-select-answers.test.mjs",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Noam tries a pick-several question on his phone",
+      "history": [
+        {
+          "at": "2026-10-23T05:22:48.658Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-23T05:23:12.062Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Reproduced from Noam's screenshot and a live two-question prompt; guarded by question-card-full, several-questions-current and multi-select-answers tests; live answers from phone and PC reached the agent exactly"
+        },
+        {
+          "at": "2026-10-23T05:23:12.938Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Reproduced from Noam's screenshot and a live two-question prompt; guarded by question-card-full, several-questions-current and multi-select-answers tests; live answers from phone and PC reached the agent exactly"
+        },
+        {
+          "at": "2026-10-23T05:23:13.797Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Reproduced from Noam's screenshot and a live two-question prompt; guarded by question-card-full, several-questions-current and multi-select-answers tests; live answers from phone and PC reached the agent exactly"
+        },
+        {
+          "at": "2026-10-23T05:23:14.643Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Reproduced from Noam's screenshot and a live two-question prompt; guarded by question-card-full, several-questions-current and multi-select-answers tests; live answers from phone and PC reached the agent exactly"
+        },
+        {
+          "at": "2026-10-23T05:23:15.626Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Reproduced from Noam's screenshot and a live two-question prompt; guarded by question-card-full, several-questions-current and multi-select-answers tests; live answers from phone and PC reached the agent exactly"
+        }
+      ]
+    },
+    {
+      "id": "TF-104",
+      "title": "Ctrl+V of a copied picture does nothing in PC chat boxes",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Pasting a copied picture file with Ctrl+V in a bot or terminal chat on the PC attached nothing",
+      "rootCause": "",
+      "guard": "termcontrol/test/paste-picture.test.mjs + clipboard-files.test.mjs; live WebKitGTK paste run",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-23T12:22:58.437Z",
+          "note": "chat page reads copied picture addresses, asks the PC server when the engine blanks them (new clipboard-files module, /api/clipboard-files PC-only)"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-23T12:23:00.202Z",
+          "note": "paste-picture 13/13 + clipboard-files 2/2 pass"
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-10-23T14:26:54.508Z",
+          "note": "Regressed for screenshots KDE also saves (picture + file address): engine refuses the picture, page skipped the address. Fixed 478dfe4/c759530: PC reads copied files first, then the engine's address/picture; reproduced and fixed in WebKitGTK 2.52 vs live chat server; ~/Pictures/termfleet-evidence/ctrl-v-saved-screenshot-2026-10-23.png; paste-picture 14/14"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Noam tries Ctrl+V of a screenshot and of a copied picture file in a bot chat",
+      "history": [
+        {
+          "at": "2026-10-23T12:22:30.989Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-23T12:22:58.438Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "chat page reads copied picture addresses, asks the PC server when the engine blanks them (new clipboard-files module, /api/clipboard-files PC-only)"
+        },
+        {
+          "at": "2026-10-23T12:23:00.202Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "paste-picture 13/13 + clipboard-files 2/2 pass"
+        },
+        {
+          "at": "2026-10-23T12:23:02.013Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "WebKitGTK 2.52 window on the live chat server, real Ctrl+V: screenshot=1 tile, two copied files (home + data drive)=2 tiles, text stays text; ~/Pictures/termfleet-evidence/ctrl-v-pictures-2026-10-23.png"
+        },
+        {
+          "at": "2026-10-23T14:26:54.508Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Regressed for screenshots KDE also saves (picture + file address): engine refuses the picture, page skipped the address. Fixed 478dfe4/c759530: PC reads copied files first, then the engine's address/picture; reproduced and fixed in WebKitGTK 2.52 vs live chat server; ~/Pictures/termfleet-evidence/ctrl-v-saved-screenshot-2026-10-23.png; paste-picture 14/14"
+        }
+      ]
+    },
+    {
+      "id": "TF-105",
+      "title": "Dragging files from the file manager onto a chat box did nothing",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Dropping Dolphin files on a bot chat message box in the PC app attached nothing",
+      "rootCause": "",
+      "guard": "termcontrol/test/drop-files.test.mjs (6) + live real-app drag on a private display",
+      "evidence": [
+        {
+          "kind": "live-desktop",
+          "at": "2026-10-23T14:26:56.841Z",
+          "note": "Installed release c759530 on a private display, real Dolphin drag of 3 files onto the live bot chat: box lit, 3 attached; ~/Pictures/termfleet-evidence/drag-files-attached-2026-10-23.png; drop-files 6/6"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Noam drags files onto a bot chat after restarting TermFleet",
+      "history": [
+        {
+          "at": "2026-10-23T14:26:55.636Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-23T14:26:56.841Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed release c759530 on a private display, real Dolphin drag of 3 files onto the live bot chat: box lit, 3 attached; ~/Pictures/termfleet-evidence/drag-files-attached-2026-10-23.png; drop-files 6/6"
+        }
+      ]
+    },
+    {
+      "id": "TF-106",
+      "title": "Stale terminal questions cover bot chat and block scrolling",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Questions from closed terminals remain pinned in a stack covering chat history",
+      "rootCause": "",
+      "guard": "termcontrol/test/term-ask-pinned.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-25T17:18:43.407Z",
+          "note": "node --test termcontrol/test/term-ask-pinned.test.mjs termcontrol/test/bot-terminal-ask.test.mjs: 3 passed; syntax and full-question tests passed. Service restarted and active."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify live chat after reload on operator phone",
+      "history": [
+        {
+          "at": "2026-10-25T17:17:16.106Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-25T17:18:36.648Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Closed-source cards now collapse; bounded pinned panel. Browser checks pass at 390 and 1600 pixels; live authenticated phone read-back pending."
+        },
+        {
+          "at": "2026-10-25T17:18:38.268Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Closed-source cards now collapse; bounded pinned panel. Browser checks pass at 390 and 1600 pixels; live authenticated phone read-back pending."
+        },
+        {
+          "at": "2026-10-25T17:18:39.424Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Closed-source cards now collapse; bounded pinned panel. Browser checks pass at 390 and 1600 pixels; live authenticated phone read-back pending."
+        },
+        {
+          "at": "2026-10-25T17:18:40.502Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Closed-source cards now collapse; bounded pinned panel. Browser checks pass at 390 and 1600 pixels; live authenticated phone read-back pending."
+        },
+        {
+          "at": "2026-10-25T17:18:41.993Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Closed-source cards now collapse; bounded pinned panel. Browser checks pass at 390 and 1600 pixels; live authenticated phone read-back pending."
+        },
+        {
+          "at": "2026-10-25T17:18:43.408Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test termcontrol/test/term-ask-pinned.test.mjs termcontrol/test/bot-terminal-ask.test.mjs: 3 passed; syntax and full-question tests passed. Service restarted and active."
+        }
+      ]
+    },
+    {
+      "id": "TF-107",
+      "title": "Watchdog floods chat with historical request warnings",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Old assigned requests from closed terminals produce warnings",
+      "rootCause": "",
+      "guard": "Watchdog tests restrict warnings to live working terminals and recent requests",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-25T17:25:44.747Z",
+          "note": "node --test termcontrol/test/watchdog.test.mjs: 5 pass, 0 fail; covers closed idle waiting terminals, 24-hour age, missing timestamps, current stall and episode deduplication"
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-25T17:27:05.086Z",
+          "note": "Commit 15b217f is loaded by termcontrol.service after restart at 2026-10-25 19:26:48 IST, PID 3684006, active/running; localhost:7810 returns auth redirect 302. Authenticated chat readback remains unverified."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Test historical and inactive request exclusion",
+      "history": [
+        {
+          "at": "2026-10-25T17:25:00.325Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-25T17:25:44.532Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed historical assigned-item scan reports missing terminals"
+        },
+        {
+          "at": "2026-10-25T17:25:44.568Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused test reproduced gone-terminal warnings"
+        },
+        {
+          "at": "2026-10-25T17:25:44.612Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added five watchdog regressions"
+        },
+        {
+          "at": "2026-10-25T17:25:44.647Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Restricted requests to recent live working terminals and fail closed without daemon"
+        },
+        {
+          "at": "2026-10-25T17:25:44.703Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Five focused tests pass; restarting bridge for runtime readback"
+        },
+        {
+          "at": "2026-10-25T17:25:44.747Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test termcontrol/test/watchdog.test.mjs: 5 pass, 0 fail; covers closed idle waiting terminals, 24-hour age, missing timestamps, current stall and episode deduplication"
+        },
+        {
+          "at": "2026-10-25T17:27:05.086Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Commit 15b217f is loaded by termcontrol.service after restart at 2026-10-25 19:26:48 IST, PID 3684006, active/running; localhost:7810 returns auth redirect 302. Authenticated chat readback remains unverified."
         }
       ]
     },

@@ -4,8 +4,15 @@ mod agent_lifecycle;
 mod bidi;
 mod cpu_priority;
 mod commands;
+mod child_request_claim;
 pub mod daemon;
 mod daemon_ipc;
+mod handoff_native_binding;
+mod handoff_native_bridge;
+mod handoff_native_resources;
+mod handoff_native_host;
+mod handoff_native;
+mod handoff_native_wire;
 mod default_shell;
 #[cfg(target_os = "linux")]
 mod gtk_keys;
@@ -73,6 +80,7 @@ pub fn run() {
             session_events::agent_status_events_watch,
             session_native::agent_status_observe_process,
             session_native::agent_status_runtime_event,
+            session_native::agent_status_source_snapshot,
             commands::agent_conversation_owner,
             commands::agent_conversation_has_other_owner,
             commands::agent_context_task_title,
@@ -94,6 +102,11 @@ pub fn run() {
             commands::terminal_geometry_log,
             commands::daemon_ensure_running,
             commands::daemon_ensure_session,
+            commands::handoff_lifecycle_quarantine,
+            commands::handoff_unsent_recover,
+            commands::handoff_framed_input,
+            commands::handoff_provider_register,
+            commands::handoff_provider_activate,
             commands::daemon_update_agent_recovery_manifest,
             commands::daemon_write_session,
             commands::daemon_resize_session,
@@ -133,6 +146,7 @@ pub fn run() {
             commands::paste_debug_log,
             commands::fs_pick_project_folder,
             commands::fs_list_dir,
+            commands::fs_find_project_folders,
             commands::fs_find_master_plan_roots,
             commands::fs_create,
             commands::fs_rename,

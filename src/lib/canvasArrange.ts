@@ -258,6 +258,16 @@ export function countCanvasLanes(
  * first, preferring right, then below, and a spot is free only when it keeps
  * `gap` clear of every card (of any type). Deterministic for a given map.
  */
+/** Place only the new terminal: below its full project stack, or right of the full map. */
+export function projectTerminalPlacement(groupId:string,tabs:readonly ArrangeTab[],nodes:readonly ArrangeableNode[],size:{width:number;height:number}):CanvasPosition {
+  const membership=resolveCanvasNodeProjects([...nodes],[...tabs]);
+  const project=nodes.filter(node=>membership.get(node.id)===groupId);
+  if(!project.length)return {x:nodes.length?Math.max(...nodes.map(node=>node.x+node.width))+CANVAS_PROJECT_LANE_GAP:0,y:nodes.length?Math.min(...nodes.map(node=>node.y)):0};
+  const x=Math.min(...project.map(node=>node.x));let y=Math.max(...project.map(node=>node.y+node.height))+CANVAS_ROW_ITEM_GAP;
+  // Moving only downward terminates beyond all obstacles; every card type participates.
+  while(true){const rect={left:x-CANVAS_ROW_ITEM_GAP,top:y-CANVAS_ROW_ITEM_GAP,right:x+size.width+CANVAS_ROW_ITEM_GAP,bottom:y+size.height+CANVAS_ROW_ITEM_GAP};const overlaps=nodes.filter(node=>overlapArea(rect,rectOf(node))>0);if(!overlaps.length)return {x,y};y=Math.max(...overlaps.map(node=>node.y+node.height))+CANVAS_ROW_ITEM_GAP;}
+}
+
 export function findFreeCanvasSpot(
   anchor: ArrangeableNode,
   size: { width: number; height: number },

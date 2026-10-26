@@ -7,6 +7,44 @@ import { join } from "node:path";
 import { fnv } from "../scripts/lib/agent-status-paths.mjs";
 // @ts-expect-error — plain ESM script that also exports its caller detection
 import { resolveCaller } from "../scripts/termfleet-child.mjs";
+// @ts-expect-error — plain ESM helper written by the status hooks
+import { publishSessionEvent } from "../scripts/lib/session-event-journal.mjs";
+
+// Oct 7 capsule contract: a --dropoff handover fails closed unless the caller's own
+// provider transcript is readable (found via CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID or
+// the pane record's sessionId) AND the pane's status journal holds that chat. These
+// fixtures are what the provider and the status hook leave on disk in real use.
+const OWNER_WORDS = "fix the sidebar, and keep the old card's work";
+function seedSource(dataHome: string, provider: "claude" | "codex", sessionId: string, pane = parentPaneId) {
+  const home = join(dataHome, "home");
+  if (provider === "claude") {
+    mkdirSync(join(home, ".claude", "projects", "-work"), { recursive: true });
+    writeFileSync(join(home, ".claude", "projects", "-work", `${sessionId}.jsonl`),
+      JSON.stringify({ type: "user", timestamp: "2026-10-07T10:00:00Z", message: { content: OWNER_WORDS } }) + "\n");
+  } else {
+    const dir = join(home, ".codex", "sessions", "2026", "10", "07");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `rollout-2026-10-07T10-00-00-${sessionId}.jsonl`), [
+      JSON.stringify({ timestamp: "2026-10-07T10:00:00Z", type: "session_meta", payload: { id: sessionId } }),
+      JSON.stringify({ timestamp: "2026-10-07T10:00:01Z", type: "event_msg", payload: { type: "user_message", message: OWNER_WORDS } }),
+    ].join("\n") + "\n");
+  }
+  return publishSessionEvent({ dir: join(dataHome, "terminal-workspace", "agent-status"), paneId: pane, provider, at: 1000,
+    payload: { session_id: sessionId, hook_event_name: "UserPromptSubmit", prompt: OWNER_WORDS }, sidecar: { turn: "working" } });
+}
+const CLAUDE_CHAT = "c1a0de00-0000-4000-8000-000000000001";
+const CODEX_CHAT = "01a10000-0000-7000-8000-0000000000c1";
+function expectHandoffRequest(request: any, provider: string) {
+  expect(request.version).toBe(3);
+  expect(request.kind).toBe("handoff");
+  expect(request.provider).toBe(provider);
+  expect(request.task.startsWith(`TermFleet handoff v1 ${JSON.stringify(request.handoff)}\n`)).toBe(true);
+  const manifest = JSON.parse(readFileSync(request.handoff.path, "utf8"));
+  expect(manifest.provider).toBe(provider);
+  expect(manifest.generation).toBe(request.handoff.generation);
+  const owner = JSON.parse(readFileSync(join(request.handoff.path, "..", "owner-records.json"), "utf8"));
+  expect(owner.map((m: { text: string }) => m.text)).toEqual([OWNER_WORDS]);
+}
 
 // A helper adds a card and the caller keeps running. Only a real handoff of the
 // caller's own work replaces the caller's card (TF-069). A helper briefing that
@@ -60,10 +98,11 @@ async function spawnAndReadRequest(
   provider = "claude",
   extraEnv: Record<string, string | undefined> = { TERMFLEET_PANE_ID: parentPaneId },
 ) {
-  const env: Record<string, string | undefined> = { ...process.env, XDG_DATA_HOME: dataHome,
+  const env: Record<string, string | undefined> = { ...process.env, XDG_DATA_HOME: dataHome, HOME: join(dataHome, "home"),
     CODEX_THREAD_ID: "", CODEX_SESSION_ID: "", CLAUDE_CODE_SESSION_ID: "", ...extraEnv };
   for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key];
-  const child = spawn(process.execPath, ["--require", join(dataHome, "isolated-proc.cjs"), CLI, "spawn", "--provider", provider, "--timeout", "10", ...args, ...(args.includes("--dropoff") ? ["--allow-no-words"] : [])], {
+  // --allow-no-words is gone from the contract: a handover without readable owner source is refused.
+  const child = spawn(process.execPath, ["--require", join(dataHome, "isolated-proc.cjs"), CLI, "spawn", "--provider", provider, "--timeout", "10", ...args], {
     env: env as NodeJS.ProcessEnv,
   });
   let stderr = "";
@@ -102,10 +141,19 @@ test("a helper briefing in a file (--task-file) never replaces the card that ask
 
 test("a real handoff (--dropoff) replaces the caller's own card", async () => {
   const { dataHome, dir, file } = setup();
-  const { request, code } = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir);
+  // Without any readable owner record the handover fails closed: no request, card untouched.
+  const refused = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "claude",
+    { TERMFLEET_PANE_ID: parentPaneId, CLAUDE_CODE_SESSION_ID: CLAUDE_CHAT });
+  expect(refused.code).toBe(2);
+  expect(refused.request).toBeNull();
+  expect(refused.stderr).toContain("no readable owner record; handover was not started");
+  await seedSource(dataHome, "claude", CLAUDE_CHAT);
+  const { request, code } = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "claude",
+    { TERMFLEET_PANE_ID: parentPaneId, CLAUDE_CODE_SESSION_ID: CLAUDE_CHAT });
   expect(code).toBe(0);
   expect(request.replace).toBe(true);
-  expect(request.task).toContain("handoff from the previous instance");
+  expect(request.parentPaneId).toBe(parentPaneId);
+  expectHandoffRequest(request, "claude");
   rmSync(dataHome, { recursive: true, force: true });
 });
 
@@ -130,45 +178,53 @@ test("a nearly empty handoff is refused, because a successor would start with no
 });
 
 // A Codex session that reaches its limit continues in Codex, not in Claude.
-function recordCallerAgent(dataHome: string, provider: string) {
+function recordCallerAgent(dataHome: string, provider: string, sessionId?: string) {
   const statusDir = join(dataHome, "terminal-workspace", "agent-status");
   mkdirSync(statusDir, { recursive: true });
-  writeFileSync(join(statusDir, `pane-${fnv(parentPaneId)}.json`), JSON.stringify({ paneId: parentPaneId, provider, updatedAt: Date.now() }));
+  writeFileSync(join(statusDir, `pane-${fnv(parentPaneId)}.json`), JSON.stringify({ paneId: parentPaneId, provider, sessionId, updatedAt: Date.now() }));
 }
 
 test("a handover from a Codex session continues in Codex, even if Claude was typed", async () => {
   const { dataHome, dir, file } = setup();
-  recordCallerAgent(dataHome, "codex");
+  recordCallerAgent(dataHome, "codex", CODEX_CHAT);
+  await seedSource(dataHome, "codex", CODEX_CHAT);
   const { request, stderr, code } = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "claude");
   expect(code).toBe(0);
   expect(request.provider).toBe("codex");
   expect(request.replace).toBe(true);
   expect(stderr).toContain("same agent as you (codex)");
+  expectHandoffRequest(request, "codex");
   rmSync(dataHome, { recursive: true, force: true });
 });
 
 test("a handover from a Claude session continues in Claude", async () => {
   const { dataHome, dir, file } = setup();
-  recordCallerAgent(dataHome, "claude");
+  recordCallerAgent(dataHome, "claude", CLAUDE_CHAT);
+  await seedSource(dataHome, "claude", CLAUDE_CHAT);
   const { request, code } = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "codex");
   expect(code).toBe(0);
   expect(request.provider).toBe("claude");
+  expectHandoffRequest(request, "claude");
   rmSync(dataHome, { recursive: true, force: true });
 });
 
 test("a handover keeps the typed agent when the app does not know what the caller runs", async () => {
   const { dataHome, dir, file } = setup();
-  // no record at all
-  const none = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "codex");
+  // no pane record at all: the typed agent (claude) is kept; its own chat id comes from its env
+  await seedSource(dataHome, "claude", CLAUDE_CHAT);
+  const none = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "claude",
+    { TERMFLEET_PANE_ID: parentPaneId, CLAUDE_CODE_SESSION_ID: CLAUDE_CHAT });
   expect(none.code).toBe(0);
-  expect(none.request.provider).toBe("codex");
-  // a record without an agent (shells and not-yet-identified panes look like this)
+  expect(none.request.provider).toBe("claude");
+  expectHandoffRequest(none.request, "claude");
+  // a record without an agent (shells and not-yet-identified panes look like this): typed codex is kept
   const statusDir = join(dataHome, "terminal-workspace", "agent-status");
-  mkdirSync(statusDir, { recursive: true });
-  writeFileSync(join(statusDir, `pane-${fnv(parentPaneId)}.json`), JSON.stringify({ paneId: parentPaneId, provider: null }));
-  const unknown = await spawnAndReadRequest(["--dropoff", file("HANDOFF2.md", REAL_HANDOFF)], dataHome, dir, "claude");
+  await seedSource(dataHome, "codex", CODEX_CHAT);
+  writeFileSync(join(statusDir, `pane-${fnv(parentPaneId)}.json`), JSON.stringify({ paneId: parentPaneId, provider: null, sessionId: CODEX_CHAT }));
+  const unknown = await spawnAndReadRequest(["--dropoff", file("HANDOFF2.md", REAL_HANDOFF)], dataHome, dir, "codex");
   expect(unknown.code).toBe(0);
-  expect(unknown.request.provider).toBe("claude");
+  expect(unknown.request.provider).toBe("codex");
+  expectHandoffRequest(unknown.request, "codex");
   rmSync(dataHome, { recursive: true, force: true });
 });
 
@@ -195,9 +251,11 @@ test("a handover from a Codex card that only carries its real record fields stil
       updatedAt: 1,
     }),
   );
+  await seedSource(dataHome, "codex", "00000000-0000-4000-8000-000000000001");
   const { request, code } = await spawnAndReadRequest(["--dropoff", file("HANDOFF.md", REAL_HANDOFF)], dataHome, dir, "claude");
   expect(code).toBe(0);
   expect(request.provider).toBe("codex");
+  expectHandoffRequest(request, "codex");
   rmSync(dataHome, { recursive: true, force: true });
 });
 
@@ -222,36 +280,41 @@ function bindChatToCard(dataHome: string, threadId: string, paneId: string) {
 
 test("a Codex command shell with no card id still hands over in Codex, replacing its own card", async () => {
   const { dataHome, dir, file } = setup();
-  bindChatToCard(dataHome, "thread-codex-1", parentPaneId);
+  // Codex thread ids are UUIDs; the capsule only looks up well-formed ids.
+  bindChatToCard(dataHome, CODEX_CHAT, parentPaneId);
+  await seedSource(dataHome, "codex", CODEX_CHAT);
   const { request, code, stderr } = await spawnAndReadRequest(
     ["--dropoff", file("HANDOFF.md", REAL_HANDOFF)],
     dataHome,
     dir,
     "claude", // what an old instruction would have typed
-    { TERMFLEET_PANE_ID: undefined, CODEX_THREAD_ID: "thread-codex-1" },
+    { TERMFLEET_PANE_ID: undefined, CODEX_THREAD_ID: CODEX_CHAT },
   );
   expect(code).toBe(0);
   expect(request.provider).toBe("codex");
   expect(request.parentPaneId).toBe(parentPaneId);
   expect(request.replace).toBe(true);
   expect(stderr).toContain("same agent as you (codex)");
+  expectHandoffRequest(request, "codex");
   rmSync(dataHome, { recursive: true, force: true });
 });
 
 test("a stale card id inherited from the shared Codex service never wins over the chat's own card", async () => {
   const { dataHome, dir, file } = setup();
   const staleClaudePane = "terminal-99999999-9999-4999-8999-999999999999-88888888-8888-4888-8888-888888888888";
-  bindChatToCard(dataHome, "thread-codex-2", parentPaneId);
+  bindChatToCard(dataHome, CODEX_CHAT, parentPaneId);
+  await seedSource(dataHome, "codex", CODEX_CHAT);
   const { request, code } = await spawnAndReadRequest(
     ["--dropoff", file("HANDOFF.md", REAL_HANDOFF)],
     dataHome,
     dir,
     "claude",
-    { TERMFLEET_PANE_ID: staleClaudePane, CODEX_THREAD_ID: "thread-codex-2" },
+    { TERMFLEET_PANE_ID: staleClaudePane, CODEX_THREAD_ID: CODEX_CHAT },
   );
   expect(code).toBe(0);
   expect(request.provider).toBe("codex");
   expect(request.parentPaneId).toBe(parentPaneId);
+  expectHandoffRequest(request, "codex");
   rmSync(dataHome, { recursive: true, force: true });
 });
 
@@ -271,15 +334,22 @@ test("a Codex handover without its card binding refuses before adding another ca
   rmSync(dataHome, { recursive: true, force: true });
 });
 
-test("an explicitly separate unbound Codex dropoff may open a new card", async () => {
+test("an explicitly separate unbound Codex dropoff is refused before adding a card", async () => {
+  // Oct 7 capsule contract: a handoff (v3) must be bound to the caller's own card and
+  // replace it; without a card there is no pane-scoped source journal to bind, so even a
+  // readable Codex transcript cannot make an unbound --separate dropoff a handover.
+  // (Previously this opened a new card with the legacy "Read HANDOFF.md" prompt.)
   const { dataHome, dir, file } = setup();
-  const { request, code } = await spawnAndReadRequest(
+  const UNBOUND = "01a10000-0000-7000-8000-00000000000b";
+  await seedSource(dataHome, "codex", UNBOUND);
+  const { request, code, stderr } = await spawnAndReadRequest(
     ["--dropoff", file("HANDOFF.md", REAL_HANDOFF), "--separate"], dataHome, dir, "codex",
-    { TERMFLEET_PANE_ID: undefined, CODEX_THREAD_ID: "thread-unbound" },
+    { TERMFLEET_PANE_ID: undefined, CODEX_THREAD_ID: UNBOUND },
   );
-  expect(code).toBe(0);
-  expect(request.provider).toBe("codex");
-  expect(request.replace).toBeUndefined();
+  expect(code).toBe(2);
+  expect(request).toBeNull();
+  expect(stderr).toContain("incomplete-observed-source");
+  expect(readdirSync(dir).filter((name) => name.endsWith(".request.json"))).toEqual([]);
   rmSync(dataHome, { recursive: true, force: true });
 });
 

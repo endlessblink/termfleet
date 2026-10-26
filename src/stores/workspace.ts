@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { providerSessionIdFromCommand, withoutLiveProviderTombstones } from "../lib/providerTombstones";
 import { projectSessionState } from "../lib/sessionStateAdapter";
 import type {
   CanvasNode,
@@ -312,7 +313,8 @@ function cockpitObjectsForReview(tab: Tab, at: number) {
   }, at);
 }
 
-function createDefaultTab(overrides: Partial<Tab> = {}): Tab {
+/** Reserve a tab identity without publishing a card or starting a terminal. */
+export function createDefaultTab(overrides: Partial<Tab> = {}): Tab {
   const paneId = crypto.randomUUID();
   return {
     id: crypto.randomUUID(),
@@ -368,7 +370,7 @@ interface WorkspaceState {
   hydrating: boolean;
 
   // Tab actions
-  addTab: (tab?: Partial<Tab>, placement?: { x: number; y: number }) => void;
+  addTab: (tab?: Partial<Tab>, placement?: { x: number; y: number }, policy?: {preserveProjectOwnership?: boolean;preserveSelection?:boolean}) => void;
   /** Replace the restored tab set after async disk-hydration + orphan reconcile. */
   hydrateRestoredWorkspace: (payload: {
     tabs: Tab[];
@@ -388,6 +390,8 @@ interface WorkspaceState {
   closeTerminalSession: (id: string, reason?: TerminalCloseReason) => Promise<void>;
   /** Handover: move a finished session off the map and under its successor's card. */
   archivePredecessor: (predecessorTabId: string, successorTabId: string, savedText?: string) => void;
+  /** Project a verified host handoff while retaining every earlier native session. */
+  archivePredecessorPreservingSessions: (predecessorTabId: string, successorTabId: string, savedText?: string) => boolean;
   clearEarlierSession: (tabId: string, index: number) => Promise<void>;
   clearAllEarlierSessions: (tabId: string) => Promise<void>;
   restoreRecoverySession: (id: string) => Promise<void>;
@@ -1573,11 +1577,6 @@ interface LiveSessionSummary {
   provider?: string;
 }
 
-function providerSessionIdFromCommand(command?: string): string | undefined {
-  const match = command?.match(/(?:^|[;\s])(?:--?resume|resume)\s+([^\s;]+)/);
-  return match?.[1]?.trim() || undefined;
-}
-
 function externalRestoreName(command?: string): string | undefined {
   const encoded = command?.match(/(?:^|[;\s])TERMFLEET_SESSION_NAME_B64=([A-Za-z0-9_-]+)/)?.[1];
   if (!encoded || typeof atob !== "function") return undefined;
@@ -1679,6 +1678,25 @@ function tabFromRecoverableSession(
         : undefined,
     }],
   };
+}
+
+/**
+ * TF-091: a running agent chat whose card was lost from the saved layout (the film
+ * and paper-bot chats on 2026-10-08) kept running with no card at all. A live chat
+ * that no card shows, and that the operator did not close, gets its card back.
+ */
+function adoptRunningChatWithoutCard(tabs: Tab[], session: LiveSessionSummary): Tab[] | null {
+  const providerSessionId = session.providerSessionId ?? providerSessionIdFromCommand(session.command);
+  if (!providerSessionId) return null;
+  const shown = tabs.some((tab) =>
+    tab.terminals.some((terminal) => terminal.id === session.id || terminal.providerSessionId === providerSessionId),
+  );
+  if (shown) return null;
+  const tab = tabFromRecoverableSession({ ...session, providerSessionId });
+  // Only TermFleet's own panes (terminal-<tab>-<pane>) are adopted; sessions
+  // started outside it never become cards by themselves.
+  if (!tab || tab.id.startsWith("recovered-tab-") || tabs.some((candidate) => candidate.id === tab.id)) return null;
+  return [...tabs, tab];
 }
 
 function mergeRecoveredTabIntoSavedStub(savedTab: Tab, recoveredTab: Tab): Tab {
@@ -2061,6 +2079,10 @@ export function preserveLiveHeaderState(nextTabs: Tab[], currentTabs: Tab[]): Ta
           terminalVisibleText: current.terminalVisibleText ?? terminal.terminalVisibleText,
           terminalVisibleTextUpdatedAt:
             current.terminalVisibleTextUpdatedAt ?? terminal.terminalVisibleTextUpdatedAt,
+          terminalVisibleTextPaneId: current.terminalVisibleTextPaneId ?? terminal.terminalVisibleTextPaneId,
+          terminalVisibleTextSessionId: current.terminalVisibleTextSessionId ?? terminal.terminalVisibleTextSessionId,
+          terminalVisibleTextRunId: current.terminalVisibleTextRunId ?? terminal.terminalVisibleTextRunId,
+          terminalVisibleTextDisplayOffset: current.terminalVisibleTextDisplayOffset ?? terminal.terminalVisibleTextDisplayOffset,
         };
       }),
     };
@@ -2213,7 +2235,8 @@ export async function hydrateWorkspace(options: { background?: boolean } = {}) {
     if (recoveryTransfers.length > 0) {
       baseTabs = applyRecoveryTransfers(baseTabs, recoveryTransfers);
     }
-    baseTabs = withoutClosedSessionTabs(baseTabs, closedSessionIds, closedProviderSessionIds);
+    // TF-091: chat-id tombstones are applied after the live list is known (below).
+    baseTabs = withoutClosedSessionTabs(baseTabs, closedSessionIds);
     let sessions: RecoverySessionRecord[] = [];
     if (!initialCriticalHydration) {
       try {
@@ -2268,6 +2291,11 @@ export async function hydrateWorkspace(options: { background?: boolean } = {}) {
         .map((session) => [session.id, session.cwd]),
     );
     const liveSessionIds = new Set(liveSessions.map((session) => session.id));
+    closedProviderSessionIds = withoutLiveProviderTombstones(
+      closedProviderSessionIds,
+      closedSessionIds,
+      liveSessions,
+    );
     // Listing live sessions is a read-only reconciliation step. Do not append a
     // lifecycle record for every PTY on every retry: a large historical daemon
     // inventory made startup spend most of its time writing no-op audit events.
@@ -2318,7 +2346,10 @@ export async function hydrateWorkspace(options: { background?: boolean } = {}) {
       const reboundTabs = bindLiveSessionToSavedTab(baseTabs, session);
       if (reboundTabs) {
         baseTabs = reboundTabs;
+        continue;
       }
+      const adoptedTabs = adoptRunningChatWithoutCard(baseTabs, session);
+      if (adoptedTabs) baseTabs = adoptedTabs;
     }
     console.info("[termfleet.hydrate] live reconciliation", {
       liveSessions: liveSessions.length,
@@ -2601,9 +2632,13 @@ export async function reconcileLiveWorkspace() {
     const { invoke } = await import("@tauri-apps/api/core");
     const store = useWorkspaceStore.getState();
     const closedSessionIds = new Set(store.closedSessionIds);
-    const closedProviderSessionIds = new Set(store.closedProviderSessionIds);
     const liveSessions = await listLiveSessionsWithRetry(invoke);
     const liveSessionIds = new Set(liveSessions.map((session) => session.id));
+    const closedProviderSessionIds = withoutLiveProviderTombstones(
+      new Set(store.closedProviderSessionIds),
+      closedSessionIds,
+      liveSessions,
+    );
   let tabs = withoutClosedSessionTabs(
     withoutLegacyRecoveredTabs(store.tabs),
     closedSessionIds,
@@ -2634,7 +2669,10 @@ export async function reconcileLiveWorkspace() {
       const exactRebound = bindLiveSessionToSavedTab(tabs, session);
       if (exactRebound) {
         tabs = exactRebound;
+        continue;
       }
+      const adoptedTabs = adoptRunningChatWithoutCard(tabs, session);
+      if (adoptedTabs) tabs = adoptedTabs;
     }
 
     tabs = withoutClosedSessionTabs(tabs, closedSessionIds, closedProviderSessionIds);
@@ -3336,13 +3374,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  addTab: (overrides?: Partial<Tab>, placement?: { x: number; y: number }) => {
+  addTab: (overrides?: Partial<Tab>, placement?: { x: number; y: number }, policy?: {preserveProjectOwnership?: boolean;preserveSelection?:boolean}) => {
+    if(policy?.preserveProjectOwnership){
+      const project=get().groups.find(group=>group.id===overrides?.groupId);
+      const normalize=(path?:string)=>path?.replace(/\/+$/,"");
+      if(!project || !project.projectRoot || normalize(project.projectRoot)!==normalize(overrides?.projectCwd))throw new Error("The selected project changed before creation.");
+    }
     const newTab = createDefaultTab(overrides);
     workspaceMutationVersion += 1;
     set((state) => {
+      // UI view policy only. Preserve the entire current selection atomically;
+      // it neither authorizes a native launch nor changes terminal readiness.
+      const preserveSelection=policy?.preserveSelection===true;
       const tabs = [...state.tabs, newTab];
-      const canvasState = normalizeCanvasState(
-        {
+      const nextCanvas = {
           ...state.canvasState,
           nodes: [
             ...state.canvasState.nodes,
@@ -3350,14 +3395,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               ? { ...terminalNodeForTab(newTab, state.tabs.length), x: placement.x, y: placement.y }
               : terminalNodeForTab(newTab, state.tabs.length),
           ],
-          selectedNodeId: `terminal-map-${newTab.id}`,
-        },
-        tabs
-      );
+          selectedNodeId: preserveSelection ? state.canvasState.selectedNodeId : `terminal-map-${newTab.id}`,
+          ...(policy?.preserveSelection===false ? {selectedNodeIds:[`terminal-map-${newTab.id}`]}:{}),
+        };
+      const canvasState = policy?.preserveProjectOwnership ? nextCanvas : normalizeCanvasState(nextCanvas,tabs);
       // Reconcile so the new terminal joins the single project for its path
       // (and any same-path siblings collapse together) instead of forming a
       // separate row. (TC-034)
-      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
+      const projects = policy?.preserveProjectOwnership ? {tabs,groups:state.groups} : reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
       const newTabGroupId = projects.tabs.find((tab) => tab.id === newTab.id)?.groupId ?? null;
       const newTabProject = newTabGroupId
         ? projects.groups.find((group) => group.id === newTabGroupId)
@@ -3374,18 +3419,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           : groupList;
       return {
         tabs: projects.tabs,
-        activeTabId: newTab.id,
+        activeTabId: preserveSelection ? state.activeTabId : newTab.id,
         // A fresh terminal has no live PTY yet. Do not leave the previous pane
         // globally active while the new daemon session is attaching; the canvas
         // and keyboard routing would briefly keep rendering/focusing that pane.
-        activeTerminalId: null,
-        activeGroupFilter: shouldFollowNewTabProject ? newTabGroupId : state.activeGroupFilter,
-        activeGroupId: shouldFollowNewTabProject ? newTabGroupId : state.activeGroupId,
-        projectRoot: shouldFollowNewTabProject
+        activeTerminalId: preserveSelection ? state.activeTerminalId : null,
+        activeGroupFilter: !preserveSelection && shouldFollowNewTabProject ? newTabGroupId : state.activeGroupFilter,
+        activeGroupId: !preserveSelection && shouldFollowNewTabProject ? newTabGroupId : state.activeGroupId,
+        projectRoot: !preserveSelection && shouldFollowNewTabProject
           ? newTabProject?.projectRoot ?? newTab.initialCwd ?? state.projectRoot
           : state.projectRoot,
-        groups: bumpActive(projects.groups),
-        terminalGroups: bumpActive(projects.groups),
+        groups: preserveSelection ? projects.groups : bumpActive(projects.groups),
+        terminalGroups: preserveSelection ? projects.groups : bumpActive(projects.groups),
         canvasState,
       };
     });
@@ -3530,6 +3575,49 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     get().removeTab(predecessorTabId);
     scheduleWorkspacePersistence();
     if (dropped.length > 0) void killPtys(dropped);
+  },
+
+  archivePredecessorPreservingSessions: (predecessorTabId: string, successorTabId: string, savedText?: string) => {
+    const predecessor = get().tabs.find((tab) => tab.id === predecessorTabId);
+    const successor = get().tabs.find((tab) => tab.id === successorTabId);
+    if (!predecessor || !successor || predecessorTabId === successorTabId) return false;
+    const ptyIds = predecessor.terminals.map((terminal) => terminal.id);
+    workspaceMutationVersion += 1;
+    set((state) => {
+      const currentSuccessor = state.tabs.find((tab) => tab.id === successorTabId)!;
+      const existing = [...(currentSuccessor.earlierSessions ?? []), ...(predecessor.earlierSessions ?? [])];
+      // The ordinary archive cap may kill overflow sessions. A committed protected
+      // handoff retains all of them; only an explicit later close may end them.
+      const merged = mergeEarlierSessions(existing,
+        { ptyIds, title: predecessor.title, endedAt: Date.now(), ...(savedText ? { savedText } : {}) },
+        existing.length + 1);
+      const updated = state.tabs.map((tab) =>
+        tab.id === successorTabId ? { ...tab, earlierSessions: merged.kept } : tab,
+      );
+      const slot = updated.findIndex((tab) => tab.id === predecessorTabId);
+      const without = updated.filter((tab) => tab.id !== successorTabId);
+      const reordered = [...without.slice(0, slot), updated.find((tab) => tab.id === successorTabId)!, ...without.slice(slot)];
+      const retiredNodes=new Set(state.canvasState.nodes.filter(node=>node.terminalTabId===predecessorTabId).map(node=>node.id));
+      const successorNode=state.canvasState.nodes.find(node=>node.terminalTabId===successorTabId);
+      const selectedNodeId=state.canvasState.selectedNodeId && retiredNodes.has(state.canvasState.selectedNodeId)
+        ? successorNode?.id ?? null : state.canvasState.selectedNodeId;
+      const selectedNodeIds=[...new Set((state.canvasState.selectedNodeIds ?? []).flatMap(id=>retiredNodes.has(id)
+        ? successorNode ? [successorNode.id]:[] : [id]))];
+      const replaceRetiredGroupReference=(group:Group)=>group.lastActiveTabId===predecessorTabId
+        ? {...group,lastActiveTabId:successorTabId}:group;
+      return {
+        closedSessionIds: [...new Set([...state.closedSessionIds, ...ptyIds])],
+        tabs: reordered,
+        groups:state.groups.map(replaceRetiredGroupReference),
+        terminalGroups:state.terminalGroups.map(replaceRetiredGroupReference),
+        canvasState:{...state.canvasState,selectedNodeId,selectedNodeIds},
+        ...(state.activeTabId === predecessorTabId ? { activeTabId: successorTabId, activeTerminalId: null } : {}),
+      };
+    });
+    // removeTab changes the map projection only; it does not kill a native PTY.
+    get().removeTab(predecessorTabId);
+    scheduleWorkspacePersistence();
+    return true;
   },
 
   clearEarlierSession: async (tabId: string, index: number) => {
@@ -4739,13 +4827,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return {
         tabs: linkedTerminalTabId
           ? state.tabs.map((tab) =>
-              tab.id === linkedTerminalTabId ? { ...tab, title: trimmed } : tab
+              tab.id === linkedTerminalTabId ? { ...tab, title: trimmed, topicLabel: trimmed } : tab
             )
           : state.tabs,
         canvasState: {
           ...state.canvasState,
           nodes: state.canvasState.nodes.map((node) =>
-            node.id === id ? { ...node, title: trimmed } : node
+            node.id === id ? { ...node, title: trimmed, ...(node.type === 'terminal' ? {topicLabel:trimmed} : {}) } : node
           ),
         },
       };

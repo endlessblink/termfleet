@@ -1,3 +1,6 @@
+import {PaneContextPanel} from './PaneContextPanel';
+import {terminalTopic,terminalTopicDetails,existingTerminalTopicLabel} from '../lib/terminalTopic';
+import {presentPaneGoal,presentPaneNow,presentPaneTask} from '../lib/paneContextPresentation';
 import {
   CSSProperties,
   memo,
@@ -139,7 +142,6 @@ import {
   summarizeAgentLane,
 } from "../lib/agentWorkstreamLane";
 import {
-  agentStatusChipText,
   agentStatusSummaryFromWorkstream,
   getDisplaySummary,
 } from "../lib/agentStatusSummary";
@@ -190,7 +192,7 @@ import {
   headerTextsEquivalent,
 } from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
-import { paneBadgeAttention } from "../lib/sessionStatus";
+import { paneBadgeAttention, livePaneScreen } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
 import { truncateAtWordBoundary } from "../lib/textTruncation";
 import { agentProviderIdentity } from "../lib/agentProviderIdentity";
@@ -199,6 +201,8 @@ import { agentReconnectCommand } from "../lib/agentReconnect";
 import { TaskProgressBar } from "./TaskProgressBar";
 import { childLinkSegments, HELPER_TERMINAL_COLOR } from "../lib/childTerminals";
 import { EarlierSessionsChip } from "./EarlierSessionsChip";
+// The "Agent runs" counter panels were removed as noise (owner, 2026-10-10).
+const SHOW_AGENT_RUN_COUNTERS = false;
 
 /** Room around a helper link so its stroke is never clipped at any zoom. */
 const CHILD_LINK_PAD = 24;
@@ -789,18 +793,18 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
-    height: 20,
-    padding: "0 8px",
-    borderRadius: 999,
+    minHeight: 28,
+    padding: "2px 10px",
+    borderRadius: "var(--radius-sm)",
     border: "1px solid transparent",
-    fontSize: 11,
+    fontSize: 15,
     fontWeight: 500,
     letterSpacing: 0,
-    whiteSpace: "nowrap",
+    whiteSpace: "normal",
   },
   attentionDot: {
-    width: 6,
-    height: 6,
+    width: 8,
+    height: 8,
     borderRadius: "50%",
     flexShrink: 0,
   },
@@ -3594,6 +3598,8 @@ function CanvasNodeViewImpl({
           taskLine: terminalHeaderTaskLineCandidate,
           durableActivityTask: terminalHeaderDurableActivityTask,
           statusTask: terminalHeaderStatusTask,
+          latestRequest: terminalStatusSummary?.userTask,
+          narration: terminalStatusSummary?.narration,
         }) ??
         canvasTaskFallback;
   const stabilizedTerminalHeaderTask = sessionAuthority ? terminalHeaderTaskDescription : stableHeader(
@@ -3721,8 +3727,6 @@ function CanvasNodeViewImpl({
       ? "Nothing asked in this pane yet"
       : terminalHeader.goalLabel;
   const terminalHeaderHasDisplayableContext = Boolean(terminalHeaderSnapshotContext);
-  const terminalHeaderGoalDisplay =
-    terminalHeaderContextDescription || "Not captured for this pane";
   const terminalHeaderContextForSnapshot = terminalHeaderSnapshotContext || "";
   const terminalHeaderTitleRaw = sessionAuthority ? terminalHeader.currentActivity : terminalDurableActivityUsable && linkedTerminal?.durableActivity?.title ? linkedTerminal.durableActivity.title : terminalDurableActivityUsable &&
     terminalDisplaySummaryBase.task &&
@@ -3928,10 +3932,24 @@ function CanvasNodeViewImpl({
     )
       ? terminalHeaderNowRowStableText
       : "Now not captured";
-  const terminalHeaderSnapshotNow =
-    terminalHeader.sources.goal === "shell-role"
-      ? "No active command or agent turn is running"
-      : terminalHeaderNowDisplay;
+  const terminalPanelGoal = presentPaneGoal({
+                manualAsk: linkedTerminal?.mainUserAsk,
+                capturedGoal: terminalHeaderContextDescription,
+                capturedSource: terminalHeader.sources.context,
+                summary: terminalStatusSummary,
+                taskLine: terminalHeaderTaskLine,
+                sessionId: linkedTerminal?.providerSessionId,
+                runId: linkedTerminal?.activeRunId,
+              });
+  const terminalPanelNow = isAgentTerminal ? presentPaneNow({
+                attention: terminalHeaderAttentionState,
+                reportedNow: terminalHeaderNowDisplay,
+                reportedStatus: terminalStatusSummary?.status,
+                reportedAt: terminalStatusSummary?.updatedAt,
+                screen: livePaneScreen(linkedTerminal),
+                screenAt: terminalPreview?.updatedAt ?? linkedTerminal?.terminalVisibleTextUpdatedAt,
+              }) : terminalHeaderNowDisplay;
+  const topic = terminalTopic({terminal:linkedTerminal,manualTitle:node.topicLabel ?? linkedTab?.topicLabel,savedTitle:existingTerminalTopicLabel(node.title,workspaceLabel) ?? existingTerminalTopicLabel(linkedTab?.title,workspaceLabel),capturedGoal:terminalPanelGoal.text});
   const detectedLaneTaskId =
     node.taskBinding?.taskId ??
     firstTaskIdFromText(
@@ -4015,8 +4033,10 @@ function CanvasNodeViewImpl({
       resolveDistinctHeaderNow(agentCardTask, renderedHeaderNow) ??
       resolveDistinctHeaderNow(agentCardTask, agentCardStatusSummary?.now);
     if (!restoredAgentNow) {
+      // Never repeat the Task row: when the agent's sentence is the Task, Now shows the
+      // live action instead.
       return [terminalHeader.currentActivity, agentCardStatusSummary?.now]
-        .find((candidate) => qualityCheckNowLabel(candidate ?? "").ok)
+        .find((candidate) => qualityCheckNowLabel(candidate ?? "").ok && !headerTextsEquivalent(candidate, agentCardTask))
         ?.trim() || "Now not captured";
     }
     if (
@@ -4026,10 +4046,6 @@ function CanvasNodeViewImpl({
       return restoredAgentNow;
     return restoredAgentNow;
   })();
-  const agentStatusChip =
-    workstream?.kind === "agent" && agentStatusSummary
-      ? agentStatusChipText(workstream, agentStatusSummary)
-      : undefined;
   const laneChecklistTasks = (boundTask?.checklist ?? []).map(
     (item, index) => ({
       id: item.id,
@@ -4839,20 +4855,21 @@ function CanvasNodeViewImpl({
             style={{ ...styles.agentStatusBlock, ...labelStatusBlockStyle }}
             data-testid="canvas-agent-status-block"
             dir="auto"
-            title={`${workspaceLabel} · ${agentCardTask} · ${agentStatusSummary.path} · ${agentCardNow}`}
+            title={`${workspaceLabel} · ${agentCardTask} · ${agentStatusSummary.path} · ${terminalPanelNow}`}
             onMouseDown={onMouseDown}
             onDoubleClick={onRename}
           >
-            <div style={styles.terminalStatusKicker}>
+            <div style={{...styles.terminalStatusKicker,flexWrap:"wrap"}}>
               <span
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 5,
+                  gap: 8,
                   minWidth: 0,
+                  flexWrap: "wrap",
                 }}
               >
-                <span>Workspace</span>
+                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:18,color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
                 <span
                   style={styles.workspacePill}
                   data-testid="canvas-agent-node-workspace"
@@ -4877,6 +4894,9 @@ function CanvasNodeViewImpl({
                   <TerminalSignifier provider={terminalAgentProvider} />
                 </span>
               )}
+              <span style={{...styles.attentionBadge,color:terminalHeaderAttention.color}} data-testid="canvas-terminal-node-attention" data-attention-state={terminalHeaderAttention.state}>
+                <span aria-hidden="true" style={{width:8,height:8,borderRadius:"50%",background:terminalHeaderAttention.color}} />{terminalHeaderAttention.label}
+              </span>
               {linkedTab && (
                 <button
                   type="button"
@@ -4915,64 +4935,8 @@ function CanvasNodeViewImpl({
                 </span>
               )}
             </div>
-            <div
-              style={styles.agentWorkingLine}
-              data-testid="canvas-agent-working-on"
-              data-row-kind="task"
-            >
-              <span style={styles.agentStatusLabel}>Task</span>
-              <span style={styles.agentWorkingText}>
-                {agentCardTask}
-              </span>
-            </div>
-            <div
-              style={styles.agentWorkingLine}
-              data-testid="canvas-agent-node-goal"
-              data-goal-state={terminalHeaderContextDescription ? "captured" : "missing"}
-            >
-              <span style={styles.agentStatusLabel}>Goal</span>
-              <span
-                style={{
-                  ...styles.agentWorkingText,
-                  color: terminalHeaderContextDescription
-                    ? styles.agentWorkingText.color
-                    : "var(--text-tertiary)",
-                  fontStyle: terminalHeaderContextDescription ? "normal" : "italic",
-                }}
-              >
-                {terminalHeaderGoalDisplay}
-              </span>
-            </div>
-            <div style={styles.agentStatusDetailGrid}>
-              <div
-                style={styles.agentStatusDetail}
-                data-testid="canvas-agent-status-path"
-              >
-                <span style={styles.agentStatusLabel}>Path</span>
-                <span style={styles.agentStatusDetailText}>
-                  {agentStatusSummary.path}
-                </span>
-              </div>
-              <div
-                style={styles.agentWorkingLine}
-                data-testid="canvas-agent-status-now"
-                data-row-kind="now"
-              >
-                <span style={styles.agentStatusLabel}>Now</span>
-                <span style={styles.agentWorkingText}>{agentCardNow}</span>
-              </div>
-            </div>
-            <div
-              style={styles.agentStatusChips}
-              data-testid="canvas-agent-status-chips"
-            >
-              <span style={styles.agentStatusChip}>{agentStatusChip}</span>
-              {agentStatusSummary.confidence && (
-                <span style={styles.agentStatusChip}>
-                  summary · {agentStatusSummary.confidence}
-                </span>
-              )}
-            </div>
+            <PaneContextPanel goal={terminalPanelGoal} task={presentPaneTask(terminalStatusSummary, agentCardTask)} now={terminalPanelNow} prefix="canvas-agent-node" />
+            <div style={{fontSize:12,color:"var(--text-secondary)",overflowWrap:"anywhere"}} dir="auto">{agentStatusSummary.path}</div>
           </div>
         ) : node.type === "terminal" && (!isAgentTerminal || !agentStatusSummary) ? (
           <div
@@ -4998,6 +4962,7 @@ function CanvasNodeViewImpl({
             <div
               style={{
                 ...styles.terminalStatusKicker,
+                flexWrap: "wrap",
                 justifyContent: "space-between",
               }}
             >
@@ -5005,11 +4970,12 @@ function CanvasNodeViewImpl({
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 5,
+                  gap: 8,
                   minWidth: 0,
+                  flexWrap: "wrap",
                 }}
               >
-                <span>Workspace</span>
+                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:18,color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
                 <span
                   style={styles.workspacePill}
                   data-testid="canvas-terminal-node-workspace"
@@ -5126,68 +5092,11 @@ function CanvasNodeViewImpl({
                 />
               )}
             </div>
-            {/* One stable reading order: Task, captured Goal, then live Now. */}
-            {
-              <div
-                style={{
-                  ...styles.terminalTaskRow,
-                  ...styles.terminalContextRow,
-                  ...styles.terminalStatusTitle,
-                  position: "relative",
-                  zIndex: 2,
-                  visibility: "visible",
-                }}
-                data-testid="canvas-terminal-node-task-row"
-                title={`Task: ${stabilizedTerminalHeaderTask}`}
-              >
-                <>
-                  <span style={styles.terminalTaskLabel}>Task:</span>
-                  <span
-                    data-testid="canvas-terminal-node-description"
-                    style={{
-                      ...styles.terminalContextValue,
-                      color:
-                        labelColor ??
-                        (terminalHeaderTaskCaptured ? "var(--text-primary)" : "var(--text-tertiary)"),
-                    }}
-                  >
-                    {stabilizedTerminalHeaderTask}
-                  </span>
-                </>
-              </div>
-            }
-            {
-              <div
-                style={{
-                  ...styles.terminalTaskRow,
-                  ...styles.terminalContextRow,
-                  visibility: "visible",
-                }}
-                data-testid="canvas-terminal-node-goal"
-                data-goal-state={terminalHeaderHasDisplayableContext ? "captured" : "missing"}
-                title={`Goal: ${terminalHeaderGoalDisplay}`}
-              >
-                <span
-                  style={styles.terminalTaskLabel}
-                >
-                  Goal:
-                </span>
-                <span
-                  style={styles.terminalContextValue}
-                >
-                  <span
-                    style={{
-                      color: terminalHeaderHasDisplayableContext
-                        ? "var(--text-primary)"
-                        : "var(--text-tertiary)",
-                      fontStyle: terminalHeaderHasDisplayableContext ? "normal" : "italic",
-                    }}
-                  >
-                    {terminalHeaderGoalDisplay}
-                  </span>
-                </span>
-              </div>
-            }
+            <PaneContextPanel
+              goal={terminalPanelGoal}
+              task={presentPaneTask(terminalStatusSummary, stabilizedTerminalHeaderTask)}
+              now={terminalPanelNow}
+            />
               {(
                 <CockpitSnapshotProbe
                   key="cockpit-snapshot-probe"
@@ -5221,7 +5130,7 @@ function CanvasNodeViewImpl({
                     titleSource: terminalHeaderNowRowText
                       ? terminalHeader.sources.activity
                       : terminalHeader.sources.context,
-                    now: terminalHeaderSnapshotNow,
+                    now: terminalPanelNow,
                     nowSource: terminalHeaderNowRowVisible
                       ? terminalHeader.sources.activity
                       : "missing",
@@ -5283,38 +5192,15 @@ function CanvasNodeViewImpl({
                       debug: {
                         ...terminalHeader.debug,
                         waitingForOperator: terminalWaitingForOperator,
+                        displayGoalKind: terminalPanelGoal.kind,
+                        displayGoalSource: terminalPanelGoal.source,
+                        displayGoalUpdatedAt: terminalPanelGoal.updatedAt,
                       previewVisibleTextUsed:
                         terminalVisibleText === previewVisibleText,
                     },
                   }}
                 />
               )}
-            <div
-              style={{ ...styles.terminalTaskRow, ...styles.terminalNowRow }}
-              data-testid="canvas-terminal-node-now-row"
-              title={
-                `Now: ${terminalHeaderNowDisplay}`
-              }
-              data-reserved="false"
-            >
-              <span
-                style={{
-                  ...styles.terminalTaskLabel,
-                  visibility: "visible",
-                }}
-              >
-                Now:
-              </span>
-              <span
-                data-testid="canvas-terminal-node-header-title"
-                style={{
-                  ...styles.terminalContextValue,
-                  visibility: "visible",
-                }}
-              >
-                {terminalHeaderNowDisplay}
-              </span>
-            </div>
             <div
               style={
                 terminalHeaderHasTrustedSummary
@@ -8093,7 +7979,7 @@ export function MagicCanvas() {
         </div>
       )}
 
-      {agentLane.total > 0 && !agentLaneHidden && (
+      {SHOW_AGENT_RUN_COUNTERS && agentLane.total > 0 && !agentLaneHidden && (
         <div
           style={styles.agentLaneOverlay}
           data-testid="canvas-agent-lane-summary"

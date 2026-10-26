@@ -187,6 +187,9 @@ function appendRecent(previous, text, at) {
   return list.slice(-8);
 }
 
+const STATED_LINE =
+  /^[ \t]*(?:[-*>][ \t]*)?(?:\*\*|__)?(goal|task)(?:\*\*|__)?[ \t]*[:：][ \t]*(?:\*\*|__)?[ \t]*(.+?)[ \t]*$/gim;
+
 export function createStatusWriter(options = {}) {
   const pane = options.paneId ?? paneId();
   const filePath = options.filePath ?? (pane ? paneSidecarPath(pane) : "");
@@ -200,6 +203,8 @@ export function createStatusWriter(options = {}) {
     mainTask: "",
     userTask: "",
     narration: "",
+    statedGoal: "",
+    statedTask: "",
     turn: "idle",
     sessionId: "",
   };
@@ -222,6 +227,8 @@ export function createStatusWriter(options = {}) {
       mainTask: state.mainTask || undefined,
       mainTaskSource: state.mainTask ? "goal-task" : undefined,
       userTask: state.userTask || undefined,
+      statedGoal: state.statedGoal || undefined,
+      statedTask: state.statedTask || undefined,
       sessionId: state.sessionId || undefined,
       recent: appendRecent(previous?.recent, state.now || state.narration, at),
     };
@@ -303,6 +310,22 @@ export function applyEvent(writer, event) {
       state.turn = "idle";
       return true;
     }
+    case "message.part.updated": {
+      // TF-091: the agent declares "Goal: ..." / "Task: ..." lines in its reply.
+      const part = properties.part ?? {};
+      if (part.type !== "text" || typeof part.text !== "string") return false;
+      let changed = false;
+      for (const match of part.text.matchAll(STATED_LINE)) {
+        const value = clean(match[2].replace(/[*_`]+/g, ""), 160).replace(/[.\s]+$/, "");
+        if (value.split(/\s+/).length < 2) continue;
+        const key = match[1].toLowerCase() === "goal" ? "statedGoal" : "statedTask";
+        if (state[key] !== value) {
+          state[key] = value;
+          changed = true;
+        }
+      }
+      return changed;
+    }
     case "permission.asked":
     case "permission.updated": {
       // The agent is blocked on the operator — that is "waiting", the state the
@@ -364,19 +387,20 @@ function trace(entry) {
 
 /** Optional v2 publisher beside the source plugin. Standalone copied plugins keep
  * their existing sidecar contract when the publisher module is not packaged. */
-export async function publishOpenCodeEvent(writer,event,at=Date.now()) {
+export async function publishOpenCodeEvent(writer,event,at=Date.now(),nativeSource=event) {
  if(!writer.paneId || !writer.state.sessionId) return null;
  const properties=event?.properties ?? {};
  const type=event?.type;
  const eventSession=properties.sessionID ?? properties.info?.sessionID ?? (type?.startsWith('session.') ? properties.info?.id : undefined);
- if(eventSession && eventSession!==writer.state.sessionId) return null;
+ const sourceSession=eventSession ?? writer.state.sessionId;
+ const differentSession=sourceSession!==writer.state.sessionId;
  const names={'session.created':'SessionStart','chat.message':'UserPromptSubmit','todo.updated':'PostToolUse',
   'session.status':'VendorStatus','session.idle':'VendorStatus','permission.updated':'PermissionRequest','permission.asked':'PermissionRequest','permission.replied':'QuestionResolved',
   'question.asked':'InputRequest','question.replied':'QuestionResolved','question.rejected':'QuestionResolved',
   'tool.execute.before':'PreToolUse','tool.execute.after':'PostToolUse','session.error':'VendorError'};
  const finished=type==='message.updated' && properties.info?.role==='assistant' && properties.info?.finish==='stop' && !properties.info?.error && !properties.info?.summary && Number.isFinite(properties.info?.time?.completed);
  const hook=finished ? 'VendorTurnComplete' : names[type];
- if(!hook) return null;
+ const captureOnly=!hook || differentSession;
  let publish;
  try {({publishSessionEvent:publish}=await import('./lib/session-event-journal.mjs'));}
  catch {trace('v2-publisher-unavailable; standalone sidecar retained');return null;}
@@ -385,12 +409,12 @@ export async function publishOpenCodeEvent(writer,event,at=Date.now()) {
   turnReason:['permission.updated','permission.asked'].includes(type) ? 'permission_request':type==='question.asked' ? 'operator_question':undefined};
  if(['permission.updated','permission.asked','question.asked'].includes(type)) sidecar.turn='waiting';
  if(type==='session.error') sidecar.turn='unknown';
- const head=await publish({paneId:writer.paneId,provider:'opencode',source:'vendor',dir:dirname(writer.filePath),at,sidecar,
-  payload:{session_id:writer.state.sessionId,hook_event_name:hook,
+ const head=await publish({paneId:writer.paneId,provider:'opencode',source:'vendor',dir:dirname(writer.filePath),at,sidecar,nativeSource,captureOnly,
+  payload:{session_id:sourceSession,hook_event_name:differentSession ? 'VendorEvent' : hook ?? 'VendorEvent',
    tool_name:type==='todo.updated' ? 'update_plan' : properties.tool,
    tool_use_id:properties.requestID ?? properties.callID ?? properties.id}});
  const {sessionCompatibilitySidecar}=await import('../shared/sessionCompatibility.mjs');
- writer.setSessionHead?.(head,sessionCompatibilitySidecar);
+ writer.setSessionHead?.(head?.version===2 && head.state ? head:null,sessionCompatibilitySidecar);
  return head;
 }
 
@@ -424,10 +448,15 @@ export const TermfleetStatus = async ({ directory, worktree }) => {
       if (prompt) writer.state.userTask = prompt;
       writer.state.turn = "working";
       writer.write();
-      try {await publishOpenCodeEvent(writer,{type:"chat.message"});}catch(error){trace(`v2-publisher-failed ${String(error)}`);}
+      try {await publishOpenCodeEvent(writer,{type:"chat.message"},Date.now(),{input,output});}catch(error){trace(`v2-publisher-failed ${String(error)}`);}
     },
     "tool.execute.before": async (input, output) => {
-      if(input?.sessionID && writer.state.sessionId && input.sessionID!==writer.state.sessionId) return;
+      const observedEvent={type:"tool.execute.before",properties:{sessionID:input?.sessionID,tool:input?.tool,callID:input?.callID}};
+      const capture=async()=>{
+        try {await publishOpenCodeEvent(writer,observedEvent,Date.now(),{input,output});}
+        catch(error) {trace(`v2-publisher-failed ${String(error)}`);}
+      };
+      if(input?.sessionID && writer.state.sessionId && input.sessionID!==writer.state.sessionId) {await capture();return;}
       const activity = opencodeActivityFromTool(input?.tool, output?.args);
       writer.state.turn = "working";
       if (input?.sessionID)
@@ -437,17 +466,22 @@ export const TermfleetStatus = async ({ directory, worktree }) => {
         writer.state.narration = activity;
       }
       writer.write();
-      try {await publishOpenCodeEvent(writer,{type:"tool.execute.before",properties:{tool:input?.tool,callID:input?.callID}});}catch(error){trace(`v2-publisher-failed ${String(error)}`);}
+      await capture();
     },
-    "tool.execute.after": async (input) => {
-      if(input?.sessionID && writer.state.sessionId && input.sessionID!==writer.state.sessionId) return;
+    "tool.execute.after": async (input, output) => {
+      const observedEvent={type:"tool.execute.after",properties:{sessionID:input?.sessionID,tool:input?.tool,callID:input?.callID}};
+      const capture=async()=>{
+        try {await publishOpenCodeEvent(writer,observedEvent,Date.now(),{input,output});}
+        catch(error) {trace(`v2-publisher-failed ${String(error)}`);}
+      };
+      if(input?.sessionID && writer.state.sessionId && input.sessionID!==writer.state.sessionId) {await capture();return;}
       // Keep the task list's own line as the resting activity between tools.
       const fromTodos = nowFromTodos(writer.state.todos);
       if (fromTodos) writer.state.now = fromTodos;
       if (input?.sessionID)
         writer.state.sessionId = clean(input.sessionID, 128);
       writer.write();
-      try {await publishOpenCodeEvent(writer,{type:"tool.execute.after",properties:{tool:input?.tool,callID:input?.callID}});}catch(error){trace(`v2-publisher-failed ${String(error)}`);}
+      await capture();
     },
   };
 };

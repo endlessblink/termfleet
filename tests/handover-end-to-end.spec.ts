@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error plain .mjs helper
 import { fnv } from "../scripts/lib/agent-status-paths.mjs";
+// @ts-expect-error plain .mjs helper
+import { publishSessionEvent } from "../scripts/lib/session-event-journal.mjs";
 
 const CLI = join(process.cwd(), "scripts", "termfleet-child.mjs");
 const PANE = "terminal-aaaaaaaa-1111-2222-3333-444444444444-bbbbbbbb-1111-2222-3333-444444444444";
@@ -66,13 +68,31 @@ function handover(w: ReturnType<typeof world>) {
 }
 
 test("the last thing Noam typed reaches the handoff even when the pane record names an older chat", async () => {
+  // Oct 7 capsule contract: the authored HANDOFF.md is no longer rewritten; the owner's
+  // words go into an immutable hash-bound capsule that the successor prompt names, and
+  // the pane's status journal must hold the live chat (as the status hook records it).
   const w = world();
   writeChat(w.home, STALE, "an older chat");
   writeChat(w.home, LIVE, LAST_WORDS);
-  await handover(w);
-  const text = readFileSync(w.handoff, "utf8");
-  expect(text).toContain(LAST_WORDS);
-  expect(text).not.toContain("an older chat");
+  await publishSessionEvent({ dir: join(w.data, "terminal-workspace", "agent-status"), paneId: PANE, provider: "claude", at: 1000,
+    payload: { session_id: LIVE, hook_event_name: "UserPromptSubmit", prompt: LAST_WORDS }, sidecar: { turn: "working" } });
+  const before = readFileSync(w.handoff, "utf8");
+  const { stderr } = await handover(w);
+  expect(stderr).toContain("retained 1 owner records");
+  expect(readFileSync(w.handoff, "utf8")).toBe(before);
+  const capsules = join(w.data, "terminal-workspace", "handoff-capsules");
+  const generations = readdirSync(capsules);
+  expect(generations).toHaveLength(1);
+  const capsule = join(capsules, generations[0]);
+  const manifest = JSON.parse(readFileSync(join(capsule, "manifest.json"), "utf8"));
+  expect(manifest.provider).toBe("claude");
+  expect(manifest.parentPaneId).toBe(PANE);
+  expect(manifest.source.sessionId).toBe(LIVE);
+  const owner = JSON.parse(readFileSync(join(capsule, "owner-records.json"), "utf8"));
+  expect(owner.map((m: { text: string }) => m.text)).toEqual([LAST_WORDS]);
+  const continuation = readdirSync(capsule).filter((n) => n.startsWith("continuation-")).sort().map((n) => readFileSync(join(capsule, n), "utf8")).join("");
+  expect(continuation).toContain(LAST_WORDS);
+  expect(continuation).not.toContain("an older chat");
 });
 
 test("a handover that cannot find Noam's words refuses to start instead of dropping them silently", async () => {

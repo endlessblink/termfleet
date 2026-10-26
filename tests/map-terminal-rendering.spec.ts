@@ -1116,18 +1116,21 @@ Acceptance:
       title: "Preserve canvas workspace mode",
       status: "done",
       rawStatus: "DONE",
+      priority: "P2",
     },
     {
       id: "TC-014",
       title: "Native VTE path abandoned",
       status: "done",
       rawStatus: "DONE (2026-05-28)",
+      priority: "P2",
     },
     {
       id: "TC-019",
       title: "Warp-style chrome redesign",
       status: "in-progress",
       rawStatus: "IN_PROGRESS",
+      priority: "P2",
       checklist: [
         {
           id: "TC-019-1",

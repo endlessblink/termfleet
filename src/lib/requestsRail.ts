@@ -73,9 +73,11 @@ export function parseAsksSidecar(raw: string | null): { asks: RailAsk[]; working
 export function railRows(asks: RailAsk[], working: boolean, live = ""): RailRow[] {
   const open = asks.filter((a) => a.status === "open").map((a) => a.n);
   const current = working && open.length ? Math.max(...open) : null;
+  const rank = (a: RailAsk) => (a.status === "open" && a.n === current ? 0 : a.status === "done" || a.status === "dropped" ? 2 : 1);
   return asks
     .slice()
-    .sort((x, y) => x.n - y.n)
+    // being worked on first, then the not-finished (newest first), finished last
+    .sort((x, y) => rank(x) - rank(y) || y.n - x.n)
     .map((a) => {
       const tone: RailRow["tone"] =
         a.status === "open" ? (a.n === current ? "working" : "waiting")

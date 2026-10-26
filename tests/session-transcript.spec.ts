@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import {
+  statedLines,
+  briefFileGoal,
+  shortDeclaredGoal,
+  briefPointerPath,
   opensAsRequest,
   parseClaudeTranscript,
   parseCodexRollout,
@@ -335,4 +339,63 @@ test("codex: doubled attachment brackets never reach the operator request", () =
   expect(parseCodexRollout(withImage).operatorRequest).toBe(
     "for the millionth time it glitches. fix it, test it.",
   );
+});
+
+test("a helper's brief-file pointer is not its goal; the Goal line in front of it is", () => {
+  const pointer =
+    "Read /home/u/.local/share/terminal-workspace/child-tasks/5cc2d202.md and carry out the instructions in it.";
+  const trailer =
+    "\nBot registry reference: freelance-desk. Validated checkout: /x/freelance-desk. Registry snapshot: e5cf. Read its identity/runtime surfaces and verify current runtime before changes. This path check grants no deployment or messaging permission.";
+  expect(opensAsRequest(pointer + trailer)).toBeUndefined();
+  expect(
+    opensAsRequest(
+      `Goal: Fix the job searches that failed silently and prove each fix live\nFull instructions: ${pointer}${trailer}`,
+    ),
+  ).toBe("Fix the job searches that failed silently and prove each fix live");
+});
+
+test("a helper's goal is read from its brief file", () => {
+  const path = "/home/u/.local/share/terminal-workspace/child-tasks/5cc2d202-4d96.md";
+  expect(briefPointerPath(`Read ${path} and carry out the instructions in it.\nBot registry reference: x.`)).toBe(path);
+  expect(briefPointerPath("Read the docs and carry on")).toBeUndefined();
+  expect(briefFileGoal("# Fix the silent search failures\n\nbody")).toBe("Fix the silent search failures");
+  expect(briefFileGoal("You are the agent.\n**Goal:** Prove each fix live\n# Other")).toBe("Prove each fix live");
+  expect(briefFileGoal("You are the agent.\n## What went wrong")).toBeUndefined();
+});
+
+test("the operator's /goal becomes a short Goal line", () => {
+  const condition =
+    "Work the Delivery Lanes R-0 to R-Z in MASTER_PLAN.md in order (TASK-2155 gather-everything gate first, then TASK-2135 to TASK-2154) and do not stop until every lane is done: fix each root cause and everything around it, investigate anything that turns up. Then send Noam the short plain report.";
+  expect(shortDeclaredGoal(condition)).toBe(
+    "Work the Delivery Lanes R-0 to R-Z in order and do not stop until every lane is done",
+  );
+  const record = (met: boolean) =>
+    JSON.stringify({ type: "attachment", attachment: { type: "goal_status", met, condition } });
+  expect(parseClaudeTranscript(record(false)).declaredGoal).toContain("Work the Delivery Lanes");
+  expect(parseClaudeTranscript(`${record(false)}\n${record(true)}`).declaredGoal).toBeUndefined();
+});
+
+test("Claude's after-compaction summary is never the operator's request", () => {
+  expect(
+    opensAsRequest(
+      "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion.",
+    ),
+  ).toBeUndefined();
+});
+
+test("TF-091: the agent's newest Goal/Task lines are read from its replies", () => {
+  expect(statedLines("Intro\n**Goal:** Make the Desk answer fast.\nTask: Updating the handoff note\n- Task: none")).toEqual({
+    goal: "Make the Desk answer fast",
+    task: "Updating the handoff note",
+  });
+  const reply = (text: string) =>
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } });
+  const facts = parseClaudeTranscript(
+    [reply("Goal: Fix the search page\nTask: Reading the code"), reply("Task: Running the tests")].join("\n"),
+  );
+  expect(facts.statedGoal).toBe("Fix the search page");
+  expect(facts.statedTask).toBe("Running the tests");
+  // The operator's complaint is never a Goal.
+  const complaint = JSON.stringify({ type: "user", message: { content: "the app was killed and I dont see it now how I activate it" } });
+  expect(parseClaudeTranscript(complaint).statedGoal).toBeUndefined();
 });

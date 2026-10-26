@@ -41,6 +41,10 @@ const HOOK_FILES = [
   "lib/codex-pane-owner.mjs",
   "lib/context-handoff.mjs",
   "lib/handoff-inject.mjs",
+  "lib/handoff-capsule.mjs",
+  "lib/handoff-user-words.mjs",
+  "lib/handoff-records.mjs",
+  "context-handoff-hook.mjs",
   "lib/session-event-journal.mjs",
   "lib/session-soak.mjs",
   "../shared/sessionObservation.mjs",
@@ -51,7 +55,7 @@ const HOOK_FILES = [
 ];
 
 // SessionStart closes an older copy of a resumed chat in another terminal.
-const CLAUDE_EVENTS = ["SessionStart", "SessionEnd", "Stop", "Notification", "PermissionRequest", "UserPromptSubmit", "PreToolUse", "PostToolUse"];
+const CLAUDE_EVENTS = ["SessionStart", "SessionEnd", "Stop", "Notification", "PermissionRequest", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Elicitation", "ElicitationResult", "PermissionDenied"];
 const CODEX_EVENTS = ["Stop", "Notification", "UserPromptSubmit", "PreToolUse", "PostToolUse"];
 
 const results = [];
@@ -125,13 +129,18 @@ function connectClaude() {
   const settings = readJson(file, {});
   settings.hooks ??= {};
   const probe = structuredClone(settings.hooks);
-  const needsChange = connectHookEvents(probe, CLAUDE_EVENTS, "termfleet-claude-status-hook.mjs", () => ({}));
+  const statusNeedsChange = connectHookEvents(probe, CLAUDE_EVENTS, "termfleet-claude-status-hook.mjs", () => ({}));
+  const handoffNeedsChange = connectHookEvents(probe, ["UserPromptSubmit", "PreToolUse"], "context-handoff-hook.mjs", () => ({}));
+  const needsChange = statusNeedsChange || handoffNeedsChange;
   if (!needsChange) return note("claude", "connected", "status hook registered for every turn event");
   if (checkOnly) return note("claude", "not-connected", "status hook missing on one or more turn events");
   connectHookEvents(settings.hooks, CLAUDE_EVENTS, "termfleet-claude-status-hook.mjs", (script) => ({
     type: "command",
     command: `node "${script}"`,
     timeout: 5,
+  }));
+  connectHookEvents(settings.hooks, ["UserPromptSubmit", "PreToolUse"], "context-handoff-hook.mjs", (script) => ({
+    type: "command",command: `node "${script}"`,timeout: 15,
   }));
   writeJson(file, settings);
   note("claude", "connected", "registered; takes effect for newly started Claude Code sessions");
@@ -179,6 +188,8 @@ function connectCodex() {
     type: "command",
     command: `node "${script}"`,
     statusMessage: "termfleet status sidecar",
+    // Our handoff injector enforces 150000 UTF-8 bytes; prevent provider middle offload.
+    additionalContextLimit: 0,
   }));
   writeJson(file, doc);
   note("codex", "connected", "registered; Codex asks you to trust the new hook the next time it starts");

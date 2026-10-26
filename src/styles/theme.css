@@ -83,7 +83,7 @@
   --space-12: 12px; --space-16: 16px; --space-24: 24px; --space-32: 32px;
 
   /* ---- Type ---- */
-  --font-ui:   "Rubik", "Segoe UI", "Cantarell", "Noto Sans", sans-serif;
+  --font-ui:   "IBM Plex Sans", "Rubik", "Segoe UI", "Cantarell", "Noto Sans", sans-serif;
   --font-mono: "Hack", "DejaVu Sans Mono", monospace;       /* terminal AND data tier (paths, branches, ids, counters) */
   --font-size-xs: 11px; --line-xs: 14px;  /* FLOOR: nothing below 11px */
   --font-size-sm: 12px; --line-sm: 16px;

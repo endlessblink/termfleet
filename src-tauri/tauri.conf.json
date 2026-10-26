@@ -67,7 +67,18 @@
       "../shared/sessionState.mjs": "shared/sessionState.mjs",
       "../shared/sessionEnvelope.mjs": "shared/sessionEnvelope.mjs",
       "../shared/sessionSnapshot.mjs": "shared/sessionSnapshot.mjs",
-      "../scripts/lib/handoff-inject.mjs": "agent-hooks/lib/handoff-inject.mjs"
+      "../scripts/lib/handoff-inject.mjs": "agent-hooks/lib/handoff-inject.mjs",
+      "../scripts/context-handoff-hook.mjs": "agent-hooks/context-handoff-hook.mjs",
+      "../scripts/lib/daemon-broker-native-codec.mjs": "agent-hooks/lib/daemon-broker-native-codec.mjs",
+      "../scripts/lib/daemon-broker-operation.mjs": "agent-hooks/lib/daemon-broker-operation.mjs",
+      "../scripts/lib/daemon-broker-stdio.mjs": "agent-hooks/lib/daemon-broker-stdio.mjs",
+      "../scripts/lib/handoff-capsule.mjs": "agent-hooks/lib/handoff-capsule.mjs",
+      "../scripts/lib/handoff-records.mjs": "agent-hooks/lib/handoff-records.mjs",
+      "../scripts/lib/handoff-user-words.mjs": "agent-hooks/lib/handoff-user-words.mjs",
+      "../scripts/lib/native-framed-input-host.mjs": "agent-hooks/lib/native-framed-input-host.mjs",
+      "../scripts/lib/native-input-frame.mjs": "agent-hooks/lib/native-input-frame.mjs",
+      "../scripts/lib/paid-action-broker.mjs": "agent-hooks/lib/paid-action-broker.mjs",
+      "../scripts/termfleet-daemon-broker.mjs": "agent-hooks/termfleet-daemon-broker.mjs"
     }
   }
 }

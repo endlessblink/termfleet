@@ -1,9 +1,15 @@
+// Text the harness writes in the operator's place: Claude's after-compaction summary and
+// the brief-file pointer a helper starts with. Neither names the work (report 2026-10-15:
+// the Goal read "This session is being continued from a previous conversation…").
+const HARNESS_TEXT = /^(?:this session is being continued from a previous conversation|read \S+\.md and carry out the instructions in it)\b/i;
+
 const GOAL_VERB =
   /\b(?:add|allow|build|change|check|clean|create|debug|deploy|design|enable|find|fix|generate|handle|implement|improve|install|investigate|make|migrate|move|plan|prevent|publish|refactor|release|remove|repair|replace|research|restart|restore|review|show|support|test|update|upgrade|use|verify|write|can we|can you|how|i need|i want|please|should we|what|why)\b/i;
 
 export function isDurableGoalText(value) {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
   if (!text) return false;
+  if (HARNESS_TEXT.test(text)) return false;
   // Assistant progress reports are not pane purpose, even when a hook labels them
   // as a plan explanation.  Accepting them makes the Goal row mirror our own report
   // and leaves no durable pane context after the report is rejected downstream.
@@ -69,6 +75,7 @@ export function isRequestText(value) {
   // An injected <INSTRUCTIONS> block near the start is harness text (TF-061).
   if (/<\/?INSTRUCTIONS>/.test(text.slice(0, 120))) return false;
   if (/^(?:the following is the codex agent history\b|read-only\b)/i.test(text)) return false;
+  if (HARNESS_TEXT.test(text)) return false;
   const words = text.split(/\s+/);
   if (words.length < 4) return false;
   if (words.length < 8 && /^(?:this|that|it|these|those)\b/i.test(text)) return false;
@@ -116,4 +123,48 @@ export function durableGoalForPrompt({
         ? "opening-request"
         : undefined,
   };
+}
+
+// TF-091: the card shows only what was DECLARED. The agent states its goal and current
+// step as plain "Goal: ..." and "Task: ..." lines in its reply; the newest of each wins and
+// is kept until the agent writes another. Guessing from chat text was rejected outright
+// (operator, 2026-10-15: "fail on all accounts").
+const STATED_LINE =
+  /^[ \t]*(?:[-*>][ \t]*)?(?:\*\*|__)?(goal|task)(?:\*\*|__)?[ \t]*[:：][ \t]*(?:\*\*|__)?[ \t]*(.+?)[ \t]*$/gim;
+
+export function statedLinesFromText(text) {
+  const found = {};
+  for (const match of String(text ?? "").matchAll(STATED_LINE)) {
+    const value = match[2]
+      .replace(/[*_`]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/[.\s]+$/, "")
+      .slice(0, 160);
+    if (value.split(/\s+/).length < 2) continue;
+    found[match[1].toLowerCase()] = value;
+  }
+  return found;
+}
+
+/** The newest stated Goal/Task, carried forward within one conversation. */
+export function carryStatedLines({ text, prev, sessionId }) {
+  const stated = statedLinesFromText(text);
+  const sameSession = !prev?.sessionId || !sessionId || prev.sessionId === sessionId;
+  const keep = (value) => (sameSession && typeof value === "string" && value.trim() ? value.trim().slice(0, 160) : undefined);
+  return {
+    statedGoal: stated.goal || keep(prev?.statedGoal),
+    statedTask: stated.task || keep(prev?.statedTask),
+  };
+}
+
+/** Reminder added to the agent's context when it has not declared its Goal/Task yet. */
+export function statedLinesNudge({ statedGoal, statedTask }) {
+  if (statedGoal && statedTask) return "";
+  const missing = [!statedGoal && "Goal", !statedTask && "Task"].filter(Boolean).join(" and ");
+  return (
+    `TermFleet cockpit: you have not declared your ${missing} yet. In your next reply include, each on its own line, ` +
+    `"Goal: <the outcome the user wants, one plain sentence>" and "Task: <the step you are on now, plain words>". ` +
+    `No file names, code or jargon. Repeat a line only when it changes.`
+  );
 }
