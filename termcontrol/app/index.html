@@ -849,8 +849,8 @@ dialog.room-dialog .room-create:disabled{opacity:.5;cursor:default}
 .pane.unread .project{font-weight:500;color:var(--text)}.unread-dot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--accent);margin-inline-start:6px;align-self:center}
 .msg.handoff{margin-inline-end:8%}.msg.handoff>.bubble{border:1px solid var(--line);border-radius:16px;padding:10px 14px;background:transparent}.handoff-from{font-size:12.5px;color:var(--muted);margin:0 2px 4px}
 .bots-panel{border-color:var(--line)}.bot-row .room-last{display:flex;gap:6px;align-items:center}.bot-avatar{flex:none;display:grid;place-items:center;width:40px;height:40px}.bot-avatar svg{width:40px;height:40px}.bot-avatar.head{display:inline-grid;width:30px;height:30px;margin-inline-end:8px;vertical-align:middle}.bot-avatar.head svg{width:30px;height:30px}.bot-failed{color:var(--danger,#d66)}.bot-feed{display:flex;flex-direction:column;gap:4px;padding-bottom:16px}.bot-activity{color:var(--muted);font-size:13px;margin:2px 4px}.bot-activity::before{content:"↳ "}.bot-note{color:var(--muted);font-size:13px;text-align:center;margin:8px 0}.bot-error{color:var(--danger,#d66);font-size:14px;margin:6px 4px}.bot-actions{display:flex;gap:8px;flex-wrap:wrap}.bot-actions button{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer}
-/* Your requests: a quiet strip in the free space right of the chat, bottom-aligned with the message box
-   (Noam 2026-10-20). It never covers or moves the chat: without room for it, the chip in the header is used instead. */
+/* Your requests: a quiet strip at the top right of the chat (Noam 2026-10-26).
+   It never covers or moves the chat: without room for it, the chip in the header is used instead. */
 #side-asks{display:none;--strip-hot:var(--accent);--strip-warn:var(--waiting)}
 :root[data-theme="light"] #side-asks{--strip-hot:#a9472a;--strip-warn:#8a5410}
 @media(min-width:1000px){
@@ -878,7 +878,7 @@ dialog.room-dialog .room-create:disabled{opacity:.5;cursor:default}
 #side-asks .rail-working{background:color-mix(in srgb,var(--strip-hot) 7%,transparent);padding-inline:6px;margin-inline:-6px}
 #side-asks .rail-working .st::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--strip-hot);animation:busy-fade 1.6s ease-in-out infinite}
 #side-asks .rail-working .rail-what{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-#side-asks .rail-partial .st::before{content:'';width:5px;height:5px;border-radius:50%;border:1.5px solid var(--strip-warn)}
+#side-asks .rail-partial .st::before,#side-asks .rail-open .st::before{content:'';width:5px;height:5px;border-radius:50%;border:1.5px solid var(--strip-warn)}
 #side-asks .rail-answered .st::before{content:'↩'}
 #side-asks .rail-done .st::before{content:'✓';color:var(--working)}
 #side-asks .rail-dropped .st::before{content:'–'}
@@ -2999,8 +2999,8 @@ function placeSideAsks(){
   document.body.classList.toggle('asks-strip-off',off);if(off)return;
   // the same room on both sides: it belongs to the free space, not to the chat
   const left=Math.round(r.right+(free-width)/2),top=(head?head.getBoundingClientRect().bottom:0)+16;
-  el.style.left=left+'px';el.style.width=width+'px';el.style.bottom=Math.max(12,Math.round(innerHeight-r.bottom))+'px';
-  el.style.setProperty('--strip-max',Math.max(140,Math.min(380,Math.round(r.bottom-top)))+'px');
+  el.style.left=left+'px';el.style.width=width+'px';el.style.top=top+'px';el.style.bottom='auto';
+  el.style.setProperty('--strip-max',Math.max(44,Math.min(380,Math.floor(innerHeight-top-12)))+'px');
   markStripScroll();
 }
 function markStripScroll(){const ul=document.querySelector('#side-asks ul');if(!ul)return;const scrolls=ul.scrollHeight>ul.clientHeight+2;ul.classList.toggle('scrolls',scrolls);ul.classList.toggle('at-end',ul.scrollTop+ul.clientHeight>=ul.scrollHeight-4);}
@@ -3020,9 +3020,9 @@ if(window.ResizeObserver)new ResizeObserver(()=>placeSideAsks()).observe(documen
 function clearSideAsks(){const el=document.getElementById('side-asks');if(el){el.hidden=true;el.replaceChildren();delete el.dataset.html;}}
 function paintSideAsks(asks,current,liveText){
   const el=document.getElementById('side-asks');if(!el)return;
-  const state=a=>a.n===current?'working':a.status==='open'?'answered':a.status;
+  const state=a=>a.n===current?'working':a.status==='open'&&!a.id?'answered':a.status;
   const inWork=current===null?0:1,unfinished=asks.filter(a=>a.status==='partial').length,done=asks.filter(a=>a.status==='done').length,answered=asks.filter(a=>state(a)==='answered').length;
-  const word=a=>a.n===current?ui('In work','בעבודה'):a.status==='open'?ui('Answered','נענה'):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Not finished','לא הסתיים'):a.status==='ready'?ui('Ready to try','מוכן לבדיקה'):ui('Dropped','בוטל');
+  const word=a=>a.n===current?ui('In work','בעבודה'):a.status==='open'?(a.id?ui('Open','פתוח'):ui('Answered','נענה')):a.status==='done'?ui('✓ Done','✓ בוצע'):a.status==='partial'?ui('Not finished','לא הסתיים'):a.status==='ready'?ui('Ready to try','מוכן לבדיקה'):ui('Dropped','בוטל');
   const rank={working:0,partial:1,ready:1,open:1,answered:2,done:3,dropped:4};
   const removable=st=>['partial','ready','answered'].includes(st);
   const SHOWN_DONE=3;let doneSeen=0;
@@ -3030,14 +3030,15 @@ function paintSideAsks(asks,current,liveText){
   const rows=sorted.map(a=>{
     const cur=a.n===current,st=state(a),title=railShort(a.title || a.text,80),what=cur&&liveText?liveText:title,note=cur&&liveText?railShort(a.title || a.text,60):'';
     const extra=st==='done' && ++doneSeen>SHOWN_DONE?' more-done':'',dir=dirOf(what),w=word(a);
-    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" dir="${dir}" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="${dirOf(note)}">${esc(note)}</span>`:''}${removable(st)?`<button type="button" class="rail-x" data-n="${a.n}" aria-label="${esc(ui('Remove from the list','להסיר מהרשימה'))}" title="${esc(ui('Remove from the list','להסיר מהרשימה'))}">×</button>`:''}</li>`;
+    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" dir="${dir}" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="${dirOf(note)}">${esc(note)}</span>`:''}${!a.id&&removable(st)?`<button type="button" class="rail-x" data-n="${a.n}" aria-label="${esc(ui('Remove from the list','להסיר מהרשימה'))}" title="${esc(ui('Remove from the list','להסיר מהרשימה'))}">×</button>`:''}</li>`;
   }).join('');
   const hiddenDone=Math.max(0,done-SHOWN_DONE),showAll=el.classList.contains('all-done');
   const more=hiddenDone?`<li class="rail-more"><button type="button" aria-expanded="${showAll}" data-more="${esc(ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}" data-less="${esc(ui('Show fewer','להציג פחות'))}">${esc(showAll?ui('Show fewer','להציג פחות'):ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}</button></li>`:'';
   let folded=false;try{folded=localStorage.getItem('termcontrol-asks-rail')==='folded';}catch{}
   // what needs him leads; the finished count sits at the end and never gets cut
   const toTry=asks.filter(a=>a.status==='ready' && a.n!==current).length;
-  const lead=[inWork?ui('1 in work','1 בעבודה'):'',unfinished?ui(`${unfinished} not finished`,`${unfinished} לא הסתיימו`):'',toTry?ui(`${toTry} to try`,`${toTry} לבדיקה`):''].filter(Boolean).join(' · ');
+  const ledgerOpen=asks.filter(a=>a.id&&a.status==='open').length;
+  const lead=[inWork?ui('1 in work','1 בעבודה'):'',ledgerOpen?ui(`${ledgerOpen} open`,`${ledgerOpen} פתוחות`):'',unfinished?ui(`${unfinished} not finished`,`${unfinished} לא הסתיימו`):'',toTry?ui(`${toTry} to try`,`${toTry} לבדיקה`):''].filter(Boolean).join(' · ');
   const finished=answered+done;
   const html=`<details${folded?'':' open'}><summary><span class="asks-title">${esc(ui('Requests','בקשות'))}</span>${lead?`<span class="asks-open">· ${esc(lead)}</span>`:''}${finished?`<span class="asks-done">${esc(ui(`${finished} done`,`${finished} בוצעו`))}</span>`:''}</summary><ul>${rows}${more}</ul></details>`;
   el.hidden=false;
@@ -3052,7 +3053,7 @@ let live0='';
 const notHisWords=/^\s*(?:\(\d+\)\s*)?(?:\[Event, not from|\(You were cut off by a restart|\[System notice)/i;
 function visibleAsks(asks,scheduled=[]){
   const sched=new Set(scheduled.map(t=>String(t||'').replace(/\s+/g,' ').trim()).filter(Boolean));
-  return (asks || []).filter(a=>!notHisWords.test(a.text) && !sched.has(String(a.text||'').replace(/\s+/g,' ').trim()));
+  return (asks || []).filter(a=>a.id || (!notHisWords.test(a.text) && !sched.has(String(a.text||'').replace(/\s+/g,' ').trim())));
 }
 function asksHtml(asks,working,live,scheduled=[]){
   asks=visibleAsks(asks,scheduled);
@@ -3063,7 +3064,7 @@ function asksHtml(asks,working,live,scheduled=[]){
   const key='termcontrol-asks-open';let isOpen=false;try{isOpen=sessionStorage.getItem(key)==='open';}catch{}
   // Side panel for wide windows (like the Desk app's "change you asked for" box): newest open
   // request = in work, older open ones = waiting, then the finished ones, newest first.
-  const openNums=asks.filter(a=>a.status==='open').map(a=>a.n),current=working&&openNums.length?Math.max(...openNums):null;
+  const openNums=asks.filter(a=>a.status==='open'&&!a.id).map(a=>a.n),current=working&&openNums.length?Math.max(...openNums):null;
   live0=String(live||'');paintSideAsks(asks,current,railLive(live));
   return `<details class="asks-chip"${isOpen?' open':''}><summary>${esc(head)} ▾</summary><ol>${asks.slice().reverse().map(a=>`<li value="${a.n}"><span class="ask-status ask-${esc(a.status)}">${esc(label[a.status] || a.status)}</span><bdi dir="auto">${esc((a.title || a.text).length>240?(a.title || a.text).slice(0,239)+'…':(a.title || a.text))}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(a.note)}</span>`:''}${partsHtml(a.items)}</li>`).join('')}</ol></details>`;
 }
@@ -3146,7 +3147,7 @@ function botMenu(id,bot,state,start='menu'){
   // then done folded away. One short line of his own words each, newest first.
   const short=t=>{t=String(t || '').replace(/\s+/g,' ').trim();return t.length>80?t.slice(0,79).trimEnd()+'…':t;};
   const row=a=>{const t=a.title || a.text;const chip=['partial','dropped'].includes(a.status)?`<span class="ask-status ask-${esc(a.status)}">${esc(label[a.status])}</span>`:'';
-    return `<li class="ask-row ask-row-${esc(a.status)}" value="${a.n}"><span class="ask-copy">${chip}<bdi class="ask-words" dir="auto" title="${esc(t)}">${esc(short(t))}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(short(a.note))}</span>`:''}</span>${['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}" aria-label="${esc(ui('Remove from list','הסרה מהרשימה'))}" title="${esc(ui('Remove from list','הסרה מהרשימה'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>`:''}</li>`;};
+    return `<li class="ask-row ask-row-${esc(a.status)}" value="${a.n}"><span class="ask-copy">${chip}<bdi class="ask-words" dir="auto" title="${esc(t)}">${esc(short(t))}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(short(a.note))}</span>`:''}</span>${!a.id&&['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}" aria-label="${esc(ui('Remove from list','הסרה מהרשימה'))}" title="${esc(ui('Remove from list','הסרה מהרשימה'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>`:''}</li>`;};
   const group=(cls,title,list,fold=false)=>{if(!list.length)return '';const head=`<span class="asks-group-title">${esc(title)}</span><span class="asks-group-count">${list.length}</span>`;const items=`<ol class="sheet-list">${list.map(row).join('')}</ol>`;
     return fold?`<details class="asks-group ${cls}"><summary>${head}</summary>${items}</details>`:`<section class="asks-group ${cls}"><h3>${head}</h3>${items}</section>`;};
   const asksList=()=>{const newest=state.asks.slice().sort((x,y)=>y.n-x.n),of=(...st)=>newest.filter(a=>st.includes(a.status));

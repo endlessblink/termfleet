@@ -1,6 +1,6 @@
 # Automatic terminal recovery
 
-TF-113 remains **verifying**, pending authorized activation and production proof.
+TF-113 remains **verifying**, with recovery enabled and a successful live disposable recovery; authenticated visual proof is pending.
 
 The bridge checks tracked workspace terminals every two minutes. It requires both
 an absent process and SQL activity older than five minutes, plus five minutes of
@@ -24,7 +24,9 @@ identity to its exact recoverable checkpoint, including matching working directo
 and provider. Existing conversation bindings, nested agents and closed checkpoints
 are protected. Restore/authentication failure fields remain unchanged. This uses
 the existing daemon merge API; its preflight is not an atomic compare-and-set.
-Installed hook copies have not been updated or activated by this task.
+Installed hook copies were updated through the existing connector after explicit
+authorization. The installer and release bundle now include the recovery helper
+and its imports, plus the existing self-close helper required by status hooks.
 
 Keeping the terminal ID also keeps its SQL events and bot assignment linked. The
 recovery event includes `predecessor_terminal_id`, original session ID and recent
@@ -64,20 +66,49 @@ An untouched main-copy baseline reproduces both touch-target failures
 (`/tmp/termcontrol-health-head-baseline.log`). Other failures are not claimed to
 be baseline-proven. The restart-reply test failed and left its isolated bridge
 PID2010560 running; after verifying its unique test-only TC_CONFIG_DIR, this task
-sent that fixture SIGTERM so the runner could finish. No production process was
-stopped. The first broad attempt timed out after240seconds without totals.
+sent that fixture SIGTERM so the runner could finish. This broad test stopped no production process. The first broad attempt timed out after240seconds without totals.
 
 
 Disposable visual review inspected `/tmp/termcontrol-health-en-390-{top,recovery}.png`
 and `/tmp/termcontrol-health-he-1600-{top,recovery}.png`; all are synthetic local
-fixtures. No production visual or restart proof is claimed. `npm run doctor`
+fixtures. These images do not prove the production visual surface. `npm run doctor`
 reports existing desktop/release age failures; this task does not promote or
 restart the desktop release.
 
-After explicit activation authorization, install the updated source status hooks,
-verify the loaded bridge revision and
-authenticated health report, then use one disposable real helper to prove exact
-conversation/cwd/task/bot continuity and one-time recovery in the installed desktop.
-Never run a conversation in two live panes. Test SQL SessionStart history separately
-before claiming per-terminal injected history. This task has not deployed, restarted
-services, changed trust handling or sent messages.
+After explicit activation authorization, the existing hook connector installed the
+updated copies; six relevant source/installed hashes match and both installed status
+modules import successfully. Only `termcontrol.service` was restarted, at
+2026-10-26 16:15:13 IST, PID2435587, direct checkout runtime; automatic repair is
+enabled. The desktop and PTY daemon were not restarted. Evidence:
+`/tmp/termfleet-health-activation.json`. The existing packaged-hook regression
+failed before the dependency fix and passes2/2 afterward
+(`/tmp/termfleet-health-bundle-{before,after}.log`); recovery tests pass30/30 again
+(`/tmp/termfleet-health-activation-tests.log`).
+
+A visible disposable Codex helper was spawned in a disposable git repository. Its
+first prompt hook bound the exact conversation to `agent-terminal` recovery metadata.
+After verifying its pane, working directory and process group, only that helper's
+process group was killed abruptly. The automatic timer reopened the same pane with a new process (PID2629715) and
+`codex resume 01a17892-49ff-7222-9c69-a94e9b5eceb3`. Independent process inventory
+confirmed that exact conversation, and the recovery journal cleared only after
+confirmation. Its pre-death context marker appeared in the restored history; SQL
+recorded the predecessor ID and the disposable repository commit. The interrupted
+turn remained at the input prompt: reopening preserves context but does not prove
+automatic continuation of an interrupted tool call. Evidence:
+`/tmp/termfleet-recovery-live-{before,killed,after}.json`. A post-recovery prompt
+confirmed the marker. Its Stop hook then misclassified test harness instructions as
+four owner requests and retried after a ledger-busy error; those test-only rows were
+marked context and the verified disposable terminal was closed. This separate bug
+is recorded as TF-115; recovery success does not prove hook completion reliability.
+Browser
+inventory returned zero apps/browsers, so authenticated visual confirmation remains
+unavailable.
+
+A separate read-only audit (`/tmp/termfleet-sql-hook-audit.json`) found that SQL
+logging is automatic through the bridge but universal mandatory agent use is not
+enforced. SQL hook registration covers Claude only; history injection is optional,
+not terminal-specific, oldest-first, and metadata-only. Failures do not block agents.
+Those gaps remain open; exact conversation resume must not be presented as proof
+that every agent reads and writes SQL. No external messages were sent.
+
+The final broad-suite rerun timed out after300seconds (exit124), with537passing and17failing subtests and no final totals (`/tmp/termfleet-activation-full-suite.log`). No surviving full-suite runner was found afterward. Panel source and placement were subsequently activated in the same service only, PID2832317; `/tmp/termfleet-TF114-activation.json` records the exact source hashes and426unique active ledger rows, with no harness-wrapper rows.

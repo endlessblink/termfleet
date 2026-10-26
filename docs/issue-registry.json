@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T14:01:54.028Z",
+  "updatedAt": "2026-10-26T14:41:56.464Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13092,13 +13092,18 @@
           "note": "Workspace task, cwd, bot and durable pane identity feed PID plus SQL checks. Shared stateOf supplies stuck; exact checkpoint and independent process scan protect conversation recovery; no transcript read or live kill on silence."
         },
         {
+          "kind": "installed-release",
+          "at": "2026-10-26T14:29:27.997Z",
+          "note": "Authorized installed-hook hash/import proof and recovery timer active. Live disposable abrupt-death trial restored same pane/cwd/exact Codex conversation under new PID2629715; independent owner confirmed, journal cleared, SQL predecessor link and git commit retained. History marker visible; interrupted tool execution did not automatically continue. /tmp/termfleet-health-activation.json and /tmp/termfleet-recovery-live-after.json. Authenticated production visual remains unavailable."
+        },
+        {
           "kind": "focused-test",
-          "at": "2026-10-26T14:01:54.027Z",
-          "note": "Full isolated TermControl suite completed 694/708, 14 failures: /tmp/termcontrol-health-suite-final.log. Failed restart-reply fixture left isolated bridge PID2010560 alive; verified its unique TC_CONFIG_DIR and stopped only that fixture to let runner exit. Main-copy UI baseline reproduces both touch-target failures: /tmp/termcontrol-health-head-baseline.log. No all-green or production claim."
+          "at": "2026-10-26T14:40:30.795Z",
+          "note": "Final isolated broad rerun timed out after300seconds exit124 with537pass17fail before final totals: /tmp/termfleet-activation-full-suite.log. Earlier completed suite694/708. Focused recovery30/30, hook bundle2/2, status93/93, mobile31/31 and build pass. Actual disposable exact-conversation recovery and cleanup proven; no all-green claim."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Await explicit activation authorization; install updated status hooks, verify loaded bridge revision and disposable exact-conversation recovery with authenticated production visual proof.",
+      "nextAction": "Authenticated production visual confirmation and terminal-specific SQL history injection remain open; interrupted tool calls do not automatically continue. Disposable recovery and cleanup proven; helper Stop harness loop tracked separately in TF-115.",
       "history": [
         {
           "at": "2026-10-26T13:17:24.399Z",
@@ -13163,6 +13168,142 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Full isolated TermControl suite completed 694/708, 14 failures: /tmp/termcontrol-health-suite-final.log. Failed restart-reply fixture left isolated bridge PID2010560 alive; verified its unique TC_CONFIG_DIR and stopped only that fixture to let runner exit. Main-copy UI baseline reproduces both touch-target failures: /tmp/termcontrol-health-head-baseline.log. No all-green or production claim."
+        },
+        {
+          "at": "2026-10-26T14:22:05.099Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Authorized activation: existing connector installed complete status-hook dependency closure; stable imports pass and six source/copy hashes match. Only termcontrol.service restarted at 16:15:13 IST PID2435587, direct checkout, repair enabled. Desktop/PTY daemon untouched. /tmp/termfleet-health-activation.json; bundle regression passes2/2, recovery30/30. Exact-conversation disposable trial in progress; no live visual claim."
+        },
+        {
+          "at": "2026-10-26T14:29:27.998Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Authorized installed-hook hash/import proof and recovery timer active. Live disposable abrupt-death trial restored same pane/cwd/exact Codex conversation under new PID2629715; independent owner confirmed, journal cleared, SQL predecessor link and git commit retained. History marker visible; interrupted tool execution did not automatically continue. /tmp/termfleet-health-activation.json and /tmp/termfleet-recovery-live-after.json. Authenticated production visual remains unavailable."
+        },
+        {
+          "at": "2026-10-26T14:40:30.796Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final isolated broad rerun timed out after300seconds exit124 with537pass17fail before final totals: /tmp/termfleet-activation-full-suite.log. Earlier completed suite694/708. Focused recovery30/30, hook bundle2/2, status93/93, mobile31/31 and build pass. Actual disposable exact-conversation recovery and cleanup proven; no all-green claim."
+        }
+      ]
+    },
+    {
+      "id": "TF-114",
+      "title": "Bot request panel omits ledger items and repeats harness reminders",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Bot chat shows a few transcript turns containing injected reminders instead of all active owner ledger items",
+      "rootCause": "Bot route selected a limited transcript request view instead of the authoritative item ledger, and harness reminders entered request capture as owner text.",
+      "guard": "Map authoritative active ledger items once by stable R id and strip harness reminder blocks before transcript capture",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-26T14:26:35.754Z",
+          "note": "server bot route reads all active ledger items by source and provider-independent stable R ids; wrapper rejected in transcript and owner intake. Private authenticated browser 80 rows20ready screenshot /tmp/termfleet-TF114-ledger-panel.png SHA256 0b3466a89075d471af621172047a1af65d89db5e36e07267c8c13374a4d18af5. Live bot visual unverified."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T14:40:30.324Z",
+          "note": "Final top-right desktop and phone guards pass2/2; frontend build and mobile31/31 pass. Reviewed fixtures /tmp/termfleet-TF114-top-right.png and /tmp/termfleet-TF114-top-right-phone.png. Live service PID2832317, source hashes and426unique real-ledger rows: /tmp/termfleet-TF114-activation.json. Authenticated production visual remains unavailable."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Authenticated production bot visual confirmation remains unavailable. Top-right placement, complete real-ledger read-back and bridge activation are proven; fixtures are not production screenshots.",
+      "history": [
+        {
+          "at": "2026-10-26T14:22:14.358Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T14:26:07.539Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed bot route uses transcript asks while active item ledger is separate and limited in another view"
+        },
+        {
+          "at": "2026-10-26T14:26:08.416Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused regression captured open-request harness block as numbered owner request before fix"
+        },
+        {
+          "at": "2026-10-26T14:26:09.247Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added ledger mapping and harness capture tests plus authenticated private-browser 80-item panel regression"
+        },
+        {
+          "at": "2026-10-26T14:26:10.330Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Bot panel reads authoritative ledger directly for every provider; stable ids and no transcript dismissal for ledger rows"
+        },
+        {
+          "at": "2026-10-26T14:26:11.507Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "21 focused checks, existing rail browser and private authenticated 80-item browser passed; live owner bot panel remains unverified"
+        },
+        {
+          "at": "2026-10-26T14:26:12.654Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test termcontrol/test/bot-ledger-panel.test.mjs termcontrol/test/bot-menu-clean-asks.test.mjs termcontrol/test/asks-not-requests.test.mjs termcontrol/test/asks.test.mjs: 21 passed"
+        },
+        {
+          "at": "2026-10-26T14:26:35.754Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "server bot route reads all active ledger items by source and provider-independent stable R ids; wrapper rejected in transcript and owner intake. Private authenticated browser 80 rows20ready screenshot /tmp/termfleet-TF114-ledger-panel.png SHA256 0b3466a89075d471af621172047a1af65d89db5e36e07267c8c13374a4d18af5. Live bot visual unverified."
+        },
+        {
+          "at": "2026-10-26T14:40:30.324Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final top-right desktop and phone guards pass2/2; frontend build and mobile31/31 pass. Reviewed fixtures /tmp/termfleet-TF114-top-right.png and /tmp/termfleet-TF114-top-right-phone.png. Live service PID2832317, source hashes and426unique real-ledger rows: /tmp/termfleet-TF114-activation.json. Authenticated production visual remains unavailable."
+        }
+      ]
+    },
+    {
+      "id": "TF-115",
+      "title": "Disposable helper task wrappers become owner requests and block completion",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Live recovery probe confirmed its context marker, but Stop retried because helper Goal/Full instructions and test directions were captured as four new owner items; marking failed with ledger busy.",
+      "rootCause": "Task harness text reaches owner-request intake without origin distinction; generic busy feedback hid the write failure. Exact cause of write refusal is unverified.",
+      "guard": "Pin genuine owner intake versus machine-created helper instructions, without hiding real requests.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-26T14:41:56.464Z",
+          "note": "Authorized disposable helper recovered exact original context, then Stop retried after synthetic harness instructions became four owner rows and status recording reported ledger busy. Probe closed and four synthetic items marked context; /tmp/termfleet-recovery-live-after.json. No universal hook-reliability claim."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reproduce helper capture and ledger write failure in an isolated fixture before selecting a bounded guard.",
+      "history": [
+        {
+          "at": "2026-10-26T14:35:06.754Z",
+          "type": "created",
+          "note": "Observed only on authorized disposable recovery helper, now closed; four synthetic ledger rows marked context. Evidence /tmp/termfleet-recovery-live-after.json"
+        },
+        {
+          "at": "2026-10-26T14:41:56.464Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Authorized disposable helper recovered exact original context, then Stop retried after synthetic harness instructions became four owner rows and status recording reported ledger busy. Probe closed and four synthetic items marked context; /tmp/termfleet-recovery-live-after.json. No universal hook-reliability claim."
         }
       ]
     }

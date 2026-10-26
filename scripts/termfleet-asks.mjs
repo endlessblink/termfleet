@@ -26,6 +26,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripOpenRequestReminder } from '../termcontrol/bridge/bot-request-panel.mjs';
 import {
   captureMessage, ownerTextOf, projectOf, stopProblem, escalate, briefedIds, briefItems, briefBlock, ledgerDir,
   markItem, record, addTopic, setTopicVisual, normId, itemsView, itemsText, evidenceProblem, answerProblem, loadLedger, clip as clipItem,
@@ -148,19 +149,19 @@ function applyLines(state, lines) {
     if (o?.isSidechain || o?.isMeta) continue;
     if (o?.type === 'attachment' && o.attachment?.type === 'queued_command' && (o.attachment.origin?.kind === 'human' || o.attachment.humanTurn === true)) {
       const p = o.attachment.prompt;
-      const text = (typeof p === 'string' ? p : Array.isArray(p) ? p.filter((b) => b?.type === 'text').map((b) => b.text).join('\n') : '').trim();
+      const text = stripOpenRequestReminder(typeof p === 'string' ? p : Array.isArray(p) ? p.filter((b) => b?.type === 'text').map((b) => b.text).join('\n') : '');
       if (text && !injected(text) && !acknowledgement(text)) asks.push({ n: asks.length + 1, text, at: o.timestamp || null, status: 'open', note: '' });
       continue;
     }
     if (o?.type === 'user') {
       const content = o.message?.content;
       if (Array.isArray(content) && content.some((b) => b?.type === 'tool_result')) continue;
-      const text = textOf(content).trim();
+      const text = stripOpenRequestReminder(textOf(content));
       if (text && !injected(text) && !acknowledgement(text)) asks.push({ n: asks.length + 1, text, at: o.timestamp || null, status: 'open', note: '' });
     } else if (o?.type === 'assistant' && Array.isArray(o.message?.content)) {
       for (const b of o.message.content) if (b?.type === 'tool_use') marks.push(...parseMarks(commandOf(b.input)));
     } else if (o?.type === 'response_item' && o.payload?.type === 'message' && o.payload.role === 'user') {
-      const text = textOf(o.payload.content).trim();
+      const text = stripOpenRequestReminder(textOf(o.payload.content));
       if (text && !injected(text) && !acknowledgement(text)) asks.push({ n: asks.length + 1, text, at: o.timestamp || null, status: 'open', note: '' });
     } else if (o?.type === 'response_item' && ['function_call', 'local_shell_call', 'custom_tool_call'].includes(o.payload?.type)) {
       marks.push(...parseMarks(commandOf(o.payload.arguments ?? o.payload.action ?? o.payload.input)));
@@ -259,7 +260,7 @@ function bracketEnd(text, from) {
 }
 /** His words without the notes TermFleet added around them. */
 export function stripSystemNotes(text) {
-  let rest = String(text || '');
+  let rest = stripOpenRequestReminder(text);
   // A tag from another chat: only what follows "Noam's message:" is his message to this bot.
   const tagged = /\n\s*Noam's message:\s*\n([\s\S]*)$/.exec(rest);
   if (/^\s*\[Noam tagged you/.test(rest) && tagged) rest = tagged[1];
@@ -421,7 +422,7 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
   }
 
   if (/^UserPromptSubmit$/i.test(event) || event === 'user_prompt_submit') {
-    const prompt = String(payload.prompt ?? payload.user_prompt ?? '').trim();
+    const prompt = stripOpenRequestReminder(payload.prompt ?? payload.user_prompt ?? '');
     let newest = null;
     // The new message is not in the record yet when this runs.
     if (prompt && !injected(prompt) && !acknowledgement(prompt) && !asks.some((a) => a.text === prompt && a === asks.at(-1))) {

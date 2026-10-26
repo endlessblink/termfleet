@@ -1,4 +1,4 @@
-// Noam 2026-10-20: the requests list is a small strip bottom-right beside the message box; the chat stays where it was.
+// Noam 2026-10-26: the requests list is a small strip top-right; the chat stays where it was.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 const repo = path.resolve('.');
-test('the requests list is a small strip bottom-right beside the message box, never touches the chat, and follows the work live', { timeout: 90000 }, async () => {
+test('the requests list is a small strip top-right, never touches the chat, and follows the work live', { timeout: 90000 }, async () => {
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-rail-'));
 const configDir = path.join(tmp, 'cfg'), botsHome = path.join(tmp, 'home');
 for (const d of [configDir, botsHome]) fs.mkdirSync(d, { recursive: true });
@@ -40,10 +40,9 @@ try {
   await p.waitForFunction(() => document.querySelector('#side-asks li'), null, { timeout: 15000, polling: 250 });
   const geo = () => p.evaluate(() => { const rect = (q) => { const r = document.querySelector(q)?.getBoundingClientRect(); return r ? { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom) } : null; }; return { asks: rect('#side-asks'), side: rect('#fleet-side'), list: rect('#fleet-side .side-content'), main: rect('main'), composer: rect('.bot-composer'), vw: innerWidth, vh: innerHeight }; });
   const g0 = await geo();
-  // In the sidebar, below the bots list, filling to the bottom, in its own scroll; the right-hand panel is gone; the chat uses the whole width.
-  // Noam 2026-10-20 (second thought): not in the sidebar (it took the bots' room) but a small strip in the free space
-  // right of the chat, bottom-aligned with the message box, never over the chat.
-  assert.ok(g0.asks.l >= g0.composer.r + 8 && g0.asks.r <= g0.vw && Math.abs(g0.asks.b - g0.composer.b) <= 2, JSON.stringify(g0));
+  // The strip starts just below the header in the free space right of the chat.
+  const headerBottom = await p.locator('body > header').evaluate(el => el.getBoundingClientRect().bottom);
+  assert.ok(g0.asks.l >= g0.composer.r + 8 && g0.asks.r <= g0.vw && Math.abs(g0.asks.t - headerBottom - 16) <= 2, JSON.stringify(g0));
   assert.ok(g0.asks.l >= g0.side.r && g0.asks.r - g0.asks.l <= 300, JSON.stringify(g0));
   assert.equal(await p.evaluate(() => Boolean(document.querySelector('#fleet-side #side-asks'))), false);
   assert.equal(await p.evaluate(() => document.querySelectorAll('.asks-rail').length), 0);

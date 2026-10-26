@@ -68,6 +68,7 @@ import { Push } from './push.mjs';
 import { createDockIcon } from './dock-icon.mjs';
 import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest, askTitle, dismissAsk, itemsByAsk, statusFromItems } from '../../scripts/termfleet-asks.mjs';
+import { botAsksFromItems } from './bot-request-panel.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 import { itemsView, replyDetails } from './requirements.mjs';
 import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity } from './events-db.mjs';
@@ -786,10 +787,8 @@ const handle = async (req, res) => {
       view.bot.helpers ||= [];
       view.bot.helpers = view.bot.helpers.map((h) => { const p = panes.find((x) => x.id === h.paneId); return { ...h, state: !p ? 'closed' : p.attention ? 'needs-you' : (p.turn === 'working' && p.stalledForMs > 0) ? 'stuck' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null }; });
     }
-    if (view && view.bot.provider !== 'codex') {
-      const raw = bots.read(view.bot.id);
-      if (raw?.sessions?.claude?.started) view.asks = asksForTranscript(claudeTranscript(raw.cwd, raw.sessions.claude.id), `bot:${view.bot.id}`);
-    }
+    // The item ledger owns bot requests; transcript turns include harness reminders and omit older items.
+    if (view) { try { view.asks = botAsksFromItems(itemsView({ source: `bot:${view.bot.id}`, includeClosed: true }).items); } catch { view.asks = []; } }
     if (view) view.requirements = requirementsFor(`bot:${view.bot.id}`);
     // Noam 2026-10-23: the per-item list sits under a finished reply's Details toggle, not in its text.
     if (view) { try { view.details = replyDetails(view.messages, itemsView({ source: `bot:${view.bot.id}`, includeClosed: true }).items); } catch { view.details = {}; } }
