@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { stripControlCodes } from '../bridge/liveness.mjs';
-import { claudeFolderTrustPrompt, trustDecision } from '../bridge/delivery.mjs';
+import { claudeFolderTrustPrompt, codexFolderTrustPrompt, trustDecision } from '../bridge/delivery.mjs';
 
 // The real bytes Claude Code 2.x drew for a brand-new folder (2026-10-26). It puts the gaps between
 // words with cursor moves and shows its menu without numbers. Read the old way, the question was
@@ -31,6 +31,23 @@ test('outside the folders Noam trusts, it still asks him instead of answering', 
 test('the numbered menu of older versions still gives its Yes number', () => {
   const s = 'Do you trust the files in this folder?\n❯ 1. Yes, proceed\n  2. No, exit\n';
   assert.equal(claudeFolderTrustPrompt(s).yesOption, '1');
+});
+
+// Codex draws its whole screen with row;column jumps; read without them it was one glued line
+// ("Trustthisfolder?Codexcanread...") and its folder-trust question was never answered.
+const codexRaw = fs.readFileSync(new URL('./fixtures/codex-folder-trust-screen.txt', import.meta.url), 'utf8');
+
+test('a Codex screen keeps its lines and spaces', () => {
+  const text = stripControlCodes(codexRaw);
+  assert.match(text, /Trust this folder\? Codex can read, edit, and run files here/);
+  assert.match(text, /\n› 1\. Trust and continue\s*\n2\. Quit\n/);
+});
+
+test("Codex's folder-trust question is answered with its number inside trusted folders, and asked about outside", () => {
+  const text = stripControlCodes(codexRaw);
+  assert.deepEqual(codexFolderTrustPrompt(text), { yesOption: '1', noOption: '2' });
+  assert.equal(trustDecision(text, { cwd: '/home/user/projects/new-folder', folderRoots: ['/home/user/projects'] }).press, '1');
+  assert.match(trustDecision(text, { cwd: '/home/user/projects/new-folder', folderRoots: ['/srv'] }).error, /new Codex terminal is asking whether to trust its folder/);
 });
 
 test('a message that only talks about the question is not the question', () => {

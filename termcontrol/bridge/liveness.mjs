@@ -128,18 +128,30 @@ export async function screenOf(id, rows = 24) {
 }
 
 /**
+ * Cursor moves are the layout: a jump to another row is a line break, a jump along the same row
+ * is the gap between words. Claude Code draws its spaces with column moves and Codex draws its
+ * whole screen with row;column jumps; dropping them read "Isthisaprojectyoucreated..." and
+ * "Trustthisfolder?Codexcanread..." as one glued line (2026-10-26).
+ */
+function cursorLayout(raw) {
+  let row = 0;
+  return raw.replace(/\u001b\[(\d*)(?:;(\d*))?([HfdABCG])/g, (_, a, _col, cmd) => {
+    if (cmd === 'H' || cmd === 'f' || cmd === 'd') { const r = Number(a) || 1; const gap = r === row ? (cmd === 'd' ? '' : ' ') : '\n'; row = r; return gap; }
+    if (cmd === 'A' || cmd === 'B') { row += (cmd === 'B' ? 1 : -1) * (Number(a) || 1); return '\n'; }
+    return ' ';
+  });
+}
+
+/**
  * Strip the codes a terminal paints with, leaving the words. Escape sequences
  * can carry intermediate bytes before their final letter (cursor shapes are
  * the common one), and missing those leaves litter like "[0 q" scattered
  * through the text.
  */
 export function stripControlCodes(raw) {
-  return raw
+  return cursorLayout(raw
     // Operating-system commands: window titles and the like.
-    .replace(/\u001b\][\s\S]*?(?:\u0007|\u001b\\)/g, '')
-    // A move along the line is the gap between words: Claude Code draws its spaces that way, and
-    // dropping them turned its folder-trust question into "Isthisaprojectyoucreated..." (2026-10-26).
-    .replace(/\u001b\[\d*[CG]/g, ' ')
+    .replace(/\u001b\][\s\S]*?(?:\u0007|\u001b\\)/g, ''))
     // Control sequences, including any intermediate bytes.
     .replace(/\u001b\[[0-9;?<>=]*[\u0020-\u002f]*[\u0040-\u007e]/g, '')
     // Single-character and character-set escapes.

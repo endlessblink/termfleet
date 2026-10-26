@@ -68,6 +68,19 @@ export function codexTrustPrompt(screen) {
   return { trustOption: pick ? pick[1] : null, skipOption: skip ? skip[1] : null };
 }
 
+/**
+ * Codex's folder-trust question ("Trust this folder? … › 1. Trust and continue / 2. Quit"), with the
+ * number of its trust choice; the menu must be drawn, not only talked about (seen 2026-10-26).
+ */
+export function codexFolderTrustPrompt(screen) {
+  const s = String(screen || '');
+  if (!/Trust this folder\?/i.test(s)) return null;
+  const pick = /(?:^|\n)\s*(?:[›>❯]\s*)?(\d)[.)]\s*Trust and continue\s*(?:\n|$)/i.exec(s);
+  const quit = /(?:^|\n)\s*(?:[›>❯]\s*)?(\d)[.)]\s*Quit\s*(?:\n|$)/i.exec(s);
+  if (!pick || !quit) return null;
+  return { yesOption: pick[1], noOption: quit[1] };
+}
+
 const snake = (ev) => ev.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
 
 /** Hooks in Codex's hook files that have no trust record yet (what the review prompt lists). */
@@ -103,6 +116,8 @@ export function ownHook(command, { home = os.homedir(), root = repoRoot } = {}) 
 export function trustDecision(screen, { pending, home, root, cwd = null, folderRoots } = {}) {
   const folder = claudeFolderTrustPrompt(screen);
   if (folder) return folderTrustDecision(folder, { cwd, roots: folderRoots ?? trustedFolderRoots({ home }) });
+  const codexFolder = codexFolderTrustPrompt(screen);
+  if (codexFolder) return folderTrustDecision(codexFolder, { cwd, roots: folderRoots ?? trustedFolderRoots({ home }), agent: 'Codex' });
   const prompt = codexTrustPrompt(screen);
   if (!prompt) return null;
   const foreign = (pending ?? pendingCodexHooks({ home, cwd: cwd || process.cwd() })).filter((h) => !ownHook(h.command, { home, root }));
@@ -160,12 +175,12 @@ export function trustedFolderRoots({ home = os.homedir(), config = null, min = 3
   return [...new Set([...[...counts].filter(([, n]) => n >= min).map(([d]) => d), ...extra])];
 }
 
-export function folderTrustDecision(prompt, { cwd, roots }) {
+export function folderTrustDecision(prompt, { cwd, roots, agent = 'Claude' }) {
   const where = cwd ? path.resolve(cwd) : null;
   const inside = where && roots.some((r) => where === r || where.startsWith(`${r}/`));
-  if (!inside) return { error: `The new Claude terminal is asking whether to trust its folder${where ? ` (${where})` : ''}, which is not inside a folder Noam already trusts projects in. It will not start until he answers; ask him in one plain sentence. Do not send that terminal anything meanwhile: typing into the question can choose "No, exit".` };
-  if (!prompt.yesOption && prompt.yesKeys == null) return { error: 'The new Claude terminal is asking whether to trust its folder, but its Yes choice is not on screen; it will not start until someone answers it.' };
-  return { press: prompt.yesOption || prompt.yesKeys, note: `Answered Claude's folder-trust question with Yes: ${where} is inside ${roots.find((r) => where === r || where.startsWith(`${r}/`))}, where Noam already trusts his projects.` };
+  if (!inside) return { error: `The new ${agent} terminal is asking whether to trust its folder${where ? ` (${where})` : ''}, which is not inside a folder Noam already trusts projects in. It will not start until he answers; ask him in one plain sentence. Do not send that terminal anything meanwhile: typing into the question can choose to quit.` };
+  if (!prompt.yesOption && prompt.yesKeys == null) return { error: `The new ${agent} terminal is asking whether to trust its folder, but its Yes choice is not on screen; it will not start until someone answers it.` };
+  return { press: prompt.yesOption || prompt.yesKeys, note: `Answered ${agent}'s folder-trust question with Yes: ${where} is inside ${roots.find((r) => where === r || where.startsWith(`${r}/`))}, where Noam already trusts his projects.` };
 }
 
 /**
