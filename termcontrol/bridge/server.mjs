@@ -20,7 +20,7 @@ import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
 import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
 import { appendAction, paneLogFile } from './action-log.mjs';
-import { parentsByPane, fleetPanes } from './orchestrate.mjs';
+import { parentsByPane, fleetPanes, stateOf } from './orchestrate.mjs';
 import { deliverHeld } from './held-messages.mjs';
 import { agentsByPane } from './inventory.mjs';
 import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
@@ -65,6 +65,7 @@ import { sweepWindows, setTakeover, clearTakeover, handBackText, readWindows } f
 import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
 import { checkBotEvents, helperState } from './bot-events.mjs';
 import { startWatchdog } from './watchdog.mjs';
+import { recoverBotHelpers } from './helper-recovery.mjs';
 import { Push } from './push.mjs';
 import { createDockIcon } from './dock-icon.mjs';
 import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
@@ -380,10 +381,34 @@ async function roomPanes() { return [...(await currentPanes()).panes, ...botMemb
 setTimeout(() => { try { bots.resumeInterrupted(); } catch (error) { console.error('[bots]', error.message); } }, 3000).unref?.();
 // TF-096 part 7: events wake bots (helper finished, approval expired, new code).
 const helperSeen = new Map();
+let helperRecoveryRunning = false;
 async function botEvents() {
   if (!bots.list().length) return;
+  const current = await currentPanes();
+  if (current.daemon && !process.env.TC_CONFIG_DIR && process.env.TC_NO_TERMINAL_HEALTH !== '1' && !helperRecoveryRunning) {
+    helperRecoveryRunning = true;
+    try {
+      await recoverBotHelpers({
+        bots, panes: current.panes, items: itemsView().items,
+        readAsk: async (pane) => pendingAsk(pane),
+        readScreen: async (pane) => visibleScreenOf(pane.id) ?? await screenOf(pane.id),
+        recheck: async (pane, work) => {
+          const fresh = await currentPanes({ fresh: true });
+          const live = fresh.panes.find((p) => p.id === pane.id);
+          if (!fresh.daemon || !live?.alive || live.sleeping || live.attention || live.sessionId !== pane.sessionId || live.provider !== pane.provider || pendingAsk(live) || !['idle', 'stuck'].includes(stateOf(live))) return false;
+          const latest = itemsView().items;
+          return work.every((item) => latest.some((it) => it.id === item.id && it.status === item.status && it.assigned?.at(-1)?.pane === pane.id && it.assigned.at(-1).at === item.assigned.at(-1).at));
+        },
+        // Busy Codex messages ordinarily wait until its turn ends. A stuck turn
+        // never ends, so this guarded continuation uses the normal agent queue.
+        nudge: (pane, text, bot) => sendToPane(pane, `[Automatic recovery from your owning bot ${bot.name}; not a new request from Noam]\n${text}`),
+        log: (line) => console.error(line),
+      });
+    } finally { helperRecoveryRunning = false; }
+  }
   await checkBotEvents({
-    bots, panes: (await currentPanes()).panes, seen: helperSeen,
+    bots, panes: current.panes, seen: helperSeen,
+    recoveryHandled: (botId, pane) => (bots.messages(botId) || []).some((m) => m.role === 'helper-recovery' && m.pane === pane.id && m.sessionId === pane.sessionId),
     readAsk: async (pane) => { const screen = visibleScreenOf(pane.id) ?? await screenOf(pane.id); return pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen); },
     readScreen: async (pane) => visibleScreenOf(pane.id) ?? await screenOf(pane.id),
   });

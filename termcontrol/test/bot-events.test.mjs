@@ -64,6 +64,13 @@ test('a stalled terminal with a question open is waiting on Noam, never reported
   assert.ok(!woke.some((w) => /crashed/.test(w)));
 });
 
+test('a helper already handled by recovery is not also told to close and replace its conversation', async () => {
+  const { bots, woke } = setup();
+  await checkBotEvents({ bots, seen: new Map(), panes: [{ id: 'terminal-h', turn: 'working', stalledForMs: 10 * 60_000 }],
+    recoveryHandled: () => true, readAsk: async () => null, notify: () => {} });
+  assert.equal(woke.length, 0);
+});
+
 // Noam 2026-10-20: a prompt in a terminal a bot runs is shown to him in the bot's chat
 // with the terminal's own choices; it is never answered for him, not even after a wait.
 test('a prompt in a bot\'s terminal is posted once in its chat with its choices, the bot is told, nothing is answered', async () => {

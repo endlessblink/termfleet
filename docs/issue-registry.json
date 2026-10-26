@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T14:51:50.747Z",
+  "updatedAt": "2026-10-26T15:25:42.475Z",
   "issues": [
     {
       "id": "TF-001",
@@ -12826,7 +12826,9 @@
       "state": "verifying",
       "severity": "medium",
       "surface": "desktop-runtime",
-      "matrixRefs": ["TF-110"],
+      "matrixRefs": [
+        "TF-110"
+      ],
       "symptom": "Owner reported 51 map terminals versus 9 in TermControl; current saved map has 10 cards but only 9 are live and map-owned.",
       "rootCause": "Bridge workspace reads retained orphan and empty-tab canvas nodes; original reported desktop count is not reproduced and this bridge-only projection does not change desktop rendering.",
       "guard": "Read-only map ownership and daemon identity comparison; inventory-parity and layout-ownership tests",
@@ -13310,6 +13312,85 @@
           "type": "evidence",
           "kind": "source",
           "note": "Authorized disposable helper recovered exact original context, then Stop retried after synthetic harness instructions became four owner rows and status recording reported ledger busy. Probe closed and four synthetic items marked context; /tmp/termfleet-recovery-live-after.json. No universal hook-reliability claim."
+        }
+      ]
+    },
+    {
+      "id": "TF-116",
+      "title": "Recover bot helpers with unfinished assigned work",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Bot helpers remain stuck or idle with assigned work beyond ten minutes",
+      "rootCause": "Shared stuck detection waited twenty minutes; idle helpers with active assignments had no bounded continuation reminder.",
+      "guard": "Bounded prompt-safe nudges and owning bot notification within ten minutes",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-26T15:25:40.309Z",
+          "note": "helper-recovery.mjs uses shared stateOf, exact session identity, ledger ownership and fresh assignment/prompt guards; existing poll is thirty seconds."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T15:25:42.475Z",
+          "note": "Focused49/49 and canonical51/51 pass in /tmp/termfleet-TF116-{focused,canonical}.log. Real same-conversation delivery proven; resumed progress unconfirmed. Full suite fails existing EISDIR cleanup."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify activated reminder on a naturally stalled owned helper; actual continuation remains unconfirmed because the disposable helper hit TF-115 Stop-hook looping.",
+      "history": [
+        {
+          "at": "2026-10-26T15:07:48.554Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T15:09:50.643Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Root cause confirmed; use shared stuck state and prompt-safe idle nudges at nine minutes, durable receipts and owning-bot wake."
+        },
+        {
+          "at": "2026-10-26T15:11:08.834Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Regression added before implementation; timing and idle/stuck cases captured."
+        },
+        {
+          "at": "2026-10-26T15:24:07.829Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "49 focused checks pass for shared stuck and idle recovery, prompt guards, durable deduplication and owning-bot receipts."
+        },
+        {
+          "at": "2026-10-26T15:24:10.848Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Wired nine-minute reminders into existing thirty-second bot event poll; no silence-based process killing."
+        },
+        {
+          "at": "2026-10-26T15:24:13.458Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Real same-conversation delivery proven; actual continuation blocked by TF-115 Stop hook. Service activation and source readback next."
+        },
+        {
+          "at": "2026-10-26T15:25:40.310Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "helper-recovery.mjs uses shared stateOf, exact session identity, ledger ownership and fresh assignment/prompt guards; existing poll is thirty seconds."
+        },
+        {
+          "at": "2026-10-26T15:25:42.475Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused49/49 and canonical51/51 pass in /tmp/termfleet-TF116-{focused,canonical}.log. Real same-conversation delivery proven; resumed progress unconfirmed. Full suite fails existing EISDIR cleanup."
         }
       ]
     }

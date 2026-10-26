@@ -153,7 +153,7 @@ export function newPromptSince(pane, since) {
   try { return (readFeed(pane, { limit: 20 }).events || []).some((e) => e.kind === 'user' && Date.parse(e.at) > since); } catch { return false; }
 }
 
-export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, readScreen = async () => '', head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, notify = (note) => bots.notify?.(note) }) {
+export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, readScreen = async () => '', head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, recoveryHandled = () => false, notify = (note) => bots.notify?.(note) }) {
   const alert = (note) => { try { notify(note); } catch { /* a notification never blocks the events */ } };
   for (const b of bots.list()) {
     // One entry per terminal: a bot that followed the same agent twice is woken once.
@@ -234,7 +234,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
       }
       // Crashed (no progress while "working"): the bot is told once to replace it, Noam sees one line.
       let { crashed = false } = before;
-      if (state === 'stuck' && !crashed && !h.followed) {
+      if (state === 'stuck' && !asking && !crashed && !h.followed && !recoveryHandled(b.id, pane)) {
         crashed = true;
         const minutes = Math.round((Number(pane.stalledForMs) || 0) / 60_000);
         bots.append(b.id, { role: 'stuck', pane: h.paneId, text: `Terminal "${label}" has made no progress for ${minutes} minutes and has most likely crashed.` });

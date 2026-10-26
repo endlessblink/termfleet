@@ -159,12 +159,13 @@ export function applyVendorStatus(pane) {
   return { ...pane, ...live, turn, turnSource: 'agent' };
 }
 
-export const STALL_AFTER_MS = 20 * 60 * 1000;
+// Owner deadline: intervene within ten minutes, leaving time for the 30-second poll.
+export const STALL_AFTER_MS = 9 * 60 * 1000;
 /** How long a "working" agent has shown no sign of life, or 0. Waiting on the operator is never a stall. */
 // An agent with a conversation record is measured by that record: screen output is no proof of
 // progress (2026-10-26: a Codex that lost its backend at 12:45 repainted a ticking error clock and
 // showed "Working (1h 24m)"). Normal silence inside a working turn is under 90 s at p99.9 for Codex
-// and 5 min for Claude (3 days of records), so 20 minutes is a real stall.
+// and 5 min for Claude (3 days of records). Recovery sends a reminder, never kills for silence.
 export function stalledFor(pane, life, lastActiveAt, now = Date.now(), recordAt = 0) {
   if (pane.turn !== 'working') return 0;
   if (recordAt > 0) {
