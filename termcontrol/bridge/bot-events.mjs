@@ -84,6 +84,7 @@ export function stuckOnScreen(screen) {
 
 export const REMIND_AFTER_MS = 5 * 60_000;
 export const REMIND_EVERY_MS = 15 * 60_000;
+export const MAX_REMINDERS = 3;
 
 /** The prompt as the bot chat shows it: the same choices the terminal offers. */
 export function terminalAskMessage(paneId, label, ask) {
@@ -198,15 +199,18 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
           bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are pinned at the bottom of his chat with you until he answers, his phone was notified, and he is reminded after 5 minutes; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
           alert({ title: `${b.name}: a terminal is waiting for you`, body: `"${label}" asks: ${String(ask.title || '').slice(0, 160)}`, url: `/#bot:${b.id}` });
         }
-        // Unanswered: remind him after 5 minutes, then every 15, with the phone buzzing even
-        // when a page is open (an open PC tab is not him looking at this chat).
+        // Unanswered: remind him after 5 minutes, then every 15, up to MAX_REMINDERS times.
+        // After that, stop — hours of buzzing is noise, not signal.
         if (open?.at) {
-          const last = Number(open.remindedAt || open.at);
-          if (now - last >= (open.remindedAt ? REMIND_EVERY_MS : REMIND_AFTER_MS)) {
-            const minutes = Math.max(1, Math.round((now - Number(open.at)) / 60_000));
-            settleTerminalAsk(bots, b.id, open.id, { remindedAt: now }, false);
-            bots.append(b.id, { role: 'reminder', pane: h.paneId, card: open.id, text: `Still waiting for your answer after ${minutes} minutes: terminal "${label}" asks "${String(open.text || '').slice(0, 160)}". The buttons are at the bottom of this chat.` });
-            alert({ title: `${b.name}: still waiting for you (${minutes} min)`, body: `"${label}" asks: ${String(open.text || '').slice(0, 160)}`, url: `/#bot:${b.id}`, force: true });
+          const count = Number(open.reminderCount || 0);
+          if (count < MAX_REMINDERS) {
+            const last = Number(open.remindedAt || open.at);
+            if (now - last >= (open.remindedAt ? REMIND_EVERY_MS : REMIND_AFTER_MS)) {
+              const minutes = Math.max(1, Math.round((now - Number(open.at)) / 60_000));
+              settleTerminalAsk(bots, b.id, open.id, { remindedAt: now, reminderCount: count + 1 }, false);
+              bots.append(b.id, { role: 'reminder', pane: h.paneId, card: open.id, text: `Still waiting for your answer after ${minutes} minutes: terminal "${label}" asks "${String(open.text || '').slice(0, 160)}". The buttons are at the bottom of this chat.` });
+              alert({ title: `${b.name}: still waiting for you (${minutes} min)`, body: `"${label}" asks: ${String(open.text || '').slice(0, 160)}`, url: `/#bot:${b.id}`, force: true });
+            }
           }
         }
       }
