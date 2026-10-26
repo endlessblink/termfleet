@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T10:25:14.934Z",
+  "updatedAt": "2026-10-26T14:01:54.028Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13070,6 +13070,99 @@
           "type": "evidence",
           "kind": "source",
           "note": "Existing cached owner ledger supplies pending count; running, blocked and failed precedence preserved."
+        }
+      ]
+    },
+    {
+      "id": "TF-113",
+      "title": "Dead terminal cards need automatic health checks and recovery",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "TF-113"
+      ],
+      "symptom": "Saved cards show idle or working after their process has died; unfinished work is stranded",
+      "rootCause": "Tracked workspace cards outlive their processes; live inventory hides absent sessions, while helper checkpoints may lack exact conversation recovery metadata.",
+      "guard": "Terminal health decision and isolated recovery tests plus phone and desktop health report",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-26T13:49:23.014Z",
+          "note": "Workspace task, cwd, bot and durable pane identity feed PID plus SQL checks. Shared stateOf supplies stuck; exact checkpoint and independent process scan protect conversation recovery; no transcript read or live kill on silence."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T14:01:54.027Z",
+          "note": "Full isolated TermControl suite completed 694/708, 14 failures: /tmp/termcontrol-health-suite-final.log. Failed restart-reply fixture left isolated bridge PID2010560 alive; verified its unique TC_CONFIG_DIR and stopped only that fixture to let runner exit. Main-copy UI baseline reproduces both touch-target failures: /tmp/termcontrol-health-head-baseline.log. No all-green or production claim."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Await explicit activation authorization; install updated status hooks, verify loaded bridge revision and disposable exact-conversation recovery with authenticated production visual proof.",
+      "history": [
+        {
+          "at": "2026-10-26T13:17:24.399Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T13:17:24.476Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Candidate: two-minute health sweep, five-minute confirmed death, same-pane daemon recovery, explicit health report; silence alone never permits termination"
+        },
+        {
+          "at": "2026-10-26T13:17:24.514Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Assignment reports ten visible cards but two actual terminals; inventory reconciler currently hides absent sessions. Runtime bridge PID641336 verified from proc; live mutation and deployment not authorized"
+        },
+        {
+          "at": "2026-10-26T13:45:45.211Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused tests pin independent process and SQL evidence, exact pane recovery, protected live writers and explicit recovery states."
+        },
+        {
+          "at": "2026-10-26T13:45:50.838Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implementing periodic recovery with persisted no-repeat journal and exact provider checkpoint checks."
+        },
+        {
+          "at": "2026-10-26T13:49:23.014Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Workspace task, cwd, bot and durable pane identity feed PID plus SQL checks. Shared stateOf supplies stuck; exact checkpoint and independent process scan protect conversation recovery; no transcript read or live kill on silence."
+        },
+        {
+          "at": "2026-10-26T13:50:32.822Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npm run verify:terminal-health passes22/22; real child death plus SQLite activity, same-pane recovery, no retries, exact live provider confirmation, checkpoint/auth guards and journal corruption covered. Mobile31/31 and build pass; logs /tmp/termcontrol-health-{tests,mobile,build}.log."
+        },
+        {
+          "at": "2026-10-26T13:55:10.358Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source and isolated recovery/UI checks pass; activation and installed exact-conversation proof require explicit authorization."
+        },
+        {
+          "at": "2026-10-26T13:55:10.845Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final verify:terminal-health 30/30 includes eight helper-manifest tests; existing status suites 93/93, mobile31/31, build passed. Synthetic phone/Hebrew screenshots reviewed; full suite result pending. No installed hooks or services changed."
+        },
+        {
+          "at": "2026-10-26T14:01:54.028Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Full isolated TermControl suite completed 694/708, 14 failures: /tmp/termcontrol-health-suite-final.log. Failed restart-reply fixture left isolated bridge PID2010560 alive; verified its unique TC_CONFIG_DIR and stopped only that fixture to let runner exit. Main-copy UI baseline reproduces both touch-target failures: /tmp/termcontrol-health-head-baseline.log. No all-green or production claim."
         }
       ]
     }

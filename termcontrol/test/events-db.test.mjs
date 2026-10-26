@@ -151,7 +151,9 @@ test('real bridge protects statistics and returns stored counts after authentica
     try { await fetch(base + '/login'); ready = true; break; } catch { await new Promise((r) => setTimeout(r, 100)); }
   }
   assert.ok(ready, 'isolated bridge started');
-  assert.equal((await fetch(base + '/api/events/stats')).status, 401);
+  // Loopback SQL reads are intentionally available to installed local hooks.
+  assert.equal((await fetch(base + '/api/events/stats')).status, 200);
+  assert.equal((await fetch(base + '/api/terminals/health')).status, 401);
   const setup = await fetch(base + '/setup', { method: 'POST', redirect: 'manual',
     body: new URLSearchParams({ email: 'events@example.com', password: 'isolated-test-password' }) });
   assert.equal(setup.status, 302);
@@ -159,6 +161,22 @@ test('real bridge protects statistics and returns stored counts after authentica
   const response = await fetch(base + '/api/events/stats', { headers: { cookie } });
   assert.equal(response.status, 200);
   const stats = await response.json();
+  const health = await fetch(base + '/api/terminals/health', { headers: { cookie } });
+  assert.equal(health.status, 200);
+  assert.equal((await health.json()).intervalMs, 120_000);
   assert.ok(stats.eventsPerProvider.some((row) => row.provider === 'codex' && row.events >= 1));
   assert.ok(stats.terminals.some((row) => row.terminal_id === 'seed'));
+});
+
+test('health activity ignores synthetic observations and reads latest SQL activity beyond query limits', (t) => {
+  const { db, advance } = fixture(t);
+  assert.equal(db.lastActivity('one'), null);
+  db.logEvent('one', null, 'codex', 'message', {});
+  const first = db.lastActivity('one');
+  for (let i = 0; i < 1001; i++) { advance(1); db.logEvent('one', null, 'codex', 'token_usage', {}); }
+  db.logEvent('one', null, 'codex', 'stall', {});
+  db.logEvent('one', null, 'codex', 'close', {});
+  assert.equal(db.lastActivity('one'), first);
+  advance(1000); db.logEvent('one', null, 'codex', 'tool_use', {});
+  assert.ok(db.lastActivity('one') > first);
 });

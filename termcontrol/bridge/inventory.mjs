@@ -96,8 +96,8 @@ let agentScan = { at: 0, byPane: new Map() };
  * its terminal's id, and Codex keeps its conversation file open while Claude
  * records its conversation id per process.
  */
-export function agentsByPane({ procRoot = '/proc', claudeSessions = path.join(process.env.HOME || '', '.claude', 'sessions'), now = Date.now() } = {}) {
-  if (procRoot === '/proc' && now - agentScan.at < 3000) return agentScan.byPane;
+export function agentsByPane({ procRoot = '/proc', claudeSessions = path.join(process.env.HOME || '', '.claude', 'sessions'), now = Date.now(), fresh = false } = {}) {
+  if (!fresh && procRoot === '/proc' && now - agentScan.at < 3000) return agentScan.byPane;
   const byPane = new Map();
   // Codex also holds its helpers' conversation files open (reviews, sub-agents),
   // so every open conversation is gathered per terminal and the main one picked

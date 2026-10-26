@@ -67,6 +67,11 @@ export function createEventLog({ file = defaultFile, now = Date.now } = {}) {
     return db.prepare(`SELECT * FROM agent_events ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY id LIMIT ?`)
       .all(...values, limit).map((row) => ({ ...row, payload: JSON.parse(row.payload) }));
   }
+  // Lifecycle close/stall and token billing are not terminal activity.
+  function lastActivity(terminalId) {
+    const row = db.prepare("SELECT MAX(created_at) AS at FROM agent_events WHERE terminal_id = ? AND event_type IN ('start','message','tool_use')").get(terminalId);
+    return row?.at ? Date.parse(row.at) : null;
+  }
   function getStats() {
     const at = now(), since = new Date(at - 7 * DAY).toISOString();
     const terminals = new Map();
@@ -151,7 +156,7 @@ export function createEventLog({ file = defaultFile, now = Date.now } = {}) {
       stamps.delete(id);
     }
   }
-  return { logEvent, queryEvents, getStats, observe, close: () => { if (db.open) db.close(); } };
+  return { logEvent, queryEvents, lastActivity, getStats, observe, close: () => { if (db.open) db.close(); } };
 }
 
 let store;
@@ -160,3 +165,4 @@ export const logEvent = (...args) => defaultStore().logEvent(...args);
 export const queryEvents = (filters) => defaultStore().queryEvents(filters);
 export const getStats = () => defaultStore().getStats();
 export const observeEvents = (panes) => defaultStore().observe(panes);
+export const lastActivity = (terminalId) => defaultStore().lastActivity(terminalId);

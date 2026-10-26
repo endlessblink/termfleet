@@ -541,6 +541,12 @@ TF-108: built-in `/provider` survives catalog failure, persists Claude/Codex cho
 Live read-back after the single coordinated termcontrol-only restart (PID 303273): authenticated Claude-to-Codex change persisted through reload; idle animation was none; temporary verification bot removed. `/tmp/tc-provider-live.log`, `/tmp/termfleet-provider-live-picker.png`, `/tmp/termfleet-provider-live-codex.png`. Disposable visual review found readable RTL layout without clipping. Final focused run: 6/6 (`/tmp/tc-provider-focused-final.log`); final `npm run build` passes (`/tmp/tc-provider-build-final.log`). Physical phone trial and the wider suite failures remain open; issues stay verifying.
 
 
+### Automatic terminal recovery (TF-113, 2026-10-26)
+
+| Failure surface | Guard | Fresh proof | Remaining gate |
+| --- | --- | --- | --- |
+| Dead workspace cards strand unfinished work; silence or stale status must never kill a live conversation. | PID plus SQL activity, continuous absence grace, shared stuck state, exact provider checkpoint, no repeated attempts, independent restored-owner confirmation, same terminal identity and bot/task/cwd. | `npm run verify:terminal-health`30/30, real child process death and SQLite, saved commits, authenticated isolated health endpoint; phone390 and Hebrew desktop1600 fixtures visually reviewed at `/tmp/termcontrol-health-*.png`. Build passes; mobile31/31. Helper checkpoint8/8 and existing status93/93; full TermControl694/708 with14 failures (/tmp/termcontrol-health-suite-final.log), not an all-green result. | Explicit activation authorization; loaded production revision; disposable real provider recovery and authenticated installed/phone visual proof. SQL SessionStart injection per terminal remains unproven. |
+
 ### TermControl status complaints #5 and #2 (2026-10-26)
 
 | Issue | Symptom and cause | Guard and fresh evidence | Remaining gate |

@@ -20,7 +20,7 @@ import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
 import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
 import { appendAction, paneLogFile } from './action-log.mjs';
-import { parentsByPane } from './orchestrate.mjs';
+import { parentsByPane, fleetPanes } from './orchestrate.mjs';
 import { agentsByPane } from './inventory.mjs';
 import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
 import { adapterFor } from './feed.mjs';
@@ -70,7 +70,8 @@ import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest, askTitle, dismissAsk, itemsByAsk, statusFromItems } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 import { itemsView, replyDetails } from './requirements.mjs';
-import { getStats as agentEventStats, observeEvents, queryEvents, logEvent } from './events-db.mjs';
+import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity } from './events-db.mjs';
+import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS } from './terminal-health.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
@@ -739,6 +740,7 @@ const handle = async (req, res) => {
     return json(res, 200, { v: `${stamp('index.html')}.${stamp('sw.js')}` });
   }
   // How the agents are doing, day by day (TF-096 goal item 5).
+  if (url.pathname === '/api/terminals/health' && req.method === 'GET') return json(res, 200, await terminalHealth.sweep());
   if (url.pathname === '/api/agent-health' && req.method === 'GET') return json(res, 200, agentHealthReport());
   if (url.pathname === '/api/skills' && req.method === 'GET') return json(res, 200, { skills: listSkills() });
   if ((url.pathname === '/api/skills/approve' || url.pathname === '/api/skills/reject') && req.method === 'POST') {
@@ -1353,6 +1355,32 @@ const server = http.createServer((req, res) => {
 // them continuously rather than only when the phone asks. Without this the
 // fleet shows nothing as live for the first few seconds after you open it.
 setInterval(() => { liveness().catch(() => {}); }, 3000).unref?.();
+// Workspace membership includes dead cards deliberately omitted from the live list.
+// Test copies can inspect health, but must never change the operator's terminals.
+const terminalHealth = createTerminalHealth({
+  file: path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config/termcontrol'), 'terminal-health.json'),
+  snapshot: async () => {
+    const workspace = readWorkspace();
+    const { reachable, byId } = await liveness();
+    if (reachable) withSleepingLives(byId);
+    const { starters } = helperRoles(bots.list().map((bot) => {
+      let helpers = bot.helpers || [];
+      try { helpers = JSON.parse(fs.readFileSync(path.join(bots.folder(bot.id), 'helpers.json'), 'utf8')); } catch { /* summary fallback */ }
+      return { ...bot, helpers };
+    }));
+    const live = new Map((await fleetPanes({ workspace })).map((pane) => [pane.id, pane]));
+    const panes = healthPanes(workspace, listPanes({ maxAgeMs: null, workspace }), starters)
+      .map((pane) => ({ ...pane, ...(live.get(pane.id) || {}) }));
+    return { reachable, byId, panes, agents: agentsByPane({ fresh: true }) };
+  },
+  activity: lastActivity,
+  recover: (pane) => recoverTerminal(pane, { ask: (request) => requestDaemon(request, defaultDaemonSocket()) }),
+  retire: (pane) => requestClose(pane.id, { by: 'terminal-health' }),
+  log: (pane, evidence) => logEvent(pane.id, pane.bot?.name || null, pane.provider, 'stall', { healthRecovery: evidence }),
+});
+if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_TERMINAL_HEALTH !== '1') {
+  setInterval(() => { terminalHealth.sweep({ repair: true }).catch((error) => console.error('[terminal health]', error.message)); }, HEALTH_INTERVAL_MS).unref?.();
+}
 // Requests per terminal for the desktop app's side panel (see asks-sidecar.mjs).
 const writeAsksSidecars = createAsksSidecarWriter({ asksOf: (pane) => asksForTranscript(adapterFor(pane)?.transcriptPath(pane)) });
 setInterval(async () => {

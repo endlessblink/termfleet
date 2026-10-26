@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {sessionCompatibilitySidecar} from "../shared/sessionCompatibility.mjs";
 import {publishSessionEvent} from "./lib/session-event-journal.mjs";
+import { bindHelperRecoveryManifest } from "./lib/helper-recovery-manifest.mjs";
 // Codex status hook: gives Codex (gpt-5.x) panes the SAME per-terminal Task row +
 // activity line that Claude panes get, by writing the identical sidecar file the app
 // already reads (`agentStatusSidecar.ts` + `agent_status_read_sidecar`). No frontend
@@ -400,6 +401,7 @@ async function main() {
   // paint another terminal's card.
   const paneId = statusPaneId();
   if (!paneId) process.exit(0);
+  await bindHelperRecoveryManifest({ paneId, provider: "codex", payload });
   // `close self` inside Codex's box: its waiter died with the command, so the turn's end
   // starts it again from here, outside the box (lib/self-close-handoff.mjs).
   if ((payload?.hook_event_name ?? payload?.hookEventName) === "Stop") {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {sessionCompatibilitySidecar} from "../shared/sessionCompatibility.mjs";
 import {publishSessionEvent} from "./lib/session-event-journal.mjs";
+import { bindHelperRecoveryManifest } from "./lib/helper-recovery-manifest.mjs";
 // Claude Code PostToolUse hook: writes the agent's REAL task list + current activity
 // to a sidecar file keyed by cwd, which termfleet's status worker reads. Free +
 // accurate (no model), no terminal pollution (file, not /dev/tty). Safe to install
@@ -505,6 +506,7 @@ async function main() {
   }
   const cwd = sidecarKeyCwd(payload);
   const paneId = statusPaneId();
+  await bindHelperRecoveryManifest({ paneId, provider: "claude", payload });
   // Status filtering must not discard a complete observed input/result.
   const captureWithoutStatus = async () => {
     try {await publishSessionEvent({paneId,provider:"claude",payload,rawSource:raw,sidecar:{sessionId:payload.session_id},at:eventAt,captureOnly:true});}
