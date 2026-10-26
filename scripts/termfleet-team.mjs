@@ -291,8 +291,11 @@ async function main(argv) {
     const wasBusy = pane.turn === 'working' || pane.producing === true;
     const sent = await delegate(pane, text, { from, ownerWords, requirements, delivery });
     if (sent.error) fail(sent.message || sent.error);
-    // Delivered means received: the mark is in its conversation, or it started a turn.
-    const receipt = await confirmReceipt(pane, { token: `[delivery ${delivery}]`, wasBusy, timeoutMs: (Number(flags['receipt-timeout']) || 25) * 1000, deps: receiptDeps() });
+    // Delivered means received: the mark is in its conversation, or it started a turn. A message
+    // held for a busy Codex agent goes in, with any others, the moment its turn ends.
+    const receipt = sent.held
+      ? { received: false, queued: true, notes: [], message: 'it is in the middle of a turn, so the message is held and handed to it, together with any others, as soon as that turn ends.' }
+      : await confirmReceipt(pane, { token: `[delivery ${delivery}]`, wasBusy, timeoutMs: (Number(flags['receipt-timeout']) || 25) * 1000, deps: receiptDeps() });
     for (const note of receipt.notes) out(note);
     const name = pane.profile?.name || pane.project;
     if (!receipt.received && !receipt.queued) {
@@ -305,6 +308,7 @@ async function main(argv) {
     const items = reqs.ids.length ? ` with Noam's items ${reqs.ids.join(', ')}` : '';
     if (command === 'send') return out(json ? JSON.stringify({ ok: true, id: pane.id, received: receipt.received, queued: Boolean(receipt.queued), delivery, items: reqs.ids }) : receipt.received
       ? `Sent to ${name} (${pane.id})${items}; it received it.`
+      : sent.held ? `Held for ${name} (${pane.id})${items}: ${receipt.message}${botFolder() ? ' You are following it and will be woken when its turn ends.' : ''}`
       : `Typed into ${name} (${pane.id})${items}, NOT read yet: ${receipt.message}${botFolder() ? ' You are following it and will be woken when its turn ends.' : ''}`);
     // A bot that waits silently looks stuck (paper-bot_dev sat 10 minutes on "Checking
     // something"): inside a bot, wait at most 20 seconds, then follow the agent instead. A bot

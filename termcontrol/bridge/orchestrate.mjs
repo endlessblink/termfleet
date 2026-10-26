@@ -6,6 +6,7 @@ import { withSleepingLives } from './sleep.mjs';
 import { liveness } from './liveness.mjs';
 import { readSessionStatus, applyVendorStatus, stalledFor, conversationMtime } from './session-status.mjs';
 import { pendingAsk } from './asks.mjs';
+import { shouldHold, holdMessage, takeHeld, bundle } from './held-messages.mjs';
 import { readFeed } from './feed.mjs';
 import { sendToPane } from './send.mjs';
 import { PATHS } from './paths.mjs';
@@ -155,9 +156,13 @@ export function framedMessage(text, from, { ownerWords = null, requirements = nu
     `(Answer in this conversation as usual; the sender reads your reply here. Ask the operator before anything risky or public.)${mark}`;
 }
 
-export async function delegate(target, text, { from = null, ownerWords = null, requirements = null, delivery = null, send = sendToPane } = {}) {
+export async function delegate(target, text, { from = null, ownerWords = null, requirements = null, delivery = null, send = sendToPane, heldOpts = {} } = {}) {
   if (!target.alive) return { error: 'That terminal is not running any more.' };
-  return send(target, framedMessage(text, from, { ownerWords, requirements, delivery }));
+  const framed = framedMessage(text, from, { ownerWords, requirements, delivery });
+  // A Codex agent mid-turn would fold this into the running turn: it waits and goes with the rest.
+  if (shouldHold(target)) { holdMessage(target.id, framed, heldOpts); return { ok: true, held: true }; }
+  const waiting = takeHeld(target.id, heldOpts).map((r) => r.text);
+  return send(target, waiting.length ? bundle([...waiting, framed]) : framed);
 }
 
 /**
