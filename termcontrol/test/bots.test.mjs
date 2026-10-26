@@ -339,11 +339,11 @@ test('a started bot can be moved to another model; it is checked, kept with its 
   assert.ok(!brainCommand({ id: 'b', name: 'Q', provider: 'claude', cwd: '/tmp', sessions: {} }, 'hi').args.includes('--model'), 'no model chosen = today\'s behaviour');
 });
 
-test('a bot waiting on a terminal agent says so (not a bare "Checking something") and is told it waits at most 2 minutes', () => {
+test('a bot waiting on a terminal agent says so (not a bare "Checking something") and is told it waits at most 20 seconds', () => {
   assert.equal(activityLine('Bash', { command: 'termfleet-team ask paper-bot "status?"' }), 'Waiting for a terminal agent\'s answer');
   assert.equal(activityLine('Bash', { command: 'termfleet-team wait paper-bot' }), 'Waiting for a terminal agent to finish');
   assert.equal(activityLine('Bash', { command: 'termfleet-team send paper-bot "go"' }), 'Handing work to a terminal agent');
-  assert.match(brainBrief({ id: 'b', name: 'Q', job: 'x', rules: '' }, {}), /wait up to 2 minutes[^`]*woken when it finishes/);
+  assert.match(brainBrief({ id: 'b', name: 'Q', job: 'x', rules: '' }, {}), /waits at most 20 seconds[^`]*woken when it finishes/);
 });
 
 test('the bot summary says when the current step started', () => {

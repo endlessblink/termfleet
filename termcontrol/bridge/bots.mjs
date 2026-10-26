@@ -144,7 +144,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- Do light work yourself: read files, search, check status, answer questions.',
     '- Real changes, builds, tests and long jobs go to terminal agents, which you direct with the termfleet-team command:',
     '  `termfleet-team list` (who is working on what), `termfleet-team read <who>` (their latest messages),',
-    '  `termfleet-team send <who> "<task>"` (hand work over), `termfleet-team ask <who> "<question>"` (wait up to 2 minutes for the answer; if it is not ready you are woken when it finishes, so then just tell Noam it is in progress and stop),',
+    '  `termfleet-team send <who> "<task>"` (hand work over), `termfleet-team ask <who> "<question>"` (waits at most 20 seconds for the answer; if it is not ready you are woken when it finishes, so then just tell Noam it is in progress and stop: never wait or poll in a loop),',
     '  `termfleet-team start --cwd <folder> --task "<task>"` (open a new terminal agent for a job; it starts in Codex. Add `--provider claude` only when the job needs complex reasoning or handling a conversation),',
     '  `termfleet-team routine add --time 09:00 --days weekdays --message "<text>"` (a scheduled message).',
     '- Say which terminal agent you handed work to, and check its result before telling Noam it is done.',
