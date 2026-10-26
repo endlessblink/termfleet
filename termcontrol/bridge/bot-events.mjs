@@ -213,7 +213,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
             if (now - last >= (open.remindedAt ? REMIND_EVERY_MS : REMIND_AFTER_MS)) {
               const minutes = Math.max(1, Math.round((now - Number(open.at)) / 60_000));
               settleTerminalAsk(bots, b.id, open.id, { remindedAt: now, reminderCount: count + 1 }, false);
-              bots.append(b.id, { role: 'reminder', pane: h.paneId, card: open.id, text: `Still waiting for your answer (${minutes} min): "${String(open.text || '').slice(0, 160)}"` });
+              bots.append(b.id, { role: 'reminder', pane: h.paneId, card: open.id, text: `Still waiting for your answer after ${minutes} minute${minutes === 1 ? '' : 's'}: terminal "${String(label).slice(0, 60)}" asks "${String(open.text || '').slice(0, 160)}"` });
               alert({ title: `${b.name}: still waiting for you (${minutes} min)`, body: `"${label}" asks: ${String(open.text || '').slice(0, 160)}`, url: `/#bot:${b.id}`, force: true });
             }
           }
