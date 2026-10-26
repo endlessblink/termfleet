@@ -17,6 +17,7 @@ import type {
   WorkspaceMode,
   WorkspaceUiState,
   WorkstreamLaunchProfile,
+  SplitNode,
 } from "../lib/types";
 import { preserveDurablePaneGoal } from "../lib/statusPollProjection";
 import { cockpitObjectReviewPatch, mergeCockpitObjectsFromExtractedItems } from "../lib/workstreamExtraction";
@@ -3279,6 +3280,13 @@ function recordCanvasLayoutMovement(
   }
 }
 
+/** The ids of the terminal panes in a card's split layout (preview panes are not terminals). */
+export function terminalPaneIdsOf(node: SplitNode | undefined): string[] {
+  if (!node) return [];
+  if (node.type === "terminal") return [node.id];
+  return (node.children ?? []).flatMap((child: SplitNode) => terminalPaneIdsOf(child));
+}
+
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   tabs: restoredProjects.tabs,
   groups: restoredProjects.groups,
@@ -3662,10 +3670,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       }
     }
 
+    // Every terminal in the card: its registered terminals AND each terminal pane of its layout
+    // (Terminal.tsx names a pane's session terminal-<tabId>-<paneId>). Bot-started cards could
+    // have terminals: [], so a close removed the card and left the agent running (2026-10-26).
+    const sessionIds = [...new Set([
+      ...tab.terminals.map((terminal) => terminal.id),
+      ...terminalPaneIdsOf(tab.splitLayout)
+        .filter((paneId) => !tab.terminals.some((terminal) => terminal.paneId === paneId))
+        .map((paneId) => `terminal-${tab.id}-${paneId}`),
+    ])];
+
     console.info("[termfleet:user-close] requested", {
       reason,
       tabId: id,
-      terminalIds: tab.terminals.map((terminal) => terminal.id),
+      terminalIds: sessionIds,
       cwd: tab.initialCwd ?? null,
     });
 
@@ -3685,7 +3703,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       closedSessionIds: [
         ...new Set([
           ...state.closedSessionIds,
-          ...tab.terminals.map((terminal) => terminal.id),
+          ...sessionIds,
         ]),
       ],
       closedProviderSessionIds: [
@@ -3722,7 +3740,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     await flushWorkspacePersistence();
     // The durable tombstone and tab removal are already safe before cleanup;
     // teardown remains scoped to the explicitly closed PTYs.
-    await killPtys(tab.terminals.map((terminal) => terminal.id));
+    await killPtys(sessionIds);
   },
 
   restoreLastClosed: () => {

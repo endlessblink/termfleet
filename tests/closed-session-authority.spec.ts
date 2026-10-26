@@ -91,3 +91,36 @@ test("explicit Close persists the exact decision before killing only the clicked
   expect(result.events.slice(0, killIndex).some((event) => event.closed?.includes("pty-clicked"))).toBe(true);
   expect(result.events.some((event) => event.closed?.includes("pty-sibling"))).toBe(false);
 });
+
+// 2026-10-26: bot-started cards had terminals: [], so Close removed the card and left the agent running.
+test("Close also ends a card's terminal that never registered, by its pane's session id", async ({ page }) => {
+  await page.route(baseUrl, (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Close unregistered fixture</title>" }));
+  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  const result = await page.evaluate(async () => {
+    const events: Array<{ cmd: string; id?: string; closed?: string[] }> = [];
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string, args: any) => {
+        if (cmd === "daemon_status") return { reachable: true, mode: "externalDaemon" };
+        if (cmd === "daemon_list_sessions") return [];
+        if (cmd === "workspace_layout_save") events.push({ cmd, closed: JSON.parse(args.contents).closedSessionIds });
+        if (cmd === "daemon_kill_session") events.push({ cmd, id: args.id });
+        return null;
+      },
+      transformCallback: () => 1, unregisterCallback: () => {},
+    };
+    const { useWorkspaceStore } = await import("/src/stores/workspace.ts?close-unregistered");
+    const tabs = [{
+      id: "botcard", title: "Agent: Moves review 1", emoji: "[]", color: "#7aa2f7", groupId: null, initialCwd: "/tmp/p",
+      terminals: [], splitLayout: { id: "pane-a", type: "terminal" }, activePaneId: "pane-a",
+    }, {
+      id: "other", title: "other", emoji: "[]", color: "#7aa2f7", groupId: null, initialCwd: "/tmp/p",
+      terminals: [], splitLayout: { id: "pane-b", type: "terminal" }, activePaneId: "pane-b",
+    }];
+    useWorkspaceStore.setState({ tabs, activeTabId: "botcard", hydrating: false, groups: [], terminalGroups: [], closedSessionIds: [], closedProviderSessionIds: [], closedRestoreTargets: [], recentlyClosed: [] });
+    await useWorkspaceStore.getState().closeTerminalSession("botcard");
+    return { events };
+  });
+  expect(result.events.filter((event) => event.cmd === "daemon_kill_session")).toEqual([{ cmd: "daemon_kill_session", id: "terminal-botcard-pane-a" }]);
+  expect(result.events.some((event) => event.closed?.includes("terminal-botcard-pane-a"))).toBe(true);
+  expect(result.events.some((event) => event.closed?.includes("terminal-other-pane-b"))).toBe(false);
+});
