@@ -1,4 +1,40 @@
-# HANDOFF — 2026-10-26 19:53 Monday (Israel time)
+# HANDOFF — 2026-10-26 20:25 Monday (Israel time) — update of the 19:53 handoff
+
+## UPDATE 20:25 — Section 0 below is RESOLVED; read this first
+
+The 19:45 "layout reset" was NOT caused by a handover. It was proven by an investigator (scripts in `/media/endlessblink/data/.dev-tmp/endlessblink/claude-1000/inv5/`):
+- 17 user-level closes happened between 19:45:01 and 19:45:23. Both handover attempts had failed before writing any request.
+- 6 bot-started agent cards had `terminals: []`, so closing them left their agents running with no card. That was the real bug behind Noam's complaint #43 (R-18206): "keeps terminals open instead of killing".
+- When the last tab is removed, `removeTab` creates a default tab plus a fresh shell. That explains the 4 empty shells.
+
+**What was done:**
+- **Map restored**, with Noam's go. The app was closed and reopened via `gtk-launch termfleet`; the daemon (pid 2068834) and its terminals were untouched.
+  - The pre-reset map was recovered by replaying the app's localStorage WAL to commit 187: `.backups/storage-at-1956/` and the scratchpad scripts `wal_rewind.py`, `restore_plan.py`, `apply_restore.py`, `apply_ws.py`.
+  - The restore had to be written into BOTH the WebKit localStorage and `~/.local/share/terminal-workspace/workspace.json`, because the app prefers workspace.json. Backups of every version are in `.backups/`.
+- **Orphan shells and agents closed:**
+  - The 5 empty orphan shells were closed.
+  - Noam approved closing the 6 agents he had closed (Moves review 1-4, Flagged animations redo, Release sweep: screens), and they were closed through the daemon's killSession.
+  - Their 6 cards are STILL on the map with dead sessions, and on relaunch the app may cold-restore a shell into a card. Noam can close them normally; the fix makes that clean.
+  - Only `eec5d53e` (an old Codex from 00:08, no card) is still running; it was left alone.
+- **Fix — commit 74dbcb8, release 74dbcb84… promoted, app relaunched on it at 20:20:**
+  - `closeTerminalSession` (`src/stores/workspace.ts`) now also tombstones and kills each terminal pane of the card's layout that has no registered terminal (`terminal-<tabId>-<paneId>`, via the new `terminalPaneIdsOf`).
+  - A test was added in `tests/closed-session-authority.spec.ts` (6/6 pass), and `verify:map-terminals` passes.
+  - `verify:installed-release` says the checksum doesn't match the current build. That is expected, because the release was built from the clean worktree `/media/endlessblink/data/.dev-tmp/endlessblink/tf-release-2017`.
+- **Noam's items:**
+  - R-18206 is marked ready.
+  - #44 is /dropoff (this handoff).
+  - R-18149 (login window popping up) was fixed in e2acc66: the bots' browser refuses TermControl.
+
+**Still open (next steps in order):**
+1. Confirm with Noam that the map looks right, and help close the 6 dead cards if he wants.
+2. Optional safety nets suggested by the investigator: process each child request id at most once in `childRequestLoop.ts`, and only remove a predecessor when `request.handoff` matches the caller's exact tab.
+3. Bot productivity: re-run `node scripts/bot-scorecard.mjs --since "$(date -d 'today 18:52' +%s)000"` and compare with the baseline (381 commits/24 h, 57% proof, 632 partial re-marks, 127 stop-gate blocks).
+4. The full test suite comparison from the repo root (never completed cleanly).
+5. The remaining complaints (#13, #2/#5/#11 live verification, and the others in section 4).
+
+---
+
+# (Original 19:53 handoff follows)
 
 You are continuing work in **termfleet** (`/media/endlessblink/data/my-projects/ai-development/devops/termfleet`) on branch **main**. You are a Claude Code instance. The owner is **Noam** (Hebrew name נועם, never נוח). He reads on a phone and wants answers of 1-3 plain sentences: no jargon, paths or code. Never ask him to run commands. Before any command, say plainly whether it kills terminals.
 
