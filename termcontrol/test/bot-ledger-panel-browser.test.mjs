@@ -28,6 +28,8 @@ test('authenticated bot panel renders every ledger item, with ready entries and 
     const items = captureMessage({ text: Array.from({ length: 80 }, (_, i) => `${i + 1}. Keep owner request ${i + 1} visible`).join('\n'), project: 'termfleet', source: `bot:${id}`, msgId: 'panel-fixture' }, { dir });
     assert.equal(items.length, 80);
     record(items.map((it, i) => ({ e: 'status', id: it.id, status: ['new', 'assigned', 'partial', 'ready'][i % 4], open: ['fixture still open'] })), { dir });
+    // A "ready" entry counts as ready only when it tells Noam what to try (#16).
+    record(items.filter((it, i) => i % 4 === 3).map((it) => ({ e: 'testing-handoff', id: it.id, link: 'https://example.test/try', tryText: 'open the page and tap Send' })), { dir });
     await p.goto(base + '/#bot:' + id);
     await p.waitForFunction(() => document.querySelectorAll('#side-asks li:not(.rail-more)').length === 80);
     const api = await p.evaluate(async id => (await (await fetch('/api/bot?id=' + id)).json()).asks, id);
