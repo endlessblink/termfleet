@@ -70,7 +70,7 @@ import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest, askTitle, dismissAsk, itemsByAsk, statusFromItems } from '../../scripts/termfleet-asks.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 import { itemsView, replyDetails } from './requirements.mjs';
-import { getStats as agentEventStats, observeEvents } from './events-db.mjs';
+import { getStats as agentEventStats, observeEvents, queryEvents, logEvent } from './events-db.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
@@ -555,12 +555,39 @@ const handle = async (req, res) => {
   }
   if (await handleAuthRoutes(req, res, url)) return;
   if (res.writableEnded) return;
+
+  // Event log endpoints: allow localhost without authentication (for agent hooks)
+  const isLocalhost = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname);
+  const remoteAddr = String(req.socket.remoteAddress || '');
+  const isLocalConnection = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
+
+  if (isLocalhost && isLocalConnection) {
+    if (req.method === 'GET' && url.pathname === '/api/events/stats') return json(res, 200, agentEventStats());
+
+    if (req.method === 'GET' && url.pathname === '/api/events/query') {
+      const filters = {};
+      for (const [key] of url.searchParams) {
+        if (['terminal_id', 'bot_name', 'provider', 'event_type', 'since', 'until', 'after_id', 'limit'].includes(key)) {
+          filters[key] = url.searchParams.get(key);
+        }
+      }
+      return json(res, 200, { events: queryEvents(filters) });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/events/log') {
+      let body;
+      try { body = await readJson(req, 8 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
+      const { terminal_id, bot_name, provider, event_type, payload } = body;
+      if (!terminal_id || !event_type) return json(res, 400, { error: 'terminal_id and event_type are required' });
+      const id = logEvent(terminal_id, bot_name || null, provider || 'unknown', event_type, payload || {});
+      return json(res, 200, { ok: true, eventId: id });
+    }
+  }
+
   if (!currentUser(req)) {
     if (url.pathname.startsWith('/api/')) return json(res, 401, { error: 'unauthorised' });
     return requireAuth(res);
   }
-
-  if (req.method === 'GET' && url.pathname === '/api/events/stats') return json(res, 200, agentEventStats());
 
   if (req.method === 'GET' && url.pathname === '/api/tokens/summary') {
     try { return json(res, 200, getTokenSummary()); }
