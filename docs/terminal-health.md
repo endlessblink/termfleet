@@ -107,8 +107,19 @@ unavailable.
 A separate read-only audit (`/tmp/termfleet-sql-hook-audit.json`) found that SQL
 logging is automatic through the bridge but universal mandatory agent use is not
 enforced. SQL hook registration covers Claude only; history injection is optional,
-not terminal-specific, oldest-first, and metadata-only. Failures do not block agents.
-Those gaps remain open; exact conversation resume must not be presented as proof
+previously unfiltered and oldest-first, and metadata-only. Failures do not block agents.
+Universal enforcement remains open; exact conversation resume must not be presented as proof
 that every agent reads and writes SQL. No external messages were sent.
+
+The bounded SessionStart gap is now corrected: the connector migrates only the known
+legacy Claude history registration, preserves other hooks, and installs the packaged
+exact-terminal history reader. Queries select the newest20 events explicitly and
+display them chronologically; absent or ambiguous identity never falls back to global
+or cwd history. Existing SQL callers retain ascending defaults. The installed hook
+was invoked against the closed disposable recovery pane and returned its newest20
+metadata events; its persisted recovery predecessor was independently checked (that
+older event is outside the latest20 window). Evidence `/tmp/termfleet-sql-history-live.json`;
+focused DB/hook/migration15/15 and packaged hook2/2 pass. Only the bridge was restarted,
+latest PID2972951. This does not enforce SQL use universally or add transcript content.
 
 The final broad-suite rerun timed out after300seconds (exit124), with537passing and17failing subtests and no final totals (`/tmp/termfleet-activation-full-suite.log`). No surviving full-suite runner was found afterward. Panel source and placement were subsequently activated in the same service only, PID2832317; `/tmp/termfleet-TF114-activation.json` records the exact source hashes and426unique active ledger rows, with no harness-wrapper rows.

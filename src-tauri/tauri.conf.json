@@ -49,6 +49,7 @@
     "resources": {
       "../scripts/termfleet-connect-agents.mjs": "agent-hooks/termfleet-connect-agents.mjs",
       "../scripts/termfleet-claude-status-hook.mjs": "agent-hooks/termfleet-claude-status-hook.mjs",
+      "../scripts/termfleet-sql-history-hook.mjs": "agent-hooks/termfleet-sql-history-hook.mjs",
       "../scripts/termfleet-codex-status-hook.mjs": "agent-hooks/termfleet-codex-status-hook.mjs",
       "../scripts/termfleet-opencode-status-plugin.js": "agent-hooks/termfleet-opencode-status-plugin.js",
       "../scripts/lib/agent-status-paths.mjs": "agent-hooks/lib/agent-status-paths.mjs",

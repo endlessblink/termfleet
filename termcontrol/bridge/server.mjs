@@ -556,7 +556,7 @@ const handle = async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/events/query') {
       const filters = {};
       for (const [key] of url.searchParams) {
-        if (['terminal_id', 'bot_name', 'provider', 'event_type', 'since', 'until', 'after_id', 'limit'].includes(key)) {
+        if (['terminal_id', 'bot_name', 'provider', 'event_type', 'since', 'until', 'after_id', 'limit', 'order'].includes(key)) {
           filters[key] = url.searchParams.get(key);
         }
       }

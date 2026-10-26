@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T14:41:56.464Z",
+  "updatedAt": "2026-10-26T14:51:50.747Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13092,18 +13092,18 @@
           "note": "Workspace task, cwd, bot and durable pane identity feed PID plus SQL checks. Shared stateOf supplies stuck; exact checkpoint and independent process scan protect conversation recovery; no transcript read or live kill on silence."
         },
         {
-          "kind": "installed-release",
-          "at": "2026-10-26T14:29:27.997Z",
-          "note": "Authorized installed-hook hash/import proof and recovery timer active. Live disposable abrupt-death trial restored same pane/cwd/exact Codex conversation under new PID2629715; independent owner confirmed, journal cleared, SQL predecessor link and git commit retained. History marker visible; interrupted tool execution did not automatically continue. /tmp/termfleet-health-activation.json and /tmp/termfleet-recovery-live-after.json. Authenticated production visual remains unavailable."
-        },
-        {
           "kind": "focused-test",
           "at": "2026-10-26T14:40:30.795Z",
           "note": "Final isolated broad rerun timed out after300seconds exit124 with537pass17fail before final totals: /tmp/termfleet-activation-full-suite.log. Earlier completed suite694/708. Focused recovery30/30, hook bundle2/2, status93/93, mobile31/31 and build pass. Actual disposable exact-conversation recovery and cleanup proven; no all-green claim."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-10-26T14:51:50.747Z",
+          "note": "Authorized exact-terminal Claude SessionStart history installed; source/hash and single registration verified. Real closed recovery pane returned newest20 rows, recovery predecessor persisted outside latest window. /tmp/termfleet-sql-history-live.json. Focused DB/hook/migration15/15 and package2/2 pass. Bridge PID2972951 only; universal mandatory SQL and authenticated visual remain open."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Authenticated production visual confirmation and terminal-specific SQL history injection remain open; interrupted tool calls do not automatically continue. Disposable recovery and cleanup proven; helper Stop harness loop tracked separately in TF-115.",
+      "nextAction": "Authenticated production visual confirmation remains open; exact-terminal newest20 Claude SQL metadata injection verified. Interrupted tool calls do not automatically continue; helper Stop harness loop tracked separately in TF-115.",
       "history": [
         {
           "at": "2026-10-26T13:17:24.399Z",
@@ -13186,6 +13186,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Final isolated broad rerun timed out after300seconds exit124 with537pass17fail before final totals: /tmp/termfleet-activation-full-suite.log. Earlier completed suite694/708. Focused recovery30/30, hook bundle2/2, status93/93, mobile31/31 and build pass. Actual disposable exact-conversation recovery and cleanup proven; no all-green claim."
+        },
+        {
+          "at": "2026-10-26T14:51:50.747Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Authorized exact-terminal Claude SessionStart history installed; source/hash and single registration verified. Real closed recovery pane returned newest20 rows, recovery predecessor persisted outside latest window. /tmp/termfleet-sql-history-live.json. Focused DB/hook/migration15/15 and package2/2 pass. Bridge PID2972951 only; universal mandatory SQL and authenticated visual remain open."
         }
       ]
     },

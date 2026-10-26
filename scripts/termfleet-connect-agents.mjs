@@ -28,6 +28,7 @@ const configHome = process.env.XDG_CONFIG_HOME || path.join(HOME, ".config");
 const hookHome = path.join(dataHome, "termfleet", "agent-hooks");
 
 const HOOK_FILES = [
+  "termfleet-sql-history-hook.mjs",
   "termfleet-claude-status-hook.mjs",
   "termfleet-codex-status-hook.mjs",
   "termfleet-session-observation.mjs",
@@ -126,6 +127,18 @@ function connectHookEvents(hooks, events, scriptName, makeHook) {
   return changed;
 }
 
+function connectClaudeHistory(hooks, makeHook) {
+  const groups = Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [];
+  const legacy = "sql-event-log-sessionstart.mjs";
+  const kept = groups.map(group => Array.isArray(group.hooks)
+    ? {...group, hooks: group.hooks.filter(hook => !registeredScript(hook.command, legacy))}
+    : group).filter(group => Array.isArray(group.hooks) ? group.hooks.length : !registeredScript(group.command, legacy));
+  const removed = JSON.stringify(kept) !== JSON.stringify(groups);
+  if (removed) hooks.SessionStart = kept;
+  const connected = connectHookEvents(hooks, ["SessionStart"], "termfleet-sql-history-hook.mjs", makeHook);
+  return removed || connected;
+}
+
 function connectClaude() {
   const claudeDir = path.join(HOME, ".claude");
   if (!existsSync(claudeDir)) return note("claude", "absent", "Claude Code is not set up for this user");
@@ -135,7 +148,8 @@ function connectClaude() {
   const probe = structuredClone(settings.hooks);
   const statusNeedsChange = connectHookEvents(probe, CLAUDE_EVENTS, "termfleet-claude-status-hook.mjs", () => ({}));
   const handoffNeedsChange = connectHookEvents(probe, ["UserPromptSubmit", "PreToolUse"], "context-handoff-hook.mjs", () => ({}));
-  const needsChange = statusNeedsChange || handoffNeedsChange;
+  const historyNeedsChange = connectClaudeHistory(probe, () => ({}));
+  const needsChange = statusNeedsChange || handoffNeedsChange || historyNeedsChange;
   if (!needsChange) return note("claude", "connected", "status hook registered for every turn event");
   if (checkOnly) return note("claude", "not-connected", "status hook missing on one or more turn events");
   connectHookEvents(settings.hooks, CLAUDE_EVENTS, "termfleet-claude-status-hook.mjs", (script) => ({
@@ -146,6 +160,7 @@ function connectClaude() {
   connectHookEvents(settings.hooks, ["UserPromptSubmit", "PreToolUse"], "context-handoff-hook.mjs", (script) => ({
     type: "command",command: `node "${script}"`,timeout: 15,
   }));
+  connectClaudeHistory(settings.hooks, script => ({type: "command", command: `node "${script}"`, timeout: 5}));
   writeJson(file, settings);
   note("claude", "connected", "registered; takes effect for newly started Claude Code sessions");
 }

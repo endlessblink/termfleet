@@ -64,7 +64,7 @@ export function createEventLog({ file = defaultFile, now = Date.now } = {}) {
       if (filters[key] !== undefined) { clauses.push(`${column} ${op} ?`); values.push(filters[key]); }
     }
     const limit = Math.max(1, Math.min(1000, Math.trunc(Number(filters.limit) || 100)));
-    return db.prepare(`SELECT * FROM agent_events ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY id LIMIT ?`)
+    return db.prepare(`SELECT * FROM agent_events ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY id ${filters.order === 'desc' ? 'DESC' : 'ASC'} LIMIT ?`)
       .all(...values, limit).map((row) => ({ ...row, payload: JSON.parse(row.payload) }));
   }
   // Lifecycle close/stall and token billing are not terminal activity.

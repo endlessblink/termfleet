@@ -41,6 +41,17 @@ test('startup deletes only events older than seven days', (t) => {
   try { assert.deepEqual(reopened.queryEvents().map((e) => e.terminal_id), ['two']); } finally { reopened.close(); }
 });
 
+test('terminal history can select the newest rows without changing ascending query defaults', (t) => {
+  const { db } = fixture(t);
+  for (let n = 1; n <= 75; n++) {
+    db.logEvent('own-pane', null, 'claude', 'message', { characters: n });
+    db.logEvent('another-pane', null, 'claude', 'message', { characters: 999 });
+  }
+  assert.deepEqual(db.queryEvents({ terminal_id: 'own-pane', limit: 2 }).map(e => e.payload.characters), [1, 2]);
+  assert.deepEqual(db.queryEvents({ terminal_id: 'own-pane', limit: 2, order: 'desc' }).map(e => e.payload.characters), [75, 74]);
+  assert.deepEqual(db.queryEvents({ terminal_id: 'own-pane', limit: 2, order: 'desc; DROP TABLE agent_events' }).map(e => e.payload.characters), [1, 2]);
+});
+
 test('groups bots/providers and bounds inferred activity instead of counting long silence as work', (t) => {
   const { db, advance } = fixture(t);
   db.logEvent('one', 'helper', 'codex', 'start', {});
