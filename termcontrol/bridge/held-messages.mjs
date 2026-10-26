@@ -2,7 +2,8 @@
 // as one message, when its turn ends (Noam 2026-10-26, approved). Codex folds a message typed
 // mid-turn into the running turn and keeps going: 1,972 of 2,098 agent messages on 24-26 Oct
 // arrived that way, about 17 per turn, and the work after them was 37% of all Codex tokens.
-// Off: TERMFLEET_HOLD_BUSY=0.
+// Off: TERMFLEET_HOLD_BUSY=0. A busy agent gets them at most HOLD_WINDOW_MS after the first one
+// (Noam 2026-10-27 #9): holding until the turn ended left 65 messages waiting 1.5 hours.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,13 +11,11 @@ import path from 'node:path';
 export const heldDir = (env = process.env) => path.join(env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'terminal-workspace', 'held-messages');
 const fileOf = (dir, id) => path.join(dir, `${String(id).replace(/[^A-Za-z0-9._-]/g, '_')}.jsonl`);
 
-/**
- * Hold only for a Codex agent that is working right now, and only when switched on
- * (TERMFLEET_HOLD_BUSY=1). Off by default since 2026-10-26 18:30: the politic-fighter Codex agents
- * stayed "working" for 1.5 hours and more, so 65 held messages never went in.
- */
+export const HOLD_WINDOW_MS = 3 * 60_000;
+
+/** Hold for a Codex agent that is working right now, unless switched off (TERMFLEET_HOLD_BUSY=0). */
 export function shouldHold(pane, env = process.env) {
-  return env.TERMFLEET_HOLD_BUSY === '1' && pane?.provider === 'codex' && pane.turn === 'working';
+  return env.TERMFLEET_HOLD_BUSY !== '0' && pane?.provider === 'codex' && pane.turn === 'working';
 }
 
 export function holdMessage(paneId, text, { dir = heldDir(), now = Date.now() } = {}) {
@@ -43,6 +42,14 @@ export function heldPanes({ dir = heldDir() } = {}) {
   try { return fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8').split('\n')[0]).pane; } catch { return null; } }).filter(Boolean); } catch { return []; }
 }
 
+/** Has the first held message for this terminal waited the whole window? */
+function oldestDue(paneId, { dir, now, windowMs }) {
+  try {
+    const first = fs.readFileSync(fileOf(dir, paneId), 'utf8').split('\n').find(Boolean);
+    return now - Number(JSON.parse(first).at || 0) >= windowMs;
+  } catch { return true; }
+}
+
 /** Several messages read as one: each in full, oldest first. */
 export function bundle(texts) {
   if (texts.length === 1) return texts[0];
@@ -53,13 +60,15 @@ export function bundle(texts) {
  * One pass: every held terminal that is now idle gets its messages as one. Never typed into a
  * question or approval (waiting), a stuck or a closed terminal: those keep waiting.
  */
-export async function deliverHeld({ panes, send, dir = heldDir(), log = () => {} }) {
+export async function deliverHeld({ panes, send, dir = heldDir(), log = () => {}, now = Date.now(), windowMs = HOLD_WINDOW_MS }) {
   const out = [];
   for (const id of heldPanes({ dir })) {
     const pane = panes.find((p) => p.id === id);
     // A working agent takes them too (it folds them into its turn): waiting for its turn to end left
     // messages undelivered for hours. Never into a question/approval or a closed terminal.
     if (!pane || !pane.alive || pane.turn === 'waiting' || pane.attention) continue;
+    // A working agent gets them together once the first has waited the window; an idle one at once.
+    if (pane.turn === 'working' && !oldestDue(id, { dir, now, windowMs })) continue;
     const rows = takeHeld(id, { dir });
     if (!rows.length) continue;
     const res = await send(pane, bundle(rows.map((r) => r.text)));
