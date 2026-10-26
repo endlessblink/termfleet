@@ -53,6 +53,19 @@ const inFlight = new Set();
 // terminal service's own 16 MB request limit.
 export const MAX_MESSAGE_CHARS = 2_000_000;
 
+const PICTURE = /\.(png|jpe?g|gif|webp)$/i;
+
+/** Lines that are only the path of an existing picture file, and the message without them (unchanged when none). */
+export function splitPictures(body, exists = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } }) {
+  const pictures = [];
+  const kept = [];
+  for (const line of String(body).split('\n')) {
+    const p = line.trim();
+    if (p.startsWith('/') && !/\s/.test(p) && PICTURE.test(p) && exists(p)) { if (!pictures.includes(p)) pictures.push(p); } else kept.push(line);
+  }
+  return pictures.length ? { pictures, words: kept.join('\n').replace(/\n{3,}/g, '\n\n').trim() } : { pictures, words: String(body) };
+}
+
 export async function sendToPane(pane, text, { force = false } = {}) {
   const body = String(text ?? '');
   if (!body.trim()) return { error: 'Nothing to send.' };
@@ -92,14 +105,28 @@ export async function sendToPane(pane, text, { force = false } = {}) {
   inFlight.add(pane.id);
   try {
     const sizeBefore = await scrollbackBytes(pane.id);
+    // A picture is attached only when it is pasted on its own (2026-10-26, Claude and Codex): a
+    // path inside the text stays text, and Codex ignores even a path on its own line in a longer
+    // paste. So each picture line goes in first, alone, then the words.
+    const { pictures, words } = splitPictures(body);
+    for (const picture of pictures) {
+      await ask({ type: 'writeSession', id: pane.id, data: `\u001b[200~${picture}\u001b[201~` });
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    if (pictures.length && !words.trim()) {
+      await ask({ type: 'writeSession', id: pane.id, data: '\r' });
+      audit({ pane: pane.id, project: pane.project, provider: pane.provider, turn: pane.turn, bytes: body.length, ok: true, delivered: true, pictures: pictures.length });
+      return { ok: true, delivered: true, sentAt: Date.now() };
+    }
     // A newline typed into an agent submits the line. Sending a two-line
     // message raw therefore delivers it as two prompts: the first starts a
     // turn and the second arrives mid-turn and queues, which is what "my
     // message got stuck" looks like. Wrapping it in bracketed paste tells the
     // terminal this is one pasted block, so the newlines stay inside it.
-    const wire = body.includes('\n')
-      ? `\u001b[200~${body.replace(/\r/g, '')}\u001b[201~`
-      : body;
+    const sent = words;
+    const wire = sent.includes('\n')
+      ? `\u001b[200~${sent.replace(/\r/g, '')}\u001b[201~`
+      : sent;
 
     // Text first, then Enter as its own write: agent TUIs redraw between
     // keystrokes, and a newline arriving inside the same chunk as the text is
@@ -111,13 +138,13 @@ export async function sendToPane(pane, text, { force = false } = {}) {
     // Don't claim success just because the write returned. Look at what the
     // terminal actually shows and report honestly if the text never appeared.
     const enterAt = Date.now();
-    const delivered = await landedInTerminal(pane.id, body, sizeBefore);
+    const delivered = await landedInTerminal(pane.id, sent, sizeBefore);
     audit({
       pane: pane.id, project: pane.project, provider: pane.provider,
-      turn: pane.turn, bytes: body.length, ok: true, delivered,
+      turn: pane.turn, bytes: body.length, ok: true, delivered, ...(pictures.length ? { pictures: pictures.length } : {}),
     });
     // Runs after the reply: the phone should not wait on the desktop's next look.
-    confirmSubmitted(pane, body, enterAt).catch(() => {});
+    confirmSubmitted(pane, sent, enterAt).catch(() => {});
     return { ok: true, delivered, sentAt: Date.now() };
   } catch (error) {
     audit({ pane: pane.id, project: pane.project, bytes: body.length, ok: false, error: String(error.message || error) });

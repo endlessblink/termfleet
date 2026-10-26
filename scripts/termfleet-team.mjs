@@ -144,10 +144,21 @@ export function parseArgs(argv) {
       const key = a.slice(2);
       const next = argv[i + 1];
       if (SWITCHES.has(key) || next === undefined || next.startsWith('--')) flags[key] = true;
+      else if (key === 'image') { flags.image = [...(flags.image || []), next]; i++; }
       else { flags[key] = next; i++; }
     } else positional.push(a);
   }
   return { positional, flags };
+}
+
+/** The --image paths, each checked to be a picture file that exists. */
+export function pictureFlags(flags) {
+  const list = [].concat(flags.image || []).filter((p) => typeof p === 'string');
+  for (const p of list) {
+    if (!p.startsWith('/') || /\s/.test(p) || !/\.(png|jpe?g|gif|webp)$/i.test(p)) fail(`--image needs the full path of a picture file (png, jpg, gif, webp) without spaces: ${p}`);
+    if (!existsSync(p)) fail(`--image: no such file: ${p}`);
+  }
+  return list;
 }
 
 function textArg(positional, flags) {
@@ -229,7 +240,10 @@ async function main(argv) {
         ? 'Use a message id: "latest" works inside a bot. termfleet-team verify lists them.'
         : `No message from Noam matches "${ref}". termfleet-team verify lists the recorded ones.`);
     }
-    const text = textArg(words, flags) || (ownerWords ? 'Noam\'s message below is for you.' : '');
+    // --image <path> (repeatable): the picture goes on its own line, which the sender pastes on its
+    // own so Claude and Codex both attach it (a path inside the words stays text).
+    const pictures = pictureFlags(flags);
+    const text = [textArg(words, flags) || (ownerWords ? 'Noam\'s message below is for you.' : (pictures.length ? 'Pictures for you (attached).' : '')), ...pictures].join('\n');
     if (!text.trim()) fail('Nothing to send.');
     // TF-102: the hand-off names Noam's items, and his exact words for them (plus his open and
     // approved words on the same topic) are attached; the receipt mark proves it arrived.
@@ -335,6 +349,7 @@ async function main(argv) {
     }
     // TF-102: the task carries Noam's items in his words and a receipt mark, so the start is
     // confirmed only once the new agent has really begun (not stuck on a startup prompt).
+    const startPictures = pictureFlags(flags);
     let taskText = typeof flags['task-file'] === 'string' ? readFileSync(flags['task-file'], 'utf8') : typeof flags.task === 'string' ? flags.task : '';
     // Codex unless the task itself needs Claude (Noam 2026-10-26, complaint #19: 41 of 43 bot helpers
     // in three days were started in Claude by a bare --provider claude the router would not pick).
@@ -377,6 +392,13 @@ async function main(argv) {
         }
         if (reqs.ids.length) recordRequirement(reqs.ids.map((id) => ({ e: 'assign', id, pane: made.childPaneId, delivery, by: selfId || null })));
         out(`It started its task${reqs.ids.length ? ` with Noam's items ${reqs.ids.join(', ')}` : ''}.`);
+        // The task file cannot carry a picture; once it is running, each one is pasted in on its own.
+        if (startPictures.length) {
+          const { sendToPane } = await import('../termcontrol/bridge/send.mjs');
+          const pane = (await fleetPanes()).find((p) => p.id === made.childPaneId) || { id: made.childPaneId, provider: flags.provider || 'codex' };
+          const sent = await sendToPane(pane, ['Pictures for this task, from Noam (attached):', ...startPictures].join('\n'));
+          out(sent.error ? `The pictures were NOT sent: ${sent.error}` : `Sent ${startPictures.length} picture${startPictures.length === 1 ? '' : 's'} to it.`);
+        }
       }
     }
     process.exit(run.status ?? 1);
