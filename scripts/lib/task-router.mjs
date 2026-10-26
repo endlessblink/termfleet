@@ -3,7 +3,8 @@
 //
 // Picks the cheapest Claude model that can do the job, from the task text alone, with
 // deterministic keyword/pattern rules (no model call, same text -> same answer):
-//   haiku  - read-only jobs: status checks, reading, listing, simple questions
+//   haiku  - searches only: find, locate, look up, where is (Noam 2026-10-26: "haiku should be
+//            used only for searches"; Haiku helpers given status/check jobs ended up editing files)
 //   sonnet - ordinary changes: code edits, bug fixes, builds, tests (also the fallback)
 //   opus   - hard jobs: architecture, multi-file refactors, planning, design, cross-file debugging
 //
@@ -47,16 +48,9 @@ const STANDARD = [
   [/תקן|תוסיף|הוסף|תבנה|בנה|שנה|תשנה|תעדכן|עדכן|תמחק|מחק|תכתוב|כתוב|באג/, 1],
 ];
 
-const SIMPLE = [
-  [/\b(status|state of|health)\b/i, 1],
-  [/\b(check|verify|confirm) (if|whether|that|the status)\b/i, 1],
-  [/\b(is|are) (it|the|there|\w+) (running|up|alive|installed|open|done)\b/i, 1],
-  [/\b(list|show|print|display|count|tell me|report)\b/i, 1],
-  [/\b(read|look at|look up|lookup|find|locate|where is|which file)\b/i, 1],
-  [/^\s*(what|which|where|when|who|how many|how much|is|are|does|did)\b/i, 1],
-  [/\b(summari[sz]e|explain briefly|quick question)\b/i, 1],
-  [/\bread[- ]only\b|\b(do not|don't|no) (edit|change|modify|write)/i, 2],
-  [/סטטוס|מצב|תבדוק|בדוק|תראה|הראה|תקרא|קרא|תמצא|מצא|כמה|איפה|רשימה/, 1],
+const SEARCH = [
+  [/\b(find|search( for)?|locate|look up|lookup|grep|where (is|are|does|do)|which (file|files|folder|line))\b/i, 1],
+  [/חפש|תחפש|תמצא|מצא|איפה/, 1],
 ];
 
 function score(text, rules) {
@@ -97,9 +91,9 @@ export function explainTaskRoute(taskText) {
   const standard = score(text.replace(/\b(do not|don't|never|without|no)\s+(\w+)/gi, " "), STANDARD);
   reasons.push(...standard.hits.map((h) => `standard: ${h}`));
   if (complexTotal === 1 || standard.total >= 1) return { model: "sonnet", reasons };
-  const simple = score(text, SIMPLE);
-  reasons.push(...simple.hits.map((h) => `simple: ${h}`));
-  if (simple.total >= 1) return { model: "haiku", reasons };
+  const search = score(text, SEARCH);
+  reasons.push(...search.hits.map((h) => `search: ${h}`));
+  if (search.total >= 1) return { model: "haiku", reasons };
   return { model: "sonnet", reasons: ["no clear signal: standard default"] };
 }
 

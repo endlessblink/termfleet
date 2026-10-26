@@ -5,18 +5,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyTask, explainTaskRoute } from '../scripts/lib/task-router.mjs';
 
+// Noam 2026-10-26: "haiku should be used only for searches".
 const SIMPLE = [
+  'Find where the config file lives',
+  'Search the repo for every call to sendToPane',
+  'Locate the file that defines the router',
+  'Where is the bot brief written?',
+  'תמצא איפה מוגדר הנתב',
+];
+
+// Status checks, reading and reports are real work for a helper: Sonnet, never Haiku.
+const NOT_SEARCH = [
   'Check the status of the daemon',
   'List the open terminals',
   'What is the current git branch?',
-  'How many panes are running right now?',
   'Read the README and tell me what the project does',
-  'Is the dev server running?',
-  'Find where the config file lives',
-  'Show me the last 20 lines of the app log',
   'Look at MASTER_PLAN and report the active task, read-only, do not edit anything',
   'תבדוק את הסטטוס של השרת',
-  'כמה טרמינלים פתוחים?',
 ];
 
 const STANDARD = [
@@ -46,7 +51,7 @@ const COMPLEX = [
   'תכנן ארכיטקטורה חדשה לשכבת הסנכרון',
 ];
 
-for (const [label, tasks, expected] of [['simple', SIMPLE, 'haiku'], ['standard', STANDARD, 'sonnet'], ['complex', COMPLEX, 'opus']]) {
+for (const [label, tasks, expected] of [['search', SIMPLE, 'haiku'], ['non-search read-only', NOT_SEARCH, 'sonnet'], ['standard', STANDARD, 'sonnet'], ['complex', COMPLEX, 'opus']]) {
   test(`${label} tasks route to ${expected}`, () => {
     for (const task of tasks) assert.equal(classifyTask(task), expected, `${JSON.stringify(task)} -> ${JSON.stringify(explainTaskRoute(task))}`);
   });
