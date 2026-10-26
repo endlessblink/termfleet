@@ -36,13 +36,16 @@ const stateOf = (pane) => (!pane ? 'closed' : pane.turn === 'waiting' ? 'waiting
  * Only hand-offs from the last 12 hours count, so a terminal the bot followed
  * yesterday and Noam now uses for something else does not show as "waiting".
  */
-export function helperState(bot, panes, now = Date.now()) {
+export function helperState(bot, panes, now = Date.now(), { bots } = {}) {
   const ids = new Set((bot.helpers || []).filter((h) => h?.paneId && followActive(h) && now - Number(h.at || 0) < 12 * 3600_000).map((h) => h.paneId));
   let waitingOn = 0, helpersAsking = 0;
   for (const id of ids) {
     const state = stateOf(panes.find((p) => p.id === id));
     if (state === 'working') waitingOn++;
-    else if (state === 'waiting') helpersAsking++;
+    else if (state === 'waiting') {
+      if (bots) { if (openTerminalAsk(bots, bot.id, id)) helpersAsking++; }
+      else helpersAsking++;
+    }
   }
   return { waitingOn, helpersAsking };
 }

@@ -625,7 +625,7 @@ const handle = async (req, res) => {
   // Bots (TF-096). Same sign-in gate as every route below it.
   if (url.pathname === '/api/bots' && req.method === 'GET') {
     const livePanes = await currentPanes().then((r) => r.panes || []).catch(() => []);
-    return json(res, 200, { bots: bots.list().map((b) => ({ ...b, ...helperState(b, livePanes) })), groups: bots.groups.list(), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
+    return json(res, 200, { bots: bots.list().map((b) => ({ ...b, ...helperState(b, livePanes, Date.now(), { bots }) })), groups: bots.groups.list(), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
   }
   // Where a bot works (Noam 2026-10-22): folders the fleet knows, browsing, and one empty new folder.
   if (url.pathname === '/api/bot/folders' && req.method === 'GET') {
