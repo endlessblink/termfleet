@@ -20,6 +20,8 @@ test('his requests are numbered in his own words; answers, reminders and tool re
   assert.equal(acknowledgement('כן'), true);
   assert.equal(acknowledgement('go and fix the header please now'), false);
   assert.equal(injected('[Message from the bot "Quill" (bot:x), sent through TermFleet.] hi'), true);
+  // 2026-10-26: a background helper's report showed up as Noam's request in every turn's list.
+  assert.equal(injected('<agent-message from="a77c44fbd7ad613f3">\n[Subagent hand-back] The text below is the final report'), true);
 });
 
 test('marks from the termfleet-asks command set each request status; the newest mark wins', () => {

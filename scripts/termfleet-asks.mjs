@@ -55,7 +55,7 @@ const textOf = (content) => typeof content === 'string' ? content
   : Array.isArray(content) ? content.filter((b) => ['text', 'input_text', 'output_text'].includes(b?.type)).map((b) => b.text || '').join('\n') : '';
 
 /** Text the harness or a hook puts in a user turn is not Noam speaking. */
-export const injected = (text) => /^\s*(<(system-reminder|command-|local-command|task-notification|user-prompt-submit-hook|environment_context|user_instructions|turn_aborted)|\[SYSTEM NOTIFICATION|\[Message from (the agent|the bot|an orchestrating)|Caveat:|# AGENTS\.md|This session is being continued from a previous conversation|\[Request interrupted)/i.test(text);
+export const injected = (text) => /^\s*(<(system-reminder|agent-message|command-|local-command|task-notification|user-prompt-submit-hook|environment_context|user_instructions|turn_aborted)|\[SYSTEM NOTIFICATION|\[Message from (the agent|the bot|an orchestrating)|Caveat:|# AGENTS\.md|This session is being continued from a previous conversation|\[Request interrupted)/i.test(text);
 
 /** A short yes/go/continue is an answer, not a new request. */
 export const acknowledgement = (text) => {
