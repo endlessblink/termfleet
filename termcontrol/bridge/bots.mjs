@@ -147,6 +147,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '  `termfleet-team list` (who is working on what), `termfleet-team read <who>` (their latest messages),',
     '  `termfleet-team send <who> "<task>"` (hand work over), `termfleet-team ask <who> "<question>"` (waits at most 20 seconds for the answer; if it is not ready you are woken when it finishes, so then just tell Noam it is in progress and stop: never wait or poll in a loop),',
     '  `termfleet-team start --cwd <folder> --task "<task>"` (open a new terminal agent for a job; it starts in Codex. Add `--provider claude` only when the job needs complex reasoning or handling a conversation),',
+    '  give every terminal you start a short plain name with `--name "<2-5 words>"` (it shows on its card and in Noam\'s terminal list),',
     '  `termfleet-team routine add --time 09:00 --days weekdays --message "<text>"` (a scheduled message).',
     '- Say which terminal agent you handed work to, and check its result before telling Noam it is done.',
     '- When Noam approves or decides something here that a terminal agent needs (e.g. "Yes add the images"), pass on his own words, never a retelling: `termfleet-team send <who> --owner-words latest "<what to do with it>"` attaches his exact latest message here as a record the agent can check (use a message id from `termfleet-team verify` instead of latest for an older one). Never ask Noam to repeat an approval he already gave; if an agent still refuses, send it his words this way again.',

@@ -151,6 +151,26 @@ export function parseArgs(argv) {
   return { positional, flags };
 }
 
+/**
+ * A short plain name for a terminal a bot starts (complaint #17, 2026-10-26: all 5 running
+ * terminals had none, three read just "politic-fighter"): --name, else the task's first real
+ * sentence, skipping the framing around it.
+ */
+export function terminalName(given, task) {
+  const pick = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  if (pick(given)) return pick(given).slice(0, 40);
+  for (let line of String(task || '').split('\n')) {
+    line = line.replace(/^\s*\[(?:Message from|Noam's|delivery)[^\]]*\]\s*/i, '').replace(/^\s*(?:Goal|Task|#+)\s*:?\s*/i, '').trim();
+    if (!line || /^read \S+ and carry out/i.test(line) || /^\(/.test(line) || /^\[/.test(line)) continue;
+    const sentence = line.split(/(?<=[.!?:;])\s/)[0].replace(/[.!?:;,]+$/, '');
+    const words = sentence.split(' ');
+    let out = '';
+    for (const w of words) { if ((out + ' ' + w).trim().length > 40) break; out = (out + ' ' + w).trim(); }
+    return (out || sentence.slice(0, 40)).replace(/[^\p{L}\p{N} ._-]/gu, '').replace(/\s+/g, ' ').trim();
+  }
+  return '';
+}
+
 /** The --image paths, each checked to be a picture file that exists. */
 export function pictureFlags(flags) {
   const list = [].concat(flags.image || []).filter((p) => typeof p === 'string');
@@ -355,6 +375,9 @@ async function main(argv) {
     // confirmed only once the new agent has really begun (not stuck on a startup prompt).
     const startPictures = pictureFlags(flags);
     let taskText = typeof flags['task-file'] === 'string' ? readFileSync(flags['task-file'], 'utf8') : typeof flags.task === 'string' ? flags.task : '';
+    // Every terminal gets a plain name: on its map card and in TermControl's list (complaint #17).
+    const startName = terminalName(flags.name, taskText);
+    if (startName && typeof flags.title !== 'string') flags.title = startName;
     // Codex unless the task itself needs Claude (Noam 2026-10-26, complaint #19: 41 of 43 bot helpers
     // in three days were started in Claude by a bare --provider claude the router would not pick).
     if (ownDir && flags.provider === 'claude') {
@@ -385,6 +408,12 @@ async function main(argv) {
     let made = {};
     try { made = JSON.parse(String(run.stdout || '').trim().split('\n').filter((l) => l.startsWith('{')).pop() || '{}'); } catch { made = {}; }
     if (made.childPaneId) {
+      if (startName) {
+        try {
+          const { profiles } = await import('../termcontrol/bridge/profiles.mjs');
+          if (!profiles.get(made.childPaneId)?.name) profiles.save(made.childPaneId, { ...(profiles.get(made.childPaneId) || {}), name: startName });
+        } catch { /* the card title still carries the name */ }
+      }
       recordHelper({ paneId: made.childPaneId, provider: flags.provider || null, task: String(flags.task || flags.title || '').slice(0, 300), cwd: flags.cwd || null });
       recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: String(flags.task || flags.title || '').slice(0, 600) });
       if (taskText && flags['no-wait'] !== true) {
