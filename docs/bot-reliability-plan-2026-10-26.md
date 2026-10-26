@@ -37,6 +37,15 @@ Complaints this one cause explains: #5/#24 (fake activity), #10 watchdog, #12 dr
 
 Fixes made so far today (Codex `--no-daemon`, quick-answer context, open list per turn) are **symptom-level**; three fix attempts without this cause = the debugging process says stop and change the architecture.
 
+**Checks done before building (14:30):**
+1. Normal silence inside a working turn, last 3 days (1,508 Codex rollouts, 386 Claude transcripts): p99 24–28 s; over 10 min only 4 times (Codex) and 46 times (Claude, long tool runs/subagents). "No record for 10 min mid-turn" is a reliable suspicion signal; pair it with "no PTY output" to avoid alarms on long builds.
+2. The crashed terminal's own rollout stopped at 12:45:44 mid-turn (last `item_completed`, no `task_complete`) and stayed silent: signal 1 would have flagged it at ~12:56. (The record stopped 20 min before the 13:05 daemon restart, so the daemon died or hung earlier than the updater log suggests.)
+3. The drawn-screen text lives only inside the desktop app (`vt_grid.rs screen_text`, attached grids only); the app's shared snapshot file was empty and 11 min stale. The bridge's raw-scrollback reader cannot see Codex screens. Screen reading is a secondary signal only, needing a headless VT in the bridge or the app publishing reliably.
+
+**Independent audit of all 27 complaints (read-only, 14:40):** only #3 (reminder flood) is verified fixed with live data. Fixed but unverified: #2, #5, #11, #18, #24. Partial: #1 (Monitor tool still prompts), #4 (terminal name dropped from reminders, test fails), #7 (p50 163 s over 48 h; 32 s on 8 replies since 13:24), #8 (no ack for Codex bots), #16 (4,920 items "ready", 0 confirmed by Noam). Not fixed: #6/#25, #9, #10, #12, #13 (false "SQL verified" claim at 13:38), #14 ("נוח" at 10:37), #15, #17, #19 (22 Claude vs 22 Codex terminals since 09:00), #20, #21, #22, #23/#26, #27.
+
+**Second root cause found by the audit (#6/#25, the "bot doesn't know" family):** the startup context hook queries the event log with no time filter and gets the 20 oldest rows (25.10 20:03), the rows hold no text (only lengths and tool names), and it reads `BOT_NAME` while the bridge sets `TERMFLEET_BOT_NAME`. So the "cross-session memory" every bot is supposed to have delivers nothing.
+
 **Architecture fix (needs Noam's go):**
 - A. **Positive liveness**: an agent is "working" only with fresh proof of progress from its own conversation record (new transcript/rollout entries) within N seconds — never from byte growth or a stale hook claim. Read the screen from the rendered grid (the app already has it: `grid_*`/cockpit snapshot), not raw scrollback.
 - B. **A request supervisor in code** (bridge, every 30 s): each open request is a state machine (new → delivered → progressing → done/needs-Noam) checked against A. On "no progress" or "dead" it acts deterministically: wake the owning bot with the exact fault, re-dispatch once, then surface to Noam. The UI shows the supervisor's state, not agent claims.
