@@ -160,9 +160,10 @@ export function terminalName(given, task) {
   const pick = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   if (pick(given)) return pick(given).slice(0, 40);
   for (let line of String(task || '').split('\n')) {
-    line = line.replace(/^\s*\[(?:Message from|Noam's|delivery)[^\]]*\]\s*/i, '').replace(/^\s*(?:Goal|Task|#+)\s*:?\s*/i, '').trim();
+    line = line.replace(/^\s*\[(?:Message from|Noam's|delivery)[^\]]*\]\s*/i, '').replace(/^\s*(?:Goal|Task|#+)\s*:?\s*/i, '').replace(/^\s*Noam\s*:\s*/i, '').trim();
     if (!line || /^read \S+ and carry out/i.test(line) || /^\(/.test(line) || /^\[/.test(line)) continue;
-    const sentence = line.split(/(?<=[.!?:;])\s/)[0].replace(/[.!?:;,]+$/, '');
+    // Cut at a sentence end only: a colon or semicolon cut "Noam: the sounds are bad" down to "Noam".
+    const sentence = line.split(/(?<=[.!?])\s/)[0].replace(/[.!?:;,]+$/, '');
     const words = sentence.split(' ');
     let out = '';
     for (const w of words) { if ((out + ' ' + w).trim().length > 40) break; out = (out + ' ' + w).trim(); }

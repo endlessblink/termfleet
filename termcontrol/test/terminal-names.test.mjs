@@ -13,6 +13,9 @@ test('without one, the first real sentence of the task names it, framing skipped
   assert.equal(terminalName(null, 'Goal: Fix stale terminals in the canvas map\nTask: Clean up nodes'), 'Fix stale terminals in the canvas map');
   assert.equal(terminalName(null, 'Read /home/x/.local/share/terminal-workspace/child-tasks/a.md and carry out the instructions in it.\n# Abbas leg animation fix'), 'Abbas leg animation fix');
   assert.equal(terminalName(null, ''), '');
+  // Two bot helpers on 26 Oct were named just "Noam": the task began "Noam: the workout sounds...".
+  assert.equal(terminalName(null, "Noam: the workout sounds are 'really really bad' and 'too loud'. Do NOT change the live app yet."), 'the workout sounds are really really');
+  assert.equal(terminalName(null, 'Noam is choosing workout sounds on the picker page. Check it.'), 'Noam is choosing workout sounds on the');
 });
 
 test('bots are told to name the terminals they start', () => {
