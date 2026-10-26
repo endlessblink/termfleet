@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T15:51:19.304Z",
+  "updatedAt": "2026-10-26T16:30:01.983Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13470,6 +13470,91 @@
           "type": "evidence",
           "kind": "source",
           "note": "Configured external authority adapter and both gate merge reviewed; real integration proof /tmp/termfleet-TF117-integration.log"
+        }
+      ]
+    },
+    {
+      "id": "TF-118",
+      "title": "Bot reports omit checked testing links and clear next action",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "A bot reports a fix or version without a working preview and a plain instruction; ready items are buried in chat.",
+      "rootCause": "",
+      "guard": "Bot Stop regression and authenticated desktop and phone Try now browser checks",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-26T16:27:00.123Z",
+          "note": "20/20 reply/Stop/browser receipt checks pass; red guards reproduced omission, neutral ready wording and missing per-item instructions before fixes. /tmp/tf118-focused-final.log"
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-26T16:30:01.982Z",
+          "note": "Activated registered bridge only: PID197114 ->529229 at18:28IST; actual host process/command/cwd/start time/source hashes and local login200 read back in /tmp/termfleet-TF118-activation.json. Public agent request403; no browser surfaces available, so production authenticated visual remains blocked."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Require checked linked Try line before bot completion and show all ready ledger items in chat.",
+      "history": [
+        {
+          "at": "2026-10-26T16:10:45.938Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T16:10:45.998Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T16:10:46.062Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": null
+        },
+        {
+          "at": "2026-10-26T16:16:24.193Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Failing bot-testing regression recorded before implementation."
+        },
+        {
+          "at": "2026-10-26T16:16:26.901Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Adding Stop and publication checks backed by browser receipts, and uncapped ready list."
+        },
+        {
+          "at": "2026-10-26T16:27:00.124Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "20/20 reply/Stop/browser receipt checks pass; red guards reproduced omission, neutral ready wording and missing per-item instructions before fixes. /tmp/tf118-focused-final.log"
+        },
+        {
+          "at": "2026-10-26T16:27:02.447Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused reply enforcement and authenticated isolated chat proven; bridge-only activation and source read-back underway. Authenticated production visual remains open."
+        },
+        {
+          "at": "2026-10-26T16:27:31.743Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "All guards and full evidence/limitations documented in docs/regression-matrix.md TF-118. UI4/4 and adjacent9/9 plus syntax/ledger3/3 pass; build passes. Screenshot hashes recorded. Full suite EISDIR, five related failures and doctor failures remain open. Authenticated production visual unverified."
+        },
+        {
+          "at": "2026-10-26T16:30:01.983Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Activated registered bridge only: PID197114 ->529229 at18:28IST; actual host process/command/cwd/start time/source hashes and local login200 read back in /tmp/termfleet-TF118-activation.json. Public agent request403; no browser surfaces available, so production authenticated visual remains blocked."
         }
       ]
     }

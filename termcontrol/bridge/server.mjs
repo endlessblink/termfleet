@@ -73,6 +73,7 @@ import { asksForFile, isRealRequest, askTitle, dismissAsk, itemsByAsk, statusFro
 import { botAsksFromItems } from './bot-request-panel.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 import { itemsView, replyDetails } from './requirements.mjs';
+import { tryNowItems } from './bot-testing.mjs';
 import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity } from './events-db.mjs';
 import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS } from './terminal-health.mjs';
 
@@ -818,6 +819,7 @@ const handle = async (req, res) => {
     // The item ledger owns bot requests; transcript turns include harness reminders and omit older items.
     if (view) { try { view.asks = botAsksFromItems(itemsView({ source: `bot:${view.bot.id}`, includeClosed: true }).items); } catch { view.asks = []; } }
     if (view) view.requirements = requirementsFor(`bot:${view.bot.id}`);
+    if (view) view.tryNow = tryNowItems(itemsView({ source: `bot:${view.bot.id}`, includeClosed: true }).items);
     // Noam 2026-10-23: the per-item list sits under a finished reply's Details toggle, not in its text.
     if (view) { try { view.details = replyDetails(view.messages, itemsView({ source: `bot:${view.bot.id}`, includeClosed: true }).items); } catch { view.details = {}; } }
     return json(res, view ? 200 : 404, view || { error: 'That bot no longer exists.' });

@@ -14,22 +14,44 @@ import { spawn } from 'node:child_process';
 import { BotBrowser } from '../termcontrol/bridge/bot-browser.mjs';
 import { PLAYWRIGHT_MCP, BOTS_HOME, BOT_BROWSER_PORT } from '../termcontrol/bridge/bots.mjs';
 import { startWindowProxy, readWindows, setTakeover } from '../termcontrol/bridge/bot-windows.mjs';
+import { recordBrowserReceipt } from '../termcontrol/bridge/browser-receipts.mjs';
 
 /**
  * `termfleet-browser mcp`: the browser tools a bot brain gets. It passes MCP messages
  * (one JSON per line) straight through to the Playwright MCP, and the first time a
  * tool is actually called it opens the bots' browser if it is not open yet.
  */
-export function mcpProxy({ input = process.stdin, output = process.stdout, browser = new BotBrowser(), launch = spawn, server = PLAYWRIGHT_MCP, bot = null, windowProxy = startWindowProxy } = {}) {
+export function mcpProxy({ input = process.stdin, output = process.stdout, browser = new BotBrowser(), launch = spawn, server = PLAYWRIGHT_MCP, bot = null, windowProxy = startWindowProxy, recordReceipt = recordBrowserReceipt } = {}) {
   // Its cache must be writable inside Codex's sandbox: keep it in the bots' own folder.
   const cache = path.join(BOTS_HOME(), '.playwright');
   try { fs.mkdirSync(cache, { recursive: true }); } catch { /* the tools say so if it is missing */ }
   // A bot's tools go through its own window go-between, so it sees only its own pages.
   const windows = bot?.id ? windowProxy({ botId: bot.id, botName: bot.name || '', upstreamPort: BOT_BROWSER_PORT }).catch(() => null) : Promise.resolve(null);
   let child = null;
+  const navigations = new Map();
+  let responseBuffer = '';
+  const observeResponse = (line) => {
+    try {
+      const response = JSON.parse(line);
+      const url = navigations.get(response.id);
+      if (!url) return;
+      navigations.delete(response.id);
+      if (response.result && !response.error && !response.result.isError) recordReceipt({ botId: bot.id, url });
+    } catch { /* Protocol errors stay visible upstream, never become receipts. */ }
+  };
   const started = windows.then((proxy) => {
     const args = proxy ? server.args.map((a) => (/^https?:\/\/127\.0\.0\.1:\d+$/.test(a) ? `http://127.0.0.1:${proxy.port}` : a)) : server.args;
     child = launch(server.command, args, { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: cache, XDG_CACHE_HOME: cache } });
+    // Observe only completed MCP responses; forwarding remains byte-for-byte.
+    child.stdout.on('data', (chunk) => {
+      responseBuffer += chunk;
+      let nl;
+      while ((nl = responseBuffer.indexOf('\n')) >= 0) {
+        observeResponse(responseBuffer.slice(0, nl)); responseBuffer = responseBuffer.slice(nl + 1);
+      }
+      if (responseBuffer.length > 4 * 1024 * 1024) responseBuffer = '';
+    });
+    child.stdout.on('end', () => { if (responseBuffer.trim()) observeResponse(responseBuffer); });
     child.stdout.pipe(output);
     child.on('exit', async (code) => {
       // Its task is over: close its windows (unless Noam has one) before leaving.
@@ -42,6 +64,15 @@ export function mcpProxy({ input = process.stdin, output = process.stdout, brows
   const forward = (line) => { chain = chain.then(async () => {
     if (!ready && /"method"\s*:\s*"tools\/call"/.test(line)) ready = browser.start().catch(() => null);
     if (ready) await ready;
+    if (bot?.id) {
+      try {
+        const request = JSON.parse(line);
+        if (request.id != null && request.method === 'tools/call' && request.params?.name === 'browser_navigate' && typeof request.params.arguments?.url === 'string') {
+          navigations.set(request.id, request.params.arguments.url);
+          if (navigations.size > 200) navigations.delete(navigations.keys().next().value);
+        }
+      } catch { /* Keep forwarding malformed requests without recording them. */ }
+    }
     child.stdin.write(line + '\n');
   }); };
   input.setEncoding?.('utf8');

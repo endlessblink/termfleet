@@ -28,6 +28,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mergeHookResults, projectSyncHook } from './lib/agent-sync-hook.mjs';
 import { stripOpenRequestReminder } from '../termcontrol/bridge/bot-request-panel.mjs';
+import { testingHandoffProblem, readyThisTurn } from '../termcontrol/bridge/bot-testing.mjs';
 import {
   captureMessage, ownerTextOf, projectOf, stopProblem, escalate, briefedIds, briefItems, briefBlock, ledgerDir,
   markItem, record, addTopic, setTopicVisual, normId, itemsView, itemsText, evidenceProblem, answerProblem, loadLedger, clip as clipItem,
@@ -453,6 +454,12 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
   }
   if (/^Stop$/i.test(event) || event === 'stop') {
     const last = String(payload.last_assistant_message || '') || lastAssistantText(lines);
+    if (env.TERMFLEET_BOT_ID) {
+      const since = Number(env.TERMFLEET_BOT_TURN_STARTED_AT) || Date.now() - 30 * 60_000;
+      const markedReady = readyThisTurn([...loadLedger({ dir: reqDir(env) }).items.values()], env.TERMFLEET_BOT_ID, since).length > 0;
+      const problem = testingHandoffProblem(last, { botId: env.TERMFLEET_BOT_ID, since, markedReady, receiptDir: env.TERMFLEET_BROWSER_RECEIPTS_DIR });
+      if (problem) return { decision: 'block', reason: problem };
+    }
     // The requirements gate (TF-102) is not a reminder: it blocks every time until each of
     // Noam's items is taken, capped so a stuck agent cannot loop forever (then it is escalated
     // into Noam's own list instead of being dropped).

@@ -18,6 +18,7 @@ import { defaultDaemonSocket, requestDaemon } from '../../scripts/termfleetctl.m
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements, messageProblem, structureProblem } from './requirements.mjs';
+import { testingHandoffProblem, readyThisTurn, saveTestingHandoff } from './bot-testing.mjs';
 import { sidePrompt, parseSide, withPassedOn, putSteer, takeSteer, nextTurnText, steerDir } from './side-reply.mjs';
 import { fnv, statusDir as agentStatusDir } from '../../scripts/lib/agent-status-paths.mjs';
 import { BotGroups } from './bot-groups.mjs';
@@ -154,6 +155,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '- When the work involves a picture Noam sent, pass the picture itself: add `--image <full path>` (once per picture) to `termfleet-team send`, `ask` or `start`. A path written inside your sentence reaches the terminal as plain text, and the agent there does not see the picture.',
     '- Always close a terminal you started once its work is done: right after you checked its result and told Noam, run `termfleet-team close <who>`, unless you are sending it more work now. Never leave a finished terminal open "just in case"; Noam does not want finished terminals piling up. The command refuses while one is working, waiting for Noam, or has unsaved work: then leave it open, say why, and close it once that is resolved. A terminal agent may also close itself when its work is done (`termfleet-team close self`); that is fine.',
     '- Keep Noam\'s requests in his exact words. For a new or unclear request, read it back as a short numbered list first.',
+    '- Every reply reporting a fix, version, release or ready item must include a plain line: Try: <exact action Noam should take> <working https://link>. Open that exact link with your browser in this turn first; the Stop hook and chat publication block missing or unchecked handoffs.',
     '- Never say "done" without proof (what ran and what it showed). If you did less than asked, say so in your first sentence.',
     '- Never spend money, post publicly, send messages to people, or delete things without Noam\'s explicit yes.',
     '- Keep going: when Noam asked for something, or the next step is safe and can be undone (reading, planning, drafting, building, testing, saving, handing work to a terminal), do it now in this same turn. Never stop to ask for his go ("say go when you want me to", "want me to start?") for that: he does not want the flow to stop. End with "Waiting for Noam: <what>" only for spending money, posting publicly, messaging people, deleting, a step only he can do (signing in, a code, trying it), or a real choice between two truly different outcomes (ask that as a question card). The Go ahead buttons under your messages are for those real approvals only.',
@@ -402,6 +404,7 @@ export function brainEnv(bot, env = process.env) {
   return {
     ...out,
     TERMFLEET_BOT_ID: bot.id, TERMFLEET_BOT_NAME: bot.name,
+    TERMFLEET_BOT_TURN_STARTED_AT: String(Date.now()),
     ...(bot.steerFolder ? { TERMFLEET_BOT_STEER: bot.steerFolder } : {}),   // the bot's folder; its steer/ inbox is inside
     PATH: `${path.join(os.homedir(), '.local', 'bin')}:${env.PATH || '/usr/bin:/bin'}`,
     PAGER: 'cat', GIT_PAGER: 'cat', GIT_EDITOR: 'true', EDITOR: 'true', GIT_TERMINAL_PROMPT: '0', DEBIAN_FRONTEND: 'noninteractive',
@@ -1412,6 +1415,29 @@ export class Bots {
           held = true;
         } else if (fresh?.heldQuestion) { delete fresh.heldQuestion; this.write(fresh); }
       }
+      // Providers that do not run Stop hooks still cannot publish an unchecked fix report.
+      if (asked && !result.error && !result.stopped) {
+        const since = this.running.get(id)?.startedAt || this.now() - 30 * 60_000;
+        const markedReady = readyThisTurn([...loadRequirements({ dir: this.reqDir() }).items.values()], id, since).length > 0;
+        const problem = testingHandoffProblem(asked.text, { botId: id, since, markedReady });
+        if (problem) {
+          const fresh = this.read(id);
+          const attempts = (fresh.heldTestingHandoff || 0) + 1;
+          fresh.heldTestingHandoff = attempts;
+          this.write(fresh);
+          if (attempts <= 2) {
+            this.queues.get(id).unshift(`[Testing handoff blocked] ${problem} Correct the reply now. The unchecked report was not shown to Noam.`);
+          } else {
+            this.append(id, { role: 'error', text: 'The testing report is held because its link or testing instructions could not be verified. The work remains open.' });
+          }
+          this.queueLeftSteer(id);
+          this.running.delete(id);
+          continue;
+        }
+        saveTestingHandoff(asked.text, id, since, { dir: this.reqDir() });
+        const fresh = this.read(id);
+        if (fresh.heldTestingHandoff) { delete fresh.heldTestingHandoff; this.write(fresh); }
+      }
       // The same reply twice in a row (no message from him in between) is kept but not shown.
       let duplicate = false;
       if (bot && asked && !asked.question && !listed?.checklist && asked.text && !findMedia(asked.text).media.length) {
@@ -1515,6 +1541,10 @@ export class Bots {
         batch = batch.filter((e) => !this.retracted.has(e.msgId));
         if (!batch.length) continue;
         const reply = withPassedOn(parsed.reply, parsed.forward, batch.map((e) => e.text));
+        if (testingHandoffProblem(reply, { botId: id, since: t0 })) {
+          for (const e of batch) this.handOn(id, e, null);
+          continue;
+        }
         this.append(id, { role: 'bot', text: reply, side: { ms, forward: parsed.forward, to: batch.map((e) => e.msgId) } });
         if (bot.notify !== false) { try { this.notify({ title: bot.name, body: reply.replace(/\s+/g, ' ').slice(0, 200), url: `/#bot:${id}` }); } catch { /* never block on a notification */ } }
         if (parsed.forward) { for (const e of batch) this.handOn(id, e, reply); continue; }

@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { findOwnerWords } from './owner-words.mjs';
 import { stripOpenRequestReminder } from './bot-request-panel.mjs';
+import { testingInstructions } from './testing-instructions.mjs';
 
 /**
  * Owner requirements ledger (TF-102). Noam 2026-10-23: "ותבנה מערכת שתבטיח ב100% שאתה לא
@@ -234,7 +235,8 @@ function foldLedger(dir) {
     it.updatedAt = e.at;
     if (e.e === 'topic') { it.topics = [...new Set([...(e.replace ? [] : it.topics), ...(e.topics || [])])]; for (const t of e.topics || []) if (!topics.has(t)) topics.set(t, new Set()); }
     else if (e.e === 'assign') { it.assigned.push({ pane: e.pane, delivery: e.delivery || null, at: e.at, by: e.by || null }); if (!['ready', 'done', 'dropped'].includes(it.status)) it.status = 'assigned'; }
-    else if (e.e === 'status') { it.statusAt = e.at; it.status = e.status; it.confirmedBy = e.status === 'done' ? e.ownerMsg || null : null; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
+    else if (e.e === 'status') { delete it.testing; it.statusAt = e.at; it.status = e.status; it.confirmedBy = e.status === 'done' ? e.ownerMsg || null : null; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
+    else if (e.e === 'testing-handoff') { it.testing = { link: e.link, tryText: e.tryText }; }
     else if (e.e === 'lock') { it.locked = true; it.lockedAt = e.at; it.lockedBy = e.by || null; if (e.ownerMsg) it.confirmedBy = e.ownerMsg; }
     else if (e.e === 'unlock') { it.locked = false; }
     else if (e.e === 'reverify') it.reverified.push({ at: e.at, evidence: e.evidence, forId: e.forId || null });
@@ -583,6 +585,10 @@ export function markItem({ status, id, note = '', evidence = '', open = [], by =
   if (!it) return { error: `${id} is not in Noam's list. termfleet-asks items shows the ids.` };
   if (!ITEM_STATUSES.includes(status)) return { error: `Unknown status "${status}".` };
   if (status === 'done' && it.visual) return { error: visualDoneProblem(it) };
+  if (status === 'ready' && it.source?.startsWith('bot:')) {
+    const instructions = testingInstructions(note) || testingInstructions(evidence);
+    if (!instructions?.link || instructions.tryText.length < 8 || instructions.tryText.split(/\s+/).length < 2) return { error: `${id} needs its own testing instructions: Try: <specific action> <working https://link> in --evidence or the note.` };
+  }
   if (status === 'done' || status === 'ready') {
     const problem = evidenceProblem(evidence);
     if (problem) return { error: `${id} ${problem}.` };
