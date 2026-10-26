@@ -124,6 +124,20 @@ Next, in order:
 3. Codex folder-trust.
 4. Auto-replace a stuck helper. Agent-Manager's healthcheck agent is building this on `stateOf === 'stuck'`.
 
+## Fixed later on 26 Oct, each with proof (commits on main)
+
+| Commit | Complaint | What was proven, and how |
+|---|---|---|
+| 7e8882b, a8b9456 | #15, #20, #21 | A dead helper is shown as "stuck", and its bot is woken once to replace it. Tested on unit tests, and on the live digest, which said a dead Codex was STUCK. |
+| c0b6dc8, 2e4d2ec | #28 | The screen reader now keeps spaces and line breaks. Claude and Codex trust questions are answered. Proven live on throwaway agents. |
+| dbabfc2, 3f0d839 | #23, #26 | Pictures reach the quick reply, Codex bots and helper terminals. Proven on a local stand-in endpoint, and end to end on throwaway Claude and Codex. |
+| 9119f70 | — | Helper agent reports are no longer recorded as Noam's requests. A test was added. |
+| 5eb1b04 | #19 | Bot helpers start in Codex unless the task needs Claude. Data: 41 of 43 Claude starts were unneeded. |
+| 7d45355 | #1 | Haiku helpers accept edits inside their own folder. Data: Haiku ran ask-first 31 of 31 times. Takes effect after the app release and a relaunch. |
+| e1c8dc6 | #4 | Reminders name the terminal that is asking. |
+
+Known limit: Codex quick replies cannot use a forked copy. `codex exec resume --ephemeral` was shown to write into the original conversation; the probe's lines were removed and a backup is in `.backups/`.
+
 ## Proof required before calling any step done
 - Measured before/after numbers (start time, reply time, failed hand-offs per day) from the bots' own chat records.
 - Noam confirms on the phone. Nothing is "fixed" until he says so.
