@@ -10,9 +10,13 @@ import path from 'node:path';
 export const heldDir = (env = process.env) => path.join(env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'terminal-workspace', 'held-messages');
 const fileOf = (dir, id) => path.join(dir, `${String(id).replace(/[^A-Za-z0-9._-]/g, '_')}.jsonl`);
 
-/** Hold only for a Codex agent that is working right now. */
+/**
+ * Hold only for a Codex agent that is working right now, and only when switched on
+ * (TERMFLEET_HOLD_BUSY=1). Off by default since 2026-10-26 18:30: the politic-fighter Codex agents
+ * stayed "working" for 1.5 hours and more, so 65 held messages never went in.
+ */
 export function shouldHold(pane, env = process.env) {
-  return env.TERMFLEET_HOLD_BUSY !== '0' && pane?.provider === 'codex' && pane.turn === 'working';
+  return env.TERMFLEET_HOLD_BUSY === '1' && pane?.provider === 'codex' && pane.turn === 'working';
 }
 
 export function holdMessage(paneId, text, { dir = heldDir(), now = Date.now() } = {}) {
@@ -53,7 +57,9 @@ export async function deliverHeld({ panes, send, dir = heldDir(), log = () => {}
   const out = [];
   for (const id of heldPanes({ dir })) {
     const pane = panes.find((p) => p.id === id);
-    if (!pane || !pane.alive || pane.turn === 'working' || pane.turn === 'waiting' || pane.attention) continue;
+    // A working agent takes them too (it folds them into its turn): waiting for its turn to end left
+    // messages undelivered for hours. Never into a question/approval or a closed terminal.
+    if (!pane || !pane.alive || pane.turn === 'waiting' || pane.attention) continue;
     const rows = takeHeld(id, { dir });
     if (!rows.length) continue;
     const res = await send(pane, bundle(rows.map((r) => r.text)));
