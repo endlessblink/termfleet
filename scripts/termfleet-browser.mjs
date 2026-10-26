@@ -64,6 +64,15 @@ export function mcpProxy({ input = process.stdin, output = process.stdout, brows
   const forward = (line) => { chain = chain.then(async () => {
     if (!ready && /"method"\s*:\s*"tools\/call"/.test(line)) ready = browser.start().catch(() => null);
     if (ready) await ready;
+    // TermControl is Noam's own app: a bot's browser is not signed in, so opening it only pops a
+    // login window on his screen (2026-10-26: three times in 20 minutes). Answered here, never opened.
+    try {
+      const request = JSON.parse(line);
+      if (request.id != null && request.method === 'tools/call' && request.params?.name === 'browser_navigate' && isTermControl(request.params.arguments?.url)) {
+        output.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { isError: true, content: [{ type: 'text', text: TERMCONTROL_REFUSAL }] } })}\n`);
+        return;
+      }
+    } catch { /* not a request this bridge inspects */ }
     if (bot?.id) {
       try {
         const request = JSON.parse(line);
@@ -83,6 +92,16 @@ export function mcpProxy({ input = process.stdin, output = process.stdout, brows
   });
   input.on('end', () => { chain.then(() => child.stdin.end()); });
   return started;
+}
+
+export const TERMCONTROL_REFUSAL = 'Not opened: that is TermControl, Noam\'s own app. A bot\'s browser is not signed in there, and opening it pops a login window on his screen. Read your chat with termfleet-memory and your terminals with termfleet-team list/read instead.';
+
+/** TermControl itself, on its public address or on this machine. */
+export function isTermControl(url) {
+  try {
+    const u = new URL(String(url || ''));
+    return /(^|\.)control\.in-theflow\.com$/i.test(u.hostname) || (/^(127\.0\.0\.1|localhost|\[::1\])$/i.test(u.hostname) && u.port === '7810');
+  } catch { return false; }
 }
 
 const flag = (args, name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] ?? '' : null; };

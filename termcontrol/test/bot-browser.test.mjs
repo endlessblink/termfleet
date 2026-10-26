@@ -96,6 +96,26 @@ test('the go-between opens the bots\' browser only when a tool is first called, 
   assert.match(sent.trim().split('\n')[2], /browser_navigate/);
 });
 
+// 2026-10-26: two bots opened TermControl in their (not signed-in) browser three times in 20 minutes,
+// popping a login window on Noam's screen.
+test('a bot asking its browser to open TermControl is refused without opening anything', async () => {
+  const input = new PassThrough(), output = new PassThrough();
+  const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough() });
+  let sent = '', got = '';
+  child.stdin.on('data', (c) => { sent += c; });
+  output.on('data', (c) => { got += c; });
+  mcpProxy({ input, output, launch: () => child, browser: { start: async () => ({ ok: true }) } });
+  input.write('{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"browser_navigate","arguments":{"url":"https://control.in-theflow.com/login"}}}\n');
+  input.write('{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"browser_navigate","arguments":{"url":"http://127.0.0.1:7810/#bot:x"}}}\n');
+  input.write('{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"browser_navigate","arguments":{"url":"https://example.com"}}}\n');
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(sent.trim().split('\n').length, 1, 'only the other site reached the browser');
+  assert.match(sent, /example\.com/);
+  const replies = got.trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(replies.map((r) => r.id), [7, 8]);
+  assert.ok(replies.every((r) => r.result.isError && /Not opened: that is TermControl/.test(r.result.content[0].text)));
+});
+
 test('a Codex run that stops partway is reported as a failure, not as its opening plan', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-codex-'));
   const fake = path.join(dir, 'codex');
