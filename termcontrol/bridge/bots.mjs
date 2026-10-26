@@ -1424,12 +1424,16 @@ export class Bots {
         const openWork = this.openWork(id);
         let terminals = '';
         try { terminals = this.terminalDigest(id); } catch { terminals = ''; }
-        const prompt = sidePrompt({ bot, task: current.task, startedAt: current.startedAt, steps: current.steps || [], said: current.said || [], chat, incoming: batch.map((e) => e.text), openWork, terminals, now: this.now() });
+        const copy = provider === 'claude' && process.env.TC_SIDE_FORK !== '0' && bot.sessions?.claude?.started && bot.sessions.claude.id
+          ? { session: bot.sessions.claude.id, addDirs: [uploadDir()] } : {};
+        const prompt = sidePrompt({ bot, task: current.task, startedAt: current.startedAt, steps: current.steps || [], said: current.said || [], chat, incoming: batch.map((e) => e.text), openWork, terminals, forked: Boolean(copy.session), now: this.now() });
         const cwd = path.join(this.folder(id), 'side');
         try { fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); } catch { /* the folder is there */ }
         const t0 = this.now();
         let res;
-        try { res = this.available(provider) ? await this.side(runner, prompt, { bins: this.bins, cwd }) : { error: 'plan limited' }; } catch (e) { res = { error: String(e?.message || e) }; }
+        // Claude bots answer from a forked copy of their own conversation (2026-10-26: the note-only
+        // responder said "I don't know" in 296 of 446 quick replies). Off: TC_SIDE_FORK=0.
+        try { res = this.available(provider) ? await this.side(runner, prompt, { bins: this.bins, cwd, ...copy }) : { error: 'plan limited' }; } catch (e) { res = { error: String(e?.message || e) }; }
         const ms = this.now() - t0;
         const parsed = res?.text ? parseSide(res.text) : null;
         if (!parsed?.reply) {

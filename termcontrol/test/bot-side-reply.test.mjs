@@ -153,6 +153,15 @@ test('the side responder is read-only on the bot\'s own plan, and its answer is 
   assert.deepEqual(codex.args.slice(codex.args.indexOf('-s'), codex.args.indexOf('-s') + 2), ['-s', 'read-only']);
   assert.ok(codex.args.includes('--ephemeral'));
   assert.ok(codex.args.includes('gpt-5.5'), 'the bot\'s own model');
+  // 2026-10-26: 296 of 446 quick replies in 48h said "I don't know / can't see the picture" because the
+  // responder saw only notes. With the bot's own conversation it is a copy of the bot: forked, never saved.
+  const forked = sideCommand({ provider: 'claude', name: 'x' }, 'p', { cwd: '/bot', session: 'sess-1', addDirs: ['/uploads'] });
+  assert.deepEqual(forked.args.slice(forked.args.indexOf('--resume'), forked.args.indexOf('--resume') + 3), ['--resume', 'sess-1', '--fork-session']);
+  assert.ok(forked.args.includes('--no-session-persistence'), 'the copy is never saved');
+  assert.equal(forked.args.slice(forked.args.indexOf('--disallowedTools')).includes('Read'), false, 'it can open pictures and files');
+  for (const t of ['Bash', 'Edit', 'Write', 'MultiEdit', 'Agent']) assert.ok(forked.args.includes(t), `${t} still denied`);
+  assert.deepEqual(forked.args.slice(forked.args.indexOf('--add-dir'), forked.args.indexOf('--add-dir') + 2), ['--add-dir', '/uploads']);
+  assert.ok(claude.args.includes('Read'), 'without a conversation to copy it stays as before');
   assert.deepEqual(parseSide('REPLY: Yes, Monday works.\nPASS_ON: no'), { reply: 'Yes, Monday works.', forward: false });
   assert.deepEqual(parseSide('REPLY: Will do.\nPASS_ON: yes'), { reply: 'Will do.', forward: true });
   assert.equal(parseSide('Just some text').forward, true, 'unclear: pass it on, never lose an instruction');

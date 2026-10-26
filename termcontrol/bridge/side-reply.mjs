@@ -26,13 +26,14 @@ export const SIDE_MODEL = { claude: process.env.TC_SIDE_MODEL_CLAUDE || 'sonnet'
 export const SIDE_TIMEOUT_MS = Number(process.env.TC_SIDE_TIMEOUT_MS) || 90_000;
 
 /** Everything the side responder knows, as one prompt. It sees only this. */
-export function sidePrompt({ bot, task = '', startedAt = null, steps = [], said = [], chat = [], incoming = [], openWork = [], terminals = '', now = Date.now() }) {
+export function sidePrompt({ bot, task = '', startedAt = null, steps = [], said = [], chat = [], incoming = [], openWork = [], terminals = '', forked = false, now = Date.now() }) {
   const mins = startedAt ? Math.max(0, Math.round((now - startedAt) / 60000)) : null;
   const lines = [
     `You are the quick side responder for "${bot.name}", a bot in TermFleet, Noam's agent cockpit. ${bot.name} is busy with a long piece of work right now and cannot read new messages until it finishes. Noam just wrote to it. Answer him now, as ${bot.name}, in 1 to 4 short plain sentences.`,
     '',
     'Rules:',
     '- When he asks about open tasks or what is happening, answer from the open requests and terminal agents listed below: name them and their state. Never say you have no information when they are listed.',
+    forked ? `- You are a copy of ${bot.name}'s own conversation: everything above this message is what it knows and did. Answer from it. Open any picture or file Noam attached with the Read tool before answering. Never say you have no information about something that is in the conversation above.` : '',
     '- Answer his question directly and honestly: what you are doing right now, how far along you are, yes or no, a rough estimate when he asks for one. If the notes below do not tell you, say plainly that you do not know yet.',
     '- Use only what is written below. Never say something was done, checked, found or decided unless the steps or chat below show it. Never invent results or numbers.',
     '- You cannot act or change anything. If he asks for something to be done, changes or corrects the plan, say you passed it on to the work in progress (it picks it up at its next step); never promise the result.',
@@ -90,7 +91,7 @@ export function withPassedOn(reply, forward, incoming = []) {
 }
 
 /** The command for one side answer: the bot's plan, no tools, no hooks, no saved session. */
-export function sideCommand(bot, prompt, { bins = {}, cwd } = {}) {
+export function sideCommand(bot, prompt, { bins = {}, cwd, session = null, addDirs = [] } = {}) {
   if (bot.provider === 'codex') {
     const model = bot.model || SIDE_MODEL.codex;
     return {
@@ -99,12 +100,15 @@ export function sideCommand(bot, prompt, { bins = {}, cwd } = {}) {
         ...(model ? ['-m', model] : []), '-c', 'model_reasoning_effort="low"', '-c', 'approval_policy="never"', prompt],
     };
   }
+  // With the bot's own conversation the responder is a copy of the bot (forked, never saved), so it
+  // knows the history and can open pictures (Read); without one it stays the note-only responder.
+  const copy = session ? ['--resume', session, '--fork-session', ...addDirs.flatMap((d) => ['--add-dir', d])] : [];
   return {
     bin: bins.claude || 'claude',
-    args: ['-p', prompt, '--output-format', 'json', '--model', SIDE_MODEL.claude,
+    args: ['-p', prompt, ...copy, '--output-format', 'json', '--model', SIDE_MODEL.claude,
       '--no-session-persistence', '--restricted', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
       '--settings', '{"disableAllHooks":true}', '--permission-mode', 'dontAsk',
-      '--disallowedTools', 'Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'Skill', 'Read', 'Grep', 'Glob', 'TodoWrite', 'TaskCreate', 'TaskUpdate'],
+      '--disallowedTools', 'Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'Skill', ...(session ? [] : ['Read', 'Grep', 'Glob']), 'TodoWrite', 'TaskCreate', 'TaskUpdate'],
   };
 }
 
@@ -125,8 +129,10 @@ export function sideOutput(provider, stdout) {
 }
 
 /** Runs one side answer as a child process. Never throws; resolves with { text } or { error }. */
-export function runSide(bot, prompt, { bins = {}, env = process.env, timeoutMs = SIDE_TIMEOUT_MS, cwd = os.tmpdir() } = {}) {
-  const command = sideCommand(bot, prompt, { bins, cwd });
+export function runSide(bot, prompt, { bins = {}, env = process.env, timeoutMs = SIDE_TIMEOUT_MS, cwd = os.tmpdir(), session = null, addDirs = [] } = {}) {
+  // A forked copy must run in the bot's own folder: that is where its conversation is filed.
+  if (session && bot.cwd) cwd = bot.cwd;
+  const command = sideCommand(bot, prompt, { bins, cwd, session, addDirs });
   const { bin, args } = env.TERMFLEET_GENTLE_BRAINS === '0' ? command
     : gentleCommand(command.bin, command.args, { unit: `termfleet-side-${String(bot.id).replace(/[^A-Za-z0-9]/g, '')}-${Date.now()}` });
   return new Promise((resolve) => {
