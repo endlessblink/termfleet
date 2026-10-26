@@ -545,6 +545,22 @@ export function handoverText(bot, chat, { asks = [] } = {}) {
   ].filter(Boolean).join('\n\n');
 }
 
+/**
+ * What a brain conversation that starts fresh needs to know (#25, Noam: "אני לא יודע על אילו בעיות אתה מדבר"):
+ * the chat so far, word for word. Empty when the conversation is already running or the chat is new.
+ */
+export function freshStartHandover(bot, chat, text = '') {
+  const provider = bot.active || bot.provider;
+  const fresh = provider === 'claude' ? !bot.sessions?.claude?.started : !bot.sessions?.codex;
+  if (!fresh) return '';
+  const earlier = (chat || []).slice();
+  // The message being answered now is already in the chat; it goes to the brain on its own.
+  for (let i = earlier.length - 1; i >= 0; i--) {
+    if (earlier[i].role === 'operator') { if (String(text).startsWith(String(earlier[i].text || '').slice(0, 200))) earlier.splice(i, 1); break; }
+  }
+  return earlier.some((m) => m.role === 'operator' || m.role === 'bot') ? handoverText(bot, earlier) : '';
+}
+
 const providerName = (p) => (p === 'codex' ? 'Codex' : 'Claude');
 const clock = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
@@ -1766,7 +1782,7 @@ export class Bots {
       const shown = open.slice(0, 15).map((w) => `- ${w.id} [${w.status}] ${String(w.words || '').replace(/\s+/g, ' ').slice(0, 180)}${w.where ? ` (handed to ${w.where})` : ''}`).join('\n');
       text = `${text}\n\n[Your open requests from Noam: ${open.length}${open.length > 15 ? ' (newest 15 shown; `termfleet-asks items` lists all)' : ''}. You own every one. Before ending this turn, each must be moving: handed to a working terminal, finished and marked, asked about, or marked dropped/context if it is not a task. Never tell Noam you do not know what is open.\n${shown}]`;
     }
-    const extras = { card: this.memory(id).card(), handover: bot.handover || '' };
+    const extras = { card: this.memory(id).card(), handover: bot.handover || freshStartHandover(bot, this.messages(id), text) };
     // The chosen model belongs to the main plan; on the backup plan it uses that plan's default.
     const runner = { ...bot, provider: bot.active || bot.provider, model: (bot.active || bot.provider) === bot.provider ? (bot.model || null) : null, ...(this.side ? { steerFolder: this.folder(id) } : {}) };
     return this.run(runner, text, {
