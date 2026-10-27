@@ -185,6 +185,8 @@ export interface Tab {
   launchRequestId?: string;
   /** Sessions that handed over to this card's current one; their agents have stopped. */
   earlierSessions?: EarlierSession[];
+  /** A blank placeholder card (the first one, or the one left when the last card is closed). It starts no shell until the operator clicks Start terminal. */
+  unstarted?: boolean;
 }
 
 export interface EarlierSession {

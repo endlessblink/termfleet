@@ -388,6 +388,8 @@ interface WorkspaceState {
     recoveryTransfers?: RecoveryTransfer[];
   }) => void;
   removeTab: (id: string) => void;
+  /** Let a blank placeholder card start its shell (the operator clicked Start terminal). */
+  startTab: (id: string) => void;
   closeTerminalSession: (id: string, reason?: TerminalCloseReason) => Promise<void>;
   /** Handover: move a finished session off the map and under its successor's card. */
   archivePredecessor: (predecessorTabId: string, successorTabId: string, savedText?: string) => void;
@@ -3444,6 +3446,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
+  startTab: (id: string) => {
+    workspaceMutationVersion += 1;
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === id && tab.unstarted ? { ...tab, unstarted: false } : tab,
+      ),
+    }));
+  },
+
   removeTab: (id: string) => {
     workspaceMutationVersion += 1;
     set((state) => {
@@ -3455,7 +3466,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
       // If last tab was removed, create a fresh default tab
       if (remainingTabs.length === 0) {
-        const replacement = createDefaultTab();
+        const replacement = createDefaultTab({ unstarted: true });
         const replacementCanvasState = normalizeCanvasState(
           {
             ...state.canvasState,

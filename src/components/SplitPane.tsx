@@ -2142,6 +2142,34 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         "Provider command was not found."}
                     </span>
                   </div>
+                ) : tab.unstarted ? (
+                  <div
+                    style={{
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "var(--terminal-bg)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      data-testid="split-start-terminal"
+                      onClick={() => useWorkspaceStore.getState().startTab(tab.id)}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        border: "1px solid var(--border-primary, #444)",
+                        background: "transparent",
+                        color: "var(--text-primary)",
+                        fontFamily: "var(--font-ui)",
+                        fontSize: 13,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Start terminal
+                    </button>
+                  </div>
                 ) : (
                   <TerminalComponent
                     key={`${tab.id}-${paneId}-${tab.workstream?.generation ?? 0}`}
