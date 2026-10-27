@@ -72,7 +72,8 @@ import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest, askTitle, dismissAsk, itemsByAsk, statusFromItems } from '../../scripts/termfleet-asks.mjs';
 import { botAsksFromItems } from './bot-request-panel.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
-import { itemsView, replyDetails } from './requirements.mjs';
+import { itemsView, replyDetails, record as recordRequirement, loadLedger as loadRequirementLedger } from './requirements.mjs';
+import { recordOwnerWords } from './owner-words.mjs';
 import { tryNowItems } from './bot-testing.mjs';
 import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity } from './events-db.mjs';
 import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS } from './terminal-health.mjs';
@@ -860,6 +861,28 @@ const handle = async (req, res) => {
       const view = itemsView({ project: url.searchParams.get('project') || null, topic: url.searchParams.get('topic') || null, includeClosed: url.searchParams.get('closed') === '1' });
       return json(res, 200, { items: view.items.slice(0, 300), escalations: view.escalations.slice(-20) });
     } catch (error) { return json(res, 500, { error: error.message || 'The list could not be read.' }); }
+  }
+  // Noam's own verdict on a request an agent marked ready: "works" closes it as his confirmation, "broken"
+  // reopens it so the owner sees it again (2026-10-27: ten "ready" items sat unchecked, "a disconnect between
+  // what I ask and what I get"). His tap in the signed-in app is his genuine word, recorded as such.
+  if (url.pathname === '/api/ask/verdict' && req.method === 'POST') {
+    let body = {};
+    try { body = await readJson(req, 2048); } catch { body = {}; }
+    const id = /^R-\d+$/.test(String(body.id || '')) ? String(body.id) : null;
+    const works = body.verdict === 'works';
+    if (!id || (!works && body.verdict !== 'broken')) return json(res, 400, { error: 'Which request, and does it work?' });
+    try {
+      const item = loadRequirementLedger().items.get(id);
+      if (!item) return json(res, 404, { error: 'That request is not in the list.' });
+      const msgId = `tap-${Date.now().toString(36)}-${id}`;
+      const at = Date.now();
+      recordOwnerWords({ id: msgId, at, botId: 'app', bot: 'TermControl', text: `[Noam tapped "${works ? 'Works for me' : 'Still not fixed'}" on ${id}]` });
+      const events = works
+        ? [{ e: 'status', id, status: 'done', by: 'noam', ownerMsg: msgId }, { e: 'lock', id, by: 'noam', ownerMsg: msgId }]
+        : [...(item.locked ? [{ e: 'unlock', id, by: 'noam' }] : []), { e: 'status', id, status: 'partial', note: 'Noam tapped "Still not fixed"', open: ['Noam says this is still not fixed on his screen'], by: 'noam', ownerMsg: msgId }];
+      recordRequirement(events);
+      return json(res, 200, { ok: true, status: works ? 'done' : 'partial' });
+    } catch (error) { return json(res, 500, { error: error.message || 'That did not save.' }); }
   }
   if (url.pathname === '/api/asks/dismiss' && req.method === 'POST') {
     let body = {};

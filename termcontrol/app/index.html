@@ -884,6 +884,7 @@ dialog.room-dialog .room-create:disabled{opacity:.5;cursor:default}
 #side-asks .rail-dropped .st::before{content:'–'}
 #side-asks .rail-ready .st::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--ready)}
 #side-asks li:has(.rail-x){grid-template-columns:12px minmax(0,1fr) 22px}
+.ask-verdict{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;grid-column:2;font-size:12.5px;color:var(--muted)}.ask-verdict button{min-height:32px;padding:0 12px;border-radius:16px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;cursor:pointer}.ask-verdict .verdict-ok{border-color:var(--working,var(--line))}.ask-verdict .verdict-no{border-color:var(--accent)}.ask-verdict button:disabled{opacity:.5}.ask-verdict.done{display:block}
 #side-asks .rail-x{grid-column:3;grid-row:1;align-self:center;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:none;color:var(--muted);font:inherit;font-size:15px;line-height:1;cursor:pointer;opacity:.35}
 #side-asks li:hover .rail-x,#side-asks .rail-x:focus-visible{opacity:1}#side-asks .rail-x:hover{background:var(--surface-2);color:var(--text)}
 #side-asks .rail-x:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -3016,6 +3017,18 @@ async function removeAsk(n,row){
   catch{row?.classList.remove('removing');}
 }
 document.addEventListener('click',event=>{const b=event.target?.closest?.('#side-asks .rail-x');if(b)removeAsk(b.dataset.n,b.closest('li'));});
+// An agent says it is ready: two taps tell it whether it really works on his screen (2026-10-27, "a disconnect
+// between what I ask and what I get": ready items sat unchecked for days). Only items with a ledger id (R-n).
+const verdictHtml=a=>a && a.status==='ready' && /^R-\d+$/.test(String(a.id || ''))
+  ?`<span class="ask-verdict" role="group" aria-label="${esc(ui('Does it work for you?','זה עובד אצלך?'))}"><button type="button" class="verdict-ok" data-verdict="works" data-id="${esc(a.id)}">${esc(ui('✓ Works','✓ עובד'))}</button><button type="button" class="verdict-no" data-verdict="broken" data-id="${esc(a.id)}">${esc(ui('✗ Still broken','✗ עדיין שבור'))}</button></span>`:'';
+document.addEventListener('click',async event=>{
+  const b=event.target?.closest?.('.ask-verdict button');if(!b || b.disabled)return;
+  const box=b.closest('.ask-verdict');box.querySelectorAll('button').forEach(x=>x.disabled=true);
+  try{const r=await fetch('/api/ask/verdict',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.id,verdict:b.dataset.verdict}),signal:AbortSignal.timeout(8000)});
+    if(!r.ok)throw new Error((await r.json()).error);
+    box.textContent=b.dataset.verdict==='works'?ui('Closed. Thank you.','נסגר. תודה.'):ui('Reopened: the agent will see it again.','נפתח מחדש: הסוכן יראה את זה שוב.');box.classList.add('done');
+  }catch(e){box.querySelectorAll('button').forEach(x=>x.disabled=false);note(e.message || ui('That did not save.','השמירה נכשלה.'));}
+});
 window.addEventListener('resize',()=>placeSideAsks());
 if(window.ResizeObserver)new ResizeObserver(()=>placeSideAsks()).observe(document.documentElement);
 function clearSideAsks(){const el=document.getElementById('side-asks');if(el){el.hidden=true;el.replaceChildren();delete el.dataset.html;}}
@@ -3031,7 +3044,7 @@ function paintSideAsks(asks,current,liveText){
   const rows=sorted.map(a=>{
     const cur=a.n===current,st=state(a),title=railShort(a.title || a.text,80),what=cur&&liveText?liveText:title,note=cur&&liveText?railShort(a.title || a.text,60):'';
     const extra=st==='done' && ++doneSeen>SHOWN_DONE?' more-done':'',dir=dirOf(what),w=word(a);
-    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" dir="${dir}" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="${dirOf(note)}">${esc(note)}</span>`:''}${!a.id&&removable(st)?`<button type="button" class="rail-x" data-n="${a.n}" aria-label="${esc(ui('Remove from the list','להסיר מהרשימה'))}" title="${esc(ui('Remove from the list','להסיר מהרשימה'))}">×</button>`:''}</li>`;
+    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" dir="${dir}" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="${dirOf(note)}">${esc(note)}</span>`:''}${verdictHtml(a)}${!a.id&&removable(st)?`<button type="button" class="rail-x" data-n="${a.n}" aria-label="${esc(ui('Remove from the list','להסיר מהרשימה'))}" title="${esc(ui('Remove from the list','להסיר מהרשימה'))}">×</button>`:''}</li>`;
   }).join('');
   const hiddenDone=Math.max(0,done-SHOWN_DONE),showAll=el.classList.contains('all-done');
   const more=hiddenDone?`<li class="rail-more"><button type="button" aria-expanded="${showAll}" data-more="${esc(ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}" data-less="${esc(ui('Show fewer','להציג פחות'))}">${esc(showAll?ui('Show fewer','להציג פחות'):ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}</button></li>`:'';
@@ -3102,9 +3115,11 @@ function replyDetailsHtml(mid,list){
 const asksHebrew=asks=>{const list=(asks || []).map(a=>a.title || a.text || '');return chromeLocale==='he' || (list.length>0 && list.filter(t=>/[\u0590-\u05FF]/.test(t)).length*2>=list.length);};
 function asksSummary(asks,he=asksHebrew(asks)){
   const say=(en,h)=>he?h:en,list=asks || [],count=s=>list.filter(a=>a.status===s).length;
-  const ready=count('ready'),done=count('done')+ready,open=count('open')+count('partial'),total=done+open;
-  const text=say(`${done} done · ${open} open`,`${done} בוצעו · ${open} פתוחות`);
-  return {done,ready,open,total,text,full:text+(ready?say(` (${ready} ready for you to try)`,` (${ready} מוכנות לבדיקה שלך)`):'')};
+  // "Ready" is an agent's claim, not a result: it counts as "to check" until Noam taps Works (2026-10-27, the
+  // header said "2 done · 0 open" over two items that still read "Ready to try").
+  const ready=count('ready'),done=count('done'),open=count('open')+count('partial'),total=done+ready+open;
+  const text=ready?say(`${done} done · ${ready} to check · ${open} open`,`${done} בוצעו · ${ready} לבדיקה · ${open} פתוחות`):say(`${done} done · ${open} open`,`${done} בוצעו · ${open} פתוחות`);
+  return {done,ready,open,total,text,full:text};
 }
 function paintBotHead(state){
   const box=document.querySelector('.bot-head-actions');if(!box)return;
@@ -3150,7 +3165,7 @@ function botMenu(id,bot,state,start='menu'){
   // then done folded away. One short line of his own words each, newest first.
   const short=t=>{t=String(t || '').replace(/\s+/g,' ').trim();return t.length>80?t.slice(0,79).trimEnd()+'…':t;};
   const row=a=>{const t=a.title || a.text;const chip=['partial','dropped'].includes(a.status)?`<span class="ask-status ask-${esc(a.status)}">${esc(label[a.status])}</span>`:'';
-    return `<li class="ask-row ask-row-${esc(a.status)}" value="${a.n}"><span class="ask-copy">${chip}<bdi class="ask-words" dir="auto" title="${esc(t)}">${esc(short(t))}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(short(a.note))}</span>`:''}</span>${!a.id&&['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}" aria-label="${esc(ui('Remove from list','הסרה מהרשימה'))}" title="${esc(ui('Remove from list','הסרה מהרשימה'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>`:''}</li>`;};
+    return `<li class="ask-row ask-row-${esc(a.status)}" value="${a.n}"><span class="ask-copy">${chip}<bdi class="ask-words" dir="auto" title="${esc(t)}">${esc(short(t))}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(short(a.note))}</span>`:''}${verdictHtml(a)}</span>${!a.id&&['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}" aria-label="${esc(ui('Remove from list','הסרה מהרשימה'))}" title="${esc(ui('Remove from list','הסרה מהרשימה'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>`:''}</li>`;};
   const group=(cls,title,list,fold=false)=>{if(!list.length)return '';const head=`<span class="asks-group-title">${esc(title)}</span><span class="asks-group-count">${list.length}</span>`;const items=`<ol class="sheet-list">${list.map(row).join('')}</ol>`;
     return fold?`<details class="asks-group ${cls}"><summary>${head}</summary>${items}</details>`:`<section class="asks-group ${cls}"><h3>${head}</h3>${items}</section>`;};
   const asksList=()=>{const newest=state.asks.slice().sort((x,y)=>y.n-x.n),of=(...st)=>newest.filter(a=>st.includes(a.status));

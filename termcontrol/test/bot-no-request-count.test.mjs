@@ -56,13 +56,14 @@ test('the bot header counts what the agent finished and what is still open, neve
     // His screenshot: 24 finished and waiting for him to try. It read 0/24.
     const allReady = await read(Array.from({ length: 24 }, (_, i) => ask(i + 1, 'ready')));
     assert.equal(allReady.hidden, false);
-    assert.equal(allReady.text, '24 done · 0 open');
-    assert.match(allReady.label, /24 done · 0 open \(24 ready for you to try\)/);
+    // Ready is an agent's claim, so it reads "to check" until he confirms it (2026-10-27), but 24 is never hidden.
+    assert.equal(allReady.text, '0 done · 24 to check · 0 open');
+    assert.match(allReady.label, /0 done · 24 to check · 0 open/);
     // A mix: confirmed, ready, in progress, partly done, dropped (not counted).
     const mix = await read([ask(1, 'done'), ask(2, 'ready'), ask(3, 'ready'), ask(4, 'open'), ask(5, 'partial'), ask(6, 'dropped')]);
-    assert.equal(mix.text, '3 done · 2 open');
-    assert.ok(allReady.menu.includes('24 done · 0 open'), `menu matches the header: ${allReady.menu.slice(0, 200)}`);
-    assert.ok(mix.menu.includes('3 done · 2 open'), `menu matches the header: ${mix.menu.slice(0, 200)}`);
+    assert.equal(mix.text, '1 done · 2 to check · 2 open');
+    assert.ok(allReady.menu.includes('0 done · 24 to check · 0 open'), `menu matches the header: ${allReady.menu.slice(0, 200)}`);
+    assert.ok(mix.menu.includes('1 done · 2 to check · 2 open'), `menu matches the header: ${mix.menu.slice(0, 200)}`);
     assert.doesNotMatch(mix.menu, /of \d+ done/, 'no second, different count');
     // Nothing counted: no chip.
     assert.equal((await read([])).hidden, true);
