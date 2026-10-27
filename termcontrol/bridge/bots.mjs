@@ -259,6 +259,19 @@ export function attachedPictures(text) {
   return out;
 }
 
+const PICTURE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
+/** One stream-json user message holding the attached pictures as image blocks plus the text; null when there are none. */
+export function claudePictureInput(text) {
+  const blocks = [];
+  for (const p of attachedPictures(text)) {
+    const media_type = PICTURE_TYPES[path.extname(p).toLowerCase()];
+    if (!media_type) continue;
+    try { blocks.push({ type: 'image', source: { type: 'base64', media_type, data: fs.readFileSync(p).toString('base64') } }); } catch { /* unreadable: the text note still names it */ }
+  }
+  if (!blocks.length) return null;
+  return JSON.stringify({ type: 'user', message: { role: 'user', content: [...blocks, { type: 'text', text: String(text) }] } }) + '\n';
+}
+
 export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
   if (bot.provider === 'codex') {
     const bin = bins.codex || 'codex';
@@ -287,7 +300,10 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
   }
   const bin = bins.claude || 'claude';
   const session = bot.sessions?.claude;
-  const args = ['-p', text, '--output-format', 'stream-json', '--verbose',
+  // The Claude CLI has no --image flag: pictures go in as image blocks on its input stream, so the
+  // model sees them instead of being told a path (only when a picture is attached).
+  const stdin = claudePictureInput(text);
+  const args = ['-p', ...(stdin ? ['--input-format', 'stream-json'] : [text]), '--output-format', 'stream-json', '--verbose',
     '--append-system-prompt', brainBrief(bot, extras),
     '--add-dir', uploadDir(),   // pictures Noam attaches
     '--permission-mode', 'dontAsk',
@@ -300,7 +316,7 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
     // Noam's mid-turn instructions reach the running turn after its next tool step (R-7173).
     ...(bot.steerFolder ? ['--settings', JSON.stringify({ hooks: { PostToolUse: [{ hooks: [{ type: 'command', command: `${JSON.stringify(process.execPath)} ${JSON.stringify(STEER_HOOK)}`, timeout: 5 }] }] } })] : []),
     ...(session?.started ? ['--resume', session.id] : ['--session-id', session?.id || crypto.randomUUID()])];
-  return { bin, args };
+  return { bin, args, ...(stdin ? { stdin } : {}) };
 }
 
 /** Short plain line for a tool the brain used, shown while it works. */
@@ -452,8 +468,9 @@ export function runBrain(bot, text, { onEvent, onStart, onUsage = traceTokenUsag
       child = spawn(bin, args, {
         cwd: bot.cwd,
         env: brainEnv(bot, env),
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [command.stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       });
+      if (command.stdin) { child.stdin.on('error', () => {}); child.stdin.end(command.stdin); }
     } catch (error) { resolve({ error: String(error.message || error) }); return; }
     let buffer = '', stderr = '', finalText = '', error = null, lastText = '', limit = null, completed = false, stopped = false, ownKill = false;
     const spoken = [];
