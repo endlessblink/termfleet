@@ -11,22 +11,22 @@ import { delegate } from '../bridge/orchestrate.mjs';
 // a busy agent gets what is held together once the first has waited 3 minutes; an idle one at once.
 const dir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tc-held-'));
 
-test('holding is on for a busy Codex agent only, and can be switched off', () => {
-  assert.equal(shouldHold({ provider: 'codex', turn: 'working' }, {}), true, 'on by default, with a time limit');
-  assert.equal(shouldHold({ provider: 'codex', turn: 'working' }, { TERMFLEET_HOLD_BUSY: '0' }), false);
-  assert.equal(shouldHold({ provider: 'codex', turn: 'idle' }, {}), false);
-  assert.equal(shouldHold({ provider: 'claude', turn: 'working' }, {}), false);
+test('holding is OFF unless switched on (2026-10-27: five of his corrections were lost to the default-on hold)', () => {
+  assert.equal(shouldHold({ provider: 'codex', turn: 'working' }, {}), false, 'off by default');
+  assert.equal(shouldHold({ provider: 'codex', turn: 'working' }, { TERMFLEET_HOLD_BUSY: '1' }), true, 'opt-in');
+  assert.equal(shouldHold({ provider: 'codex', turn: 'idle' }, { TERMFLEET_HOLD_BUSY: '1' }), false);
+  assert.equal(shouldHold({ provider: 'claude', turn: 'working' }, { TERMFLEET_HOLD_BUSY: '1' }), false);
 });
 
-test('switched off, a message to a busy Codex agent goes straight in', async () => {
+test('by default a message to a busy Codex agent goes straight in and nothing is held', async () => {
   const d = dir(); const typed = [];
-  const prev = process.env.TERMFLEET_HOLD_BUSY; process.env.TERMFLEET_HOLD_BUSY = '0';
+  const prev = process.env.TERMFLEET_HOLD_BUSY; delete process.env.TERMFLEET_HOLD_BUSY;
   try {
     const r = await delegate({ id: 'terminal-c', alive: true, provider: 'codex', turn: 'working' }, 'check the build', { send: async (p, t) => { typed.push(t); return { ok: true }; }, heldOpts: { dir: d } });
     assert.equal(r.held, undefined);
     assert.equal(typed.length, 1);
     assert.deepEqual(heldPanes({ dir: d }), []);
-  } finally { if (prev === undefined) delete process.env.TERMFLEET_HOLD_BUSY; else process.env.TERMFLEET_HOLD_BUSY = prev; }
+  } finally { if (prev !== undefined) process.env.TERMFLEET_HOLD_BUSY = prev; }
 });
 
 test('a busy agent waits at most the window, then gets everything held as one; an idle one at once', async () => {

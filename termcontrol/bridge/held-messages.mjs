@@ -13,9 +13,13 @@ const fileOf = (dir, id) => path.join(dir, `${String(id).replace(/[^A-Za-z0-9._-
 
 export const HOLD_WINDOW_MS = 3 * 60_000;
 
-/** Hold for a Codex agent that is working right now, unless switched off (TERMFLEET_HOLD_BUSY=0). */
+/**
+ * Hold only when switched on (TERMFLEET_HOLD_BUSY=1). Off by default since 2026-10-27 17:50: with it on, five
+ * corrections from Noam to a working helper were held, the helper closed before the window ended, and the bot
+ * had told him they were passed on. A saving in tokens is never worth losing his words.
+ */
 export function shouldHold(pane, env = process.env) {
-  return env.TERMFLEET_HOLD_BUSY !== '0' && pane?.provider === 'codex' && pane.turn === 'working';
+  return env.TERMFLEET_HOLD_BUSY === '1' && pane?.provider === 'codex' && pane.turn === 'working';
 }
 
 export function holdMessage(paneId, text, { dir = heldDir(), now = Date.now() } = {}) {
