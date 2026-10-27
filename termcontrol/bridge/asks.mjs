@@ -189,28 +189,48 @@ export function screenPermissionAsk(pane, screen) {
  * digit, as if pressed at the PC. Only the last open menu counts, and only
  * when the terminal's own "Esc to cancel" footer is below it.
  */
+// The footer a numbered menu ends with: Claude's "Esc to cancel", or Codex's "enter confirm · esc skip".
+export const MENU_FOOTER = /Esc to cancel|\besc skip\b|\bEsc to skip\b/i;
+// A startup menu's heading ("Hooks need review") sits above a line or two of explanation, not a question.
+const STARTUP_HEADING = /\b(?:needs?\s+(?:review|approval|attention)|update available|do you trust|trust this (?:folder|directory|workspace))\b/i;
+
 export function screenPromptAsk(pane, screen) {
   const lines = String(screen || '').split('\n').map((line) => line.replace(/[│┃]/g, ' ').replace(/\s+$/, ''));
   // The footer must be the last thing on screen: anything printed below it means
   // the menu was answered and the program moved on.
   let end = lines.length - 1;
   while (end >= 0 && !lines[end].trim()) end--;
-  if (end < 0 || !/Esc to cancel/i.test(lines[end])) return null;
+  if (end < 0 || !MENU_FOOTER.test(lines[end])) return null;
   const OPTION = /^\s*(?:[❯›>]\s*)?([1-9])\.\s+(\S.*)$/;
   let i = end - 1;
   while (i >= 0 && !lines[i].trim()) i--;
   const options = [];
   while (i >= 0 && OPTION.test(lines[i])) { const [, key, label] = lines[i].match(OPTION); options.unshift({ key, label: label.trim().slice(0, 80) }); i--; }
   if (options.length < 2 || options.some((o, n) => o.key !== String(n + 1))) return null;
+  const optionsTop = i + 1;
   while (i >= 0 && !lines[i].trim()) i--;
-  const title = lines[i]?.trim();
-  if (!title || !/\?$/.test(title)) return null;
+  let title = lines[i]?.trim();
+  let heading = -1;
+  if (title && !/\?$/.test(title)) {
+    for (let j = i, seen = 0; j >= 0 && seen < 5; j--) {
+      if (!lines[j].trim()) continue;
+      seen++;
+      if (STARTUP_HEADING.test(lines[j].trim())) { heading = j; break; }
+    }
+    if (heading < 0) return null;
+    title = lines[heading].trim();
+  }
+  if (!title) return null;
   const reason = [];
-  for (let j = i - 1; j >= 0 && reason.length < 4; j--) {
-    const line = lines[j].trim();
-    if (/^[\s─━╌┄╍┈┉═\-]{6,}$/.test(line)) break;
-    // "Hook PreToolUse:Bash requires confirmation…" is plumbing; the hook's own reason below it is the plain part.
-    if (line && !/^Hook \S+ requires confirmation\b/i.test(line)) reason.unshift(line);
+  if (heading >= 0) {
+    for (let j = heading + 1; j < optionsTop; j++) { const line = lines[j].trim(); if (line) reason.push(line); }
+  } else {
+    for (let j = i - 1; j >= 0 && reason.length < 4; j--) {
+      const line = lines[j].trim();
+      if (/^[\s─━╌┄╍┈┉═\-]{6,}$/.test(line)) break;
+      // "Hook PreToolUse:Bash requires confirmation…" is plumbing; the hook's own reason below it is the plain part.
+      if (line && !/^Hook \S+ requires confirmation\b/i.test(line)) reason.unshift(line);
+    }
   }
   const detail = reason.join(' ').replace(/\[settings\]/g, '').replace(/\s*settings\.json to update hooks\s*$/i, '').replace(/\s+/g, ' ').trim().slice(0, 300);
   const ask = {

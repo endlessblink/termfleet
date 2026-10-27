@@ -81,6 +81,7 @@ export function screenStillAsks(screen) {
   const tail = String(screen || '').split('\n').map((l) => l.trimEnd()).filter((l) => l.trim()).slice(-14).join('\n');
   if (!tail) return false;
   return /Esc to cancel/i.test(tail) && /(^|\n)\s*(❯\s*)?1\.\s+\S/.test(tail)
+    || /\besc skip\b/i.test(tail) && /(^|\n)\s*(›|❯|>)?\s*1\.\s+\S/.test(tail)
     || /Do you want to (proceed|make this edit|create|allow|run|overwrite|delete)\b[^\n]*\?/i.test(tail)
     || /Allow (command|this|the \S+ server)[^\n]*\?/i.test(tail) && /(^|\n)\s*(›|❯|>)?\s*1\.\s+\S/.test(tail);
 }

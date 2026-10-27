@@ -321,7 +321,7 @@ export async function answerScreenChoice(pane, prompt, choice, {
   const open = (value) => screenPromptAsk(pane, value)?.id === prompt.id;
   const onChoice = (value) => {
     const lines = String(value || '').split('\n');
-    const end = lines.findLastIndex((line) => /Esc to cancel/i.test(line));
+    const end = lines.findLastIndex((line) => /Esc to cancel|\besc skip\b|\bEsc to skip\b/i.test(line));
     return lines.slice(Math.max(0, end - 12), end).some((line) => new RegExp(`^\\s*[❯›>]\\s*${option.key}\\.`).test(line.replace(/[│┃]/g, ' ')));
   };
   const done = () => { record({ pane: pane.id, project: pane.project, askId: prompt.id, choice: option.key, ok: true }); return { ok: true, sentAt: Date.now() }; };
