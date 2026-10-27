@@ -16,6 +16,7 @@ import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } from './auth.mjs';
 import { checkStalledBots } from './stall-wake.mjs';
+import { checkCanary, readCanary, CANARY_EVERY_MS } from './canary.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice, answerMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
@@ -790,7 +791,7 @@ const handle = async (req, res) => {
     return json(res, 200, { v: `${stamp('index.html')}.${stamp('sw.js')}` });
   }
   // How the agents are doing, day by day (TF-096 goal item 5).
-  if (url.pathname === '/api/terminals/health' && req.method === 'GET') return json(res, 200, await terminalHealth.sweep());
+  if (url.pathname === '/api/terminals/health' && req.method === 'GET') return json(res, 200, { ...(await terminalHealth.sweep()), canary: readCanary(canaryDir) });
   if (url.pathname === '/api/agent-health' && req.method === 'GET') return json(res, 200, agentHealthReport());
   if (url.pathname === '/api/skills' && req.method === 'GET') return json(res, 200, { skills: listSkills() });
   if ((url.pathname === '/api/skills/approve' || url.pathname === '/api/skills/reject') && req.method === 'POST') {
@@ -1429,6 +1430,13 @@ const server = http.createServer((req, res) => {
 // them continuously rather than only when the phone asks. Without this the
 // fleet shows nothing as live for the first few seconds after you open it.
 setInterval(() => { liveness().catch(() => {}); }, 3000).unref?.();
+// A throwaway terminal proves start, typing, reading and closing end to end (canary.mjs). Test copies skip it.
+const canaryDir = process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config/termcontrol');
+if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_CANARY !== '1') {
+  const runCanary = () => checkCanary({ dir: canaryDir, notify: (note) => push.notify(note).catch((error) => console.error('[canary push]', error.message)) }).catch((error) => console.error('[canary]', error.message));
+  setTimeout(runCanary, 2 * 60_000).unref?.();
+  setInterval(runCanary, CANARY_EVERY_MS).unref?.();
+}
 // Workspace membership includes dead cards deliberately omitted from the live list.
 // Test copies can inspect health, but must never change the operator's terminals.
 const terminalHealth = createTerminalHealth({
