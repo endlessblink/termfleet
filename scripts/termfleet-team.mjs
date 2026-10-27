@@ -393,7 +393,7 @@ async function main(argv) {
     const delivery = taskText ? newDeliveryId() : null;
     if (taskText) {
       // A new agent can read what earlier sessions in its folder said and decided (complaint #6).
-      taskText = `${taskText.trim()}\n\nEarlier agent sessions in this folder (what was said and decided before): run \`termfleet-session-digest recent\`, or \`termfleet-session-digest search <words>\`, before asking Noam to repeat anything.`;
+      taskText = `${taskText.trim()}\n\nEarlier agent sessions in this folder (what was said and decided before): run \`termfleet-session-digest recent\`, or \`termfleet-session-digest search <words>\`, before asking Noam to repeat anything. Never run a headed (visible) browser or test, or open a window on Noam's screen, unless he approves it with a button question in the app: use headless runs or xvfb-run.`;
       if (reqs.ids.length) { const brief = briefItems(reqs.ids); if (brief.error) fail(brief.error); taskText = `${taskText.trim()}\n\n${briefBlock(brief, { delivery })}`; }
       else taskText = `${taskText.trim()}\n\n[delivery ${delivery}]`;
     }

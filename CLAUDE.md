@@ -54,6 +54,14 @@ a–f done, g done except a live latency/TUI confirmation pass; the canvas rende
 is now the desktop default. TC-018 (BiDi/Hebrew nikud) and TC-015/TC-016 are
 TODO backlog.
 
+## Never take over Noam's screen (2026-10-27)
+
+Never run a headed browser/test, drive his real Chrome, run a dev launcher window, or use `xdotool`/`DISPLAY=:0`
+unless Noam approves it with a button question in the app. Headless runs and private virtual screens (`xvfb-run`,
+as every `verify:*` script already uses) are fine. `scripts/termfleet-screen-gate.mjs` (a PreToolUse hook for
+Claude Code and Codex, rules in `scripts/lib/screen-rules.mjs`) makes Claude Code show its Allow/Deny prompt, which
+the app draws as buttons, and blocks Codex with an instruction to ask first. Off switch: `TERMFLEET_SCREEN_GATE=off`.
+
 ## Starting another agent instance — use TermFleet, never tmux (FEATURE-64)
 
 Any instance or helper terminal an agent starts for the operator must be a real,

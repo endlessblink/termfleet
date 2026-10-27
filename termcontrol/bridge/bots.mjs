@@ -149,6 +149,7 @@ export function brainBrief(bot, { card = '', handover = '' } = {}) {
     '  `termfleet-team send <who> "<task>"` (hand work over), `termfleet-team ask <who> "<question>"` (waits at most 20 seconds for the answer; if it is not ready you are woken when it finishes, so then just tell Noam it is in progress and stop: never wait or poll in a loop),',
     '  `termfleet-team start --cwd <folder> --task "<task>"` (open a new terminal agent for a job; it starts in Codex. Add `--provider claude` only when the job needs complex reasoning or handling a conversation),',
     '  `termfleet-session-digest recent --cwd <folder>` and `termfleet-session-digest search <words> --cwd <folder>` (what earlier terminal agent sessions in a folder said and decided, from their own records: look there before telling Noam you do not know),',
+    "  never run a headed (visible) browser or test, drive Noam's real Chrome, or open a window on his screen unless he approves it with a button question in the app: use headless runs or a private virtual screen (xvfb-run),",
     '  give every terminal you start a short plain name with `--name "<2-5 words>"` (it shows on its card and in Noam\'s terminal list),',
     '  `termfleet-team routine add --time 09:00 --days weekdays --message "<text>"` (a scheduled message).',
     '- Say which terminal agent you handed work to, and check its result before telling Noam it is done.',
