@@ -15,6 +15,7 @@ import { rolloutForStart, promptToken } from './adapters/codex.mjs';
 import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } from './auth.mjs';
+import { checkStalledBots } from './stall-wake.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice, answerMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
@@ -418,6 +419,8 @@ async function botEvents() {
     readAsk: async (pane) => { const screen = visibleScreenOf(pane.id) ?? await screenOf(pane.id); return pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen); },
     readScreen: async (pane) => visibleScreenOf(pane.id) ?? await screenOf(pane.id),
   });
+  // Open requests with nothing running get one nudge after 15 quiet minutes (stall-wake.mjs).
+  if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') checkStalledBots({ bots, panes: current.panes });
 }
 setInterval(() => { botEvents().catch((error) => console.error('[bot events]', error.message)); }, 30_000).unref?.();
 // Messages held for a Codex agent that was mid-turn go in together once that turn ends (held-messages.mjs).
