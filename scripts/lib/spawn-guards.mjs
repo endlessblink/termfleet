@@ -1,4 +1,29 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import path from 'node:path';
+
+const PROJECT_MARKERS = ['.git', 'package.json', 'Cargo.toml', 'pyproject.toml', 'go.mod', 'requirements.txt', 'HANDOFF.md', 'CLAUDE.md', 'AGENTS.md', 'MASTER_PLAN.md'];
+
+/**
+ * Why a bot may not start a terminal in this folder, or null. Noam 2026-10-27 ("why was this opened in
+ * endlessblink, a root folder, dangerous and messy"): a helper was started in ~/Pictures/termcontrol (a
+ * screenshots folder a bot mistook for the UI code) and the app filed it under the home-folder project.
+ * Folders outside home, bot home folders, and anything under a project (walking up to, not including,
+ * home) pass. Override: TERMFLEET_ALLOW_ANY_FOLDER=1.
+ */
+export function startFolderProblem(folder, { home = homedir(), botsHome = null, env = process.env } = {}) {
+  if (env.TERMFLEET_ALLOW_ANY_FOLDER === '1') return null;
+  const dir = path.resolve(String(folder || ''));
+  try { if (!statSync(dir).isDirectory()) return `${dir} is not a folder.`; } catch { return `${dir} does not exist.`; }
+  const homeDir = path.resolve(home);
+  if (dir === '/' || dir === homeDir) return `${dir} is a root folder: a terminal started there works in the middle of everything and cannot be filed under a project.`;
+  if (!dir.startsWith(homeDir + path.sep)) return null;
+  if (botsHome && (dir === path.resolve(botsHome) || dir.startsWith(path.resolve(botsHome) + path.sep))) return null;
+  for (let at = dir; at !== homeDir && at.startsWith(homeDir + path.sep); at = path.dirname(at)) {
+    if (PROJECT_MARKERS.some((marker) => existsSync(path.join(at, marker)))) return null;
+  }
+  return `${dir} is not a project folder (no project files in it or above it inside your home folder).`;
+}
 
 // Resource guards for starting new terminals (Agent-Manager 2026-10-24: "one bot opens 13
 // terminals and crashes the whole system"). Pure checks; the callers decide what to refuse.

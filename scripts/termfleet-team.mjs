@@ -80,7 +80,7 @@ import { confirmReceipt, confirmStarted, trustDecision } from '../termcontrol/br
 import { adapterFor } from '../termcontrol/bridge/feed.mjs';
 import { PATHS } from '../termcontrol/bridge/paths.mjs';
 import { mkdirSync } from 'node:fs';
-import { botTerminalLimit, liveBotTerminals } from './lib/spawn-guards.mjs';
+import { botTerminalLimit, liveBotTerminals, startFolderProblem } from './lib/spawn-guards.mjs';
 
 /** How the receipt checks see the fleet (real daemon and records; tests pass their own). */
 export const receiptDeps = () => ({
@@ -371,6 +371,12 @@ async function main(argv) {
       const limit = botTerminalLimit({ bot });
       const running = liveBotTerminals(helpers, await fleetPanes());
       if (running.length >= limit) fail(`Not started: you already run ${running.length} terminals (${running.join(', ')}) and the limit is ${limit}. Close one you are done with (termfleet-team close <who>) or wait for one to finish, then start again.`, 4);
+    }
+    // A bot never starts a terminal in the home folder, the root, or a folder with no project in it.
+    if (ownDir) {
+      const where = typeof flags.cwd === 'string' && flags.cwd ? flags.cwd : process.cwd();
+      const problem = startFolderProblem(where, { botsHome: process.env.TC_BOTS_HOME || join(process.env.HOME || '', 'TermFleet', 'bots') });
+      if (problem) fail(`Not started: ${problem} Use the real project folder (the one with its code), for example the folder named in the request or its repository, and run termfleet-team start again with --cwd <that folder>. If you do not know which, tell Noam you need the project folder instead of guessing.`, 2);
     }
     // TF-102: the task carries Noam's items in his words and a receipt mark, so the start is
     // confirmed only once the new agent has really begun (not stuck on a startup prompt).
