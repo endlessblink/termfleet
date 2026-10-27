@@ -39,3 +39,11 @@ test('a claim shown working is fine: a picture in the reply, or a check on his o
 test('the claim sentence is returned, so the bot is told exactly what it said', () => {
   assert.equal(unprovenClaim('בדקתי את הקוד. כל שלושת הפריטים טופלו.'), 'כל שלושת הפריטים טופלו.');
 });
+
+test('"live" on a test or parser check, or a screenshot that is only mentioned, is still unproven (plan step 6)', () => {
+  assert.ok(unprovenClaim('It is live. All 26/26 checks pass.'));
+  assert.ok(unprovenClaim('עלה לאוויר. כל הבדיקות עברו.'));
+  assert.ok(unprovenClaim('Fixed, I have a screenshot of it.'), 'a screenshot named but not attached proves nothing');
+  assert.equal(unprovenClaim('It is live. Here it is on your screen.', { media: 1 }), null);
+  assert.equal(unprovenClaim('Not live yet: the standing stretches still come out seated.'), null);
+});

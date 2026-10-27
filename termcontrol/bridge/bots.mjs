@@ -230,9 +230,11 @@ export function brokenHandoff(text, chat, turnStart) {
 // "It is fixed / done / ready" said to Noam. 19 of 40 such claims in a week were false
 // because nobody had looked at what he sees, after the install or restart (#13).
 const HEB = (w) => `(?<![\\u0590-\\u05FF])(?:${w})(?![\\u0590-\\u05FF])`;
-const DONE_CLAIM = new RegExp(`${HEB('תוקן|תוקנו|תיקנתי|טופל|טופלו|בוצע|בוצעו|הושלם|הושלמו|סיימתי|ניקיתי|מוכן|מוכנים|כמוכן|עובד עכשיו|כבר עשיתי')}|\\b(?:fixed|resolved|works now|now works|is live|cleaned up|i'?ve (?:already )?done it|all done|it'?s done|is done|are done|ready to try)\\b`, 'i');
+const DONE_CLAIM = new RegExp(`${HEB('תוקן|תוקנו|תיקנתי|טופל|טופלו|בוצע|בוצעו|הושלם|הושלמו|סיימתי|ניקיתי|מוכן|מוכנים|כמוכן|עובד עכשיו|כבר עשיתי|עלה לאוויר|חי עכשיו|פעיל עכשיו|נפרס')}|\\b(?:fixed|resolved|works now|now works|is live|it'?s live|went live|live now|now live|deployed|shipped|cleaned up|i'?ve (?:already )?done it|all done|it'?s done|is done|are done|ready to try)\\b`, 'i');
 const NOT_YET = new RegExp(`${HEB('לא|טרם|עוד לא|כש\\S*|אחרי ש\\S*|ברגע ש\\S*|אם|אולי|מחכה|ממתין|ממתינה')}|\\b(?:not|never|yet|still|once|when|if|will|until|waiting|being|next|can'?t|cannot|isn'?t|aren'?t|wasn'?t|didn'?t|hasn'?t)\\b`, 'i');
-const SEEN_LIVE = /צילום|screenshot|בדקתי (?:אצלך|בטלפון|במסך|באפליקציה)|ראיתי (?:אצלך|בטלפון|במסך|באפליקציה)|אישרת|(?:checked|saw|opened|tried) it (?:on|in) (?:your|the) (?:phone|screen|app)|you confirmed/i;
+// The word "screenshot" alone is not proof (health-coach 2026-10-26 said live on a 26/26 parser check
+// while the result was still wrong): a picture in the reply (media) or a check on his own screen is.
+const SEEN_LIVE = /בדקתי (?:אצלך|בטלפון|במסך|באפליקציה)|ראיתי (?:אצלך|בטלפון|במסך|באפליקציה)|אישרת|(?:checked|saw|opened|tried) it (?:on|in) (?:your|the) (?:phone|screen|app)|you confirmed/i;
 
 /** The sentence where a reply tells Noam something is fixed or ready, with nothing to show it was seen working; else null. */
 export function unprovenClaim(text, { media = 0 } = {}) {
@@ -1529,7 +1531,7 @@ export class Bots {
          if (claim && this.now() - (this.claimNudged.get(id) || 0) > 10 * 60_000) {
            this.claimNudged.set(id, this.now());
            console.error(`[${bot.name}] Unproven claim: ${claim}`);
-           this.wake(id, `You just told Noam "${claim}". Did you see it working where he uses it, after any install or restart (his app, his phone, his screen)? If yes, send him a screenshot of it working now. If not, tell him plainly that it is built but not checked yet, and check it.`);
+           this.wake(id, `You just told Noam "${claim}". Did you see the result he actually asked for, built from his own words, working where he uses it, after any install or restart (his app, his phone, his screen)? Passing tests or a parser check is not that. If yes, send him a screenshot of that real result now (attach the picture file). If not, tell him plainly that it is built but not checked yet, and check it.`);
          }
        }
       // Tagged elsewhere: the same answer also shows there, under this bot's name.
