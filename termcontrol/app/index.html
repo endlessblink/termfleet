@@ -5118,6 +5118,12 @@ async function answerTermAsk(button){
   catch{r={error:ui('Delivery is unconfirmed. Check the terminal before trying again.','המסירה לא אושרה. בדקו במסוף לפני ניסיון נוסף.'),uncertain:true};}
   delete box.dataset.sending;
   if(r.ok){termAskDone[box.dataset.termAsk]=ui(`Sent "${label}" to the terminal.`,`"${label}" נשלח למסוף.`);out.textContent=termAskDone[box.dataset.termAsk];return;}
+  // The terminal is gone: the card cannot be answered and must not stay pinned over the chat with an error
+  // (Noam 2026-10-27, screenshot: a box reading "That terminal has been closed." sat on top of the conversation).
+  if(r.error && /terminal has been closed/i.test(r.error)){
+    termAskDone[box.dataset.termAsk]=ui('That terminal has been closed.','המסוף הזה נסגר.');
+    const pin=box.closest('.term-ask-pinned');box.remove();if(pin && !pin.querySelector('.bot-term-ask'))pin.remove();return;
+  }
   // Out of date: the same prompt asked again is followed (tap again); anything else ends this card.
   if(r.stale){const card=termAskCards[box.dataset.termAsk],keys=[...box.querySelectorAll('[data-term-choice]')].map(x=>x.dataset.termChoice);
     if(r.current && card && r.current.kind===card.kind && r.current.title===card.text && r.current.options.join('|')===keys.join('|')){box.dataset.ask=r.current.id;card.askId=r.current.id;out.textContent=ui('The terminal asked this again. Tap your answer again.','המסוף שאל שוב. לחצו שוב על התשובה.');box.querySelectorAll('[data-term-choice]').forEach(x=>x.disabled=false);return;}
