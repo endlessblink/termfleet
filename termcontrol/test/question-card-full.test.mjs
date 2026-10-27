@@ -121,6 +121,7 @@ test('a bot chat shows a terminal\'s pick-several question in full and answers i
       await p.route('**/api/bot?*', async (route) => { const r = await route.fetch(); const j = await r.json(); j.messages = [...j.messages, msg]; await route.fulfill({ response: r, json: j }); });
       const sent = [];
       await p.route('**/api/send', async (route) => { sent.push(JSON.parse(route.request().postData())); await route.fulfill({ json: { ok: true, sentAt: Date.now() } }); });
+      await p.evaluate(() => sessionStorage.setItem('termcontrol-pin-open', 'open'));  // the pinned question starts collapsed (#11 2026-10-27)
       await p.goto(base + '/#bot:' + id);
       const box = p.locator('.bot-term-ask');
       await box.locator('.q-opt').first().waitFor({ timeout: 15000 });

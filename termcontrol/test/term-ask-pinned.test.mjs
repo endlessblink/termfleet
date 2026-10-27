@@ -35,8 +35,17 @@ test('a waiting terminal card stays in view at the bottom of a busy bot chat, ph
       const sent = [];
       await p.route('**/api/send', async (route) => { sent.push(JSON.parse(route.request().postData())); await route.fulfill({ json: { ok: true, sentAt: Date.now() } }); });
       await p.goto(base + '/#bot:' + id);
-      await p.waitForSelector('.term-ask-pinned .bot-term-ask [data-term-choice]', { timeout: 15000 });
+      // Collapsed to one line first, so it never covers the chat (Noam 2026-10-27); one tap opens the card.
+      await p.waitForSelector('.term-ask-pinned > summary', { timeout: 15000 });
       await wait(500);
+      const bar = await p.locator('.term-ask-pinned').evaluate((el) => ({ h: el.getBoundingClientRect().height, bottom: el.getBoundingClientRect().bottom, open: el.open, text: el.querySelector('summary').innerText }));
+      assert.equal(bar.open, false, 'collapsed by default');
+      assert.ok(bar.h <= 60, `the bar is one line, not ${bar.h}px`);
+      assert.match(bar.text, /Allow Edit\?/);
+      if (process.env.TC_SHOT) await p.screenshot({ path: `${process.env.TC_SHOT}-collapsed-${width}.png` });
+      await p.locator('.term-ask-pinned > summary').click();
+      await p.waitForSelector('.term-ask-pinned .bot-term-ask [data-term-choice]', { timeout: 15000 });
+      await wait(300);
       // Scrolled all the way up, as if reading back: the pinned card is still in view.
       const look = async () => p.evaluate(() => {
         const box = document.querySelector('.term-ask-pinned .bot-term-ask'), r = box.getBoundingClientRect();

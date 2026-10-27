@@ -29,6 +29,7 @@ test('a terminal prompt in a bot chat: its choices as buttons, a tap goes to tha
       await p.route('**/api/bot?*', async (route) => { const r = await route.fetch(); const j = await r.json(); j.messages = [...j.messages, msg]; await route.fulfill({ response: r, json: j }); });
       const sent = [];
       await p.route('**/api/send', async (route) => { sent.push(JSON.parse(route.request().postData())); await route.fulfill({ json: { ok: true, sentAt: Date.now() } }); });
+      await p.evaluate(() => sessionStorage.setItem('termcontrol-pin-open', 'open'));  // the pinned question starts collapsed (#11 2026-10-27)
       await p.goto(base + '/#bot:' + id);
       await p.waitForSelector('.bot-term-ask [data-term-choice]', { timeout: 15000 });
       const look = await p.evaluate(() => {
@@ -75,6 +76,7 @@ test('a terminal card the terminal moved on from never looks answerable', { time
     const replies = [{ stale: true, error: 'gone', current: { id: 'a2', kind: 'permission', title: 'Allow this command?', options: ['yes', 'no'] } }, { ok: true }];
     const sent = [];
     await p.route('**/api/send', async (route) => { sent.push(JSON.parse(route.request().postData())); const body = replies.shift(); await route.fulfill({ status: body.ok ? 200 : 409, json: body }); });
+    await p.evaluate(() => sessionStorage.setItem('termcontrol-pin-open', 'open'));  // the pinned question starts collapsed (#11 2026-10-27)
     await p.goto(base + '/#bot:' + id);
     await p.waitForSelector('[data-term-ask="new"] [data-term-choice]', { timeout: 15000 });
     const old = await p.evaluate(() => { const b = document.querySelector('[data-term-ask="old"]'); return { ended: b.classList.contains('ended'), live: b.querySelectorAll('[data-term-choice]:not([disabled])').length, text: b.innerText }; });
