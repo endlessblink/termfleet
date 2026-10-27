@@ -1,5 +1,6 @@
 import { gentleCommand } from '../../scripts/lib/cpu-priority.mjs';
 import { statedRules, withRules } from './stated-rules.mjs';
+import { claimsReady, extractConditions, unmetConditions } from './conditions.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -594,6 +595,7 @@ export class Bots {
     this.groups = new BotGroups({ dir: path.join(dir, 'groups'), now: this.now, botExists: (id) => Boolean(this.read(id)) });
     this.live = { at: 0, ids: null }; // running terminals, refreshed in the background (a turn never waits for it)
     this.handoffNudged = new Map(); // id -> when it was last told to keep a hand-off promise
+    this.conditionNudged = new Map(); // id -> when it was last told a 'ready' missed his stated conditions
     this.claimNudged = new Map(); // id -> when it was last asked to show a "fixed" claim working
   }
 
@@ -1526,6 +1528,16 @@ export class Bots {
          if (promise && this.now() - (this.handoffNudged.get(id) || 0) > 10 * 60_000) {
            this.handoffNudged.set(id, this.now());
            this.wake(id, `You just told Noam "${promise}", but no terminal got that work in this turn. Hand it over now (termfleet-team start or send), or tell him plainly that you will not.`);
+         }
+         // "Ready" must meet what he explicitly asked for (count, options to choose from, a named skill).
+         if (claimsReady(msg) && this.now() - (this.conditionNudged.get(id) || 0) > 10 * 60_000) {
+           const asks = this.messages(id).filter((m) => m.role === 'operator' && m.text).slice(-30).map((m) => m.text);
+           const unmet = unmetConditions(extractConditions(asks), { reply: msg, shown: shown.media.length + Math.max((asked.question?.optionLinks || []).filter(Boolean).length, asked.question?.options?.length || 0) });
+           if (unmet.length) {
+             this.conditionNudged.set(id, this.now());
+             console.error(`[${bot.name}] Ready without his conditions: ${unmet.join(' ')}`);
+             this.wake(id, `You just told Noam something is ready, but it does not meet what he asked for. ${unmet.join(' ')} Fix that now or tell him plainly it is not ready yet; do not call it ready until it is.`);
+           }
          }
          const claim = unprovenClaim(msg, { media: shown.media.length });
          if (claim && this.now() - (this.claimNudged.get(id) || 0) > 10 * 60_000) {
