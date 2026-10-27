@@ -9,7 +9,7 @@ import { captureMessage, record, loadLedger } from '../bridge/requirements.mjs';
 
 // Noam 2026-10-27: "there is a disconnect between what I ask and what I get". Ten of his requests sat at
 // "ready" for days because the only way to say it works, or does not, was typing it to an agent.
-test('a ready request can be closed ("Works") or reopened ("Still broken") with one tap', { timeout: 90000 }, async () => {
+test('request verdict API preserves explicit owner feedback without a bot panel', { timeout: 90000 }, async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-verdict-'));
   const configDir = path.join(tmp, 'cfg'), botsHome = path.join(tmp, 'home');
   fs.mkdirSync(configDir, { recursive: true }); fs.mkdirSync(botsHome);
@@ -31,14 +31,13 @@ test('a ready request can be closed ("Works") or reopened ("Still broken") with 
     assert.equal(items.length, 2);
     record(items.flatMap((it) => [{ e: 'status', id: it.id, status: 'ready' }, { e: 'testing-handoff', id: it.id, link: 'https://example.test/try', tryText: 'open the chat and look' }]), { dir });
     await p.goto(base + '/#bot:' + id);
-    await p.waitForSelector('#side-asks .ask-verdict button', { timeout: 15000 });
-    assert.equal(await p.locator('#side-asks .ask-verdict').count(), 2, 'every ready request offers the two taps');
-    if (process.env.TC_SHOT) await p.screenshot({ path: `${process.env.TC_SHOT}-verdict.png` });
-
-    await p.locator('#side-asks li', { hasText: 'login page' }).locator('.verdict-ok').click();
-    await p.waitForFunction(() => /Closed/.test(document.querySelector('#side-asks .ask-verdict.done')?.textContent || ''), null, { timeout: 8000 });
-    await p.locator('#side-asks li', { hasText: 'question bar' }).locator('.verdict-no').click();
-    await p.waitForFunction(() => /Reopened/.test([...document.querySelectorAll('#side-asks .ask-verdict.done')].map((e) => e.textContent).join(' ') || ''), null, { timeout: 8000 });
+    await p.waitForSelector('.bot-composer');
+    const verdict = (id, verdict) => p.evaluate(async body => {
+      const r = await fetch('/api/ask/verdict', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      return r.status;
+    }, { id, verdict });
+    assert.equal(await verdict(items[0].id, 'works'), 200);
+    assert.equal(await verdict(items[1].id, 'broken'), 200);
 
     const ledger = loadLedger({ dir }).items;
     const [works, broken] = items.map((it) => ledger.get(it.id));

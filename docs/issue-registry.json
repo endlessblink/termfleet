@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-26T16:50:05.048Z",
+  "updatedAt": "2026-10-27T14:26:24.019Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13691,6 +13691,87 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "22/22 focused checks, including authenticated 107-record desktop/phone panel-absence regression; screenshots /tmp/termfleet-TF119-proof/panel-removed-1600.png and panel-removed-390.png. Live HTTP200 source matches disk: /tmp/termfleet-TF119-live.json. Actual production visual remains open."
+        }
+      ]
+    },
+    {
+      "id": "TF-121",
+      "title": "Remove unwanted Requests panel from bot chat",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [
+        "TF-121"
+      ],
+      "symptom": "Owner rejects raw request list and verdict buttons as lacking fix context",
+      "rootCause": "Bot chat rendered raw ledger items through rail, header counters and a menu view despite owner removing the usefulness of that display",
+      "guard": "node --test termcontrol/test/bot-ledger-panel-browser.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-27T14:25:53.603Z",
+          "note": "Bot chat stops rendering request rail and item chip; header counter, progress bar and menu request view removed; records and reply Details preserved"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-27T14:26:03.822Z",
+          "note": "20/20 focused checks pass, including 107-record browser regression, legacy refresh, verdict API, menu, header, testing-panel absence and Chromium/WebKit links. npm run build passes."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner refreshes bot chat and confirms Requests remains absent on physical device",
+      "history": [
+        {
+          "at": "2026-10-27T14:22:11.959Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-27T14:25:53.604Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Bot chat stops rendering request rail and item chip; header counter, progress bar and menu request view removed; records and reply Details preserved"
+        },
+        {
+          "at": "2026-10-27T14:26:03.754Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Owner explicitly removes the bot Requests display"
+        },
+        {
+          "at": "2026-10-27T14:26:03.822Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "20/20 focused checks pass, including 107-record browser regression, legacy refresh, verdict API, menu, header, testing-panel absence and Chromium/WebKit links. npm run build passes."
+        },
+        {
+          "at": "2026-10-27T14:26:23.887Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Preserved original unwanted bot panel in source"
+        },
+        {
+          "at": "2026-10-27T14:26:23.919Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Absence regression failed before fix with 31 unwanted controls"
+        },
+        {
+          "at": "2026-10-27T14:26:23.962Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Removed bot request rail invocation, header counter and menu view"
+        },
+        {
+          "at": "2026-10-27T14:26:24.018Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Live browser and20/20 focused checks pass; waiting only for owner physical-device trial"
         }
       ]
     }

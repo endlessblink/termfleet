@@ -3121,29 +3121,20 @@ function asksSummary(asks,he=asksHebrew(asks)){
   const text=ready?say(`${done} done · ${ready} to check · ${open} open`,`${done} בוצעו · ${ready} לבדיקה · ${open} פתוחות`):say(`${done} done · ${open} open`,`${done} בוצעו · ${open} פתוחות`);
   return {done,ready,open,total,text,full:text};
 }
-function paintBotHead(state){
-  const box=document.querySelector('.bot-head-actions');if(!box)return;
-  const chip=box.querySelector('.bot-asks-chip'),bar=box.querySelector('.bot-progress'),sum=asksSummary(state.asks);
-  chip.hidden=bar.hidden=!sum.total;if(!sum.total)return;
-  chip.querySelector('span').textContent=sum.text;chip.classList.toggle('waiting',Boolean(sum.open));chip.dir=asksHebrew(state.asks)?'rtl':'auto';
-  chip.setAttribute('aria-label',asksHebrew(state.asks)?`הבקשות שלך: ${sum.full}`:`Your requests: ${sum.full}`);
-  bar.firstElementChild.style.transform=`scaleX(${(sum.done/sum.total).toFixed(3)})`;
-}
 const menuIcons={activity:'M3 12h4l3-7 4 14 3-7h4',asks:'M5 12l4 4L19 6',agents:'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h4',model:'M12 9a3 3 0 100 6 3 3 0 000-6z M12 3v3 M12 18v3 M3 12h3 M18 12h3',memory:'M6 4h12v16l-6-4-6 4z',schedule:'M12 4a8 8 0 100 16 8 8 0 000-16z M12 8v4l3 2',edit:'M4 20h4L19 9l-4-4L4 16z',theme:'M12 8a4 4 0 100 8 4 4 0 000-8z M12 3v2 M12 19v2 M3 12h2 M19 12h2',browser:'M4 5h16v14H4z M4 9h16',notify:'M6 16V11a6 6 0 0112 0v5l2 2H4z M10 20h4',pin:'M9 4h6l-1 6 3 3H7l3-3z M12 13v7',hide:'M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z M4 4l16 16',del:'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13'};
 function menuIcon(name){return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${menuIcons[name]}"/></svg>`;}
 // The bot menu: a sheet from the bottom (thumb reach) on a phone, a small panel on a wide window.
 // Items in the approved mockup's order; the remaining existing options follow so nothing is lost.
-function botMenu(id,bot,state,start='menu'){
+function botMenu(id,bot,state){
   document.querySelector('.bot-menu-sheet')?.remove();
   const he=asksHebrew(state.asks),ui=(en,h)=>he?h:en;   // the whole sheet speaks the requests' language
   const dialog=document.createElement('dialog');dialog.className='bot-menu-sheet';dialog.dir=he?'rtl':'ltr';dialog.lang=he?'he':'en';dialog.setAttribute('aria-label',ui('Bot menu','תפריט הבוט'));
   const close=()=>{dialog.close();dialog.remove();};
   const press=sel=>{close();document.querySelector(sel)?.click();};
-  const sum=asksSummary(state.asks,he),helpers=state.helpers || [];
+  const helpers=state.helpers || [];
   const item=(key,label,value='',cls='')=>`<button type="button" class="menu-item ${cls}" data-act="${key}">${menuIcon(key)}<span class="menu-label">${esc(label)}</span>${value?`<span class="menu-value" dir="auto">${esc(value)}</span>`:''}</button>`;
   const brain=p=>p==='codex'?'Codex':'Claude';
   const menu=()=>`<div class="sheet-grab" aria-hidden="true"></div>`
-    +(sum.total?item('asks',ui('Your requests','הבקשות שלך'),sum.text,'big'):'')
     +(helpers.length?item('agents',ui('Terminal agents it started','סוכני מסוף שהפעיל'),String(helpers.length),'big'):'')
     +item('activity',ui('Activity','פעילות'),ui('what it did','מה הוא עשה'))
     +'<div class="menu-sep"></div>'
@@ -3158,31 +3149,16 @@ function botMenu(id,bot,state,start='menu'){
     +item('pin',bot?.pinned?ui('Unpin','ביטול הצמדה'):ui('Pin','הצמדה'))
     +item('hide',bot?.hidden?ui('Show in list','הצגה ברשימה'):ui('Hide','הסתרה'))
     +item('del',ui('Delete bot','מחיקת הבוט'),'','danger');
-  const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),ready:ui('ready to try','מוכן לבדיקה'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
   const stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),stuck:ui('stuck, likely crashed','תקוע, כנראה קרס'),closed:ui('closed','נסגר')};
   const back=`<button type="button" class="menu-item menu-back" data-act="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="menu-label">${ui('Bot menu','תפריט הבוט')}</span></button>`;
-  // Requests (Noam 2026-10-24: "לא ברור מה פתוח מה סגור"): open first, then ready for him to try,
-  // then done folded away. One short line of his own words each, newest first.
-  const short=t=>{t=String(t || '').replace(/\s+/g,' ').trim();return t.length>80?t.slice(0,79).trimEnd()+'…':t;};
-  const row=a=>{const t=a.title || a.text;const chip=['partial','dropped'].includes(a.status)?`<span class="ask-status ask-${esc(a.status)}">${esc(label[a.status])}</span>`:'';
-    return `<li class="ask-row ask-row-${esc(a.status)}" value="${a.n}"><span class="ask-copy">${chip}<bdi class="ask-words" dir="auto" title="${esc(t)}">${esc(short(t))}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(short(a.note))}</span>`:''}${verdictHtml(a)}</span>${!a.id&&['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}" aria-label="${esc(ui('Remove from list','הסרה מהרשימה'))}" title="${esc(ui('Remove from list','הסרה מהרשימה'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>`:''}</li>`;};
-  const group=(cls,title,list,fold=false)=>{if(!list.length)return '';const head=`<span class="asks-group-title">${esc(title)}</span><span class="asks-group-count">${list.length}</span>`;const items=`<ol class="sheet-list">${list.map(row).join('')}</ol>`;
-    return fold?`<details class="asks-group ${cls}"><summary>${head}</summary>${items}</details>`:`<section class="asks-group ${cls}"><h3>${head}</h3>${items}</section>`;};
-  const asksList=()=>{const newest=state.asks.slice().sort((x,y)=>y.n-x.n),of=(...st)=>newest.filter(a=>st.includes(a.status));
-    const pct=n=>sum.total?(n/sum.total*100).toFixed(1):0;
-    return `<div class="sheet-grab" aria-hidden="true"></div>${back}<div class="asks-summary"><h2 class="sheet-title">${esc(ui('Your requests','הבקשות שלך'))}</h2><p class="asks-counts" aria-label="${esc(sum.full)}"><span><b>${sum.done}</b> ${esc(ui('done','בוצעו'))}</span><span><b>${sum.open}</b> ${esc(ui('open','פתוחות'))}</span>${sum.ready?`<span><b>${sum.ready}</b> ${esc(ui('ready for you to try','מחכות לבדיקה שלך'))}</span>`:''}</p><div class="asks-meter" aria-hidden="true"><span class="m-done" style="width:${pct(sum.done-sum.ready)}%"></span><span class="m-ready" style="width:${pct(sum.ready)}%"></span></div></div>`
-      +(of('open','partial').length?group('asks-open',ui('Still open','עדיין פתוחות'),of('open','partial')):`<p class="asks-empty">${esc(ui('Nothing open right now.','אין כרגע בקשות פתוחות.'))}</p>`)
-      +group('asks-ready',ui('Ready for you to try','מוכנות לבדיקה שלך'),of('ready'))
-      +group('asks-done',ui('Done','בוצעו'),of('done','dropped'),true);};
   const agentsList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui('Terminal agents it started','סוכני מסוף שהפעיל'))}</h2><ul class="sheet-list">${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul>`;
-  const show=view=>{dialog.innerHTML=view==='asks'?asksList():view==='agents'?agentsList():menu();dialog.querySelector('.menu-item')?.focus();};
+  const show=view=>{dialog.innerHTML=view==='agents'?agentsList():menu();dialog.querySelector('.menu-item')?.focus();};
   dialog.addEventListener('click',e=>{
     if(e.target===dialog)return close();
     if(e.target.closest('.sheet-list a'))return close();
     const act=e.target.closest('[data-act]')?.dataset.act;if(!act)return;
     if(act==='back')return show('menu');
-    if(act==='ask-remove'){const b=e.target.closest('[data-act]'),n=Number(b.dataset.n);state.asks=state.asks.filter(a=>a.n!==n);removeAsk(n,b.closest('li'));return;}
-    if(act==='asks' || act==='agents')return show(act);
+    if(act==='agents')return show(act);
     if(act==='activity'){close();return botActivityDialog(id,bot?.name || '');}
     if(act==='theme')return press('.theme-toggle');
     if(act==='schedule')return press('.bot-schedule');
@@ -3190,7 +3166,7 @@ function botMenu(id,bot,state,start='menu'){
     press({model:'.bot-model',memory:'.bot-memory',edit:'.bot-edit',browser:'.bot-browser',notify:'.bot-notify',pin:'.bot-pin',hide:'.bot-hide'}[act]);
   });
   dialog.addEventListener('close',()=>dialog.remove());
-  document.body.append(dialog);show(start);dialog.showModal();
+  document.body.append(dialog);show('menu');dialog.showModal();
 }
 
 // "Waiting for you" (Noam 2026-10-20: "a short summary that keeps itself up to date, with
@@ -3671,13 +3647,12 @@ async function openBot(id,{motion=null}={}){
   fleetTimer=setInterval(()=>{if(otherView==='bot')fleet(true);},15000);setTimeout(()=>{if(otherView==='bot')fleet(true);},0);
   document.body.classList.add('chat','bot-view');
   // One slim line (Noam 2026-10-20: "the top part takes far too much space"; picked option B
-  // and the menu): back, icon + name with its brain, a requests button, and one menu.
+  // and the menu): back, icon + name with its brain, and one menu.
   const headActions=document.createElement('div');headActions.className='bot-head-actions';
-  headActions.innerHTML=`<button type="button" class="bot-asks-chip" hidden aria-haspopup="dialog"><i aria-hidden="true"></i><span></span></button><button type="button" class="bot-menu-button" aria-haspopup="dialog" aria-label="${ui('Bot menu','תפריט הבוט')}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="18.5" r="1.4"/></svg></button><span class="bot-progress" hidden aria-hidden="true"><span></span></span>`;
+  headActions.innerHTML=`<button type="button" class="bot-menu-button" aria-haspopup="dialog" aria-label="${ui('Bot menu','תפריט הבוט')}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="18.5" r="1.4"/></svg></button>`;
   document.querySelector('header[role=banner]').append(headActions);
   const headState={asks:[],helpers:[],schedules:[]};
   headActions.querySelector('.bot-menu-button').onclick=()=>botMenu(id,current,headState);
-  headActions.querySelector('.bot-asks-chip').onclick=()=>botMenu(id,current,headState,'asks');
   nav.innerHTML=`<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
   // Opened from the list: step back to it, so the list returns to where the bot was.
   nav.querySelector('.back').onclick=()=>{if(history.state?.openedFromAgents){history.back();}else{history.pushState({},'',location.pathname);fleet();}};
@@ -3869,9 +3844,10 @@ async function openBot(id,{motion=null}={}){
     let schedules=[];try{const r=await fetch(`/api/routines?pane=${encodeURIComponent('bot:'+id)}`,{signal:AbortSignal.timeout(6000)});if(r.ok)schedules=(await r.json()).routines || [];}catch{}
     if(mine!==view)return;   // left this chat while the schedules loaded: never paint over the list
     const schedulesMarkup=`<span class="routinesline">${schedules.map(r=>`<span class="routine-pill">${icon('clock')}<span dir="auto">${esc(r.label)} ${esc(r.time)} · ${esc(r.text.length>40?r.text.slice(0,38)+'…':r.text)}</span></span>`).join('')}<button type="button" class="bot-schedule routine-pill">${icon('clock')}${ui('Schedule','תזמון')}</button></span>`;
-    const lastTalk=data.messages.filter(m=>m.role==='activity' || m.role==='operator').pop(),busyHelper=helpers.filter(h=>h.state==='working').pop(),helperLive=busyHelper?`${busyHelper.title || ui('Terminal agent','סוכן מסוף')}: ${busyHelper.live || shortTask(busyHelper.task) || ui('working','עובד')}`:'',botLive=helperLive || (bot.state==='working' && lastTalk?.role==='activity'?String(lastTalk.text).split(':')[0]:'');
-    const asksMarkup=asksHtml(data.asks,bot.state==='working' || Boolean(busyHelper),botLive,schedules.map(r=>r.text))+requirementsHtml(data.requirements)+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
-    Object.assign(headState,{asks:visibleAsks(data.asks,schedules.map(r=>r.text)),helpers,schedules});paintBotHead(headState);
+    // Owner removed Requests from bot chats; keep ledger data and reply Details.
+    clearSideAsks();
+    const asksMarkup=helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
+    Object.assign(headState,{asks:visibleAsks(data.asks,schedules.map(r=>r.text)),helpers,schedules});
     // The same hand-off sent to several terminals in a row is one line with a count (Noam 2026-10-24:
     // "הודעות סתם חוזרות על עצמן וממלאות את המסך": one message to 6 politic-fighter terminals showed 6 times).
     const handoffCount=new Map(),handoffSkip=new Set();

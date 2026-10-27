@@ -15,7 +15,7 @@ import { chromium } from 'playwright';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const ask = (n, status) => ({ n, text: `request ${n}`, title: `request ${n}`, status, note: '' });
 
-test('the bot header counts what the agent finished and what is still open, never a stuck 0', { timeout: 120000 }, async () => {
+test('the bot header and menu omit request counters for every request state', { timeout: 120000 }, async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-count-'));
   const cfg = path.join(tmp, 'cfg'), botsHome = path.join(tmp, 'home');
   for (const d of [cfg, botsHome]) fs.mkdirSync(d, { recursive: true });
@@ -33,13 +33,10 @@ test('the bot header counts what the agent finished and what is still open, neve
       await p.goto(`http://localhost:${port}/#bot:${botId}`);
       await p.waitForSelector('.bot-menu-button');
       await wait(1500);
-      const head = await p.evaluate(() => { const c = document.querySelector('.bot-asks-chip'); return { hidden: c.hidden, text: c.innerText, label: c.getAttribute('aria-label') || '' }; });
-      // The bot menu shows the same numbers (Noam 2026-10-24: header 18 done · 5 open, menu 0 of 25 done).
-      if (!head.hidden) {
-        await p.locator('.bot-menu-button').click();
-        await p.waitForSelector('.bot-menu-sheet[open]');
-        head.menu = await p.locator('.bot-menu-sheet').innerText();
-      }
+      const head = await p.evaluate(() => { const c = document.querySelector('.bot-asks-chip'); return { hidden: !c || c.hidden, text: c?.innerText || '', label: c?.getAttribute('aria-label') || '' }; });
+      await p.locator('.bot-menu-button').click();
+      await p.waitForSelector('.bot-menu-sheet[open]');
+      assert.equal(await p.locator('.bot-menu-sheet [data-act=asks]').count(), 0);
       assert.deepEqual(errors, []);
       await p.context().close();
       return head;
@@ -53,19 +50,8 @@ test('the bot header counts what the agent finished and what is still open, neve
     const state = await first.context().storageState();
     await first.context().close();
 
-    // His screenshot: 24 finished and waiting for him to try. It read 0/24.
-    const allReady = await read(Array.from({ length: 24 }, (_, i) => ask(i + 1, 'ready')));
-    assert.equal(allReady.hidden, false);
-    // Ready is an agent's claim, so it reads "to check" until he confirms it (2026-10-27), but 24 is never hidden.
-    assert.equal(allReady.text, '0 done · 24 to check · 0 open');
-    assert.match(allReady.label, /0 done · 24 to check · 0 open/);
-    // A mix: confirmed, ready, in progress, partly done, dropped (not counted).
-    const mix = await read([ask(1, 'done'), ask(2, 'ready'), ask(3, 'ready'), ask(4, 'open'), ask(5, 'partial'), ask(6, 'dropped')]);
-    assert.equal(mix.text, '1 done · 2 to check · 2 open');
-    assert.ok(allReady.menu.includes('0 done · 24 to check · 0 open'), `menu matches the header: ${allReady.menu.slice(0, 200)}`);
-    assert.ok(mix.menu.includes('1 done · 2 to check · 2 open'), `menu matches the header: ${mix.menu.slice(0, 200)}`);
-    assert.doesNotMatch(mix.menu, /of \d+ done/, 'no second, different count');
-    // Nothing counted: no chip.
-    assert.equal((await read([])).hidden, true);
+    for (const list of [Array.from({ length: 24 }, (_, i) => ask(i + 1, 'ready')), [ask(1, 'done'), ask(2, 'ready'), ask(3, 'open'), ask(4, 'partial'), ask(5, 'dropped')], []]) {
+      assert.deepEqual(await read(list), { hidden: true, text: '', label: '' });
+    }
   } finally { await browser.close(); bridge.kill('SIGKILL'); }
 });
