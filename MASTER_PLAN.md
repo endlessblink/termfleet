@@ -1,3 +1,11 @@
+## 2026-10-27 — TF-122: Dashboard inside existing bot chat (VERIFYING)
+
+Open Tasks and Active Terminals are integrated in the existing chat shell using its tokens, with Hebrew statuses, exact source disclosures, per-bot/project grouping, complete lists beyond300, and one shared live terminal snapshot. Canonical stale updates are withheld; legacy declarations retained. Invalid/unavailable sources display unknown and recover on polling. Existing chat, composer, menu and original request-removal protections remain.
+
+Evidence: failing project/freshness regressions captured first;6 focused unit tests, dashboard browser checks at1600x1000/1024x1000/390x844/320x667, related chat/menu/absence checks,31 canonical mobile checks, syntax/diff checks and `npm run build` pass. Independent source reviewer passes; independent screenshot reviewer passes incumbent style and corrected tablet boundary. Mechanical design detector warnings are in pre-existing code, outside new panel rules.
+
+Bridge-only restart loaded PID490760 at2026-10-27 17:21:57 IST; terminal daemon untouched. Authenticated headless production check through normal loopback iframe:133 open records ->66 displayed topic groups,4 active terminals matching endpoint, no overflow, composer restored, served module matches disk. Production screenshots `/tmp/dashboard-v3-live/phone.png` and `/tmp/dashboard-v3-live/desktop-panel.png` independently reviewed. Link: https://control.in-theflow.com/#bot:315a7bfa1cef . English-only agent descriptions remain explicitly untranslated with exact details and terminal names; no fabricated progress. Physical phone/owner trial remains open; ready to try, not owner-approved.
+
 ## 2026-10-26 — TermControl complaints #5 and #2 (IN_PROGRESS; restart authorization required)
 
 Only answerable pending cards cause Needs you. Unfinished bot owner requests display an open-task count instead of Idle, without pretending that a brain is running. TF-111/TF-112 remain verifying.

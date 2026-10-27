@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-27T14:26:24.019Z",
+  "updatedAt": "2026-10-27T15:26:14.581Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13772,6 +13772,96 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Live browser and20/20 focused checks pass; waiting only for owner physical-device trial"
+        }
+      ]
+    },
+    {
+      "id": "TF-122",
+      "title": "Bot dashboard needs reliable Hebrew task and terminal panels",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Existing draft can show technical English, stale progress and inconsistent inventory; tablet drawer slices composer",
+      "rootCause": "Draft projected unversioned descriptions, rebuilt inventory twice and grouped unrelated project topics; layout used an incorrect sidebar width",
+      "guard": "node --test termcontrol/test/work-dashboard.test.mjs termcontrol/test/work-dashboard-browser.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-27T15:22:26.719Z",
+          "note": "10 focused checks pass; latest dashboard browser rerun passes at1600x1000,1024x1000,390x844,320x667 including malformed recovery and sidebar boundary;6 unit checks pass including legacy declarations;31 mobile regressions and npm run build pass. Independent source and isolated screenshot review PASS."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-27T15:25:23.408Z",
+          "note": "Read-only panels retain existing shell; one inventory snapshot, legacy declarations, canonical freshness, exact-source disclosures, explicit unavailable states and original auth gate."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-27T15:26:14.581Z",
+          "note": "Authenticated production iframe at https://control.in-theflow.com/#bot:315a7bfa1cef:133 records/66 groups; active terminals4 then2 and rendered counts matched both times. Final served module9cdbc02e074a40c1b6c5539997c0e37199fb854328c52805f19814e767640728. Independent final production appearance PASS; phone ca8cdf055b971a267a12c248fb619715c5cc97badd64a7d91c336843e08c330f and desktop cf3cc4408b057f0821353f862d6ce5bbd77c0eb1217d991ef71bf74b62d7d1c9. Generic source updates remain honest; owner trial open."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner tries both panels via תמונת מצב in the existing Agent-Manager chat; verify physical phone comfort and usefulness of source descriptions",
+      "history": [
+        {
+          "at": "2026-10-27T15:15:53.930Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-27T15:15:53.957Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Independent baseline review identified concrete data and layout defects"
+        },
+        {
+          "at": "2026-10-27T15:17:40.277Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Added regressions fail for merged projects and ignored canonical goal"
+        },
+        {
+          "at": "2026-10-27T15:17:40.305Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Failing regressions captured before production edits"
+        },
+        {
+          "at": "2026-10-27T15:17:40.333Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Correcting current draft while preserving original shell and read-only controls"
+        },
+        {
+          "at": "2026-10-27T15:22:26.719Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "10 focused checks pass; latest dashboard browser rerun passes at1600x1000,1024x1000,390x844,320x667 including malformed recovery and sidebar boundary;6 unit checks pass including legacy declarations;31 mobile regressions and npm run build pass. Independent source and isolated screenshot review PASS."
+        },
+        {
+          "at": "2026-10-27T15:22:26.749Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Reviewed candidate loaded by bridge-only restart; authentic live read-back running"
+        },
+        {
+          "at": "2026-10-27T15:25:23.408Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Read-only panels retain existing shell; one inventory snapshot, legacy declarations, canonical freshness, exact-source disclosures, explicit unavailable states and original auth gate."
+        },
+        {
+          "at": "2026-10-27T15:26:14.581Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Authenticated production iframe at https://control.in-theflow.com/#bot:315a7bfa1cef:133 records/66 groups; active terminals4 then2 and rendered counts matched both times. Final served module9cdbc02e074a40c1b6c5539997c0e37199fb854328c52805f19814e767640728. Independent final production appearance PASS; phone ca8cdf055b971a267a12c248fb619715c5cc97badd64a7d91c336843e08c330f and desktop cf3cc4408b057f0821353f862d6ce5bbd77c0eb1217d991ef71bf74b62d7d1c9. Generic source updates remain honest; owner trial open."
         }
       ]
     }

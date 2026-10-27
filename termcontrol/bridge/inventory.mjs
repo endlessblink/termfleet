@@ -474,6 +474,8 @@ export function listPanes({ maxAgeMs = null, workspace = readWorkspace() } = {})
       turn: turnOf(rec),
       turnReason: rec.turnReason || null,
       task: taskLine(rec),
+      goal: rec.declaredGoal || rec.statedGoal || null,
+      statedTask: rec.statedTask || null,
       updatedAt,
       todos: (rec.todos || []).map((t) => ({
         content: t.content,

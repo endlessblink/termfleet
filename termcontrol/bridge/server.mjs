@@ -116,7 +116,7 @@ function speechTimingHeader(res, timings = {}) {
     .map(([name, key]) => `${name};dur=${Math.max(0, timings[key]).toFixed(1)}`).join(', '));
 }
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.webmanifest': 'application/manifest+json', '.png': 'image/png' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.webmanifest': 'application/manifest+json', '.png': 'image/png' };
 
 // Home-screen icon + manifest: the phone fetches these without the sign-in cookie.
 const PUBLIC_APP_FILES = new Set(['/app/manifest.webmanifest', '/app/icon-192.png', '/app/icon-512.png', '/app/icon-maskable-512.png', '/app/apple-touch-icon.png', '/app/favicon-32.png']);
@@ -640,6 +640,18 @@ const handle = async (req, res) => {
     });
   }
 
+  // Share the same snapshot as the existing chat; do not rebuild the fleet per panel.
+  if (url.pathname === '/api/work-terminals' && req.method === 'GET') {
+    const inventory = await currentPanes();
+    return json(res, 200, { daemon: inventory.daemon, panes: inventory.panes.map(p => ({
+      id:p.id, project:p.project, title:p.title, profile:p.profile, operatorGoal:p.operatorGoal,
+      goal:p.goal, statedTask:p.statedTask,
+      sessionAuthority:p.sessionAuthority, sessionViewV2:p.sessionViewV2,
+      task:p.task, alive:p.alive, sleeping:p.sleeping, stalledForMs:p.stalledForMs,
+      dashboardState:stateOf(p),
+    })) });
+  }
+
   if (url.pathname === '/api/routines' && req.method === 'GET') {
     return json(res, 200, { routines: routines.forPane(url.searchParams.get('pane')).map((r) => ({ ...r, label: describeDays(r.days) })) });
   }
@@ -858,8 +870,11 @@ const handle = async (req, res) => {
   // TF-102: Noam's items by project and topic (phone and desktop; read only).
   if (url.pathname === '/api/requirements' && req.method === 'GET') {
     try {
-      const view = itemsView({ project: url.searchParams.get('project') || null, topic: url.searchParams.get('topic') || null, includeClosed: url.searchParams.get('closed') === '1' });
-      return json(res, 200, { items: view.items.slice(0, 300), escalations: view.escalations.slice(-20) });
+      const view = itemsView({ project: url.searchParams.get('project') || null, topic: url.searchParams.get('topic') || null, source: url.searchParams.get('source') || null, includeClosed: url.searchParams.get('closed') === '1' });
+      const items = url.searchParams.get('dashboard') === '1'
+        ? view.items.filter(it => !it.locked && ['new', 'assigned', 'partial', 'ready', 'waiting'].includes(it.status))
+        : view.items.slice(0, 300);
+      return json(res, 200, { items, escalations: view.escalations.slice(-20) });
     } catch (error) { return json(res, 500, { error: error.message || 'The list could not be read.' }); }
   }
   // Noam's own verdict on a request an agent marked ready: "works" closes it as his confirmation, "broken"

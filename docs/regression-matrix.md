@@ -596,6 +596,13 @@ Reviewed isolated screenshots: `/tmp/termfleet-TF119-proof/panel-removed-1600.pn
 Live source read-back18:46IST: `/tmp/termfleet-TF119-live.json` records authenticated local HTTP200, no-store caching and exact disk match SHA256 `8b24fba78e7dc4234765719b4449c5089aa21f88e158a49c2a570732c2f5e015`. Static content is read per request, so no bridge or desktop restart was needed. Registry reference termcontrol verified. Actual authenticated production browser clicks and a physical phone remain unverified because no browser surface is available; TF-119/TF-120 remain verifying. The owner-reported message-link failure has not been reproduced on a real device.
 
 
+### TF-122 — Reliable dashboard in existing bot chat — VERIFYING
+
+- Failure: standalone/rejected design; draft raw English, stale progress, cross-project grouping, duplicate inventory reads and malformed-response freeze.
+- Guard: `node --test termcontrol/test/work-dashboard.test.mjs termcontrol/test/work-dashboard-browser.test.mjs`; source decisions plus actual authenticated isolated bridge at1600/1024/390/320 widths; malformed-to-recovered refresh and preservation of drafts/navigation/auth.
+- Proof: independent source and screenshot reviews; live authenticated loopback iframe read-back133 records/66 groups/4 terminals, matching served module and composer restored. Screenshots `/tmp/dashboard-v3-live/phone.png`, `/tmp/dashboard-v3-live/desktop-panel.png`.
+- Coverage: live bridge and responsive Chromium proven; physical phone and owner design/content acceptance remain open. English-only declarations show honest Hebrew unknown copy with original details, not invented translations.
+
 ### TF-121 — Removing Requests from bot chat — VERIFYING
 
 Owner removed the raw Requests panel, its Works/Still broken controls, header counter/progress and menu entry. Bot chat no longer invokes the shared terminal requests renderer; ledger records, explicit feedback API and per-reply Details remain. Regression first failed with31unwanted controls, then passed with107preserved records at desktop1600 and phone390 after reload. Legacy requests/helper updates also cannot restore the panel.
