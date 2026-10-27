@@ -2159,8 +2159,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       style={{
                         padding: "8px 16px",
                         borderRadius: 8,
-                        border: "1px solid var(--border-primary, #444)",
-                        background: "transparent",
+                        border: "none",
+                        background: "var(--surface-2, rgba(255,255,255,0.08))",
                         color: "var(--text-primary)",
                         fontFamily: "var(--font-ui)",
                         fontSize: 13,
