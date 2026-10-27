@@ -10,23 +10,77 @@ const hebrew = (value, fallback) => {
   const text=readable(value);
   return /[א-ת]/.test(text) && !/(?:\/\w+\/|\b(?:npm|node|cargo|git|API|SQL)\b|```)/i.test(text) ? text : fallback;
 };
+const topicTitles = {
+  'bot-chat-dashboard':'תמונת מצב העבודה בתוך הצ׳אט',
+  'sql-enforcement':'שמירת היסטוריית העבודה במסד הנתונים',
+  'session-logs':'שמירת תיעוד השיחות והעבודה',
+  'open-tasks-panel':'רשימת המשימות שטרם נפתרו',
+  'terminal-auto-healthcheck':'בדיקת תקינות אוטומטית לטרמינלים',
+  'terminal-permissions':'אישורי פעולה לטרמינלים',
+  'termfleet-screen-rule':'שמירה על המסך פנוי בזמן עבודת הסוכנים',
+  'termfleet-reliability':'שיפור אמינות סביבת העבודה',
+  'bot-reliability':'שיפור אמינות הבוט',
+  'bot-throughput':'שיפור קצב העבודה של הבוט',
+  'remove-requests-panel':'הסרת לוח הבקשות מהצ׳אט',
+  'remove-try-panel':'הסרת לוח הבדיקות מהצ׳אט',
+  'token-monitoring':'מעקב אחר שימוש ועלויות',
+  'agent-event-history':'היסטוריית פעילות הסוכנים',
+  'scroll-stuck':'תיקון גלילה תקועה בצ׳אט',
+  'scroll-jump-to-top':'מניעת קפיצה לראש הצ׳אט',
+  'stale-map-terminals':'הסרת טרמינלים ישנים ממפת העבודה',
+  'terminal-map-mismatch':'התאמת מפת העבודה לטרמינלים הפעילים',
+  'instant-answers-while-busy':'מענה להודעות בזמן העבודה',
+  'options-with-link':'קישורים לצפייה בכל אפשרות לבחירה',
+  'obsidian-complaints-list':'ריכוז התקלות ומעקב אחר פתרונן',
+  'sidebar-folders':'תיקיות למיון ולהסתרה של שיחות לפי נושא',
+  'agent-animation':'הצגת אנימציות בתוך הצ׳אט',
+  'agent-animationterminal-permissions':'הצגת אנימציות ואישורי פעולה בצ׳אט',
+};
+// Feedback stays in the topic details, never in the task heading.
+const taskText = value => {
+  const text=plain(value).replace(/^Goal:\s*/i,'');
+  if(/^(?:Full instructions:|Bot registry|Validated checkout|Registry snapshot|אם אתה|תכניס את זה|לא עשית|זה חסר|כישלון|לפחות \d|בוא נלך)/i.test(text))return '';
+  return /(?:תיקון|בדיק|שיפור|שמירת|הוספת|הסרת|לתקן|לבדוק|לשפר|לשלב|להוסיף|להסיר|לבנות|להציג|רשימ|פאנל|(?:^|\s)(?:צור|תיצור|תוסיף|תסיר|תתקן|תסדר|תבדוק|תשפר|תבנה|תציג|תשמור|תעדכן)|\b(?:fix|investigate|inspect|build|verify|improve|add|remove)\b)/i.test(text)?text:'';
+};
+const shortWork = value => {
+  const text=readable(value);
+  if(hebrew(text,''))return text;
+  const phrases=[
+    [/\bClaude\b.*\bresearch only\b/i,'מחקר בעזרת Claude ללא שינוי הקבצים'],
+    [/^Reading the plan(?: file)? and /i,'קריאת תוכנית העבודה והשינויים הקשורים אליה'],
+    [/^Read(?:ing)? \/.*(?:HANDOFF|instructions|child-tasks)/i,'קריאת הוראות המשימה והמשך הטיפול'],
+    [/fixes.*(?:exercises|excersizes).*hardcoded/i,'תיקון התאמת התרגילים לבקשות בצ׳אט'],
+    [/\bClaude\b.*\bmulti-file\b.*\bbuild/i,'בניית השינוי בכמה קבצים בעזרת Claude'],
+    [/dashboard.*(?:data|quality)|(?:data|quality).*dashboard/i,'שיפור המידע בתמונת המצב'],
+    [/dashboard/i,'שיפור תמונת המצב'],
+    [/show the animation.*chat/i,'הצגת אנימציות בתוך הצ׳אט'],
+    [/^inspect monthly totals$/i,'בדיקת הסכומים החודשיים'],
+    [/^(?:inspect|investigate) \/.*\.(?:log|txt)(?: for(?: .*)?)?$/i,'בדיקת יומן הפעילות'],
+  ];
+  // Unknown wording stays visible rather than inventing a translation or progress.
+  return phrases.find(([pattern])=>pattern.test(text))?.[1] || text.slice(0,100);
+};
 export function openTasks(items) {
   const seen=new Set(),groups=new Map();
   for(const it of items){
     if(it.locked || !statuses[it.status] || seen.has(it.id))continue;
     seen.add(it.id);
-    const key=JSON.stringify([it.project,it.topics?.[0] || it.msgId || it.id]);
+    const topic=plain(it.topic || it.topics?.[0]);
+    if(!topic)continue;
+    const key=JSON.stringify([it.project,topic]);
     if(!groups.has(key))groups.set(key,[]);
     groups.get(key).push(it);
   }
   const priority=['waiting','partial','assigned','new','ready'];
-  return [...groups.values()].map(group=>{
-    const first=group.find(it=>/[א-ת]/.test(it.words) && String(it.words).length>20) || group.find(it=>!/^Full instructions:/i.test(it.words)) || group[0];
-    const text=first.topics?.includes('bot-chat-dashboard')?'תמונת מצב העבודה בתוך הצ׳אט':hebrew(plain(first.words).replace(/^Goal:\s*/i,''),'בקשה פתוחה — הנוסח המקורי בפרטים');
+  return [...groups.values()].flatMap(group=>{
+    const first=group.find(it=>taskText(it.words)) || group[0];
+    const topic=plain(first.topic || first.topics?.[0]);
+    const text=topicTitles[topic] || hebrew(taskText(first.words),'') || (taskText(first.words)?shortWork(first.words):'');
+    if(!text)return [];
     const title=text.length>140?text.slice(0,137)+'…':text;
     const row={title,category:categories[first.project] || hebrew(first.project,'כללי'),status:statuses[priority.find(s=>group.some(it=>it.status===s))]};
     if(group.length>1 || title!==String(first.words || ''))row.details=group.map(it=>({text:String(it.words || ''),status:statuses[it.status]}));
-    return row;
+    return [row];
   });
 }
 export function activeTerminals(panes) {
@@ -34,7 +88,14 @@ export function activeTerminals(panes) {
     const session=p.sessionAuthority?p.sessionViewV2:null;
     const title=p.operatorGoal?.text || session?.goal?.label || session?.task?.label || p.goal || p.profile?.name || p.title || p.name || p.project || '';
     const update=p.sessionAuthority ? (!session?.now?.stale ? session?.now?.label : '') : p.statedTask || p.task || '';
-    const row={id:p.id,title:hebrew(title,'עבודה פעילה — הפרטים בצ׳אט'),name:plain(p.profile?.name || p.title || p.project).slice(0,80),update:hebrew(update,update?'טרם נמסר תיאור ברור בעברית; העדכון המקורי בפרטים':'עדיין לא נמסר עדכון עדכני על העבודה'),status:['needs-you','waiting'].includes(p.dashboardState)?'נדרש מענה':p.stalledForMs || p.dashboardState==='stuck'?'לא התקבל עדכון לאחרונה':'עובד כעת'};
+    const name=plain(p.profile?.name || p.name || p.title || p.project).slice(0,80);
+    const assignedWork=!update ? p.operatorGoal?.text || session?.goal?.label || session?.task?.label || p.goal || p.title || (shortWork(name)!==name?name:'') : '';
+    const row={id:p.id,title:hebrew(title,name),name,update:hebrew(update,update?'עובד על: '+shortWork(update):assignedWork?(p.sessionAuthority?'המשימה: ':'עובד על: ')+shortWork(assignedWork):'עדיין לא נמסר עדכון עדכני על העבודה'),status:['needs-you','waiting'].includes(p.dashboardState)?'נדרש מענה':p.stalledForMs || p.dashboardState==='stuck'?'לא התקבל עדכון לאחרונה':'עובד כעת'};
+    if(update && !hebrew(shortWork(update),'')){
+      const task=[title,name].map(shortWork).find(text=>hebrew(text,''));
+      if(task)row.update='המשימה: '+task;
+    }
+    if(/^\[Message from an orchestrating agent/i.test(plain(update)))row.update='עובד על: '+shortWork(title || name);
     if(row.title!==title || (update && row.update!==update))row.details={title,update};
     return row;
   });

@@ -23,13 +23,17 @@ test('existing bot chat shows complete live lists, keeps its composer and handle
     const id=await page.evaluate(async()=>(await(await fetch('/api/bots',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'בדיקת תמונת מצב'})})).json()).bot.id);
     const dir=path.join(cfg,'requirements');
     const items=Array.from({length:305},(_,i)=>captureMessage({text:`לשפר את קריאת ההודעות מספר ${i+1}`,project:'termfleet',source:`bot:${id}`,msgId:`work-${i}`},{dir})[0]);
+    record(items.map(item=>({e:'topic',id:item.id,topics:['bot-chat-dashboard']})),{dir});
+    captureMessage({text:'אם אתה לא בטוח, אל תעשה את זה',project:'termfleet',source:`bot:${id}`,msgId:'feedback'},{dir});
     captureMessage({text:'בקשה ששייכת לבוט אחר',project:'termfleet',source:'bot:other',msgId:'another-bot'},{dir});
     record([{e:'status',id:items[0].id,status:'done'},{e:'status',id:items[1].id,status:'waiting'},{e:'status',id:items[2].id,status:'ready'}],{dir});
     await page.route('**/api/work-terminals',r=>r.fulfill({json:{daemon:true,panes:[{id:'fixture-terminal',profile:{name:'בדיקת יומן האוכל'},statedTask:'בודק שמירת ארוחות',alive:true,dashboardState:'working'},{id:'idle-terminal',alive:true,dashboardState:'idle'}]}}));
     for(const width of [1600,1024,390,320]){
       await page.setViewportSize({width,height:width===320?667:width===390?844:1000});await page.goto(base+'/#bot:'+id);await page.waitForSelector('.bot-composer');
       if(width<1440)await page.locator('.work-toggle').click();
-      await page.waitForFunction(()=>document.querySelectorAll('[data-work=tasks] li').length===304);
+      await page.waitForFunction(()=>document.querySelectorAll('[data-work=tasks] li').length===1);
+      assert.equal(await page.locator('[data-work=tasks] details p').count(),304);
+      assert.match(await page.locator('[data-work=tasks] .work-body > p').innerText(),/תמונת מצב העבודה בתוך הצ׳אט/);
       assert.equal(await page.locator('[data-work=terminals] li').count(),1);
       assert.equal(await page.locator('[data-work=tasks]').innerText().then(t=>t.includes('בקשה ששייכת לבוט אחר')),false);
       assert.ok(await page.locator('#work-terminals-title').evaluate(el=>el.getBoundingClientRect().bottom<innerHeight),'both panels visible in first viewport');
@@ -57,11 +61,11 @@ test('existing bot chat shows complete live lists, keeps its composer and handle
     await page.unroute('**/api/requirements?dashboard=1&source=*');
     await page.unroute('**/api/work-terminals');
     await page.route('**/api/work-terminals',r=>r.fulfill({json:{daemon:true,panes:[]}}));
-    await page.waitForFunction(()=>document.querySelectorAll('[data-work=tasks] li').length===304,{},{timeout:20000});
+    await page.waitForFunction(()=>document.querySelectorAll('[data-work=tasks] li').length===1,{},{timeout:20000});
     assert.match(await page.locator('[data-work=terminals]').innerText(),/אין טרמינלים/);
     await page.locator('[aria-label="סגירת תמונת המצב"]').click();await page.locator('.back').click();
     await page.waitForFunction(()=>document.querySelector('#work-dashboard').hidden);
     assert.deepEqual(errors,[]);
-    console.log('304 unfinished tasks visible beyond the old 300-item limit; active terminal updates; 1600/1024/390/320 layouts; failure states; draft and navigation preserved.');
+    console.log('304 unfinished requests in one topic with original details; untagged feedback omitted; active terminal updates; 1600/1024/390/320 layouts; failure states; draft and navigation preserved.');
   }finally{await browser?.close();server.kill('SIGKILL');fs.rmSync(tmp,{recursive:true,force:true});}
 });
