@@ -392,6 +392,8 @@ async function main(argv) {
     if (reqs.error) fail(reqs.error);
     const delivery = taskText ? newDeliveryId() : null;
     if (taskText) {
+      // A new agent can read what earlier sessions in its folder said and decided (complaint #6).
+      taskText = `${taskText.trim()}\n\nEarlier agent sessions in this folder (what was said and decided before): run \`termfleet-session-digest recent\`, or \`termfleet-session-digest search <words>\`, before asking Noam to repeat anything.`;
       if (reqs.ids.length) { const brief = briefItems(reqs.ids); if (brief.error) fail(brief.error); taskText = `${taskText.trim()}\n\n${briefBlock(brief, { delivery })}`; }
       else taskText = `${taskText.trim()}\n\n[delivery ${delivery}]`;
     }
