@@ -23,7 +23,7 @@ import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
 import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
 import { appendAction, paneLogFile } from './action-log.mjs';
 import { parentsByPane, fleetPanes, stateOf } from './orchestrate.mjs';
-import { deliverHeld } from './held-messages.mjs';
+import { deliverHeld, sweepStranded, strandedText } from './held-messages.mjs';
 import { agentsByPane } from './inventory.mjs';
 import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
 import { adapterFor } from './feed.mjs';
@@ -425,7 +425,17 @@ async function botEvents() {
 }
 setInterval(() => { botEvents().catch((error) => console.error('[bot events]', error.message)); }, 30_000).unref?.();
 // Messages held for a Codex agent that was mid-turn go in together once that turn ends (held-messages.mjs).
-setInterval(() => { currentPanes().then(({ panes }) => deliverHeld({ panes, send: sendToPane, log: (m) => console.error('[held]', m) })).catch((error) => console.error('[held]', error.message)); }, 15_000).unref?.();
+setInterval(() => { currentPanes().then(async ({ panes, daemon }) => {
+  await deliverHeld({ panes, send: sendToPane, log: (m) => console.error('[held]', m) });
+  // Messages whose terminal is gone or stuck are never left behind silently: the sender is told in words.
+  if (daemon) sweepStranded({ panes, notify: (s) => {
+    const text = strandedText(s);
+    console.error('[held]', text);
+    if (!bots.read(s.sender)) return;
+    bots.append(s.sender, { role: 'stuck', pane: s.pane, text });
+    bots.wake(s.sender, text);
+  } });
+}).catch((error) => console.error('[held]', error.message)); }, 15_000).unref?.();
 // Work that went quiet (a silent "working" terminal, a handed-over request nobody finished) is
 // found every 15 minutes and kept in the event log. Test copies (TC_CONFIG_DIR) stay quiet.
 if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') startWatchdog({ bots, panes: async () => {

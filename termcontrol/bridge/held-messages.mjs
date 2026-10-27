@@ -81,3 +81,76 @@ export async function deliverHeld({ panes, send, dir = heldDir(), log = () => {}
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Held messages must never be lost without the sender knowing (Noam 2026-10-27: five corrections were held
+// for a helper that was closed 3 minutes later, and the bot had told him they were passed on).
+
+export const STRAND_GRACE_MS = 15_000;      // a terminal gone this long: its held messages cannot go in
+export const STRAND_STUCK_MS = 5 * 60_000;  // a terminal waiting on a person this long: tell the sender once
+export const STRAND_STALE_MS = 30 * 60_000; // older than this: file it quietly, the work moved on
+
+const told = new Set();
+
+/** The bot a framed message came from ("(bot:<id>)" in its first line), or null. */
+export function senderOf(text) {
+  const m = /\(bot:([0-9a-f]{6,})\)/.exec(String(text || '').slice(0, 400));
+  return m ? m[1] : null;
+}
+
+function readRows(file) {
+  try { return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; }
+}
+
+/**
+ * One pass over the hold queue. A terminal that is gone: its rows are filed in an ".undelivered" file (nothing is
+ * lost) and each sending bot is told, in words, what did not arrive. A terminal waiting on a person for a long time:
+ * the sender is told once and the messages stay held.
+ * `notify({ sender, pane, rows, reason })` does the telling. Returns what it did, for tests and the log.
+ */
+export function sweepStranded({ panes, notify, dir = heldDir(), now = Date.now() }) {
+  const out = [];
+  let names = [];
+  try { names = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')); } catch { return out; }
+  for (const name of names) {
+    const file = path.join(dir, name);
+    const rows = readRows(file);
+    if (!rows.length) continue;
+    const paneId = rows[0].pane;
+    const pane = panes.find((p) => p.id === paneId);
+    const newest = Math.max(...rows.map((r) => Number(r.at) || 0));
+    const oldest = Math.min(...rows.map((r) => Number(r.at) || now));
+    const gone = !pane || !pane.alive;
+    const waiting = !gone && (pane.turn === 'waiting' || pane.attention) && now - oldest >= STRAND_STUCK_MS;
+    if (gone && now - newest >= STRAND_GRACE_MS) {
+      const taken = takeHeld(paneId, { dir });
+      if (!taken.length) continue;
+      try { fs.appendFileSync(`${file}.undelivered`, taken.map((r) => JSON.stringify(r)).join('\n') + '\n', { mode: 0o600 }); } catch { /* the notice still goes */ }
+      const fresh = taken.filter((r) => now - Number(r.at || 0) < STRAND_STALE_MS);
+      const senders = new Set(fresh.map((r) => senderOf(r.text)).filter(Boolean));
+      for (const sender of senders) {
+        const mine = fresh.filter((r) => senderOf(r.text) === sender);
+        try { notify({ sender, pane: paneId, rows: mine, reason: 'closed' }); } catch { /* filed already */ }
+        out.push({ pane: paneId, sender, count: mine.length, reason: 'closed' });
+      }
+      if (!senders.size) out.push({ pane: paneId, sender: null, count: taken.length, reason: fresh.length ? 'closed' : 'stale' });
+    } else if (waiting && !told.has(`${paneId}|${oldest}`)) {
+      told.add(`${paneId}|${oldest}`);
+      for (const sender of new Set(rows.map((r) => senderOf(r.text)).filter(Boolean))) {
+        const mine = rows.filter((r) => senderOf(r.text) === sender);
+        try { notify({ sender, pane: paneId, rows: mine, reason: 'waiting' }); } catch { /* next pass cannot repeat it */ }
+        out.push({ pane: paneId, sender, count: mine.length, reason: 'waiting' });
+      }
+    }
+  }
+  return out;
+}
+
+/** The plain sentence the sending bot is woken with. */
+export function strandedText({ pane, rows, reason }) {
+  const first = String(rows[0]?.text || '').replace(/^\[Message from[^\]]*\]\s*/, '').replace(/\s+/g, ' ').slice(0, 160);
+  const count = rows.length === 1 ? 'Your message' : `Your ${rows.length} messages`;
+  return reason === 'closed'
+    ? `NOT delivered: ${count} to terminal ${pane} never arrived, because that terminal was closed before it could take them (first one: "${first}"). Nobody has read them. Start a fresh terminal and send them again, or tell Noam plainly that they were lost.`
+    : `NOT delivered yet: ${count} to terminal ${pane} still wait, because that terminal has been waiting for a person for over 5 minutes (a question or a menu) and cannot read them (first one: "${first}"). Tell Noam what it is asking, or replace the terminal.`;
+}
