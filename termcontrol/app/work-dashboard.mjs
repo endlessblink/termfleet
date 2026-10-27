@@ -1,4 +1,6 @@
 const statuses = {new:'טרם התחיל',assigned:'בטיפול',partial:'עדיין לא הושלם',waiting:'נדרש מענה',ready:'מוכן לבדיקה'};
+const tone = status => ({'נדרש מענה':'waiting','לא התקבל עדכון לאחרונה':'waiting','מוכן לבדיקה':'ready','בטיפול':'working','עובד כעת':'working'})[status] || 'new';
+const badge = status => `<span class="work-status ${tone(status)}">${esc(status)}</span>`;
 const categories = {termfleet:'סביבת העבודה',termcontrol:'שליטה מהטלפון','agent-manager':'ניהול העבודה','health-app':'יומן הבריאות','health-coach_dev':'יומן הבריאות','freelance-desk':'סביבת העבודה המקצועית'};
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const plain = value => String(value || '').replace(/\bR-\d+\b/g,'').replace(/\s+/g,' ').trim();
@@ -58,14 +60,16 @@ export function mountWorkDashboard({host,button,botId,isCurrent}) {
     if(tasks.status==='fulfilled'){
       const rows=openTasks(tasks.value.items || []);
       host.querySelector('#work-tasks-title').textContent=`משימות פתוחות · ${rows.length}`;
-      paint('tasks',rows.length?`<ul>${rows.map(r=>`<li><span class="work-category" dir="auto">${esc(r.category)}</span><p dir="auto">${esc(r.title)}</p><span class="work-status">${esc(r.status)}</span>${r.details?`<details><summary>הבקשות המקוריות והמצב שלהן</summary>${r.details.map(d=>`<p dir="auto">${esc(d.text)} <span class="work-status">(${esc(d.status)})</span></p>`).join('')}</details>`:''}</li>`).join('')}</ul>`:'<p class="work-empty">אין משימות פתוחות כרגע.</p>');
+      const groups=new Map();
+      for(const row of rows){if(!groups.has(row.category))groups.set(row.category,[]);groups.get(row.category).push(row);}
+      paint('tasks',rows.length?[...groups].map(([category,items])=>`<div class="work-group"><h4 class="work-group-label" dir="auto">${esc(category)}</h4><ul>${items.map(r=>`<li class="work-item ${tone(r.status)}"><div class="work-body"><p dir="auto">${esc(r.title)}</p>${badge(r.status)}${r.details?`<details><summary>הבקשות המקוריות והמצב שלהן</summary>${r.details.map(d=>`<p dir="auto">${esc(d.text)} ${badge(d.status)}</p>`).join('')}</details>`:''}</div></li>`).join('')}</ul></div>`).join(''):'<p class="work-empty">אין משימות פתוחות כרגע.</p>');
     }else {host.querySelector('#work-tasks-title').textContent='משימות פתוחות';paint('tasks','<p class="work-empty">לא ניתן לטעון את המשימות. ננסה שוב אוטומטית.</p>');}
     if(terminals.status==='fulfilled'){
       const data=terminals.value;
       if(data.daemon===false)paint('terminals','<p class="work-empty">אין כרגע חיבור לטרמינלים. המצב אינו ידוע.</p>');
       else{
         const rows=activeTerminals(data.panes || []);
-        paint('terminals',rows.length?`<ul>${rows.map(r=>`<li>${r.name?`<span class="work-category" dir="auto">${esc(r.name)}</span>`:''}<a href="#${encodeURIComponent(r.id)}" dir="auto">${esc(r.title)}</a><p dir="auto">${esc(r.update)}</p><span class="work-status">${esc(r.status)}</span>${r.details?`<details><summary>הנוסח המקורי</summary><p dir="auto">${esc(r.details.title)}</p><p dir="auto">${esc(r.details.update)}</p></details>`:''}</li>`).join('')}</ul>`:'<p class="work-empty">אין טרמינלים שעובדים כרגע.</p>');
+        paint('terminals',rows.length?`<ul>${rows.map(r=>`<li class="work-terminal ${tone(r.status)}"><span class="work-dot" aria-hidden="true"></span><div class="work-body"><a href="#${encodeURIComponent(r.id)}" dir="auto" title="${esc(r.title)}">${esc(r.name || r.title)}</a><p class="work-update" dir="auto" title="${esc(r.update)}">${esc(r.update)}</p><details><summary>פרטים</summary><p dir="auto">${esc(r.title)}</p><p dir="auto">${esc(r.update)}</p>${r.details?`<p dir="auto">${esc(r.details.title)}</p><p dir="auto">${esc(r.details.update)}</p>`:''}</details></div>${badge(r.status)}</li>`).join('')}</ul>`:'<p class="work-empty">אין טרמינלים שעובדים כרגע.</p>');
       }
     }else paint('terminals','<p class="work-empty">לא ניתן לטעון את הטרמינלים. ננסה שוב אוטומטית.</p>');
     host.querySelector('.work-fresh').textContent=results.every(r=>r.status==='fulfilled') && terminals.value.daemon?`עודכן ב־${new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}`:'חלק מהמידע אינו זמין כרגע';
