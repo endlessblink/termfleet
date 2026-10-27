@@ -1,4 +1,5 @@
 import { gentleCommand } from '../../scripts/lib/cpu-priority.mjs';
+import { statedRules, withRules } from './stated-rules.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -1159,6 +1160,13 @@ export class Bots {
     this.handed.set(msg.id, { bot: id, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
     if (this.handed.size > 300) this.handed.delete(this.handed.keys().next().value);
     if (owner) this.append(id, { role: 'activity', text: 'קיבלתי, עובד על זה...' });
+    if (owner) {
+      // A lasting rule he states is kept in this bot's standing rules now, and he sees that once.
+      try {
+        const added = withRules(bot.rules, statedRules(said0));
+        if (added && !this.update(id, { rules: added.rules }).error) this.append(id, { role: 'note', text: `Saved as a rule: ${added.added.join(' · ').slice(0, 300)}` });
+      } catch { /* the message itself is already on its way */ }
+    }
     if (owner && this.side && this.running.has(id)) {
       this.sideAnswer(id, { at: msg.at, msgId: msg.id, text: said0, pictures, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
       return { ok: true, message: msg, queued: true, side: true };
