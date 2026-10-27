@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-27T15:26:14.581Z",
+  "updatedAt": "2026-10-27T18:47:59.137Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13862,6 +13862,85 @@
           "type": "evidence",
           "kind": "browser-render",
           "note": "Authenticated production iframe at https://control.in-theflow.com/#bot:315a7bfa1cef:133 records/66 groups; active terminals4 then2 and rendered counts matched both times. Final served module9cdbc02e074a40c1b6c5539997c0e37199fb854328c52805f19814e767640728. Independent final production appearance PASS; phone ca8cdf055b971a267a12c248fb619715c5cc97badd64a7d91c336843e08c330f and desktop cf3cc4408b057f0821353f862d6ce5bbd77c0eb1217d991ef71bf74b62d7d1c9. Generic source updates remain honest; owner trial open."
+        }
+      ]
+    },
+    {
+      "id": "TF-123",
+      "title": "Bot slash menu omits installed skills and mid-sentence commands",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Installed Impeccable skills absent; slash only opens at start",
+      "rootCause": "The catalog omitted provider skill folders and both picker and explicit invocation were anchored to the message start.",
+      "guard": "termcontrol/test/skills.test.mjs and slash-skills-browser.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-27T18:47:59.107Z",
+          "note": "Installed provider catalog and cursor-aware slash token preserve precedence, approval, URLs/paths and draft text"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-27T18:47:59.137Z",
+          "note": "21 focused skill/menu/provider checks pass; exact unchanged-HEAD navigation fixture timeout reproduced separately"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner refreshes https://control.in-theflow.com/ and tries /imp after a few words; physical keyboard acceptance remains open.",
+      "history": [
+        {
+          "at": "2026-10-27T18:40:21.299Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-27T18:40:21.345Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Runtime and registry match; missing provider catalog and anchored picker confirmed"
+        },
+        {
+          "at": "2026-10-27T18:42:07.385Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Source diagnosis: catalog omits provider folders; picker anchored at position zero"
+        },
+        {
+          "at": "2026-10-27T18:42:07.427Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Twelve backend skill regressions pass, including explicit mid-message expansion and URL/path boundaries"
+        },
+        {
+          "at": "2026-10-27T18:42:07.460Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Catalog and cursor-aware menu implemented; browser regressions underway"
+        },
+        {
+          "at": "2026-10-27T18:44:30.574Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused tests, desktop/phone browser, provider regression and build pass; authenticated bridge source matches disk; final family grouping verification underway"
+        },
+        {
+          "at": "2026-10-27T18:47:59.108Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Installed provider catalog and cursor-aware slash token preserve precedence, approval, URLs/paths and draft text"
+        },
+        {
+          "at": "2026-10-27T18:47:59.137Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "21 focused skill/menu/provider checks pass; exact unchanged-HEAD navigation fixture timeout reproduced separately"
         }
       ]
     }

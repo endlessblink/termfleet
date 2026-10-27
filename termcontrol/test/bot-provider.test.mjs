@@ -236,6 +236,8 @@ test('bot slash provider command survives unavailable skills and retries safely 
     assert.equal(await page.locator('header .bot-avatar.head').evaluate(element => getComputedStyle(element).animationName), 'none');
     assert.deepEqual(errors, []);
   } finally {
+    // Let polling route handlers finish before disposing their request context.
+    for (const context of browser?.contexts() || []) for (const page of context.pages()) await page.unrouteAll({ behavior: 'wait' });
     await browser?.close();
     server.kill('SIGKILL');
     fs.rmSync(root, { recursive: true, force: true });
