@@ -3972,6 +3972,8 @@ async function openBot(id,{motion=null}={}){
     const handoffCount=new Map(),handoffSkip=new Set();
     {let lead=null;for(const m of data.messages){if(m.role!=='handoff'){lead=null;continue;}if(lead && lead.text===m.text && lead.to===m.to){handoffSkip.add(m.id);handoffCount.set(lead.id,(handoffCount.get(lead.id) || 1)+1);}else lead=m;}}
     let html=data.messages.map(m=>{
+      // Durable resolution audits feed question reconciliation, not the conversation.
+      if(m.role==='question-resolution')return '';
       const when=m.at?ago(m.at):'';
       if(m.repeated && (m.role==='terminal-ask' || m.role==='event'))return '';
       if(m.role==='handoff' && handoffSkip.has(m.id))return '';

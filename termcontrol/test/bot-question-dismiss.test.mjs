@@ -71,6 +71,8 @@ test('owner removes old questions through the real bridge, retaining a question 
     assert.equal(nobody.status, 401);
     await page.goto(base + '/#bot:' + id);
     await page.waitForSelector('.bot-composer');
+    await page.waitForSelector('[data-question-remove]', { state: 'attached' });
+    const notesBefore = await page.locator('.bot-note').allTextContents();
     await page.locator('.bot-unanswered summary').click();
     await page.locator(`[data-question-remove="${original[0].id}"]`).click({ timeout: 5000 });
     await page.waitForFunction(qid => !document.querySelector(`[data-question-jump="${qid}"]`), original[0].id);
@@ -98,6 +100,7 @@ test('owner removes old questions through the real bridge, retaining a question 
     await page.locator('.bot-unanswered summary').click();
     assert.equal(await page.locator('[data-question-remove]').count(), 1);
     assert.equal(await page.locator(`[data-question-jump="${fresh.id}"]`).count(), 1);
+    assert.deepEqual(await page.locator('.bot-note').allTextContents(), notesBefore, 'internal resolution audits must not become empty or undefined chat messages');
     const history = store.messages(id), audits = history.filter(m => m.role === 'question-resolution');
     assert.equal(audits.length, 9);
     assert.ok(audits.every(m => m.resolution === 'dismissed'));

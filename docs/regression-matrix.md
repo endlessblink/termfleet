@@ -840,3 +840,6 @@ follow-up production activation and ordinary semantic acceptance remain pending.
 ### TF-141 historical-question dismissal
 
 Explicit dismissal retains originals without inventing answers. Regression: node --test termcontrol/test/bot-question-dismiss.test.mjs termcontrol/test/bot-unanswered-history.test.mjs termcontrol/test/bot-unanswered-navigation.test.mjs termcontrol/test/bot-question-resolution-live.test.mjs (13/13). Covers stale direct/legacy answers and resolution metadata, terminal refusal, exact clear snapshot and new arrivals, durable refresh, no send/wake, plus hidden removal controls against legacy backend. Coverage: disposable real bridge and headless390/1400; installed cleanup remains in_progress while existing bot work prevents a no-loss restart.
+
+
+TF-141 installed follow-up: audit events remain durable but must not render as conversational notes. Real bridge regression now compares note rows before/after9dismissals and reload; original failure reproduced9undefined, final focused13/13 and actual mobile refresh0undefined. Real pending0/audits9, screenshot independentPASS. Maintenance release/resumption remains owner-approval-gated after automatic review rejection.

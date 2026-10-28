@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T18:23:47.603Z",
+  "updatedAt": "2026-10-28T18:35:22.715Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15538,6 +15538,11 @@
           "kind": "focused-test",
           "at": "2026-10-28T18:23:47.603Z",
           "note": "Question dismissal final focused suite13/13 PASS, including real disposable bridge/browser, direct/legacy answered metadata race, exact frozen clear IDs, new arrival retention, rejected terminal dismissal and legacy loaded-backend capability gate. Build and syntax/diff checks PASS. Adjacent bot-question suite22/23 has baseline pre-existing skills-close regex failure. No live cleanup claimed; current working fine-tuned bot blocks no-loss activation."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T18:35:22.715Z",
+          "note": "Question dismissal installed18:27:51UTC PID85549 digest1afdda7c5b9463943e7c975b70082a510d9eb45a703b22f9a8b9fbc380e4a12c matches disk28modules. Twelve bot identities/exact durable queues,four terminal processes,daemon2068834 preserved. Real UI9original IDs dismissed; refresh0pending,9audits,operator rows unchanged. New owner screenshot9undefined notes reproduced red; role-specific audit rendering fix now real mobile refresh0undefined,independent visual PASS. Final focused13/13 and build PASS. Auto-review rejected restoring owned maintenance pause because resuming2durable owner messages may trigger external actions without explicit authorization. Pause remains; owner approval is final gate. No bypass,provider send,terminal input,or daemon restart."
         }
       ],
       "owner": "termfleet",
@@ -15618,6 +15623,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Question dismissal final focused suite13/13 PASS, including real disposable bridge/browser, direct/legacy answered metadata race, exact frozen clear IDs, new arrival retention, rejected terminal dismissal and legacy loaded-backend capability gate. Build and syntax/diff checks PASS. Adjacent bot-question suite22/23 has baseline pre-existing skills-close regex failure. No live cleanup claimed; current working fine-tuned bot blocks no-loss activation."
+        },
+        {
+          "at": "2026-10-28T18:35:22.715Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Question dismissal installed18:27:51UTC PID85549 digest1afdda7c5b9463943e7c975b70082a510d9eb45a703b22f9a8b9fbc380e4a12c matches disk28modules. Twelve bot identities/exact durable queues,four terminal processes,daemon2068834 preserved. Real UI9original IDs dismissed; refresh0pending,9audits,operator rows unchanged. New owner screenshot9undefined notes reproduced red; role-specific audit rendering fix now real mobile refresh0undefined,independent visual PASS. Final focused13/13 and build PASS. Auto-review rejected restoring owned maintenance pause because resuming2durable owner messages may trigger external actions without explicit authorization. Pause remains; owner approval is final gate. No bypass,provider send,terminal input,or daemon restart."
         }
       ]
     },
