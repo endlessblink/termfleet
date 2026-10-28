@@ -4,6 +4,7 @@ import { BOT_CALLER_TOKEN_ENV } from '../../scripts/lib/bot-caller.mjs';
 import { statedRules, withRules } from './stated-rules.mjs';
 import { claimsReady, extractConditions, unmetConditions } from './conditions.mjs';
 import fs from 'node:fs';
+import { helperEventId, helperEventIds } from './helper-completions.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -704,6 +705,8 @@ export class Bots {
     const chat = this.messages(id);
     const last = [...chat].reverse().find((m) => m.role !== 'activity');
     const working = this.running.get(id);
+    const helperDelivery = { unresolved: (bot.unresolvedHelperTurns || []).length,
+      sources: Object.values(bot.helperEnrollments || {}).filter((e) => e.unresolved).map((e) => e.unresolved) };
     const openTasks = [...loadRequirements({ dir: this.reqDir() }).items.values()].filter((item) =>
       item.source === `bot:${id}` && !item.locked && !['done', 'ready', 'answered', 'context', 'dropped'].includes(item.status)).length;
     return {
@@ -713,9 +716,11 @@ export class Bots {
       helpers: this.helpers(id),
       mainResetsAt: (bot.active && bot.active !== bot.provider) ? (this.health()[bot.provider]?.limitedUntil || null) : null,
       id: bot.id, name: bot.name, job: bot.job, provider: bot.provider, model: bot.model || null, fallback: bot.fallback || null, active: bot.active || bot.provider, cwd: bot.cwd, ownFolder: path.dirname(bot.cwd || '') === path.resolve(BOTS_HOME()), createdAt: bot.createdAt,
-      state: working ? 'working' : bot.blocked ? 'needs-you' : last?.role === 'error' ? 'failed' : openTasks ? 'pending' : 'idle',
+      state: working ? 'working' : bot.blocked || helperDelivery.unresolved || helperDelivery.sources.length ? 'needs-you' : last?.role === 'error' ? 'failed' : openTasks ? 'pending' : 'idle',
+      helperDelivery,
       openTasks,
-      blocked: bot.blocked ? { ask: bot.blocked.ask, at: bot.blocked.at } : null,
+      blocked: bot.blocked ? { ask: bot.blocked.ask, at: bot.blocked.at } : bot.unresolvedHelperTurns?.length
+        ? { ask: 'Check what happened before retrying the helper result.', at: bot.unresolvedHelperTurns[0].at } : null,
       waitingForReset: bot.retry ? bot.retry.at : null,
       health: bot.blocked ? { level: 'bad', text: 'Needs you' }
         : last?.role === 'error' ? { level: 'bad', text: 'Last reply failed' }
@@ -1077,8 +1082,13 @@ export class Bots {
   }
 
   async finishIdleProviderChange(id) {
-    const transfer = this.read(id)?.providerSwitch;
+    let transfer = this.read(id)?.providerSwitch;
     if (!transfer || this.running.has(id) || this.verifyingProviders?.has(id) || this.closing) return;
+    const previousEvent = [transfer.previous.inflight, transfer.previous.retry].find((item) => item?.eventIds?.length);
+    if (previousEvent) {
+      this.holdHelperTurn(id, previousEvent.text, previousEvent.eventIds, 'Provider transfer retained an uncertain helper turn.');
+      transfer = this.read(id).providerSwitch;
+    }
     this.running.set(id, { activity: 'Checking transferred context', startedAt: this.now(), steps: [], task: '' });
     const error = await this.verifyProviderChange(id);
     if (error) {
@@ -1178,6 +1188,84 @@ export class Bots {
     return { ok: true };
   }
 
+  /** Persist identity, payload, delivery obligation and source acknowledgment together. */
+  acceptHelperEvent(id, { identity, text, enrollmentKey, enrollment }) {
+    const bot = this.read(id);
+    if (!bot || identity.botId !== id || !['botId', 'paneId', 'incarnation', 'provider', 'sessionId', 'turnId', 'kind'].every((k) => identity[k]) || identity.provider !== 'codex') throw new Error('Incomplete helper event identity.');
+    const eventId = helperEventId(identity);
+    const existing = bot.helperEvents?.[eventId];
+    if (existing) {
+      this.writeHelperState(bot);
+      if (existing.state === 'pending') {
+        const queue = this.queues.get(id) || [];
+        if (!queue.includes(existing.queueText)) queue.push(existing.queueText);
+        this.queues.set(id, queue);
+        if (!this.running.has(id)) this.drain(id);
+      }
+      return { ok: true, eventId, state: existing.state, duplicate: true };
+    }
+    const queueText = `[Event, not from Noam; helper event ${eventId}] ${text}`;
+    bot.helperEvents = { ...bot.helperEvents, [eventId]: { identity, text, queueText, state: 'pending', at: this.now() } };
+    bot.helperEnrollments = { ...bot.helperEnrollments, [enrollmentKey]: enrollment };
+    bot.queued = [...(bot.queued || []), queueText];
+    this.writeHelperState(bot);
+    const queue = this.queues.get(id) || [];
+    queue.push(queueText);
+    this.queues.set(id, queue);
+    // Chat projection is supporting evidence; a failed append cannot erase the outbox.
+    try { this.append(id, { role: 'event', text, helperEventId: eventId }); } catch { /* durable pending receipt remains */ }
+    if (!this.running.has(id)) this.drain(id);
+    return { ok: true, eventId, state: 'pending' };
+  }
+
+  writeHelperState(bot) {
+    this.write(bot);
+    // The receipt must be durable before the source/follow can acknowledge it.
+    for (const file of [path.join(this.folder(bot.id), 'bot.json'), this.folder(bot.id)]) {
+      const fd = fs.openSync(file, 'r');
+      try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    }
+  }
+
+  reconcileHelperEvents(id) {
+    const bot = this.read(id);
+    const pending = Object.values(bot?.helperEvents || {}).filter((event) => event.state === 'pending');
+    if (!pending.length) return;
+    // Also repairs a rename-success/fsync-failure or process-local enqueue gap.
+    this.writeHelperState(bot);
+    const queue = this.queues.get(id) || [];
+    for (const event of pending) if (!queue.includes(event.queueText)) queue.push(event.queueText);
+    this.queues.set(id, queue);
+    if (!this.running.has(id)) this.drain(id);
+  }
+
+  saveHelperEnrollment(id, key, enrollment) {
+    const bot = this.read(id);
+    if (!bot) throw new Error('Unknown helper event owner.');
+    if (JSON.stringify(bot.helperEnrollments?.[key]) === JSON.stringify(enrollment)) return;
+    bot.helperEnrollments = { ...bot.helperEnrollments, [key]: enrollment };
+    this.writeHelperState(bot);
+  }
+
+  holdHelperTurn(id, text, eventIds, reason) {
+    const bot = this.read(id);
+    const same = (item) => item && item.text === text && JSON.stringify(item.eventIds) === JSON.stringify(eventIds);
+    if (!(bot.unresolvedHelperTurns || []).some(same)) bot.unresolvedHelperTurns = [...(bot.unresolvedHelperTurns || []), { text, eventIds, reason, at: this.now() }];
+    const heldTexts = new Set(eventIds.map((e) => bot.helperEvents?.[e]?.queueText).filter(Boolean));
+    bot.queued = (bot.queued || []).filter((t) => !heldTexts.has(t));
+    if (!bot.queued.length) delete bot.queued;
+    for (const eventId of eventIds) if (bot.helperEvents?.[eventId]) bot.helperEvents[eventId].state = 'unresolved';
+    if (bot.inflight?.eventIds?.some((e) => eventIds.includes(e))) delete bot.inflight;
+    for (const kind of ['inflight', 'retry']) {
+      const previous = bot.providerSwitch?.previous?.[kind];
+      if (previous?.eventIds?.some((e) => eventIds.includes(e))) delete bot.providerSwitch.previous[kind];
+    }
+    this.writeHelperState(bot);
+    const queue = this.queues.get(id);
+    if (queue) this.queues.set(id, queue.filter((t) => !heldTexts.has(t)));
+    this.append(id, { role: 'needs-you', text: 'A helper result may already have been acted on. Check what happened, then use Retry to continue; it will not be replayed automatically.' });
+  }
+
   /**
    * Stop what the bot is doing right now (Noam's "close this bot"): the reply in
    * progress ends and messages waiting behind it are dropped. Its chat, memory and
@@ -1189,6 +1277,13 @@ export class Bots {
     this.sides.get(id)?.pending.splice(0);
     try { takeSteer(this.folder(id)); } catch { /* nothing waiting */ }
     this.echoes.delete(id);
+    const bot = this.read(id);
+    if (Object.values(bot?.helperEvents || {}).some((e) => e.state === 'pending')) {
+      // Stopping is explicit cancellation, not an implicit restart resurrection.
+      for (const e of Object.values(bot.helperEvents)) if (e.state === 'pending') e.state = 'cancelled';
+      bot.queued = (bot.queued || []).filter((text) => !Object.values(bot.helperEvents).some((e) => e.queueText === text));
+      this.writeHelperState(bot);
+    }
     if (!current?.stop) return { ok: true, wasRunning: false };
     current.stop();
     return { ok: true, wasRunning: true };
@@ -1521,6 +1616,12 @@ export class Bots {
 
   holdProviderWork(id, text, error) {
     const bot = this.read(id);
+    const eventIds = [...new Set([...(bot?.inflight?.eventIds || []), ...(this.running.get(id)?.eventIds || [])])];
+    if (eventIds.length) {
+      this.holdHelperTurn(id, bot.inflight?.text || text, eventIds, error);
+      this.running.delete(id);
+      return;
+    }
     if (bot) {
       bot.blocked = { code: 'provider-context', ask: error, text, queued: (this.queues.get(id) || []).splice(0), at: this.now(), target: bot.failedProviderSwitch?.target || null };
       delete bot.inflight; // Explicit Retry owns this work, never an automatic restart loop.
@@ -1535,6 +1636,8 @@ export class Bots {
     while ((this.queues.get(id) || []).length) {
       if (this.closing) { this.saveQueue(id); return; }
       const texts = this.queues.get(id).splice(0);
+      const eventIds = helperEventIds(this.read(id), texts);
+      if (eventIds.length) this.running.set(id, { task: texts.join('\n\n'), eventIds, startedAt: this.now(), steps: [] });
       // His messages that waited behind a turn which replied after they arrived (Noam 2026-10-24:
       // "אין שום סיבה לחזרה הזו"): the bot is shown that reply and must not say it again.
       // Only when that turn already took every one of his items in them (the reminder showed it his words).
@@ -1554,7 +1657,7 @@ export class Bots {
       const text = this.withSideNotes(id, (digest ? `${digest}\n\n` : '') + (since ? `${alreadyAnsweredNote(since.text)}\n\n` : '') + (texts.length === 1 ? texts[0] : texts.map((t, i) => `(${i + 1}) ${t}`).join('\n\n')));
       const echo = [...(this.echoes.get(id) || [])];
       this.echoes.delete(id);
-      this.running.set(id, { activity: 'Thinking', startedAt: this.now(), echo, task: texts.join('\n\n'), steps: [], said: [], turnId: crypto.randomUUID(), requestIds: [] });
+      this.running.set(id, { activity: 'Thinking', startedAt: this.now(), echo, task: texts.join('\n\n'), steps: [], said: [], turnId: crypto.randomUUID(), requestIds: [], eventIds });
       this.returnIfReset(id);
       this.freshStartIfFull(id);
       {
@@ -1574,13 +1677,19 @@ export class Bots {
         }
         const marked = this.read(id);
         if (marked.queued) { marked.queued = marked.queued.filter(t => !texts.includes(t)); if (!marked.queued.length) delete marked.queued; }
-        marked.inflight = { text, at: this.now(), ...(this.resumed.delete(id) ? { resumed: true } : {}) };
-        this.write(marked);
+        marked.inflight = { text, at: this.now(), ...(eventIds.length ? { eventIds } : {}), ...(this.resumed.delete(id) ? { resumed: true } : {}) };
+        for (const eventId of eventIds) marked.helperEvents[eventId].state = 'executing';
+        if (eventIds.length) this.writeHelperState(marked); else this.write(marked);
       }
       let result = await this.turn(id, text);
       if (result?.providerSwitchFailed) { this.holdProviderWork(id, texts.join('\n\n'), result.error); return; }
       // Killed from outside: during a restart keep the turn for after it; otherwise re-run it once now.
       if (result?.killed && this.closing) { this.running.delete(id); this.saveQueue(id); return; }
+      if (eventIds.length && (result?.killed || result?.limit || result?.error || result?.stopped)) {
+        this.holdHelperTurn(id, this.read(id)?.inflight?.text || text, this.read(id)?.inflight?.eventIds || eventIds, 'Model execution outcome is uncertain.');
+        this.running.delete(id);
+        continue;
+      }
       if (result?.killed && !this.read(id)?.inflight?.resumed) {
         this.append(id, { role: 'system', text: 'The reply was cut off, so it is starting again.' });
         result = await this.turn(id, `(You were cut off while working on this; check what already happened before redoing anything.)\n\n${text}`);
@@ -1609,6 +1718,13 @@ export class Bots {
       if (requestedProvider) {
         this.queueLeftSteer(id);
         this.running.delete(id);
+        if (eventIds.length) {
+          const retained = this.read(id);
+          // The old turn may have acted before interruption; retain it for review.
+          this.holdHelperTurn(id, retained.inflight?.text || text, eventIds, 'Provider changed during helper delivery.');
+          this.changeProvider(id, requestedProvider);
+          continue;
+        }
         const changed = this.changeProvider(id, requestedProvider);
         if (!changed.ok) { this.holdProviderWork(id, texts.join('\n\n'), changed.error); return; }
         this.queues.get(id).unshift(...texts);
@@ -1616,7 +1732,8 @@ export class Bots {
       }
       let bot = this.read(id);
       if (!bot) { this.running.delete(id); return; }
-      delete bot.inflight;
+      if (!eventIds.length) delete bot.inflight;
+      else bot.inflight.phase = 'publishing';
       this.write(bot);
       if (bot && !result.error) {
         if ((bot.active || bot.provider) === 'claude') bot.sessions.claude = { ...bot.sessions.claude, started: true };
@@ -1658,6 +1775,12 @@ export class Bots {
           const attempts = (fresh.heldTestingHandoff || 0) + 1;
           fresh.heldTestingHandoff = attempts;
           this.write(fresh);
+          if (eventIds.length) {
+            this.holdHelperTurn(id, this.read(id)?.inflight?.text || text, this.read(id)?.inflight?.eventIds || eventIds, `Reply publication was held: ${problem}`);
+            this.queueLeftSteer(id);
+            this.running.delete(id);
+            continue;
+          }
           if (attempts <= 2) {
             this.queues.get(id).unshift(`[Testing handoff blocked] ${problem} Correct the reply now. The unchecked report was not shown to Noam.`);
           } else {
@@ -1728,6 +1851,12 @@ export class Bots {
       }
       // Mid-turn messages the turn ended before taking: they start the next turn (R-7173).
       this.queueLeftSteer(id);
+      if (eventIds.length) {
+        const finished = this.read(id);
+        for (const eventId of finished.inflight?.eventIds || eventIds) if (finished.helperEvents?.[eventId]) finished.helperEvents[eventId].state = 'delivered';
+        delete finished.inflight;
+        this.writeHelperState(finished);
+      }
       this.running.delete(id);
     }
   }
@@ -1910,8 +2039,13 @@ export class Bots {
   block(id, text, problem) {
     const bot = this.read(id);
     if (!bot) return;
-    bot.blocked = { ask: problem.ask, code: problem.code, text, at: this.now() };
-    this.write(bot);
+    const eventIds = this.running.get(id)?.eventIds || [];
+    bot.blocked = { ask: problem.ask, code: problem.code, text, at: this.now(), ...(eventIds.length ? { eventIds } : {}) };
+    for (const eventId of eventIds) bot.helperEvents[eventId].state = 'held';
+    if (eventIds.length) {
+      bot.queued = (bot.queued || []).filter((t) => !eventIds.some((e) => bot.helperEvents[e].queueText === t));
+      this.writeHelperState(bot);
+    } else this.write(bot);
     this.append(id, { role: 'needs-you', text: problem.ask });
     if (bot.notify !== false) { try { this.notify({ title: `${bot.name} needs you`, body: problem.ask, url: `/#bot:${id}` }); } catch { /* never block a bot on a notification */ } }
   }
@@ -1920,7 +2054,8 @@ export class Bots {
   retry(id) {
     const bot = this.read(id);
     if (!bot) return { error: 'That bot no longer exists.' };
-    const text = bot.blocked?.text || bot.retry?.text;
+    const unresolved = !bot.blocked && !bot.retry ? bot.unresolvedHelperTurns?.[0] : null;
+    const text = bot.blocked?.text || bot.retry?.text || unresolved?.text;
     if (!text) return { error: 'There is nothing waiting to retry.' };
     const waiting = bot.blocked?.queued || [];
     if (bot.blocked?.code === 'provider-context' && bot.blocked.target) {
@@ -1928,9 +2063,18 @@ export class Bots {
       if (!staged.ok) return { error: staged.error };
     }
     const current = this.read(id);
+    const eventIds = bot.blocked?.eventIds || bot.retry?.eventIds || unresolved?.eventIds || [];
     delete current.blocked;
     delete current.retry;
-    this.write(current);
+    if (unresolved) current.unresolvedHelperTurns.shift();
+    if (eventIds.length) {
+      for (const eventId of eventIds) {
+        current.helperEvents[eventId].state = 'pending';
+        current.helperEvents[eventId].queueText = text;
+      }
+      current.queued = [...(current.queued || []), text, ...waiting];
+      this.writeHelperState(current);
+    } else this.write(current);
     const queue = this.queues.get(id) || [];
     queue.unshift(text, ...waiting);
     this.queues.set(id, queue);
@@ -1945,7 +2089,17 @@ export class Bots {
   resumeInterrupted() {
     let resumed = 0;
     for (const { id } of this.list()) {
-      const bot = this.read(id);
+      let bot = this.read(id);
+      if (this.running.has(id)) continue;
+      const previousEvent = [bot?.providerSwitch?.previous?.inflight, bot?.providerSwitch?.previous?.retry].find((item) => item?.eventIds?.length);
+      if (previousEvent) {
+        this.holdHelperTurn(id, previousEvent.text, previousEvent.eventIds, 'Restart found an uncertain helper turn in provider transfer.');
+        bot = this.read(id);
+      }
+      if (bot?.inflight?.eventIds?.length) {
+        this.holdHelperTurn(id, bot.inflight.text, bot.inflight.eventIds, 'Restart interrupted execution or publication.');
+        bot = this.read(id);
+      }
       if (bot?.blocked?.code === 'provider-context') continue;
       if (bot?.providerSwitch && !bot.inflight && !bot.queued?.length) {
         setImmediate(() => this.finishIdleProviderChange(id));
@@ -1954,7 +2108,10 @@ export class Bots {
       }
       if ((!bot?.inflight && !bot?.queued?.length) || this.running.has(id)) continue;
       const { inflight, queued = [] } = bot;
-      delete bot.inflight; delete bot.queued;
+      delete bot.inflight;
+      // Durable event entries remain until the atomic queued -> inflight claim.
+      bot.queued = queued.filter((t) => helperEventIds(bot, [t]).length);
+      if (!bot.queued.length) delete bot.queued;
       this.write(bot);
       const queue = this.queues.get(id) || [];
       queue.unshift(...queued);
@@ -1982,7 +2139,8 @@ export class Bots {
     if (!bot) throw new Error('Cannot persist queued messages for a missing bot.');
     // Persist first. A read/write failure must retain the exact original memory queue.
     // Copy bot state too: a failed write must not append twice through a cached object.
-    this.write({ ...bot, queued: [...(bot.queued || []), ...waiting] });
+    const alreadyDurable = new Set(Object.values(bot.helperEvents || {}).map((e) => e.queueText));
+    this.write({ ...bot, queued: [...(bot.queued || []), ...waiting.filter((text) => !alreadyDurable.has(text) || !bot.queued?.includes(text))] });
     // Repeated owner messages are distinct arrivals; remove only the saved prefix.
     if (this.queues.get(id) === queue && waiting.every((text, i) => queue[i] === text)) {
       queue.splice(0, waiting.length);
@@ -2020,7 +2178,18 @@ export class Bots {
       if (waiting.length) {
         text += `\n\n[Messages received while the transfer was being verified, in arrival order. Apply these before continuing any earlier work:]\n${waiting.join('\n\n')}`;
         const current = this.read(id);
-        if (current?.inflight) { current.inflight.text = text; this.write(current); }
+        if (current?.inflight) {
+          const merged = helperEventIds(current, waiting);
+          const eventIds = this.running.get(id)?.eventIds || [];
+          for (const e of merged) if (!eventIds.includes(e)) eventIds.push(e);
+          current.inflight.text = text;
+          if (eventIds.length) {
+            current.inflight.eventIds = eventIds;
+            for (const e of merged) current.helperEvents[e].state = 'executing';
+            current.queued = (current.queued || []).filter((t) => !waiting.includes(t));
+            this.writeHelperState(current);
+          } else this.write(current);
+        }
       }
     }
     let bot = this.read(id);

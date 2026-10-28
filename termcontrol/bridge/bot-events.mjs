@@ -5,6 +5,8 @@ import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.
 import { readFeed } from './feed.mjs';
 import { screenPromptAsk } from './asks.mjs';
 import { promptObservation } from './prompt-lifecycle.mjs';
+import { completionLifecycle } from './adapters/codex.mjs';
+import { observeCodexCompletion } from './helper-completions.mjs';
 
 /**
  * TF-096 part 7: things that wake a bot without Noam writing (Grok Bot's event
@@ -184,10 +186,11 @@ export function beginPromptObservation(bots) {
 export function isCurrentPromptObservation(bots, round) {
   return promptRounds.get(bots) === round;
 }
-export async function checkBotEvents({ bots, panes, available = true, now = Date.now(), seen, readAsk, readScreen = async () => '', head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, recoveryHandled = () => false, notify = (note) => bots.notify?.(note) }) {
+export async function checkBotEvents({ bots, panes, available = true, now = Date.now(), seen, readAsk, readScreen = async () => '', head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, readCompletion = completionLifecycle, recoveryHandled = () => false, notify = (note) => bots.notify?.(note) }) {
   const round = beginPromptObservation(bots);
   const alert = (note) => { try { notify(note); } catch { /* a notification never blocks the events */ } };
   for (const b of bots.list()) {
+    bots.reconcileHelperEvents?.(b.id);
     // One entry per terminal: a bot that followed the same agent twice is woken once.
     const live = new Map();
     for (const h of b.helpers || []) if (h?.paneId && followActive(h)) live.set(h.paneId, h);
@@ -209,8 +212,8 @@ export async function checkBotEvents({ bots, panes, available = true, now = Date
       // row, a new message in its own record, or the bot handing it more work; a flicker is none.
       let { finishedAt = 0, blocked = false } = before;
       const workRun = pane?.turn === 'working' ? (before.workRun || 0) + 1 : 0;
-      if (finishedAt && state !== 'idle' && (workRun >= 2 || (bots.messages?.(b.id) || []).some((m) => m.role === 'handoff' && m.pane === h.paneId && Number(m.at) > finishedAt) || (pane && prompted(pane, finishedAt)))) { finishedAt = 0; blocked = false; }
-      if (before.state === 'working' && state === 'idle') {
+      if (pane?.provider !== 'codex' && finishedAt && state !== 'idle' && (workRun >= 2 || (bots.messages?.(b.id) || []).some((m) => m.role === 'handoff' && m.pane === h.paneId && Number(m.at) > finishedAt) || (pane && prompted(pane, finishedAt)))) { finishedAt = 0; blocked = false; }
+      if (pane?.provider !== 'codex' && before.state === 'working' && state === 'idle') {
         // A follow is for one job: this finished turn ends it, so later turns of that agent stay quiet.
         if (h.followed) {
           bots.endFollow?.(b.id, h.paneId);
@@ -223,7 +226,7 @@ export async function checkBotEvents({ bots, panes, available = true, now = Date
             ? `It cannot be closed yet: it has unsaved work (${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}). Have it commit, or leave it; you will be told once, when it can be closed. Do not try to close it before that.`
             : `Then close it (termfleet-team close ${h.paneId}) unless you are sending it more work now.`) + leftOpen(bots, b.id, h.paneId));
         }
-      } else if (finishedAt && blocked && state === 'idle' && !closeCheck(pane, h).length) {
+      } else if (pane?.provider !== 'codex' && finishedAt && blocked && state === 'idle' && !closeCheck(pane, h).length) {
         // The one reminder after that: closing has become possible.
         blocked = false;
         bots.wake(b.id, `The finished terminal agent for "${label}" has no unsaved work any more, so it can be closed now: termfleet-team close ${h.paneId} (unless you are sending it more work).`);
@@ -236,6 +239,11 @@ export async function checkBotEvents({ bots, panes, available = true, now = Date
       // The status says it moved on, but the menu is still on screen: the prompt is still open.
       const onScreen = state !== 'waiting' && pane ? (screenPromptAsk(pane, screen) || (open && screenStillAsks(screen) ? true : null)) : null;
       const ask = state === 'waiting' ? await readAsk(pane) : (onScreen === true ? null : onScreen);
+      if (pane?.provider === 'codex' && isCurrentPromptObservation(bots, round)) {
+        observeCodexCompletion({ bots, bot: b, helper: h, pane, lifecycle: readCompletion, now, closeCheck,
+          safeToClose: state === 'idle' && !pane.attention && !ask && !onScreen && !open,
+          snapshot: () => leftOpen(bots, b.id, h.paneId, now) });
+      }
       // A slow screen/transcript read from an earlier poll must never overwrite
       // a newer observation (including a disconnect, cancellation or replacement).
       if (!isCurrentPromptObservation(bots, round)) return;

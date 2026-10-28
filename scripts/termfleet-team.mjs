@@ -73,7 +73,10 @@ export function recordHelper(helper, env = process.env, callerOptions = {}) {
   const file = join(dir, 'helpers.json');
   let list = [];
   try { list = JSON.parse(readFileSync(file, 'utf8')); } catch { list = []; }
-  list.push({ ...helper, at: Date.now() });
+  const at = Date.now();
+  const completionEnrollment = helper.completionEnrollment || (helper.provider === 'codex'
+    ? adapterFor(helper).completionEnrollment(helper, at) : null);
+  list.push({ ...helper, at, ...(completionEnrollment ? { completionEnrollment } : {}) });
   try { writeFile(file, JSON.stringify(list.slice(-50), null, 1), { mode: 0o600 }); return true; } catch { return false; }
 }
 import { requestDaemon, defaultDaemonSocket } from './termfleetctl.mjs';
@@ -338,7 +341,7 @@ async function main(argv) {
     }
     if (reqs.ids.length) recordRequirement(reqs.ids.map((id) => ({ e: 'assign', id, pane: pane.id, delivery: receipt.queued ? `${delivery}:queued` : delivery, by: from?.id || selfId || null })));
     recordInBot({ role: 'handoff', pane: pane.id, to: name, text: text.trim().slice(0, 600) });
-    if (receipt.queued && botFolder()) recordHelper({ paneId: pane.id, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
+    if (receipt.queued && botFolder()) recordHelper({ paneId: pane.id, sessionId: pane.sessionId || null, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
     const items = reqs.ids.length ? ` with Noam's items ${reqs.ids.join(', ')}` : '';
     if (command === 'send') return out(json ? JSON.stringify({ ok: true, id: pane.id, received: receipt.received, queued: Boolean(receipt.queued), delivery, items: reqs.ids }) : receipt.received
       ? `Sent to ${name} (${pane.id})${items}; it received it.`
@@ -351,7 +354,7 @@ async function main(argv) {
     const limit = inBot ? Math.min(Number(flags.timeout) || BOT_WAIT_S, BOT_WAIT_S) : Number(flags.timeout) || 600;
     const result = await waitForReply(pane.id, { since, timeoutMs: limit * 1000 });
     if (inBot && result.error && /time/i.test(`${result.error} ${result.note || ''}`)) {
-      recordHelper({ paneId: pane.id, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
+      recordHelper({ paneId: pane.id, sessionId: pane.sessionId || null, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
       return out(`${pane.profile?.name || pane.project} is still working after ${limit} seconds. You are now following it and will be woken when it finishes its turn. Tell Noam in one plain sentence that it is in progress, then end your turn.`);
     }
     if (json) return out(JSON.stringify(result.error ? result : { state: result.state, reply: result.reply, note: result.note || null }, null, 2));
@@ -366,7 +369,7 @@ async function main(argv) {
     const waitLimit = inBotWait ? Math.min(Number(flags.timeout) || BOT_WAIT_S, BOT_WAIT_S) : Number(flags.timeout) || 600;
     const result = await waitForReply(pane.id, { since: 0, timeoutMs: waitLimit * 1000 });
     if (inBotWait && result.error && /time/i.test(`${result.error} ${result.note || ''}`)) {
-      recordHelper({ paneId: pane.id, provider: pane.provider || null, task: pane.title || pane.project || '', cwd: pane.cwd || null, followed: true });
+      recordHelper({ paneId: pane.id, sessionId: pane.sessionId || null, provider: pane.provider || null, task: pane.title || pane.project || '', cwd: pane.cwd || null, followed: true });
       return out(`${pane.profile?.name || pane.project} is still working after ${waitLimit} seconds. You are now following it and will be woken when it finishes. Tell Noam it is in progress, then end your turn.`);
     }
     if (json) return out(JSON.stringify(result, null, 2));
@@ -419,6 +422,7 @@ async function main(argv) {
       writeFile(file, taskText, { mode: 0o600 });
       args.push('--task-file', file);
     }
+    const enrollmentStartedAt = Date.now();
     const run = spawnSync(process.execPath, [join(here, 'termfleet-child.mjs'), ...args], { stdio: ['inherit', 'pipe', 'inherit'], encoding: 'utf8' });
     process.stdout.write(run.stdout || '');
     let made = {};
@@ -430,7 +434,8 @@ async function main(argv) {
           if (!profiles.get(made.childPaneId)?.name) profiles.save(made.childPaneId, { ...(profiles.get(made.childPaneId) || {}), name: startName });
         } catch { /* the card title still carries the name */ }
       }
-      const registered = recordHelper({ paneId: made.childPaneId, provider: flags.provider || null, task: String(flags.task || flags.title || '').slice(0, 300), cwd: flags.cwd || null });
+      const registered = recordHelper({ paneId: made.childPaneId, provider: flags.provider || null, task: String(flags.task || flags.title || '').slice(0, 300), cwd: flags.cwd || null,
+        completionEnrollment: { kind: 'new-session', registeredAt: enrollmentStartedAt } });
       if (ownDir && !registered) fail(`Terminal ${made.childPaneId} was created, but its bot ownership receipt could not be saved. Do not start another worker; inspect this linkage first.`, 3);
       recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: String(flags.task || flags.title || '').slice(0, 600) });
       if (taskText && flags['no-wait'] !== true) {
@@ -461,7 +466,7 @@ async function main(argv) {
     if (!botFolder()) fail('Following works inside a bot.');
     const { pane } = await target(positional[0], null);
     const why = String(flags.why || pane.title || pane.project || '').slice(0, 300);
-    if (!recordHelper({ paneId: pane.id, provider: pane.provider || null, task: why, cwd: pane.cwd || null, followed: true })) fail('The observation receipt could not be saved; following was not confirmed.', 3);
+    if (!recordHelper({ paneId: pane.id, sessionId: pane.sessionId || null, provider: pane.provider || null, task: why, cwd: pane.cwd || null, followed: true })) fail('The observation receipt could not be saved; following was not confirmed.', 3);
     return out(`Following ${pane.profile?.name || pane.project} (${pane.id}): you will be woken when it finishes its turn.`);
   }
 

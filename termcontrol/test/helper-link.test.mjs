@@ -22,7 +22,7 @@ test('exact request assignment and live session create only an observer without 
   const f = fixture(t), before = structuredClone({ item: f.item, pane: f.pane, bot: f.deps.bots.read(f.args.botId) });
   const result = f.call();
   assert.equal(result.ok, true); assert.equal(result.created, true);
-  assert.deepEqual(result.helper, { paneId: 'terminal-exact', provider: 'codex', cwd: '/project', followed: true, requestId: 'R-12', delivery: 'D-exact', sessionId: 'actual-session', linkedBy: 'owner-correction', at: 1234 });
+  assert.deepEqual(result.helper, { paneId: 'terminal-exact', provider: 'codex', cwd: '/project', followed: true, requestId: 'R-12', delivery: 'D-exact', sessionId: 'actual-session', linkedBy: 'owner-correction', at: 1234, completionEnrollment: { kind: 'registered-time', registeredAt: 1234 } });
   assert.deepEqual(JSON.parse(fs.readFileSync(f.file, 'utf8')), [result.helper]);
   assert.deepEqual({ item: f.item, pane: f.pane, bot: f.deps.bots.read(f.args.botId) }, before);
   assert.deepEqual(f.call(), { ok: true, helper: result.helper, created: false });

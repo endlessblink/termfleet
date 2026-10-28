@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T12:18:47.149Z",
+  "updatedAt": "2026-10-28T13:38:38.003Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15776,6 +15776,87 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "/tmp/termfleet-link-pipe-red.tap1/1fails before fix; /tmp/termfleet-link-pipe-focused.tap36/36passes. /tmp/termfleet-link-pipe-green.tap broader41/42: bot-testing real Stop early null.decision failure, before probe. Actual host readyR19873 succeeds with exact private URL after one-line stdout flush callback; preserves403,404,timeout/error-body/auth checks, no receipt fabrication or proxy changes."
+        }
+      ]
+    },
+    {
+      "id": "TF-145",
+      "title": "Codex helper completion repeats after status changes or restart",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [
+        "Codex completion wake drain — partial coverage"
+      ],
+      "symptom": "One unchanged Codex result triggers repeated completion wakes and unnecessary model work",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/codex-completion-delivery.test.mjs termcontrol/test/helper-link.test.mjs termcontrol/test/bot-caller.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T13:38:37.967Z",
+          "note": "Exact candidate26914f7 integrated from matching base4b0d52c; bundle a6e1fb90ad21567e78d39448e4d9b78671f756c1dd3dda09ed004974b12c3881 verified. Source-only; single bridge writer assumption."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T13:38:38.002Z",
+          "note": "/tmp/termfleet-codex-integration-focused.tap35/35; broader85/87 and event17/19 match documented baseline failures. No live token savings proof."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Keep activation gated on supported legacy admission/timer stop and reconciliation of already-issued effects; after authorized activation verify loaded fingerprint, helper/follow/queue behavior and separate wake/input/cache/output counters.",
+      "history": [
+        {
+          "at": "2026-10-28T13:36:59.809Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T13:37:11.111Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Exact candidate and base match; runtime PID2252271 predates source. No restart authorized."
+        },
+        {
+          "at": "2026-10-28T13:38:25.382Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Preserved original candidate and regression artifacts; repeated Codex completion after flicker/reset."
+        },
+        {
+          "at": "2026-10-28T13:38:25.416Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused lifecycle fault/reconstruction guards pass35/35 on integrated source."
+        },
+        {
+          "at": "2026-10-28T13:38:25.449Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Exact candidate applied with unrelated dirty docs retained."
+        },
+        {
+          "at": "2026-10-28T13:38:25.481Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "No service reload or live model trial; activation remains gated."
+        },
+        {
+          "at": "2026-10-28T13:38:37.968Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Exact candidate26914f7 integrated from matching base4b0d52c; bundle a6e1fb90ad21567e78d39448e4d9b78671f756c1dd3dda09ed004974b12c3881 verified. Source-only; single bridge writer assumption."
+        },
+        {
+          "at": "2026-10-28T13:38:38.003Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "/tmp/termfleet-codex-integration-focused.tap35/35; broader85/87 and event17/19 match documented baseline failures. No live token savings proof."
         }
       ]
     }

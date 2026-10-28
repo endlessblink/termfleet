@@ -29,8 +29,11 @@ test('validated bot caller precedes inherited process ancestry and helper writes
   assert.throws(()=>resolveCaller({...env,TERMFLEET_PANE_ID:'terminal-foreign'},'/nonexistent-proc',1,f.options));
   assert.equal(recordHelper({paneId:'terminal-owned'},env,f.options),true);
   assert.equal(recordHelper({paneId:'terminal-observed',followed:true},env,f.options),true);
+  assert.equal(recordHelper({paneId:'terminal-codex',provider:'codex',sessionId:'not-yet-visible',followed:true},env,f.options),true);
   const helpers=JSON.parse(fs.readFileSync(path.join(f.bot.botFolder,'helpers.json'),'utf8'));
-  assert.deepEqual(helpers.map(h=>[h.paneId,!!h.followed]),[['terminal-owned',false],['terminal-observed',true]]);
+  assert.deepEqual(helpers.map(h=>[h.paneId,!!h.followed]),[['terminal-owned',false],['terminal-observed',true],['terminal-codex',true]]);
+  assert.equal(helpers[2].completionEnrollment.kind,'registered-time');
+  assert.equal(helpers[2].completionEnrollment.registeredAt,helpers[2].at);
   assert.throws(()=>recordHelper({paneId:'terminal-other'},{TERMFLEET_BOT_ID:f.bot.id},f.options));
   issued.revoke();
 });

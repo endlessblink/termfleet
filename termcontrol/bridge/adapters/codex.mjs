@@ -35,6 +35,65 @@ export function transcriptPath(pane) {
   return rolloutIndex().get(pane.sessionId) || null;
 }
 
+/** Lifecycle authority for completion delivery. Byte cursors never use the visible feed tail. */
+export function completionLifecycle(pane, enrolled = null, file = transcriptPath(pane)) {
+  if (!file || !pane.sessionId) return { unresolved: 'Codex lifecycle source or session identity is missing.' };
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const stat = fs.fstatSync(fd), source = `${stat.dev}:${stat.ino}`;
+    if (enrolled && (enrolled.source !== source || stat.size < enrolled.cursor)) return { unresolved: 'Codex lifecycle source was replaced or truncated.' };
+    let cursor = enrolled?.cursor || 0, activeTurn = enrolled?.activeTurn || null, activeStartedAt = enrolled?.activeStartedAt || null;
+    const completions = [];
+    const buffer = Buffer.alloc(64 * 1024);
+    let pending = Buffer.alloc(0), position = cursor, consumed = 0;
+    const endBoundary = enrolled?.initializing ? Math.min(enrolled.enrollmentEnd, stat.size) : stat.size;
+    while (position < endBoundary && consumed < 8 * 1024 * 1024) {
+      const n = fs.readSync(fd, buffer, 0, Math.min(buffer.length, endBoundary - position), position);
+      if (!n) break;
+      position += n;
+      consumed += n;
+      pending = Buffer.concat([pending, buffer.subarray(0, n)]);
+      let end;
+      while ((end = pending.indexOf(10)) >= 0) {
+        if (end > 1024 * 1024) return { unresolved: 'Codex lifecycle record exceeds the safe read bound.' };
+        const line = pending.subarray(0, end).toString('utf8');
+        const next = cursor + end + 1;
+        let record;
+        try { record = JSON.parse(line); } catch { return { unresolved: 'Codex lifecycle contains an unreadable record.' }; }
+        const p = record.payload;
+        if (record.type === 'event_msg' && ['task_started', 'task_complete'].includes(p?.type)) {
+          if (!p.turn_id) return { unresolved: 'Codex lifecycle turn identity is missing.' };
+          if (p.type === 'task_started') { activeTurn = p.turn_id; activeStartedAt = record.timestamp || null; }
+          else {
+            // A completion without its matched start is not trustworthy after truncation.
+            if (activeTurn !== p.turn_id) return { unresolved: 'Codex completion has no matching active turn.' };
+            completions.push({ turnId: p.turn_id, cursor: next, result: String(p.last_agent_message || '').slice(0, 2048), source: `${file}:${cursor}`, startedAt: activeStartedAt, completedAt: record.timestamp || null });
+            activeTurn = null;
+            activeStartedAt = null;
+          }
+        }
+        cursor = next;
+        pending = pending.subarray(end + 1);
+        // Bound automatic fan-out as well as bytes: remaining results keep their cursor.
+        if (completions.length >= 4) return { source, cursor, activeTurn, activeStartedAt, completions, more: cursor < endBoundary, endBoundary };
+      }
+      if (pending.length > 1024 * 1024) return { unresolved: 'Codex lifecycle record exceeds the safe read bound.' };
+    }
+    if (pending.length && position === endBoundary) return { unresolved: 'Codex lifecycle has a partial record; waiting for a complete record.' };
+    return { source, cursor, activeTurn, activeStartedAt, completions, more: cursor < endBoundary, endBoundary };
+  } catch { return { unresolved: 'Codex lifecycle source is unreadable.' }; }
+  finally { if (fd !== undefined) fs.closeSync(fd); }
+}
+
+/** Called when a helper is registered, before the first bridge observation. */
+export function completionEnrollment(pane, registeredAt = Date.now()) {
+  const observed = completionLifecycle(pane);
+  if (observed.unresolved) return { kind: 'registered-time', registeredAt };
+  return { source: observed.source, cursor: observed.cursor, activeTurn: observed.activeTurn,
+    activeStartedAt: observed.activeStartedAt, initializing: Boolean(observed.more), enrollmentEnd: observed.endBoundary, registeredAt };
+}
+
 export function pendingApproval(pane, { bytes = 1024 * 1024 } = {}) {
   const file = transcriptPath(pane);
   if (!file) return null;

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { completionEnrollment } from './adapters/codex.mjs';
 
 /** Owner-authenticated correction only: callers must authenticate before invoking.
  * Adds observation, never spawn ownership, worker input, or a request assignment.
@@ -35,6 +36,7 @@ export function linkObservedHelper({ botId, requestId, paneId }, { items, panes,
     paneId, provider: pane.provider || null, cwd: pane.cwd || null,
     followed: true, requestId, delivery: assignment.delivery,
     sessionId: pane.sessionId, linkedBy: 'owner-correction', at,
+    ...(pane.provider === 'codex' ? { completionEnrollment: completionEnrollment(pane, at) } : {}),
   };
   const temporary = `${file}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`;
   try {
