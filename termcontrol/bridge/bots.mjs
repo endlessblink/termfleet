@@ -50,6 +50,10 @@ const repoRoot = path.resolve(here, '..', '..');
 const defaultDir = () => path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'bots');
 
 export const PROVIDERS = ['claude', 'codex'];
+// Codex's core-only shell policy omits the service-issued caller context. Keep
+// its Unix core names plus this run's exact context names; never put values in argv.
+const CODEX_BOT_SHELL_ENV = ['PATH', 'SHELL', 'TMPDIR', 'TEMP', 'TMP', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'LOGNAME', 'USER',
+  'TERMFLEET_BOT_ID', 'TERMFLEET_BOT_NAME', BOT_CALLER_TOKEN_ENV, 'TERMFLEET_BOT_TURN_STARTED_AT', 'TERMFLEET_BOT_STEER', 'LEAN_CTX_DISABLED'];
 
 /** What a bot is told when its card about looks or designs was held back for having no link. */
 const heldCardNote = (q) => `[Event, not from Noam] Your question card "${String(q.text).slice(0, 300)}" was NOT shown to Noam: it asks him to choose between things he cannot see. Send the same card again now, with a line \`link: <web address or full file path>\` under the question for the page that shows all the answers, and \`- <answer> | <link>\` for each answer that has its own preview. Do not repeat the rest of your message. If there truly is nothing to look at, send the card again unchanged and it will be shown.]`;
@@ -300,6 +304,8 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
     const runtime = process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid?.() ?? 1000}`;
     const roots = [path.join(os.homedir(), '.local', 'share', 'terminal-workspace'), path.join(runtime, 'terminal-workspace'), defaultDir(), BOTS_HOME()];
     const config = ['-c', 'sandbox_mode="workspace-write"', '-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(roots)}`, '-c', 'sandbox_workspace_write.network_access=true', '-c', 'approval_policy="never"',
+      '-c', 'shell_environment_policy.inherit="all"', '-c', 'shell_environment_policy.ignore_default_excludes=true',
+      '-c', `shell_environment_policy.include_only=${JSON.stringify(CODEX_BOT_SHELL_ENV)}`,
       '-c', `mcp_servers.browser.command=${JSON.stringify(BROWSER_MCP.command)}`, '-c', `mcp_servers.browser.args=${JSON.stringify(browserMcp(bot).args)}`, '-c', 'mcp_servers.browser.disabled_tools=["browser_run_code_unsafe"]',
       '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"', '-c', 'mcp_servers.node_repl.enabled=false', '-c', 'mcp_servers.lean-ctx.enabled=false', '-c', 'plugins."unified-computer-use@openai-bundled".enabled=false'];
     // A path in the words is not a picture to Codex: attached, it is (0 of the pictures sent to Codex

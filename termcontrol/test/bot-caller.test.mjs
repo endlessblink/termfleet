@@ -48,6 +48,31 @@ test('real terminal self-call remains terminal and bot commands disable the shar
   assert.ok(brainCommand(bot,'hello').args.includes('mcp_servers.lean-ctx.enabled=false'));
 });
 
+test('fresh and resumed Codex bot shells receive only core environment and scoped caller context',()=>{
+  const core=['PATH','SHELL','TMPDIR','TEMP','TMP','HOME','LANG','LC_ALL','LC_CTYPE','LOGNAME','USER'];
+  const context=['TERMFLEET_BOT_ID','TERMFLEET_BOT_NAME',BOT_CALLER_TOKEN_ENV,'TERMFLEET_BOT_TURN_STARTED_AT','TERMFLEET_BOT_STEER'];
+  const permitted=new Set([...core,...context,'LEAN_CTX_DISABLED']);
+  for(const sessions of [{},{codex:'existing-bot-thread'}]){
+    const bot={id:'aaaaaaaaaaaa',name:'A',provider:'codex',cwd:'/tmp',sessions,callerToken:'fixture-capability-never-in-argv'};
+    const {args}=brainCommand(bot,'check caller');
+    const config=args.flatMap((arg,index)=>arg==='-c'?[args[index+1]]:[]);
+    const value=key=>{
+      const entry=config.find(item=>item.startsWith(`${key}=`));
+      assert.ok(entry,`${key} must be explicitly scoped for every Codex bot invocation`);
+      return JSON.parse(entry.slice(key.length+1));
+    };
+    assert.equal(value('shell_environment_policy.inherit'),'all');
+    assert.equal(value('shell_environment_policy.ignore_default_excludes'),true);
+    const included=value('shell_environment_policy.include_only');
+    assert.ok(Array.isArray(included));
+    assert.equal(new Set(included).size,included.length,'duplicate names must not hide a broadened policy');
+    for(const name of [...core,...context]) assert.ok(included.includes(name),`${name} must survive the inherited core-only policy`);
+    for(const name of included) assert.ok(permitted.has(name),`${name} is outside the explicit bot shell boundary`);
+    for(const name of ['AWS_ACCESS_KEY_ID','OPENAI_API_KEY','ANTHROPIC_API_KEY','GITHUB_TOKEN','TERMFLEET_PANE_ID','CODEX_THREAD_ID','CODEX_SESSION_ID']) assert.ok(!included.includes(name),`${name} must not be inherited`);
+    assert.ok(!args.some(arg=>arg.includes(bot.callerToken)),'capability values belong in the child environment, never argv or prompt');
+  }
+});
+
 test('service-issued context follows actual session and is revoked on completion or thrown run',async t=>{
   const f=fixture(t), issued=[];
   const bots=new Bots({dir:path.join(f.root,'bots'),fill:()=>null,
