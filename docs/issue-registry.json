@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-27T18:47:59.137Z",
+  "updatedAt": "2026-10-28T06:14:38.946Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13941,6 +13941,97 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "21 focused skill/menu/provider checks pass; exact unchanged-HEAD navigation fixture timeout reproduced separately"
+        }
+      ]
+    },
+    {
+      "id": "TF-125",
+      "title": "Provider switching loses accessible conversation context",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Provider switch clips history and changes state before delivery verification",
+      "rootCause": "Clipped chat handovers changed provider state before acknowledged delivery; idle validation and durable queue/hold paths lacked transaction recovery.",
+      "guard": "node --test termcontrol/test/provider-context.test.mjs termcontrol/test/provider-context-runtime.test.mjs termcontrol/test/bot-provider.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T06:14:37.817Z",
+          "note": "Reviewed acb228e source; authenticated real headless iframe sees PID478750 loaded06:09:45.892Z and startup signature728a8edfc80b10b8ff5a148a7d1dca4810328badfa8fc9605c53d089043dc90f matching six frozen files including provider-context; GET200 zero page errors. Claude/model continuity, native terminal migration and owner phone trial not claimed."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T06:14:38.946Z",
+          "note": "Latest capture/subprocess26/26 and independent context/provider UI31/31 pass; earlier full provider/UI/restart35/35 passed. Local fake subprocess verifies stdin/full payload then exact acknowledged-session resume. Both provider directions mocked; no real Claude/cloud request. Timer hold,35 arrivals/duplicates, idle/restart/shutdown races, partial receipt and missing/corrupt required context covered."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner tries existing bot provider control choosing Codex; verify receipt and unfinished work. Native terminal transfer and actual Claude continuity are not claimed.",
+      "history": [
+        {
+          "at": "2026-10-28T05:33:26.835Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:33:27.134Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:33:27.459Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:35:56.293Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Failing missing-module baseline saved; full ordered public-context tests now implemented"
+        },
+        {
+          "at": "2026-10-28T05:35:56.572Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T06:03:34.933Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Transactional capture and rollback implemented; focused context/subprocess24 checks pass. Awaiting coordinated bridge activation and authenticated runtime read-back; no real Claude launch."
+        },
+        {
+          "at": "2026-10-28T06:03:35.564Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test termcontrol/test/provider-context.test.mjs termcontrol/test/provider-context-runtime.test.mjs:24/24 pass; fake subprocess stdin receipt and exact-session resume, missing context, privacy, rollback, timer, queue35, idle/restart/shutdown races. Combined provider UI/restart32/32 before three added capture checks. Cross-provider uses local fakes only."
+        },
+        {
+          "at": "2026-10-28T06:04:01.906Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "provider-context.mjs strict portable capture and content-derived receipt; bots.mjs transaction/rollback/attachment/idle/queue recovery wiring. MASTER_PLAN and regression matrix retain runtime and terminal-migration gaps."
+        },
+        {
+          "at": "2026-10-28T06:14:37.817Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Reviewed acb228e source; authenticated real headless iframe sees PID478750 loaded06:09:45.892Z and startup signature728a8edfc80b10b8ff5a148a7d1dca4810328badfa8fc9605c53d089043dc90f matching six frozen files including provider-context; GET200 zero page errors. Claude/model continuity, native terminal migration and owner phone trial not claimed."
+        },
+        {
+          "at": "2026-10-28T06:14:38.946Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Latest capture/subprocess26/26 and independent context/provider UI31/31 pass; earlier full provider/UI/restart35/35 passed. Local fake subprocess verifies stdin/full payload then exact acknowledged-session resume. Both provider directions mocked; no real Claude/cloud request. Timer hold,35 arrivals/duplicates, idle/restart/shutdown races, partial receipt and missing/corrupt required context covered."
         }
       ]
     }
