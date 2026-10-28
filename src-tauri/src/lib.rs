@@ -22,6 +22,7 @@ mod platform_paths;
 mod platform_process;
 mod platform_tty;
 mod pty;
+mod provider_launch_policy;
 mod search;
 mod session_events;
 mod session_native;

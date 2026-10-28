@@ -89,11 +89,11 @@ test('only the three model names come out', () => {
 import { explainProviderRoute } from '../scripts/lib/task-router.mjs';
 import fs from 'node:fs';
 
-test('new terminals start in Codex by default; Claude only for conversation, open reasoning, or by name', () => {
+test('new terminals start in Codex regardless of task prose', () => {
   for (const task of ['Fix the failing export test', 'Build the watchdog module and add tests', 'Run the release build and report', '', 'Refactor the canvas renderer across 6 files'])
     assert.equal(explainProviderRoute(task).provider, 'codex', task);
   for (const task of ['Handle the conversation with Noam about the trailer', 'Think it through and weigh the trade-offs of the two designs', 'Use Claude for this one: review the copy', 'תעבוד עם קלוד על זה'])
-    assert.equal(explainProviderRoute(task).provider, 'claude', task);
+    assert.equal(explainProviderRoute(task).provider, 'codex', task);
   const child = fs.readFileSync(new URL('../scripts/termfleet-child.mjs', import.meta.url), 'utf8');
   assert.match(child, /if \(!provider && !handover\) \{\s*const picked = explainProviderRoute\(baseTask\);/, 'the spawn command uses the router when --provider is left out');
   const bots = fs.readFileSync(new URL('../termcontrol/bridge/bots.mjs', import.meta.url), 'utf8');
@@ -102,10 +102,10 @@ test('new terminals start in Codex by default; Claude only for conversation, ope
 
 // Complaint #19 (2026-10-26): 41 of 43 bot helpers in three days started in Claude through a bare
 // --provider claude that the router would not pick. From a bot, the task decides.
-test('a bot asking for Claude without a reason in the task gets Codex', () => {
+test('a bot asking for Claude reaches the launch gate without silent substitution', () => {
   const team = fs.readFileSync(new URL('../scripts/termfleet-team.mjs', import.meta.url), 'utf8');
-  assert.match(team, /if \(ownDir && flags\.provider === 'claude'\) \{\s*const route = explainProviderRoute\(taskText\);\s*if \(route\.provider !== 'claude'\) \{\s*flags\.provider = 'codex';/);
-  assert.ok(team.indexOf("flags.provider = 'codex'") < team.indexOf("for (const key of ['provider', 'model', 'cwd'"), 'decided before the spawn arguments are built');
+  assert.match(team, /assertProviderLaunch\(flags.provider, \{ surface: 'team-start' \}\)/);
+  assert.ok(team.indexOf('assertProviderLaunch(flags.provider') < team.indexOf("for (const key of ['provider', 'model', 'cwd'"), 'checked before the spawn arguments are built');
   assert.equal(explainProviderRoute('Fix the title menu and ESC on the tester site').provider, 'codex');
-  assert.equal(explainProviderRoute('Use Claude: it handles the conversation with the client').provider, 'claude');
+  assert.equal(explainProviderRoute('Use Claude: it handles the conversation with the client').provider, 'codex');
 });

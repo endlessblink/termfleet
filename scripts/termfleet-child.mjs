@@ -25,6 +25,7 @@ import { createHandoffCapsule, handoffTask, capsuleFreshness } from "./lib/hando
 import { checkBotTask, botTaskContext } from "./lib/bot-workflow-preflight.mjs";
 import { memoryGuard } from "./lib/spawn-guards.mjs";
 import { explainTaskRoute, explainProviderRoute } from "./lib/task-router.mjs";
+import { assertProviderLaunch } from "./lib/provider-launch-policy.mjs";
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -35,7 +36,7 @@ const USAGE = `termfleet-child ${VERSION} - start an agent instance as a visible
 usage:
   termfleet-child spawn [--provider <${PROVIDERS.join("|")}>] (--task "<text>" | --task-file FILE | --dropoff FILE)
                         [--goal "<one plain sentence>"] [--title "<card title>"] [--model sonnet|haiku|opus] [--project-id ID | --near PROJECT_DIR] [--separate | --replace] [--allow-thin] [--allow-no-words] [--cwd DIR] [--bot REGISTRY_ID] [--timeout SECONDS] [--no-start-app]
-  (no --provider: a new terminal starts in Codex, or Claude when its task needs complex reasoning or a conversation)
+  (no --provider: a new terminal starts in Codex; Claude requires a separately verified owner exception)
   termfleet-child status
   termfleet-child --help | --version
 
@@ -340,13 +341,15 @@ async function spawnCommand(options) {
     }
     provider = caller.provider;
   }
-  // No --provider: a new terminal starts in Codex unless its task needs Claude (task-router.mjs).
+  // Automatic work stays in Codex; task prose cannot authorize Claude.
   if (!provider && !handover) {
     const picked = explainProviderRoute(baseTask);
     provider = picked.provider;
-    writeSync(2, `termfleet-child: ${provider} for this task (${picked.reasons.join("; ")}); --provider claude|codex overrides.\n`);
+    writeSync(2, `termfleet-child: ${provider} for this task (${picked.reasons.join("; ")}); explicit choices also pass launch policy.\n`);
   }
   if (!PROVIDERS.includes(provider)) fail(`--provider must be one of ${PROVIDERS.join(", ")}\n${USAGE}`);
+  try { assertProviderLaunch(provider, { surface: handover ? 'child-handover' : 'child-spawn' }); }
+  catch (error) { fail(error.message, 4); }
   // Claude helpers start on the model their task needs (Noam 2026-10-24: "קלוד מאבד טוקנים ... אין
   // routing למודלים זולים", "לא רוצה הארדקודינג!!!"): the task router reads the task text and picks
   // haiku (read-only), sonnet (ordinary changes) or opus (hard jobs). --model always wins.

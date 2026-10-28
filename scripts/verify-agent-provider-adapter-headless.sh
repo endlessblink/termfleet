@@ -15,6 +15,7 @@ PROVIDER
 
 cat > "$TMP_DIR/claude" <<'PROVIDER'
 #!/usr/bin/env sh
+: > "$(dirname "$0")/claude.called"
 printf 'FAKE_CLAUDE_ARGS:%s\n' "$*"
 test "$1" = "-p"
 test "$2" = "--output-format=stream-json"
@@ -37,10 +38,23 @@ grep -q '"label":"Headless adapter launched"' "$TMP_DIR/codex.out"
 grep -q 'FAKE_CODEX_ARGS:exec --json Summarize release blockers' "$TMP_DIR/codex.out"
 grep -q '"status":"done"' "$TMP_DIR/codex.out"
 
-PATH="$TMP_DIR:$PATH" sh "$ROOT_DIR/scripts/agent-provider-adapter.sh" claude headless "Summarize release blockers" > "$TMP_DIR/claude.out"
-grep -q '"label":"Headless adapter launched"' "$TMP_DIR/claude.out"
-grep -q 'FAKE_CLAUDE_ARGS:-p --output-format=stream-json Summarize release blockers' "$TMP_DIR/claude.out"
-grep -q '"status":"done"' "$TMP_DIR/claude.out"
+# A known provider binary exists, but policy must refuse before starting it or
+# announcing readiness. Isolate the denial audit from the owner's live history.
+for mode in terminal headless; do
+  set +e
+  HOME="$TMP_DIR/home" PATH="$TMP_DIR:$PATH" sh "$ROOT_DIR/scripts/agent-provider-adapter.sh" claude "$mode" "Summarize release blockers" > "$TMP_DIR/claude-$mode.out" 2> "$TMP_DIR/claude-$mode.err"
+  status=$?
+  set -e
+  test "$status" -eq 4
+  grep -q 'Claude launch denied' "$TMP_DIR/claude-$mode.err"
+  grep -q '"status":"failed"' "$TMP_DIR/claude-$mode.out"
+  grep -q '"phase":"blocked"' "$TMP_DIR/claude-$mode.out"
+  test ! -e "$TMP_DIR/claude.called"
+  if grep -q 'FAKE_CLAUDE_ARGS\|"readiness":"provider-ready"' "$TMP_DIR/claude-$mode.out"; then
+    printf '%s\n' "Claude was called or announced ready despite launch denial" >&2
+    exit 1
+  fi
+done
 
 PATH="$TMP_DIR:$PATH" sh "$ROOT_DIR/scripts/agent-provider-adapter.sh" opencode headless "Summarize release blockers" > "$TMP_DIR/opencode.out"
 grep -q '"label":"Headless adapter launched"' "$TMP_DIR/opencode.out"
