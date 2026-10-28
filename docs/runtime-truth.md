@@ -254,3 +254,118 @@ protocol is not retroactive. A separately authorized controlled legacy migration
 and explicit reconciliation boundary are required before first activation; this
 is separate from the unanswered isolation approval. Production older-question
 retention/navigation and human-owner UI remain unverified.
+
+#### Legacy first-deployment inventory and migration decision (TF-143)
+
+This inventory is for **PID2252271, loaded18-module digest8d3ea43cbb73**,
+reconstructed exactly from35c9acd. It does not describe the newer source as
+already loaded. Read-only host observation at2026-10-28T12:05:25Z still found
+that Node process:39 descriptors,16 sockets,8 pipes,11 threads, sleeping kernel
+state. None of those observations measures pending JavaScript callbacks or
+acknowledges downstream effects. Artifact:
+`/tmp/termfleet-legacy-bootstrap-observation.json`.
+
+**1. Existing controls and their actual scope**
+
+| Control on the old process | Can prevent | Cannot establish |
+| --- | --- | --- |
+| Existing sleep settings `enabled:false`, read by subsequent sleep sweeps | Future sleep decisions after the setting is observed | Cancellation of a sweep already past its decision, cleanup closes, recovery typing, routines, rooms or held delivery |
+| Disable an individual routine through its existing update route | Subsequent ticks selecting that routine | Cancellation of an already selected occurrence; re-enabling also affects scheduling, so it is not a transparent global pause |
+| HTTP ingress block or listener closure | New HTTP requests through that ingress | Internal timers, existing requests, loopback alternatives, daemon connections or desktop file requests |
+| SIGTERM/SIGINT graceful shutdown | `Bots.closing` stops new brain drains; existing bot runs get their bounded finish window, followed by queue save | Global admission stop, automatic timer cancellation, outstanding-effect settlement, or a durable queue-checkpoint acknowledgement before exit |
+| `TC_NO_*`/`TC_CONFIG_DIR` flags in next service start | Selected producers in the next process | Reconfiguration of flags already captured by this process; changing disk code/environment is not a live control |
+| New pause marker/SIGUSR2 protocol on disk | Nothing in this old process | It has no SIGUSR2 handler; sending that signal is not a bootstrap operation |
+| Disable socket access or rename its path | At most some future connections | Existing connected descriptors, already queued consumer operations or the independent desktop close-request channel; also affects unrelated daemon users |
+| Stop/freeze the whole process externally | Further scheduling while stopped/frozen | Durable memory queues, settlement of effects already issued, or their outcome; resuming restarts the same producers |
+
+No control in this inventory is a complete reversible admission boundary. No
+setting, signal, socket, service or terminal was changed during diagnosis.
+
+**2. What existing evidence can and cannot reconcile**
+
+* Durable `send-receipts` reservations/outcomes and pane locks can identify a
+  particular guarded HTTP draft. A finished uncertain outcome stays uncertain;
+  an absent reservation is not proof about callers that bypass `sendOnce`.
+  The old server wraps the phone send/answer routes, not all routine/recovery
+  calls. The read-only observation found zero JSON receipts and zero pane locks
+  in the configured default directory, not zero outstanding automatic effects.
+* Existing SQL delivery evidence can settle a recorded delivery only when its
+  exact session/input marker was captured. The existing scanner reads provider
+  records; it was not run here because this investigation excludes private
+  transcripts. Existing metadata may be inspected without scanning records,
+  but missing rows cannot prove non-delivery or identify every issued action.
+* Held queue/inflight/quarantine records retain original intent and known
+  uncertainty. They are not receipts for unrelated direct sends. This
+  observation enumerated files only and did not read held message bodies.
+* A matching desktop close result may explain its exact request while retained.
+  `requestClose` consumes result files, and may then use a direct daemon kill
+  fallback. Fourteen result files were present; their existence neither binds
+  them to all current work nor accounts for consumed results. None was removed
+  or used to perform a close.
+* Routine `nextRunAt`/`lastResult`, room state, action logs, service logs, process
+  descendants and daemon session existence are supporting observations. They
+  lack a complete durable before-dispatch identifier/outcome for every effect.
+  A missing process/socket/request or quiet kernel state is not an effect ACK.
+
+The concrete rejected candidate was an external ingress/egress blocker followed
+by reconciliation from those persisted records. Exact old-code disposable
+diagnosis in `/tmp/termfleet-legacy-barrier-diagnosis.tap` establishes three
+counterexamples: ingress closure leaves the routine timer dispatching; a
+refused send still advances its original due occurrence; and two separate
+processes leave byte-identical scheduler state when one has already applied a
+synthetic file effect and the other has not. These are counterexamples, not
+acceptance evidence or a live-terminal failure trial. Repeating the occurrence
+can duplicate the first effect; skipping it can lose the second.
+
+**3. Reviewable migration procedure and exact capability gate**
+
+There is no current operator command that proves a no-loss/no-duplicate cutover
+for this PID. This is a missing compatibility capability, not a request for
+permission to do an ordinary reversible reload. The pending credential/isolation
+approval is unrelated and cannot authorize or repair it.
+
+1. Preserve the loaded revision/PID, original daemon/pane/bot identities and
+   existing receipt metadata as the baseline. Stage the replacement with its
+   startup pause already set; do not start it against the live state yet.
+2. A platform maintainer must supply a **supported legacy compatibility hook**
+   that runs inside this exact process: stop every automatic root's admission,
+   cancel its timers, stop bot queue consumers, and durably checkpoint each
+   queue entry in original order with duplicate entries distinct. Its ACK must
+   bind old PID/revision, checkpoint hashes/counts, retained target identities,
+   active callbacks and individual outstanding effects. It must not answer,
+   send, close, replay or discard anything. A file marker read only by the new
+   source does not implement this hook. No inspector/ptrace injection or live
+   code replacement is presently supported or authorized as that mechanism.
+3. Pair the hook with a consumer-side fence that covers **this producer's**
+   daemon writes/kills and desktop close requests, including existing
+   connections. It must report accepted-but-pending requests and their final
+   outcomes by stable operation ID while retaining refused intents. The
+   current daemon status protocol does not provide that per-producer fence;
+   changing the running daemon is outside this task. Global socket blocking
+   is not an equivalent implementation.
+4. Reconcile every previously issued operation using original request/result
+   metadata. Record settled, failed-before-effect and uncertain separately.
+   Retain unknown operations without replay. If an old operation lacks both an
+   identity and an outcome, neither a new journal nor manual inspection of a
+   quiet pane can reconstruct it reliably: certification must stop there.
+5. Only after an acknowledged durable queue checkpoint and zero unresolved
+   old effects may the existing graceful bridge-only stop/start run. Preserve
+   daemon2068834. Verify the new process starts paused, the reviewed loaded
+   digest matches, queue ordering/duplicates and all identities match, and no
+   original question or answer-control identity changed. Do not let a finite
+   systemd timeout substitute for that ACK. Re-enable producers only after
+   these readbacks pass.
+6. Read back an older still-open question from the loaded backend and jump to
+   its exact original message at phone/desktop widths through the authenticated
+   surface, with answer requests blocked. Until then R19768 remains partial.
+
+Steps2–4 are unavailable on this legacy process today. Implementing a new broker
+alone cannot retroactively recover absent old receipts or in-memory queues.
+The alternative is an **explicit owner-authorized maintenance exception** accepting
+that some uncheckpointed work may be lost or left uncertain, with affected work
+retained for later manual reconciliation and no automatic replay; that would
+relax the present requirements and is not requested or assumed here. No such
+exception, terminal experiment or restart has been performed. Under the current
+constraints the exact external gate is delivery of the legacy checkpoint plus
+consumer-fence capability and reconciliation of its unknowns, rather than
+another ordinary restart approval.

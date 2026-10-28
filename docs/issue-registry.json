@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T11:46:56.884Z",
+  "updatedAt": "2026-10-28T12:07:21.151Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15596,18 +15596,18 @@
       "guard": "node --test termcontrol/test/automation-pause.test.mjs",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-10-28T11:11:44.312Z",
-          "note": "Source-only follow-up: /tmp/termfleet-automation-drain-focused.tap22/22 includes actual isolated server, fake daemon, original old-question retention/jump390/1400 and queue read/write failure/repeated-handshake regressions. /tmp/termfleet-automation-queue-red.tap3 reproduced losses; now persist-first snapshot. Combined /tmp/termfleet-automation-drain-final.tap122pass1fail: full restart fixture fails before fake Codex starts with context-establishment error, not an acceptance pass. Current GET /tmp/termfleet-automation-drain-runtime.json11:10:10UTC2252271/8d3ea43c old vs disk4c49bcb7. New coordinator cancels registered timers and retains pending metadata, but aggregate child outcome coverage partial, restart_boundary_proven:false; no live signal/reload. Existing bot writer power-loss durability unproven. Doctor2 baseline failures."
-        },
-        {
           "kind": "focused-test",
           "at": "2026-10-28T11:46:56.884Z",
           "note": "Request-specific fresh40/40 /tmp/termfleet-question-settlement-recheck.tap includes real disposable restart with actual private issuer/validator, child callback/effect distinctions, persistence fault/reconstruction and older-question original navigation. Existing136/136 full TAP retained. Fresh GET11:45:53UTC /tmp/termfleet-question-settlement-runtime.json still2252271/18module8d3ea43c exactly35c9acd vs24module disk1bf43e3c. Host caughtTERM/INT true,USR2 false,330s mixed stop; isolated exact legacy shutdown attempts exit with pending external effect. No live signals/reload/input/model. No supported legacy bootstrap admission/timer-stop plus outstanding-effect settlement hook exists; new protocol not retroactive."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T12:07:21.151Z",
+          "note": "Bounded legacy bootstrap inventory saved in docs/runtime-truth.md TF143. Exact35c9acd controls: sleep/routine disable partial only; TERM leaves automatic timers active; no global pause handler. /tmp/termfleet-legacy-barrier-diagnosis.tap3 counterexamples establish refused occurrence advancement and indistinguishable applied/unapplied state, not acceptance. Read-only12:05:25Z /tmp/termfleet-legacy-bootstrap-observation.json confirms PID2252271,39fds/16sockets, no default send receipts/locks,14 retained close results; none proves effect settlement. Concrete six-step migration requires legacy in-process durable queue checkpoint plus per-producer consumer fence and reconciliation; no sufficient current operator command or retroactive journal. No signal/restart/input/close/model or repeated approval."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Establish platform-authorized legacy admission/timer stop and explicit settlement/reconciliation of already-issued effects before first activation; no supported live old hook exists. New receipts cover held/room/routine only and are not retroactive. Then verify loaded older-question retention/navigation without input. Keep six existing gates unchanged.",
+      "nextAction": "Platform must supply legacy cooperative admission/timer stop with durable ordered queue checkpoint and per-producer daemon/desktop fence, then reconcile unknown old operations. No current command meets this gate; no routine approval requested. Follow six-step migration in runtime-truth; only then bridge activation and original old-question readback.",
       "history": [
         {
           "at": "2026-10-28T10:39:54.466Z",
@@ -15690,6 +15690,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Request-specific fresh40/40 /tmp/termfleet-question-settlement-recheck.tap includes real disposable restart with actual private issuer/validator, child callback/effect distinctions, persistence fault/reconstruction and older-question original navigation. Existing136/136 full TAP retained. Fresh GET11:45:53UTC /tmp/termfleet-question-settlement-runtime.json still2252271/18module8d3ea43c exactly35c9acd vs24module disk1bf43e3c. Host caughtTERM/INT true,USR2 false,330s mixed stop; isolated exact legacy shutdown attempts exit with pending external effect. No live signals/reload/input/model. No supported legacy bootstrap admission/timer-stop plus outstanding-effect settlement hook exists; new protocol not retroactive."
+        },
+        {
+          "at": "2026-10-28T12:07:21.151Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Bounded legacy bootstrap inventory saved in docs/runtime-truth.md TF143. Exact35c9acd controls: sleep/routine disable partial only; TERM leaves automatic timers active; no global pause handler. /tmp/termfleet-legacy-barrier-diagnosis.tap3 counterexamples establish refused occurrence advancement and indistinguishable applied/unapplied state, not acceptance. Read-only12:05:25Z /tmp/termfleet-legacy-bootstrap-observation.json confirms PID2252271,39fds/16sockets, no default send receipts/locks,14 retained close results; none proves effect settlement. Concrete six-step migration requires legacy in-process durable queue checkpoint plus per-producer consumer fence and reconciliation; no sufficient current operator command or retroactive journal. No signal/restart/input/close/model or repeated approval."
         }
       ]
     },
