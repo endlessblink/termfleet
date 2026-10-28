@@ -14909,6 +14909,93 @@
       ]
     },
     {
+      "id": "TF-135",
+      "title": "Private remote workspace access rejects the ImagineBox address",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [
+        "TF-135"
+      ],
+      "symptom": "Remote HTTPS returns403 because the local app only accepts localhost; legacy links point to the remote device itself",
+      "rootCause": "The local app rejects remote Host headers and returns loopback studio links; the prior standalone process was absent.",
+      "guard": "node --test scripts/private-workspace-proxy.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T07:43:00.156Z",
+          "note": "Routing-only adapter and tracked user units, private Serve8810/8812, no app-source change; syntax/diff and unit verification pass. Production headless workspace, overview, film, shot and board200; token/origin403/403/404; six asset hashes match. School access and reboot pending."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T07:47:35.611Z",
+          "note": "Final2/2 runtime tests pass; removing Host adaptation in a disposable copy reproduces403-versus200 failure. Actual headless HTTPS200 pages/media/assets, no browser writes/errors; live token/origin403/403/404. Signed-in TermControl four-terminal inventory screenshot independently reviewed; school access and reboot unverified."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner opens the private ImagineBox link with Tailscale connected from school; verify school network access. TermControl uses its existing public login.",
+      "history": [
+        {
+          "at": "2026-10-28T07:35:24.268Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T07:35:43.555Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Exact Host rejection and loopback studio link reproduced"
+        },
+        {
+          "at": "2026-10-28T07:35:43.853Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Private routing adapter candidate with focused trust-boundary tests"
+        },
+        {
+          "at": "2026-10-28T07:36:27.673Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused runtime guard tests identity, exact host, cross-site writes, preserved token check, streaming and studio links"
+        },
+        {
+          "at": "2026-10-28T07:36:27.953Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Routing-only adapter; no ImagineBox app edits or TermControl restart"
+        },
+        {
+          "at": "2026-10-28T07:38:12.049Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test scripts/private-workspace-proxy.test.mjs PASS; identity/host/origin/token and streamed request plus studio-link rewrite"
+        },
+        {
+          "at": "2026-10-28T07:38:12.352Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Private8810 and8812 routes live; production browser verification underway, school network still unverified"
+        },
+        {
+          "at": "2026-10-28T07:43:00.156Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Routing-only adapter and tracked user units, private Serve8810/8812, no app-source change; syntax/diff and unit verification pass. Production headless workspace, overview, film, shot and board200; token/origin403/403/404; six asset hashes match. School access and reboot pending."
+        },
+        {
+          "at": "2026-10-28T07:47:35.611Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final2/2 runtime tests pass; removing Host adaptation in a disposable copy reproduces403-versus200 failure. Actual headless HTTPS200 pages/media/assets, no browser writes/errors; live token/origin403/403/404. Signed-in TermControl four-terminal inventory screenshot independently reviewed; school access and reboot unverified."
+        }
+      ]
+    },
+    {
       "id": "TF-136",
       "title": "Owner confirmation accepts agent text or unrelated signed messages",
       "state": "verifying",

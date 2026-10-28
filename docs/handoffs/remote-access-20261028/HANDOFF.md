@@ -2,6 +2,14 @@
 
 This is a handover of the caller's own work, not a new helper assignment. Provider is Codex. Work is largely implemented and live; finish saving the remaining own TF-135 issue hunk and deliver the concise final answer. Do not restart or deploy TermControl. Do not rewrite commits. Do not create more successors unless explicitly instructed.
 
+## Latest correction after attempted handover
+
+The single prescribed `termfleet-child spawn --provider codex --cwd ... --dropoff <this file>` attempt returned `ok:false`, reason `incomplete-observed-source`, requestba3b4b9d-f8cd-447a-95a3-33ee5aa05d21. It retained71owner records in generationa4dc93e5-e0f3-45bf-878c-b8550501c990 but did NOT create a successor. `termfleet-child status` says appRunningtrue/listeningtrue/insidePanefalse. Do not claim takeover happened or bypass its source-completeness check. The caller continues safe record-saving because automatic handover is unavailable.
+
+The TF136 owner subsequently reported its parent explicitly authorized its own one graceful bridge activation. I replied no overlap, no conflicting activation, no TermControl changes by this caller. Fresh shared regression text now records owner activation PID1537005 at2026-10-28T07:55:19.756Z with fourteen-module SHA5dae9c577f55db50f71fa727c9d521a58170f39cf309b925ae1b37cb47d4ffe5, authenticated200/unauth401, terminal/bot identities unchanged; this is THEIR evidence, not an activation performed here. The owner then took F18 send-once/send and minimal server wiring plus tests; preserve those regions. It told us no remaining overlapping ownership. Any access claim before a fresh check must distinguish that our earlier visual proof predates its activation.
+
+Remaining MASTER_PLAN/regression-matrix dirty changes mainly reorder preserved TF135/TF136 sections and include their new activation evidence; do not stage whole docs. Remaining issue-registry diff was inspected: exactly our TF13587line insertion. Save that exact file with path-scoped commit, leaving other owner docs dirty. No history rewrite.
+
 ## First command
 
 Run `git status --short` in `/media/endlessblink/data/my-projects/ai-development/devops/termfleet`, then `git diff -- docs/issue-registry.json MASTER_PLAN.md docs/regression-matrix.md` and `git log -3 --oneline`. TF-135 is expected to remain dirty and needs its own save; unrelated TF-136 has just been saved by its owner. Verify current state before staging any shared file.
