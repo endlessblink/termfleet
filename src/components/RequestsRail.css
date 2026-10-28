@@ -6,9 +6,9 @@
   width: 230px;
   box-sizing: border-box;
   padding: 4px 10px;
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  background: rgba(24, 27, 29, 0.94);
+  background: var(--requests-rail-bg);
   color: var(--text-primary, #e8eaeb);
   font-family: var(--font-ui);
   font-size: 12.5px;
@@ -30,7 +30,7 @@
   text-align: start;
 }
 .requests-rail:not(.requests-rail--folded) .requests-rail__toggle {
-  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  border-bottom: 1px solid var(--border-subtle);
 }
 .requests-rail__list {
   list-style: none;
@@ -45,14 +45,14 @@
   display: grid;
   gap: 1px;
   padding: 5px 0;
-  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  border-bottom: 1px solid var(--border-subtle);
 }
 .requests-rail__row:last-child { border-bottom: 0; }
-.requests-rail__word { font-size: 11.5px; color: var(--text-secondary, #a7adb0); }
+.requests-rail__word { font-size: var(--font-size-ui-detail); color: var(--text-secondary, #a7adb0); }
 .requests-rail__row--working .requests-rail__word,
 .requests-rail__row--partial .requests-rail__word { color: #e8a25a; }
 .requests-rail__row--done .requests-rail__word { color: #7fbf8f; }
-.requests-rail__note { color: var(--text-secondary, #a7adb0); font-size: 11.5px; }
+.requests-rail__note { color: var(--text-secondary, #a7adb0); font-size: var(--font-size-ui-detail); }
 .requests-rail__text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .requests-rail__word { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .requests-rail__dot { display: inline-block; width: 7px; height: 7px; margin-inline-end: 6px; border-radius: 50%; background: #e8a25a; }

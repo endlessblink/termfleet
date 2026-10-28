@@ -21,10 +21,38 @@ Newer concurrent source changes are outside this reviewed snapshot.
 
 Build and focused tests passed during preparation. Public audit, machine-path,
 OSS-readiness, map, terminal-rendering and typography gates passed after cleanup.
-The design ratchet fails on existing style violations in the reviewed snapshot:
-hex colors, small/off-scale fonts, numeric stacking levels, missing outline
-replacements, raw RGB colors and literal shadows. Its baseline is unchanged.
-Broader isolated tests and Rust checks must be read before merging.
+The first remote CI run failed Rust dead-code warnings and five canvas tests.
+The follow-up preserves the dormant native source/document guards with precise
+expectations on the two enrollment entrypoints. All five native operations now
+have an empty-catalog refusal regression; trusted enrollment remains unavailable.
+The unchanged warnings gate passes, and the isolated Rust library suite passes
+265 tests, with four ignored.
+
+Canvas test repairs use rendered state and measured remaining pane space instead
+of obsolete source strings and header-height assumptions. A new geometry check
+reproduced a two-pixel terminal-body jump on longer summary text; line-height
+based reserved space fixes it. The initial 105-case run passed 103 cases; two
+test defects were corrected and each passed three subsequent repetitions. This
+is not a single final 105-case green run; remote CI must confirm the final commit.
+
+Exact-value palette, typography, separator, background and stacking tokens bring
+the design ratchet below its existing ceilings; neither gate nor baseline was
+relaxed. Board keyboard controls gain the canonical outline while retaining
+their previous shadow. A focused keyboard regression is included in CI.
+The final design command passes all 67 checks, including keyboard focus.
+
+Two prompt lifecycle fixtures now provide explicit readable screen observations
+for positive transitions, while retaining unknown-screen refusal. Both failed
+before correction; all 34 tests in those two files pass afterward, including
+new missing/mismatched-permission refusals. Production permission checks did not
+change.
+
+The broader Node run produced 1,089 passes, 79 failures and four skips. Its
+isolated harness overrode per-test request directories and treated this temporary
+checkout as disposable scratch; two failures pass after correcting those
+conditions. Other browser fixtures return JSON for a newly imported JavaScript
+asset, preventing their app from loading. These results require fixture and
+contract reconciliation, not an unqualified product-failure or success claim.
 
 This PR is a draft, not a release. It does not establish installed-runtime,
 phone-behavior or measured-token-savings acceptance. Merge remains pending

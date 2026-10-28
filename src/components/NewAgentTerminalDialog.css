@@ -3,7 +3,7 @@
 
 /* Header: the title and a three-part step rail that doubles as a running summary. */
 .new-agent-head { padding: 22px 24px 0; border-bottom: 1px solid var(--border-default); }
-.new-agent-head h2 { margin: 0 0 16px; font-size: 18px; font-weight: 500; }
+.new-agent-head h2 { margin: 0 0 16px; font-size: var(--font-size-ui-heading); font-weight: 500; }
 .new-agent-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 0; padding: 0; list-style: none; }
 .new-agent-dialog .new-agent-steps button { position: relative; display: grid; gap: 2px; width: 100%; padding: 0 0 14px; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .new-agent-steps button::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--border-default); transition: background-color 200ms ease-out; }
@@ -38,7 +38,7 @@
 .new-agent-agent[data-provider="shell"] .new-agent-mark, .new-agent-mark[data-provider="shell"] { color: var(--state-running); }
 .new-agent-agent[data-checked] .new-agent-mark { border-color: var(--border-strong); }
 .new-agent-agent-text { display: grid; align-content: center; gap: 3px; min-width: 0; }
-.new-agent-agent-name { font-size: 15px; font-weight: 500; }
+.new-agent-agent-name { font-size: var(--font-size-ui-body-emphasis); font-weight: 500; }
 .new-agent-agent-line { font-size: 12px; color: var(--text-2); }
 .new-agent-availability { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 500; color: var(--text-3); }
 .new-agent-availability::before { content: "○"; font-size: 10px; }

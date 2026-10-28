@@ -797,7 +797,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "2px 10px",
     borderRadius: "var(--radius-sm)",
     border: "1px solid transparent",
-    fontSize: 15,
+    fontSize: "var(--font-size-ui-body-emphasis)",
     fontWeight: 500,
     letterSpacing: 0,
     whiteSpace: "normal",
@@ -939,7 +939,7 @@ const styles: Record<string, CSSProperties> = {
     background: "var(--surface-rail)",
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 15,
+    fontSize: "var(--font-size-ui-body-emphasis)",
     fontWeight: 500,
     padding: "0 8px",
   },
@@ -4885,7 +4885,7 @@ function CanvasNodeViewImpl({
                   flexWrap: "wrap",
                 }}
               >
-                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:18,color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
+                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:"var(--font-size-ui-heading)",color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
                 <span
                   style={styles.workspacePill}
                   data-testid="canvas-agent-node-workspace"
@@ -4991,7 +4991,7 @@ function CanvasNodeViewImpl({
                   flexWrap: "wrap",
                 }}
               >
-                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:18,color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
+                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:"var(--font-size-ui-heading)",color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
                 <span
                   style={styles.workspacePill}
                   data-testid="canvas-terminal-node-workspace"

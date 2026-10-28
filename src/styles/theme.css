@@ -92,6 +92,10 @@
   --font-size-lg: 16px; --line-lg: 22px;
   --font-size-xl: 20px; --line-xl: 26px;
   --font-size-display: 28px; --line-display: 34px; /* (mock-derived) git-monitor h1 only; real app is 44px */
+  /* Existing UI hierarchy shared by pane topics, names, dialogs and compact details. */
+  --font-size-ui-body-emphasis: 15px;
+  --font-size-ui-heading: 18px;
+  --font-size-ui-detail: 11.5px;
   --font-size-term: 12.5px; --line-term: 18.5px;   /* (mock-derived) terminal text in panes */
   --font-weight-regular: 400; --font-weight-medium: 500; /* only two weights */
   --label-caps-size: 11px; --label-caps-tracking: 0.04em; /* the ONE uppercase style (section labels, provider badges) */
@@ -109,6 +113,11 @@
   /* ---- Elevation (shadows are invisible on near-black: surface step + 1px border) ---- */
   --elev-menu:   0 8px 24px rgba(0, 0, 0, 0.6);   /* popover/menu/palette: --surface-raised + 1px --border-strong */
   --elev-dialog: 0 16px 48px rgba(0, 0, 0, 0.6);  /* dialog: --surface-raised + 1px --border-strong + --scrim */
+
+  /* Directional pane-context separators retain the existing inset geometry. */
+  --elev-pane-context-divider: inset 1px 0 0 var(--border-subtle);
+  --elev-pane-context-divider-rtl: inset -1px 0 0 var(--border-subtle);
+  --requests-rail-bg: rgba(24, 27, 29, 0.94);
 
   /* ---- z-index scale ---- */
   --z-base: 0; --z-raised: 1; --z-sticky: 10; --z-rail: 20; --z-popover: 100;

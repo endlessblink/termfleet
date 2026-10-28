@@ -96,6 +96,7 @@ import {
   statusSidecarPaneId,
 } from "../lib/terminalPaneIdentity";
 import { statusForAttach } from "../lib/ptyAttachStatus";
+import { TERMINAL_THEME_FALLBACK } from "../lib/tokens";
 
 const LOCALHOST_URL_PATTERN =
   /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -530,28 +531,28 @@ function terminalThemeFromTokens(element: HTMLElement) {
     resolveCssToken(styles, token, fallback);
 
   return {
-    background: color("--terminal-bg", "#080c10"),
-    foreground: color("--terminal-fg", "#d8dee7"),
-    cursor: color("--terminal-cursor", "#c4ccd2"),
-    cursorAccent: color("--terminal-bg", "#080c10"),
-    selectionBackground: color("--terminal-selection-bg", "#2a3a50"),
-    selectionForeground: color("--terminal-selection-fg", "#f1f5f9"),
-    black: color("--terminal-ansi-black", "#0b0e12"),
-    red: color("--terminal-ansi-red", "#ef6f72"),
-    green: color("--terminal-ansi-green", "#7fc681"),
-    yellow: color("--terminal-ansi-yellow", "#dcb875"),
-    blue: color("--terminal-ansi-blue", "#6ea8fe"),
-    magenta: color("--terminal-ansi-magenta", "#ad8fcb"),
-    cyan: color("--terminal-ansi-cyan", "#7dbac3"),
-    white: color("--terminal-ansi-white", "#d8dee7"),
-    brightBlack: color("--terminal-ansi-bright-black", "#667383"),
-    brightRed: color("--terminal-ansi-bright-red", "#f48b8d"),
-    brightGreen: color("--terminal-ansi-bright-green", "#95d996"),
-    brightYellow: color("--terminal-ansi-bright-yellow", "#dcb875"),
-    brightBlue: color("--terminal-ansi-bright-blue", "#8bb9ff"),
-    brightMagenta: color("--terminal-ansi-bright-magenta", "#bea4d8"),
-    brightCyan: color("--terminal-ansi-bright-cyan", "#91cbd2"),
-    brightWhite: color("--terminal-ansi-bright-white", "#f1f5f9"),
+    background: color("--terminal-bg", TERMINAL_THEME_FALLBACK.background),
+    foreground: color("--terminal-fg", TERMINAL_THEME_FALLBACK.foreground),
+    cursor: color("--terminal-cursor", TERMINAL_THEME_FALLBACK.cursor),
+    cursorAccent: color("--terminal-bg", TERMINAL_THEME_FALLBACK.cursorAccent),
+    selectionBackground: color("--terminal-selection-bg", TERMINAL_THEME_FALLBACK.selectionBackground),
+    selectionForeground: color("--terminal-selection-fg", TERMINAL_THEME_FALLBACK.selectionForeground),
+    black: color("--terminal-ansi-black", TERMINAL_THEME_FALLBACK.black),
+    red: color("--terminal-ansi-red", TERMINAL_THEME_FALLBACK.red),
+    green: color("--terminal-ansi-green", TERMINAL_THEME_FALLBACK.green),
+    yellow: color("--terminal-ansi-yellow", TERMINAL_THEME_FALLBACK.yellow),
+    blue: color("--terminal-ansi-blue", TERMINAL_THEME_FALLBACK.blue),
+    magenta: color("--terminal-ansi-magenta", TERMINAL_THEME_FALLBACK.magenta),
+    cyan: color("--terminal-ansi-cyan", TERMINAL_THEME_FALLBACK.cyan),
+    white: color("--terminal-ansi-white", TERMINAL_THEME_FALLBACK.white),
+    brightBlack: color("--terminal-ansi-bright-black", TERMINAL_THEME_FALLBACK.brightBlack),
+    brightRed: color("--terminal-ansi-bright-red", TERMINAL_THEME_FALLBACK.brightRed),
+    brightGreen: color("--terminal-ansi-bright-green", TERMINAL_THEME_FALLBACK.brightGreen),
+    brightYellow: color("--terminal-ansi-bright-yellow", TERMINAL_THEME_FALLBACK.brightYellow),
+    brightBlue: color("--terminal-ansi-bright-blue", TERMINAL_THEME_FALLBACK.brightBlue),
+    brightMagenta: color("--terminal-ansi-bright-magenta", TERMINAL_THEME_FALLBACK.brightMagenta),
+    brightCyan: color("--terminal-ansi-bright-cyan", TERMINAL_THEME_FALLBACK.brightCyan),
+    brightWhite: color("--terminal-ansi-bright-white", TERMINAL_THEME_FALLBACK.brightWhite),
   };
 }
 

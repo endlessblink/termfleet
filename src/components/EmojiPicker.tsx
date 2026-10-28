@@ -167,7 +167,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cell: {
     height: 32,
-    fontSize: 18,
+    fontSize: "var(--font-size-ui-heading)",
     lineHeight: 1,
     border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
