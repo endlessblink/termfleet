@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T14:21:42.045Z",
+  "updatedAt": "2026-10-28T14:32:01.268Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15875,6 +15875,11 @@
           "kind": "focused-test",
           "at": "2026-10-28T14:21:41.847Z",
           "note": "Red3/5 for EACCES/ENOSPC; green26/26 /tmp/termfleet-requirements-lock-focused.tap. Combined109/109 /tmp/termfleet-token-integration-affected.tap. requirements-bridge fixture fails unchanged on d189397 with missing bot caller context; /tmp/termfleet-lock-unchanged-bridge.tap."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T14:32:01.205Z",
+          "note": "eb45a87 minimal non-EEXIST propagation live in bridge1257104 at14:31:13UTC; native self send D-3d00103e received and request mutation/readback R20034 passed. Parent sandbox write remains separate; no access expanded."
         }
       ],
       "owner": "termfleet",
@@ -15925,6 +15930,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Red3/5 for EACCES/ENOSPC; green26/26 /tmp/termfleet-requirements-lock-focused.tap. Combined109/109 /tmp/termfleet-token-integration-affected.tap. requirements-bridge fixture fails unchanged on d189397 with missing bot caller context; /tmp/termfleet-lock-unchanged-bridge.tap."
+        },
+        {
+          "at": "2026-10-28T14:32:01.205Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "eb45a87 minimal non-EEXIST propagation live in bridge1257104 at14:31:13UTC; native self send D-3d00103e received and request mutation/readback R20034 passed. Parent sandbox write remains separate; no access expanded."
         }
       ]
     },
@@ -15938,7 +15949,18 @@
       "symptom": "Local token usage is missing without exporter configuration and repeated evidence keys consume context",
       "rootCause": "",
       "guard": "node --test termcontrol/test/token-monitor.test.mjs termcontrol/test/compact-action-evidence.test.mjs termcontrol/test/action-evidence.test.mjs termcontrol/test/bot-side-reply.test.mjs",
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T14:32:01.237Z",
+          "note": "Exact57cc0a9 integration eb45a87 loaded by bridge1257104, digest bf74cceaacb6e37aa4fa248a970b9a0819fab1b7cdb47f67cf68e9368bf6fe7f at2026-10-28T14:31:13.863Z. Daemon2068834 and terminal/session identities retained, startup automatic hold active; zero queues/uncertain records."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T14:32:01.267Z",
+          "note": "109/109 /tmp/termfleet-token-integration-affected.tap; candidate implementation exact except independent requirements error diagnostic. Live summary200 measurementHealth.writeFailures0; no ordinary completed generations yet, no savings claim."
+        }
+      ],
       "owner": "termfleet",
       "nextAction": "Activate reviewed combined source conservatively after natural bot drain; verify local measurement health and ordinary completion obligations without model trials",
       "history": [
@@ -15981,6 +16003,18 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Source checks green; loaded source and actual token reduction still unverified."
+        },
+        {
+          "at": "2026-10-28T14:32:01.238Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Exact57cc0a9 integration eb45a87 loaded by bridge1257104, digest bf74cceaacb6e37aa4fa248a970b9a0819fab1b7cdb47f67cf68e9368bf6fe7f at2026-10-28T14:31:13.863Z. Daemon2068834 and terminal/session identities retained, startup automatic hold active; zero queues/uncertain records."
+        },
+        {
+          "at": "2026-10-28T14:32:01.268Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "109/109 /tmp/termfleet-token-integration-affected.tap; candidate implementation exact except independent requirements error diagnostic. Live summary200 measurementHealth.writeFailures0; no ordinary completed generations yet, no savings claim."
         }
       ]
     }
