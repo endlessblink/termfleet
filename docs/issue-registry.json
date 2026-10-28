@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T09:10:47.181Z",
+  "updatedAt": "2026-10-28T09:27:30.303Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15275,6 +15275,74 @@
           "type": "evidence",
           "kind": "source",
           "note": "Loaded b2effb5 PID2028457 at09:09:55.503UTC17module db2a9d671a1829c342f841ac8b6ca9ecdd9d7fffb914dbbc44f8caa4efb08389 matches; GET200/401;2terminal10bot identities queues0/0 preserved daemon2068834 unchanged. CLI reviewed target hash8e012666 own-pane session/untaken0 matches ledger. /tmp/termfleet-f17-loaded-readback.json; /tmp/termfleet-f17-cli-readback.json. Natural populated fields and owner-facing proof absent."
+        }
+      ]
+    },
+    {
+      "id": "TF-139",
+      "title": "Held messages lose integrity on delivery failure",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Held rows disappear or can reach a different conversation and sleeping terminal",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/held-integrity.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T09:27:30.020Z",
+          "note": "Actual /tmp/termfleet-f16-combined.tap 55/55 PASS. Initial baseline red7/7; review isolated sender/uncertainty failures and nested-marker red verified. Synthetic process death/restart and exact structured input receipts; no live held replay."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Prove loss, uncertain replay, changed identity and sleeping delivery in isolated fixtures; preserve all real held work",
+      "history": [
+        {
+          "at": "2026-10-28T09:16:01.724Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T09:16:02.001Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "No other active owner of held/orchestrate/send regions; only unrelated motion worker. F18 source remains untouched."
+        },
+        {
+          "at": "2026-10-28T09:16:02.292Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Candidate: durable inflight batch retained before dispatch; exact refreshed provider/session binding; post-write unknown not retried; success only exact structured user receipt; dead rows retained with report and no expiry."
+        },
+        {
+          "at": "2026-10-28T09:18:37.605Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Actual red7/7 failed before code: lost delegate words, duplicate uncertain retry, false typed success, wrong identity, sleep wake, binding loss, silent old-row report. Current held17checks pass; durable inflight batch and exact structured user-input receipt only."
+        },
+        {
+          "at": "2026-10-28T09:18:37.890Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Narrow held/orchestrate/server wiring, no send.mjs/send-once changes. Dead rows now retained/reported without expiry. Add crash and receipt proof before activation; no real held replay."
+        },
+        {
+          "at": "2026-10-28T09:27:30.021Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Actual /tmp/termfleet-f16-combined.tap 55/55 PASS. Initial baseline red7/7; review isolated sender/uncertainty failures and nested-marker red verified. Synthetic process death/restart and exact structured input receipts; no live held replay."
+        },
+        {
+          "at": "2026-10-28T09:27:30.303Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source candidate guarded; freeze and empty-real-queue preflight before graceful bridge activation. Natural receipt, owner proof, recoverable manual maintenance and bonus-only isolation remain unverified."
         }
       ]
     }
