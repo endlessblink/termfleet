@@ -1464,6 +1464,8 @@ export class Bots {
     }
     if (owner && this.side && this.running.has(id) && !bot.providerSwitch && !this.closing) {
       if (!pictures.length && !attached.length && !asked && !replied && !list && isCorrectionFragment(said0)) {
+        const pendingSide = this.sides.get(id);
+        if (pendingSide) pendingSide.latestCorrection = { msgId: msg.id, text: said0 };
         const receipt = this.handOn(id, { at: msg.at, msgId: msg.id, text: said0, brain: forBrain, items: (items || []).map(it => it?.id).filter(Boolean) }, null);
         // The original operator row already shows the exact correction. No model
         // acknowledgement may rewrite it, and queued never means the worker read it.
@@ -1953,11 +1955,28 @@ export class Bots {
         const cwd = path.join(this.folder(id), 'side');
         try { fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); } catch { /* the folder is there */ }
         const t0 = this.now();
+        const correctionAtStart = state.latestCorrection?.msgId;
         let res;
         // Claude bots answer from a forked copy of their own conversation (2026-10-26: the note-only
         // responder said "I don't know" in 296 of 446 quick replies). Off: TC_SIDE_FORK=0.
         try { res = this.available(provider) ? await this.side(runner, prompt, { bins: this.bins, cwd, ...copy, images: batch.flatMap((e) => e.pictures || []) }) : { error: 'plan limited' }; } catch (e) { res = { error: String(e?.message || e) }; }
         const ms = this.now() - t0;
+        if (!this.read(id)) return;   // removed meanwhile
+        batch = batch.filter(e => !this.retracted.has(e.msgId));
+        if (!batch.length) continue;
+        const latestCorrection = state.latestCorrection;
+        if (latestCorrection && latestCorrection.msgId !== correctionAtStart) {
+          // A correction invalidates prose generated from the older context. Keep
+          // each original question/attachment for the worker without replaying
+          // the separately routed correction or claiming it was acknowledged.
+          const context = this.retracted.has(latestCorrection.msgId)
+            ? '[Owner correction context changed while a quick answer was pending. Consult the current owner messages; a retracted correction is not an instruction.]'
+            : `[A newer owner correction was routed separately: ${JSON.stringify(latestCorrection.text)}. Apply these earlier words in that corrected context. This context is not another delivery of the correction; worker acknowledgement is unconfirmed.]`;
+          for (const entry of batch) this.handOn(id, { ...entry,
+            brain: `${entry.brain || entry.text}\n\n${context}`,
+          }, null);
+          continue;
+        }
         const parsed = res?.text ? parseSide(res.text) : null;
         if (!parsed?.reply) {
           // No quick answer: the message still reaches the bot exactly as before, just sooner.
@@ -1965,10 +1984,6 @@ export class Bots {
           for (const e of batch) this.handOn(id, e, null);
           continue;
         }
-        if (!this.read(id)) return;   // removed meanwhile
-        // He deleted a message while the quick answer was being written: no answer to it, nothing passed on.
-        batch = batch.filter((e) => !this.retracted.has(e.msgId));
-        if (!batch.length) continue;
         const diagnosis = Boolean(this.actionEvidence && needsDiagnosis(batch.map(e => e.text), evidence));
         const unverifiedDelivery = claimsDelivery(parsed.reply);
         const heldReport = testingHandoffProblem(parsed.reply, { botId: id, since: t0 });

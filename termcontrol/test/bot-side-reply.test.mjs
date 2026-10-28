@@ -170,6 +170,114 @@ test('failed direct correction delivery preserves its exact next-turn fallback',
   assert.equal(b.sides.length, 0);
 });
 
+test('a correction supersedes pending side prose without losing the older question or delivering the correction twice', async t => {
+  const b = busyBot();
+  let releaseSide, sideCalls = 0;
+  b.bots.side = () => { sideCalls++; return new Promise(resolve => { releaseSide = resolve; }); };
+  b.bots.send(b.id, 'Find the main finecut project folder.', { owner: true });
+  await until(() => b.turns.length === 1);
+  t.after(async () => { releaseSide?.({ text: 'REPLY: You meant finecut.\nPASS_ON: no' }); b.release(); await until(() => !b.bots.running.has(b.id)); });
+  const earlier = b.bots.send(b.id, 'Where is the main project folder?', { owner: true });
+  await until(() => Boolean(releaseSide));
+  const corrected = b.bots.send(b.id, 'התכוונתי לfinetuned', { owner: true });
+  assert.deepEqual(takeSteer(b.bots.folder(b.id)).map(entry => entry.msgId), [corrected.message.id]);
+  releaseSide({ text: 'REPLY: You meant finecut.\nPASS_ON: no' });
+  await until(() => !b.bots.sides.get(b.id).busy);
+  assert.equal(b.bots.messages(b.id).some(message => message.side), false, 'outdated name prose never reaches chat');
+  const delivered = takeSteer(b.bots.folder(b.id));
+  assert.deepEqual(delivered.map(entry => entry.msgId), [earlier.message.id]);
+  assert.equal(delivered[0].text, 'Where is the main project folder?');
+  assert.match(delivered[0].brain, /התכוונתי לfinetuned/);
+  assert.equal(delivered[0].reply, null, 'unpublished side answer cannot become already-answered context');
+  assert.equal(b.bots.read(b.id).sideNotes?.length || 0, 0);
+  assert.equal(sideCalls, 1, 'no model retry to rewrite an acknowledgment');
+  assert.deepEqual(takeSteer(b.bots.folder(b.id)), []);
+});
+
+test('side correction ordering survives the original main turn ending', async t => {
+  const b = busyBot();
+  let releaseSide, releaseNext;
+  b.bots.side = () => new Promise(resolve => { releaseSide = resolve; });
+  b.bots.send(b.id, 'Find the finecut project folder.', { owner: true });
+  await until(() => b.turns.length === 1);
+  const earlier = b.bots.send(b.id, 'Where is that folder?', { owner: true });
+  await until(() => Boolean(releaseSide));
+  b.release(); await until(() => !b.bots.running.has(b.id));
+  b.bots.run = () => new Promise(resolve => { releaseNext = resolve; });
+  b.bots.send(b.id, 'Continue locating the main folder.', { owner: true });
+  await until(() => Boolean(releaseNext));
+  t.after(async () => { releaseSide?.({ text: 'REPLY: You meant finecut.\nPASS_ON: no' }); releaseNext?.({ text: 'No location verified.' }); await until(() => !b.bots.running.has(b.id)); });
+  const corrected = b.bots.send(b.id, 'I meant finetuned', { owner: true });
+  assert.deepEqual(takeSteer(b.bots.folder(b.id)).map(entry => entry.msgId), [corrected.message.id]);
+  releaseSide({ text: 'REPLY: You meant finecut.\nPASS_ON: no' });
+  await until(() => !b.bots.sides.get(b.id).busy);
+  assert.equal(b.bots.messages(b.id).some(message => message.side), false);
+  const delivered = takeSteer(b.bots.folder(b.id));
+  assert.deepEqual(delivered.map(entry => entry.msgId), [earlier.message.id]);
+  assert.match(delivered[0].brain, /I meant finetuned/);
+});
+
+test('superseded side questions retain attachment context and delivery failures retain the original', async t => {
+  const b = busyBot();
+  let releaseSide;
+  b.bots.side = () => new Promise(resolve => { releaseSide = resolve; });
+  b.bots.send(b.id, 'Find the main project folder.', { owner: true });
+  await until(() => b.turns.length === 1);
+  t.after(async () => { releaseSide?.({ text: 'REPLY: You meant finecut.\nPASS_ON: no' }); b.release(); await until(() => !b.bots.running.has(b.id)); });
+  b.bots.sideAnswer(b.id, { at: Date.now(), msgId: 'attachment-question', text: 'Which folder matches this screenshot?', brain: 'Which folder matches this screenshot?\n[Open attachment: /synthetic/folder.png]', pictures: ['/synthetic/folder.png'], items: [] });
+  await until(() => Boolean(releaseSide));
+  b.bots.send(b.id, 'finetuned', { owner: true });
+  takeSteer(b.bots.folder(b.id));
+  fs.rmSync(steerDir(b.bots.folder(b.id)), { recursive: true });
+  fs.writeFileSync(steerDir(b.bots.folder(b.id)), 'blocks inbox');
+  releaseSide({ text: 'REPLY: You meant finecut.\nPASS_ON: no' });
+  await until(() => !b.bots.sides.get(b.id).busy);
+  const queued = b.bots.read(b.id).queued;
+  assert.equal(queued.length, 1);
+  assert.match(queued[0], /Which folder matches this screenshot/);
+  assert.match(queued[0], /\/synthetic\/folder\.png/);
+  assert.match(queued[0], /finetuned/);
+  assert.equal(b.bots.messages(b.id).some(message => message.side), false);
+});
+
+test('a deleted earlier question is not resurrected by a later correction', async t => {
+  const b = busyBot();
+  let releaseSide;
+  b.bots.side = () => new Promise(resolve => { releaseSide = resolve; });
+  b.bots.send(b.id, 'Find the main project folder.', { owner: true });
+  await until(() => b.turns.length === 1);
+  t.after(async () => { releaseSide?.({ text: 'REPLY: You meant finecut.\nPASS_ON: no' }); b.release(); await until(() => !b.bots.running.has(b.id)); });
+  const earlier = b.bots.send(b.id, 'Where is the main folder?', { owner: true });
+  await until(() => Boolean(releaseSide));
+  b.bots.retracted.add(earlier.message.id);
+  b.bots.send(b.id, 'finetuned', { owner: true });
+  takeSteer(b.bots.folder(b.id));
+  releaseSide({ text: 'REPLY: You meant finecut.\nPASS_ON: no' });
+  await until(() => !b.bots.sides.get(b.id).busy);
+  assert.deepEqual(takeSteer(b.bots.folder(b.id)), []);
+  assert.equal(b.bots.messages(b.id).some(message => message.side), false);
+});
+
+test('a retracted correction is not reintroduced through stale-side context', async t => {
+  const b = busyBot();
+  let releaseSide;
+  b.bots.side = () => new Promise(resolve => { releaseSide = resolve; });
+  b.bots.send(b.id, 'Find the main project folder.', { owner: true });
+  await until(() => b.turns.length === 1);
+  t.after(async () => { releaseSide?.({ text: 'REPLY: You meant finecut.\nPASS_ON: no' }); b.release(); await until(() => !b.bots.running.has(b.id)); });
+  b.bots.send(b.id, 'Where is the folder?', { owner: true });
+  await until(() => Boolean(releaseSide));
+  const correction = b.bots.send(b.id, 'finetuned', { owner: true });
+  takeSteer(b.bots.folder(b.id));
+  b.bots.retracted.add(correction.message.id);
+  releaseSide({ text: 'REPLY: You meant finecut.\nPASS_ON: no' });
+  await until(() => !b.bots.sides.get(b.id).busy);
+  const entries = takeSteer(b.bots.folder(b.id));
+  assert.equal(entries.length, 1);
+  assert.doesNotMatch(entries[0].brain, /finetuned/);
+  assert.equal(b.bots.messages(b.id).some(message => message.side), false);
+});
+
 test('an instruction sent mid-turn is handed to the running turn after its next step, with the side answer so it is not repeated', async () => {
   const b = busyBot({ sideText: 'REPLY: Got it, I passed it on to the work in progress.\nPASS_ON: yes' });
   b.bots.send(b.id, 'Build the game page', { owner: true });
