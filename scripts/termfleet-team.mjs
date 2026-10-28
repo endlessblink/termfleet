@@ -52,21 +52,22 @@ import { screenOf } from '../termcontrol/bridge/liveness.mjs';
 import { appendFileSync, existsSync, writeFileSync as writeFile } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import os from 'node:os';
+import { resolveBotCaller } from './lib/bot-caller.mjs';
 
 /** Inside a bot (TF-096 part 6): its chat shows what it handed over and to whom. */
-function botFolder(env = process.env) {
-  const id = String(env.TERMFLEET_BOT_ID || '');
-  if (!/^[0-9a-f]{12}$/.test(id)) return null;
-  const dir = join(env.TC_CONFIG_DIR || join(os.homedir(), '.config', 'termcontrol'), 'bots', id);
+function botFolder(env = process.env, callerOptions = {}) {
+  const caller = resolveBotCaller(env, callerOptions);
+  if (!caller) return null;
+  const dir = caller.botFolder;
   return existsSync(dir) ? dir : null;
 }
-export function recordInBot(entry, env = process.env) {
-  const dir = botFolder(env);
+export function recordInBot(entry, env = process.env, callerOptions = {}) {
+  const dir = botFolder(env, callerOptions);
   if (!dir) return false;
   try { appendFileSync(join(dir, 'chat.jsonl'), JSON.stringify({ id: randomBytes(6).toString('hex'), at: Date.now(), ...entry }) + '\n', { mode: 0o600 }); return true; } catch { return false; }
 }
-export function recordHelper(helper, env = process.env) {
-  const dir = botFolder(env);
+export function recordHelper(helper, env = process.env, callerOptions = {}) {
+  const dir = botFolder(env, callerOptions);
   if (!dir) return false;
   const file = join(dir, 'helpers.json');
   let list = [];
@@ -214,6 +215,12 @@ async function main(argv) {
   const [command, ...rest] = argv;
   const { positional, flags } = parseArgs(rest);
   const caller = resolveCaller();
+  if (caller.kind === 'bot' && flags.from !== undefined) fail('A bot cannot choose a terminal caller with --from.', 2);
+  if (flags.from !== undefined && flags.from !== caller.paneId) fail('The requested sender does not match this terminal caller.', 2);
+  if (caller.kind === 'bot') {
+    process.env.TERMFLEET_BOT_ID = caller.botId;
+    process.env.TERMFLEET_BOT_NAME = caller.name;
+  }
   const selfId = typeof flags.from === 'string' ? flags.from : caller.paneId || null;
   const json = flags.json === true;
 
@@ -289,7 +296,7 @@ async function main(argv) {
     // as commands is a safety bug. Refuse the send entirely.
     if (pane.provider === 'shell') fail(`Cannot send to ${pane.profile?.name || pane.project || pane.id} (${pane.id}): it is a plain shell with no agent. Text typed into it would run as commands. Hand it over first, or start an agent in it.`);
     // A bot runs outside the terminals; its messages say which bot sent them.
-    const bot = process.env.TERMFLEET_BOT_NAME && !caller.paneId ? { id: `bot:${process.env.TERMFLEET_BOT_ID || ''}`, bot: process.env.TERMFLEET_BOT_NAME } : null;
+    const bot = caller.kind === 'bot' ? { id: `bot:${caller.botId}`, bot: caller.name } : null;
     const from = bot || panes.find((p) => p.id === selfId) || (selfId ? { id: selfId } : null);
     if (flags.interrupt === true) {
       // Esc stops the running turn in Claude, Codex and OpenCode; the message then
@@ -423,7 +430,8 @@ async function main(argv) {
           if (!profiles.get(made.childPaneId)?.name) profiles.save(made.childPaneId, { ...(profiles.get(made.childPaneId) || {}), name: startName });
         } catch { /* the card title still carries the name */ }
       }
-      recordHelper({ paneId: made.childPaneId, provider: flags.provider || null, task: String(flags.task || flags.title || '').slice(0, 300), cwd: flags.cwd || null });
+      const registered = recordHelper({ paneId: made.childPaneId, provider: flags.provider || null, task: String(flags.task || flags.title || '').slice(0, 300), cwd: flags.cwd || null });
+      if (ownDir && !registered) fail(`Terminal ${made.childPaneId} was created, but its bot ownership receipt could not be saved. Do not start another worker; inspect this linkage first.`, 3);
       recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: String(flags.task || flags.title || '').slice(0, 600) });
       if (taskText && flags['no-wait'] !== true) {
         const started = await confirmStarted(made.childPaneId, { token: `[delivery ${delivery}]`, timeoutMs: (Number(flags['start-timeout']) || 90) * 1000, deps: receiptDeps() });
@@ -433,7 +441,7 @@ async function main(argv) {
           recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: `NOT started: ${started.message}`.slice(0, 600) });
           fail(`The new terminal (${made.childPaneId}) did NOT start its task. ${started.message}`, 3);
         }
-        if (reqs.ids.length) recordRequirement(reqs.ids.map((id) => ({ e: 'assign', id, pane: made.childPaneId, delivery, by: selfId || null })));
+        if (reqs.ids.length) recordRequirement(reqs.ids.map((id) => ({ e: 'assign', id, pane: made.childPaneId, delivery, by: caller.kind === 'bot' ? `bot:${caller.botId}` : selfId || null })));
         out(`It started its task${reqs.ids.length ? ` with Noam's items ${reqs.ids.join(', ')}` : ''}.`);
         // The task file cannot carry a picture; once it is running, each one is pasted in on its own.
         if (startPictures.length) {
@@ -453,7 +461,7 @@ async function main(argv) {
     if (!botFolder()) fail('Following works inside a bot.');
     const { pane } = await target(positional[0], null);
     const why = String(flags.why || pane.title || pane.project || '').slice(0, 300);
-    recordHelper({ paneId: pane.id, provider: pane.provider || null, task: why, cwd: pane.cwd || null, followed: true });
+    if (!recordHelper({ paneId: pane.id, provider: pane.provider || null, task: why, cwd: pane.cwd || null, followed: true })) fail('The observation receipt could not be saved; following was not confirmed.', 3);
     return out(`Following ${pane.profile?.name || pane.project} (${pane.id}): you will be woken when it finishes its turn.`);
   }
 

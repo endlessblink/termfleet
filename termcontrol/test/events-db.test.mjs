@@ -168,6 +168,7 @@ test('real bridge protects statistics and returns stored counts after authentica
   assert.equal((await fetch(base + '/api/events/stats')).status, 200);
   assert.equal((await fetch(base + '/api/terminals/health')).status, 401);
   assert.equal((await fetch(base + '/api/action-evidence?bot_id=diagnostic-a')).status, 401, 'action metadata is not an unauthenticated loopback route');
+  assert.equal((await fetch(base + '/api/bots/helper-observation', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 401, 'link correction requires the authenticated owner');
   const setup = await fetch(base + '/setup', { method: 'POST', redirect: 'manual',
     body: new URLSearchParams({ email: 'events@example.com', password: 'isolated-test-password' }) });
   assert.equal(setup.status, 302);

@@ -1,5 +1,6 @@
 import { gentleCommand } from '../../scripts/lib/cpu-priority.mjs';
 import { assertProviderLaunch } from '../../scripts/lib/provider-launch-policy.mjs';
+import { BOT_CALLER_TOKEN_ENV } from '../../scripts/lib/bot-caller.mjs';
 import { statedRules, withRules } from './stated-rules.mjs';
 import { claimsReady, extractConditions, unmetConditions } from './conditions.mjs';
 import fs from 'node:fs';
@@ -7,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { readableReply } from './readable-replies.mjs';
 import { fileURLToPath } from 'node:url';
 import { BotMemory, searchChat } from './memory.mjs';
 import { contextFill } from './context-fill.mjs';
@@ -20,7 +22,7 @@ import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bo
 import { defaultDaemonSocket, requestDaemon } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
-import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements, messageProblem, structureProblem } from './requirements.mjs';
+import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements, messageProblem } from './requirements.mjs';
 import { testingHandoffProblem, readyThisTurn, saveTestingHandoff } from './bot-testing.mjs';
 import { sidePrompt, parseSide, claimsDelivery, withPassedOn, putSteer, takeSteer, nextTurnText, steerDir } from './side-reply.mjs';
 import { retrieveActionEvidence, needsDiagnosis } from './action-evidence.mjs';
@@ -297,7 +299,7 @@ export function brainCommand(bot, text, { bins = {}, extras = {} } = {}) {
     const roots = [path.join(os.homedir(), '.local', 'share', 'terminal-workspace'), path.join(runtime, 'terminal-workspace'), defaultDir(), BOTS_HOME()];
     const config = ['-c', 'sandbox_mode="workspace-write"', '-c', `sandbox_workspace_write.writable_roots=${JSON.stringify(roots)}`, '-c', 'sandbox_workspace_write.network_access=true', '-c', 'approval_policy="never"',
       '-c', `mcp_servers.browser.command=${JSON.stringify(BROWSER_MCP.command)}`, '-c', `mcp_servers.browser.args=${JSON.stringify(browserMcp(bot).args)}`, '-c', 'mcp_servers.browser.disabled_tools=["browser_run_code_unsafe"]',
-      '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"', '-c', 'mcp_servers.node_repl.enabled=false', '-c', 'plugins."unified-computer-use@openai-bundled".enabled=false'];
+      '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"', '-c', 'mcp_servers.node_repl.enabled=false', '-c', 'mcp_servers.lean-ctx.enabled=false', '-c', 'plugins."unified-computer-use@openai-bundled".enabled=false'];
     // A path in the words is not a picture to Codex: attached, it is (0 of the pictures sent to Codex
     // bots were ever viewed; 2026-10-26). `=` keeps the flag to one file, so the prompt stays the prompt.
     const images = attachedPictures(text).map((p) => `--image=${p}`);
@@ -452,10 +454,11 @@ export function parseBrainLine(provider, line) {
  */
 export function brainEnv(bot, env = process.env) {
   const out = { ...env };
-  for (const key of ['TERMFLEET_PANE_ID', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SSE_PORT']) delete out[key];
+  for (const key of ['TERMFLEET_PANE_ID', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SSE_PORT', BOT_CALLER_TOKEN_ENV]) delete out[key];
   return {
     ...out,
     TERMFLEET_BOT_ID: bot.id, TERMFLEET_BOT_NAME: bot.name,
+    ...(bot.callerToken ? { [BOT_CALLER_TOKEN_ENV]: bot.callerToken } : {}),
     TERMFLEET_BOT_TURN_STARTED_AT: String(Date.now()),
     ...(bot.steerFolder ? { TERMFLEET_BOT_STEER: bot.steerFolder } : {}),   // the bot's folder; its steer/ inbox is inside
     PATH: `${path.join(os.homedir(), '.local', 'bin')}:${env.PATH || '/usr/bin:/bin'}`,
@@ -606,7 +609,7 @@ const providerName = (p) => (p === 'codex' ? 'Codex' : 'Claude');
 const clock = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 export class Bots {
-  constructor({ dir = defaultDir(), run = runBrain, side = null, bins = { claude: findBinary('claude'), codex: findBinary('codex') }, now = () => Date.now(), fill = defaultFill, checks = { home: process.env.TC_BOT_CHECK_HOME || undefined }, notify = () => {}, providerGate = assertProviderLaunch, contextOptions = {}, actionEvidence = null } = {}) {
+  constructor({ dir = defaultDir(), run = runBrain, side = null, bins = { claude: findBinary('claude'), codex: findBinary('codex') }, now = () => Date.now(), fill = defaultFill, checks = { home: process.env.TC_BOT_CHECK_HOME || undefined }, notify = () => {}, providerGate = assertProviderLaunch, contextOptions = {}, actionEvidence = null, callerIssuer = null } = {}) {
     // The quick side responder for messages that arrive mid-turn (R-7173). Off unless given:
     // the bridge passes runSide; tests pass a stand-in and never reach a real plan.
     this.side = side;
@@ -624,6 +627,7 @@ export class Bots {
     this.providerGate = providerGate;
     this.contextOptions = contextOptions;
     this.actionEvidence = actionEvidence;
+    this.callerIssuer = callerIssuer;
     this.running = new Map();   // id -> { activity, startedAt }
     this.queues = new Map();    // id -> [text]
     this.waitedFor = new Map(); // id -> [{ msgId, items }] of Noam's messages queued while a turn ran
@@ -662,6 +666,10 @@ export class Bots {
   }
 
   append(id, message) {
+    // All answer paths (main, quick side answer and worker echo) pass here.
+    // Repair before persistence/publication; never reflow the owner's words.
+    if (message.role === 'bot' && message.text) message = { ...message, ...readableReply(message.text) };
+    if (message.structure?.remaining) console.error(`[bots] Message structure issue: ${message.structure.remaining}`);
     const entry = { id: newId(), at: this.now(), ...message };
     fs.appendFileSync(path.join(this.folder(id), 'chat.jsonl'), JSON.stringify(entry) + '\n', { mode: 0o600 });
     return entry;
@@ -1485,6 +1493,8 @@ export class Bots {
   postEcho(id, targets, entry) {
     const bot = this.read(id);
     if (!bot) return;
+    // Group echoes use their own store rather than Bots.append.
+    if (entry.role === 'bot' && entry.text) entry = { ...entry, ...readableReply(entry.text) };
     for (const target of targets) {
       const [kind, where] = target.split(':');
       const posted = { ...entry, guest: { id, name: bot.name } };
@@ -1680,10 +1690,6 @@ export class Bots {
          const hollow = messageProblem(msg);
          if (hollow) {
            console.error(`[${bot.name}] Hollow message: ${hollow}`);
-         }
-         const structure = structureProblem(msg);
-         if (structure) {
-           console.error(`[${bot.name}] Message structure issue: ${structure}`);
          }
          // Told Noam it would hand this to an agent, and did not (10 of 20 such promises in a week).
          const promise = brokenHandoff(msg, this.messages(id), answered || 0);
@@ -2039,7 +2045,12 @@ export class Bots {
     const turnId = crypto.randomUUID();
     if (current) current.turnId = turnId;
     this.recordEvidence(id, { action_id: turnId, source_id: `${turnId}:start`, kind: 'turn', state: 'started' });
-    const result = await this.run(runner, text, {
+    let caller, result, callerFailed = false;
+    try {
+      caller = this.callerIssuer?.({ id, name: bot.name, provider: runner.provider, botFolder: this.folder(id),
+        sessionId: runner.provider === 'codex' ? bot.sessions?.codex || null : bot.sessions?.claude?.id || null });
+      if (caller) runner.callerToken = caller.token;
+      result = await this.run(runner, text, {
         bins: this.bins,
         extras,
         logPath: path.join(this.folder(id), 'last-run.log'),
@@ -2054,13 +2065,23 @@ export class Bots {
             if (current && current.activity !== ev.activity) { current.activity = ev.activity; current.activityAt = this.now(); this.append(id, { role: 'activity', text: ev.activity }); }
           }
           if (ev.session) {
+            try { caller?.updateSession(ev.session); }
+            catch {
+              callerFailed = true;
+              try { caller?.revoke(); } catch { /* the invalid context is never reused */ }
+              this.running.get(id)?.stop?.();
+              return;
+            }
             bot = this.read(id) || bot;
             if ((bot.active || bot.provider) === 'codex') bot.sessions = { ...bot.sessions, codex: ev.session };
             else bot.sessions = { ...bot.sessions, claude: { id: ev.session, started: true } };
             this.write(bot);
           }
         },
-      });
+       });
+    } catch { result = { error: 'The bot command context could not be established or the run failed. Investigation is required.' }; }
+    finally { try { caller?.revoke(); } catch { console.error('[bot caller] context retirement failed'); } }
+    if (callerFailed) result = { error: 'The bot session identity could not be recorded. No further bot command is authorized; investigation is required.' };
     this.recordEvidence(id, { action_id: turnId, source_id: `${turnId}:result`, kind: 'turn', state: result.stopped ? 'interrupted' : result.error ? 'failed' : 'succeeded', result_code: result.error ? 'brain_failed' : 'brain_returned' });
     return result;
   }

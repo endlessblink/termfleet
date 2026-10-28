@@ -11,6 +11,8 @@ import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { createHash } from 'node:crypto';
 import { retrieveActionEvidence } from './action-evidence.mjs';
+import { issueBotCaller } from '../../scripts/lib/bot-caller.mjs';
+import { linkObservedHelper } from './helper-link.mjs';
 import { getTokenSummary } from './token-monitor.mjs';
 import { canvasSidebarView, listPanes, reconcileLivePanes, readWorkspace, inventoryVersion } from './inventory.mjs';
 import { rolloutForStart, promptToken } from './adapters/codex.mjs';
@@ -86,7 +88,7 @@ import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS 
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(),
-  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
@@ -384,7 +386,7 @@ function refreshAgentHealth() {
 }
 setTimeout(refreshAgentHealth, 90_000).unref();
 setInterval(refreshAgentHealth, 60 * 60_000).unref();
-const bots = new Bots({ actionEvidence: { recordActionEvidence, queryActionEvidence }, side: runSide, notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
+const bots = new Bots({ callerIssuer: issueBotCaller, actionEvidence: { recordActionEvidence, queryActionEvidence }, side: runSide, notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
 
 /** Bots join group chats like terminal agents do: as members with a chat to read. */
 function botMembers() {
@@ -915,11 +917,19 @@ const handle = async (req, res) => {
   // Noam removes a request from a bot's or terminal's list himself (2026-10-20). The agent then
   // sees it as dropped; the number stays, so its other marks still land right.
   // TF-102: Noam's items by project and topic (phone and desktop; read only).
+  if (url.pathname === '/api/bots/helper-observation' && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 2048); } catch { return json(res, 400, { error: 'Invalid observation request.' }); }
+    const current = await currentPanes({ fresh: true });
+    if (!current.daemon) return json(res, 503, { error: 'The live terminal connection is unavailable; no linkage changed.' });
+    const result = linkObservedHelper(body, { items: loadRequirementLedger().items, panes: current.panes, bots });
+    return json(res, result.ok ? 200 : 409, result);
+  }
   if (url.pathname === '/api/requirements' && req.method === 'GET') {
     try {
       const view = itemsView({ project: url.searchParams.get('project') || null, topic: url.searchParams.get('topic') || null, source: url.searchParams.get('source') || null, includeClosed: url.searchParams.get('closed') === '1' });
       const items = url.searchParams.get('dashboard') === '1'
-        ? view.items.filter(it => !it.locked && ['new', 'assigned', 'partial', 'ready', 'waiting'].includes(it.status))
+        ? view.items
         : view.items.slice(0, 300);
       return json(res, 200, { items, escalations: view.escalations.slice(-20) });
     } catch (error) { return json(res, 500, { error: error.message || 'The list could not be read.' }); }

@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T06:14:38.946Z",
+  "updatedAt": "2026-10-28T06:36:12.010Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13945,97 +13945,6 @@
       ]
     },
     {
-      "id": "TF-125",
-      "title": "Provider switching loses accessible conversation context",
-      "state": "verifying",
-      "severity": "medium",
-      "surface": "logic",
-      "matrixRefs": [],
-      "symptom": "Provider switch clips history and changes state before delivery verification",
-      "rootCause": "Clipped chat handovers changed provider state before acknowledged delivery; idle validation and durable queue/hold paths lacked transaction recovery.",
-      "guard": "node --test termcontrol/test/provider-context.test.mjs termcontrol/test/provider-context-runtime.test.mjs termcontrol/test/bot-provider.test.mjs",
-      "evidence": [
-        {
-          "kind": "source",
-          "at": "2026-10-28T06:14:37.817Z",
-          "note": "Reviewed acb228e source; authenticated real headless iframe sees PID478750 loaded06:09:45.892Z and startup signature728a8edfc80b10b8ff5a148a7d1dca4810328badfa8fc9605c53d089043dc90f matching six frozen files including provider-context; GET200 zero page errors. Claude/model continuity, native terminal migration and owner phone trial not claimed."
-        },
-        {
-          "kind": "focused-test",
-          "at": "2026-10-28T06:14:38.946Z",
-          "note": "Latest capture/subprocess26/26 and independent context/provider UI31/31 pass; earlier full provider/UI/restart35/35 passed. Local fake subprocess verifies stdin/full payload then exact acknowledged-session resume. Both provider directions mocked; no real Claude/cloud request. Timer hold,35 arrivals/duplicates, idle/restart/shutdown races, partial receipt and missing/corrupt required context covered."
-        }
-      ],
-      "owner": "termfleet",
-      "nextAction": "Owner tries existing bot provider control choosing Codex; verify receipt and unfinished work. Native terminal transfer and actual Claude continuity are not claimed.",
-      "history": [
-        {
-          "at": "2026-10-28T05:33:26.835Z",
-          "type": "created",
-          "note": null
-        },
-        {
-          "at": "2026-10-28T05:33:27.134Z",
-          "type": "transition",
-          "from": "reported",
-          "to": "triaged",
-          "note": null
-        },
-        {
-          "at": "2026-10-28T05:33:27.459Z",
-          "type": "transition",
-          "from": "triaged",
-          "to": "reproducing",
-          "note": null
-        },
-        {
-          "at": "2026-10-28T05:35:56.293Z",
-          "type": "transition",
-          "from": "reproducing",
-          "to": "guarded",
-          "note": "Failing missing-module baseline saved; full ordered public-context tests now implemented"
-        },
-        {
-          "at": "2026-10-28T05:35:56.572Z",
-          "type": "transition",
-          "from": "guarded",
-          "to": "fixing",
-          "note": null
-        },
-        {
-          "at": "2026-10-28T06:03:34.933Z",
-          "type": "transition",
-          "from": "fixing",
-          "to": "verifying",
-          "note": "Transactional capture and rollback implemented; focused context/subprocess24 checks pass. Awaiting coordinated bridge activation and authenticated runtime read-back; no real Claude launch."
-        },
-        {
-          "at": "2026-10-28T06:03:35.564Z",
-          "type": "evidence",
-          "kind": "focused-test",
-          "note": "node --test termcontrol/test/provider-context.test.mjs termcontrol/test/provider-context-runtime.test.mjs:24/24 pass; fake subprocess stdin receipt and exact-session resume, missing context, privacy, rollback, timer, queue35, idle/restart/shutdown races. Combined provider UI/restart32/32 before three added capture checks. Cross-provider uses local fakes only."
-        },
-        {
-          "at": "2026-10-28T06:04:01.906Z",
-          "type": "evidence",
-          "kind": "source",
-          "note": "provider-context.mjs strict portable capture and content-derived receipt; bots.mjs transaction/rollback/attachment/idle/queue recovery wiring. MASTER_PLAN and regression matrix retain runtime and terminal-migration gaps."
-        },
-        {
-          "at": "2026-10-28T06:14:37.817Z",
-          "type": "evidence",
-          "kind": "source",
-          "note": "Reviewed acb228e source; authenticated real headless iframe sees PID478750 loaded06:09:45.892Z and startup signature728a8edfc80b10b8ff5a148a7d1dca4810328badfa8fc9605c53d089043dc90f matching six frozen files including provider-context; GET200 zero page errors. Claude/model continuity, native terminal migration and owner phone trial not claimed."
-        },
-        {
-          "at": "2026-10-28T06:14:38.946Z",
-          "type": "evidence",
-          "kind": "focused-test",
-          "note": "Latest capture/subprocess26/26 and independent context/provider UI31/31 pass; earlier full provider/UI/restart35/35 passed. Local fake subprocess verifies stdin/full payload then exact acknowledged-session resume. Both provider directions mocked; no real Claude/cloud request. Timer hold,35 arrivals/duplicates, idle/restart/shutdown races, partial receipt and missing/corrupt required context covered."
-        }
-      ]
-    },
-    {
       "id": "TF-124",
       "title": "Claude launches ignore the subscription limit and owner routing rule",
       "state": "verifying",
@@ -14127,6 +14036,97 @@
       ]
     },
     {
+      "id": "TF-125",
+      "title": "Provider switching loses accessible conversation context",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Provider switch clips history and changes state before delivery verification",
+      "rootCause": "Clipped chat handovers changed provider state before acknowledged delivery; idle validation and durable queue/hold paths lacked transaction recovery.",
+      "guard": "node --test termcontrol/test/provider-context.test.mjs termcontrol/test/provider-context-runtime.test.mjs termcontrol/test/bot-provider.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T06:14:37.817Z",
+          "note": "Reviewed acb228e source; authenticated real headless iframe sees PID478750 loaded06:09:45.892Z and startup signature728a8edfc80b10b8ff5a148a7d1dca4810328badfa8fc9605c53d089043dc90f matching six frozen files including provider-context; GET200 zero page errors. Claude/model continuity, native terminal migration and owner phone trial not claimed."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T06:14:38.946Z",
+          "note": "Latest capture/subprocess26/26 and independent context/provider UI31/31 pass; earlier full provider/UI/restart35/35 passed. Local fake subprocess verifies stdin/full payload then exact acknowledged-session resume. Both provider directions mocked; no real Claude/cloud request. Timer hold,35 arrivals/duplicates, idle/restart/shutdown races, partial receipt and missing/corrupt required context covered."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner tries existing bot provider control choosing Codex; verify receipt and unfinished work. Native terminal transfer and actual Claude continuity are not claimed.",
+      "history": [
+        {
+          "at": "2026-10-28T05:33:26.835Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:33:27.134Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:33:27.459Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:35:56.293Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Failing missing-module baseline saved; full ordered public-context tests now implemented"
+        },
+        {
+          "at": "2026-10-28T05:35:56.572Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T06:03:34.933Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Transactional capture and rollback implemented; focused context/subprocess24 checks pass. Awaiting coordinated bridge activation and authenticated runtime read-back; no real Claude launch."
+        },
+        {
+          "at": "2026-10-28T06:03:35.564Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test termcontrol/test/provider-context.test.mjs termcontrol/test/provider-context-runtime.test.mjs:24/24 pass; fake subprocess stdin receipt and exact-session resume, missing context, privacy, rollback, timer, queue35, idle/restart/shutdown races. Combined provider UI/restart32/32 before three added capture checks. Cross-provider uses local fakes only."
+        },
+        {
+          "at": "2026-10-28T06:04:01.906Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "provider-context.mjs strict portable capture and content-derived receipt; bots.mjs transaction/rollback/attachment/idle/queue recovery wiring. MASTER_PLAN and regression matrix retain runtime and terminal-migration gaps."
+        },
+        {
+          "at": "2026-10-28T06:14:37.817Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Reviewed acb228e source; authenticated real headless iframe sees PID478750 loaded06:09:45.892Z and startup signature728a8edfc80b10b8ff5a148a7d1dca4810328badfa8fc9605c53d089043dc90f matching six frozen files including provider-context; GET200 zero page errors. Claude/model continuity, native terminal migration and owner phone trial not claimed."
+        },
+        {
+          "at": "2026-10-28T06:14:38.946Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Latest capture/subprocess26/26 and independent context/provider UI31/31 pass; earlier full provider/UI/restart35/35 passed. Local fake subprocess verifies stdin/full payload then exact acknowledged-session resume. Both provider directions mocked; no real Claude/cloud request. Timer hold,35 arrivals/duplicates, idle/restart/shutdown races, partial receipt and missing/corrupt required context covered."
+        }
+      ]
+    },
+    {
       "id": "TF-126",
       "title": "Quick replies lack action evidence and delivery receipts",
       "state": "verifying",
@@ -14141,6 +14141,11 @@
           "kind": "focused-test",
           "at": "2026-10-28T06:07:31.322Z",
           "note": "node --test action-evidence,bot-side-reply,events-db,restart-safe-replies:30/30 PASS; action-log12/12 PASS includes actual fake Codex tool succeeded/failed/unfinished outcomes. Broader team-close external global instruction wording baseline failure remains; no production policy change."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T06:34:53.934Z",
+          "note": "Current authenticated actual SQL readbackPID733856 loaded06:31:23UTC exact10file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006 matches disk. Auth200,unauth401,missing bot scope400; one scoped synthetic failed row/fresh per-request item; other bot excluded. No universal shell/hook or live-model semantic claim."
         }
       ],
       "owner": "termfleet",
@@ -14191,6 +14196,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "node --test action-evidence,bot-side-reply,events-db,restart-safe-replies:30/30 PASS; action-log12/12 PASS includes actual fake Codex tool succeeded/failed/unfinished outcomes. Broader team-close external global instruction wording baseline failure remains; no production policy change."
+        },
+        {
+          "at": "2026-10-28T06:34:53.934Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Current authenticated actual SQL readbackPID733856 loaded06:31:23UTC exact10file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006 matches disk. Auth200,unauth401,missing bot scope400; one scoped synthetic failed row/fresh per-request item; other bot excluded. No universal shell/hook or live-model semantic claim."
         }
       ]
     },
@@ -14282,6 +14293,249 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Latest lifecycle/reminder/headless35/35 pass with shared observation revision and cached-live refusal. Authenticated ACTUAL served-page phone390/desktop1600 synthetic checks2/2 pass: closed pin removed/history retained; unknown retains history without controls; replacement active stays actionable; stale send removes old pin. Served HTML SHA d26a4b01d01fa19624b1dcf6961fab07a11a74236fd16e13985a9380a2b471eb equals disk.26mock API calls per viewport, zero real APIs/terminal/business actions. Bridge active PID478750; owner actual-device acceptance pending."
+        }
+      ]
+    },
+    {
+      "id": "TF-129",
+      "title": "Bot commands inherit another terminal caller and lose helper linkage",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "A running helper is not shown under its requesting bot; shared command environment can identify another terminal.",
+      "rootCause": "",
+      "guard": "Validated per-run caller capability, conflicting identity rejection and terminal caller regressions.",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T06:31:37.787Z",
+          "note": "Caller guard/context/provider boundary68/68 PASS; helper-link5/5 plus combined integration71/71 PASS. Forged bot environment and foreign pane/session rejected; real terminal caller retained, observer never gets close ownership."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T06:34:46.222Z",
+          "note": "ActivatedPID733856 at06:31:23UTC exact10file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006; authenticated constrained observer200 adds followed:true only for actualR19376 latest deliveryD-a85c2fc2/session01a18112-b24a-75d3-8321-fdb4fedefb8e. Actual headless sidebar06:33:17 shows Waiting on1agent and matching helpers; daemon2068834 unchanged. No worker input or reassign."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Trace only specific worker ownership metadata and creation receipt, then test an explicit bot caller boundary.",
+      "history": [
+        {
+          "at": "2026-10-28T06:17:30.402Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T06:30:16.177Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Verified missing helper membership for actual live assigned Hebrew worker; inherited foreign MCP identity independently reproduced in isolated caller fixtures."
+        },
+        {
+          "at": "2026-10-28T06:30:29.289Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:29.673Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:30.061Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:30.449Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:31:37.787Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Caller guard/context/provider boundary68/68 PASS; helper-link5/5 plus combined integration71/71 PASS. Forged bot environment and foreign pane/session rejected; real terminal caller retained, observer never gets close ownership."
+        },
+        {
+          "at": "2026-10-28T06:34:46.222Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "ActivatedPID733856 at06:31:23UTC exact10file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006; authenticated constrained observer200 adds followed:true only for actualR19376 latest deliveryD-a85c2fc2/session01a18112-b24a-75d3-8321-fdb4fedefb8e. Actual headless sidebar06:33:17 shows Waiting on1agent and matching helpers; daemon2068834 unchanged. No worker input or reassign."
+        }
+      ]
+    },
+    {
+      "id": "TF-128",
+      "title": "Work panel asks the owner to validate context and internal checks",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Owner queue includes explanatory fragments and agent-only checks without a delivered target or observable result.",
+      "rootCause": "",
+      "guard": "Structured owner-test eligibility and exact complaint projection fixtures with retained provenance.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T06:36:11.605Z",
+          "note": "Actual authenticated panel06:35:29UTC matches served modulefe411eeeaf8aa5736c6f9afae4bbda5116781fa2347dfd8c4071096511b77b81. All740records/639groups preserved:292open99context248history. Context/history initially invisible and explicit expansion restores exact counts;0unsupported owner tests.1600/390/320 no overflow/errors, composer usable. Legacy projection18rows versus grouped639provenance retained. No fabricated contracts; historical work still needs actual delivered artifacts."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T06:36:12.010Z",
+          "note": "Final bounded collapse red/green: initial context visible guard failed before fix; dashboard/projection/browser16/16 PASS after fix. Context/history counts, expansion, retained provenance, real200/404 receipt validation, recovery and draft/nav preserved."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Integrate conservative projection with existing panel and verify live headlessly.",
+      "history": [
+        {
+          "at": "2026-10-28T06:18:02.937Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T06:30:30.778Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:31.102Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:31.447Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:31.792Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:32.214Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:31:38.368Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Projection and legacy panel15/15 PASS; real local target200 and404 refusal; existing panel308source records headless at1600/1024/390/320 preserved history and no overflow. Loaded production projection pending."
+        },
+        {
+          "at": "2026-10-28T06:36:11.605Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Actual authenticated panel06:35:29UTC matches served modulefe411eeeaf8aa5736c6f9afae4bbda5116781fa2347dfd8c4071096511b77b81. All740records/639groups preserved:292open99context248history. Context/history initially invisible and explicit expansion restores exact counts;0unsupported owner tests.1600/390/320 no overflow/errors, composer usable. Legacy projection18rows versus grouped639provenance retained. No fabricated contracts; historical work still needs actual delivered artifacts."
+        },
+        {
+          "at": "2026-10-28T06:36:12.010Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final bounded collapse red/green: initial context visible guard failed before fix; dashboard/projection/browser16/16 PASS after fix. Context/history counts, expansion, retained provenance, real200/404 receipt validation, recovery and draft/nav preserved."
+        }
+      ]
+    },
+    {
+      "id": "TF-130",
+      "title": "Bot messages publish unreadable walls of text",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Main and quick replies publish long audit text without usable paragraph breaks.",
+      "rootCause": "",
+      "guard": "Content-preserving publication guard, exact screenshot and mixed code link RTL fixtures.",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T06:31:38.722Z",
+          "note": "Readable replies21/21 PASS; main/side/echo exact English audit with Hebrew tail, giant one-newline prose, code/URLs/RTL preserved; desktop1440 andmobile390 actual renderer disposable visual review PASS. Loaded bridge pending."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T06:34:46.558Z",
+          "note": "Loaded formatter bound toPID73385610file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006. Actual served renderer1440/390 exact synthetic audit text:8paragraphs, all words retained, own RTL tail,no overflow/errors; disposable visualPASS. Actual HTMLd26a4b01d01fa19624b1dcf6961fab07a11a74236fd16e13985a9380a2b471eb and formatter7c6a11ddc32fd290f54fb0aead43887a687fe09a9209da25b53722e3f6600f10. No real live-model reply or physical phone trial."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify main quick echo publication and real desktop mobile rendering.",
+      "history": [
+        {
+          "at": "2026-10-28T06:18:03.468Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T06:30:32.608Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:32.964Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:33.314Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:33.651Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:30:34.056Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Concrete candidate implemented with isolated regression proof; integrated71 and latest68 checks passed. Awaiting actual loaded UI readback."
+        },
+        {
+          "at": "2026-10-28T06:31:38.722Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Readable replies21/21 PASS; main/side/echo exact English audit with Hebrew tail, giant one-newline prose, code/URLs/RTL preserved; desktop1440 andmobile390 actual renderer disposable visual review PASS. Loaded bridge pending."
+        },
+        {
+          "at": "2026-10-28T06:34:46.559Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Loaded formatter bound toPID73385610file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006. Actual served renderer1440/390 exact synthetic audit text:8paragraphs, all words retained, own RTL tail,no overflow/errors; disposable visualPASS. Actual HTMLd26a4b01d01fa19624b1dcf6961fab07a11a74236fd16e13985a9380a2b471eb and formatter7c6a11ddc32fd290f54fb0aead43887a687fe09a9209da25b53722e3f6600f10. No real live-model reply or physical phone trial."
         }
       ]
     }

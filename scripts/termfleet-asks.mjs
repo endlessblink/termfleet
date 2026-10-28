@@ -11,6 +11,7 @@
 //  - Command for agents and bots:
 //      termfleet-asks done <n[,n]> "<proof: what ran and what it showed>"
 //      termfleet-asks ready <n> "<exactly what Noam should try, in a few words>"
+//      termfleet-asks ready R-<n> --try "<specific action>" --expected "<observable result>" --artifact "<working URL>" --evidence "<delivered result and same URL>" [--test-kind experience|choice|machine]
 //      termfleet-asks partial <n> "<what is still missing>"
 //      termfleet-asks dropped <n> "<why, and who decided>"
 //      termfleet-asks topic-meta <topic> --visual true|false [--owner-words <id>]
@@ -680,7 +681,8 @@ export function itemsCli(args, env = process.env) {
     if ((command === 'done' || command === 'ready' || command === 'partial') && ids.length !== 1) return { ok: false, message: `Mark ${command} one item at a time, each with its own evidence.` };
     const events = [];
     for (const id of ids) {
-      const result = markItem({ status: command, id, note: note || (typeof flags.note === 'string' ? flags.note : ''), evidence: typeof flags.evidence === 'string' ? flags.evidence : '', open: typeof flags.open === 'string' ? flags.open.split(/\s*;\s*/) : [], by }, { dir });
+      const result = markItem({ status: command, id, note: note || (typeof flags.note === 'string' ? flags.note : ''), evidence: typeof flags.evidence === 'string' ? flags.evidence : '', open: typeof flags.open === 'string' ? flags.open.split(/\s*;\s*/) : [], by,
+        tryText:typeof flags.try==='string'?flags.try:'',expected:typeof flags.expected==='string'?flags.expected:'',artifact:typeof flags.artifact==='string'?flags.artifact:'',testKind:typeof flags['test-kind']==='string'?flags['test-kind']:'experience' }, { dir });
       if (result.error) return { ok: false, message: result.error };
       events.push(...result.events);
     }

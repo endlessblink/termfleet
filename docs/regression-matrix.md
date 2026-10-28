@@ -612,6 +612,14 @@ Validation: `node --test --test-concurrency=1 termcontrol/test/bot-ledger-panel-
 
 ### TF-126 — Evidence before quick answers — VERIFYING
 
+Current activation: PID733856 at06:31:23UTC, authenticated ten-module digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006 matches disk. Actual scoped SQLite200/unauth401/missing scope400 and cross-bot isolation pass. Existing daemon unchanged. Generic legacy events/log authentication and model-only PASS_ONno batch answering are separate unresolved audit findings; do not infer whole-platform security or perfect request classification.
+
+| Issue | Concrete regression | Current evidence | Remaining limit |
+| --- | --- | --- | --- |
+| TF-128 | Context/backend fragments masquerade as owner tests; history crowds panel. | Structured delivered-artifact/action/outcome/target-receipt contract;16/16 guards. Actual740records preserved,99context248history collapsed;1600/390/320 DOM and disposable visual pass. | Historical entries lack delivery contracts and remain agent investigation; no owner acceptance asserted. |
+| TF-129 | Foreign MCP identity creates a helper absent from the correct bot. | Forged/conflicting callers rejected; existing terminal identity retained; observer5/5 and combined71/68 focused suites. Actual exact worker session preserved, authenticated constrained correction, matching sidebar Waiting on1agent and disposable visual pass. | Same-user isolation and historical close ownership not guaranteed; observer cannot close workers. |
+| TF-130 | Main/quick replies publish unreadable walls despite a newline. | Shared prepublication whitespace repair,21/21 with exact screenshot message/RTL/code/URLs; served1440/390eight paragraphs, words preserved, disposable visual pass. | Unsplittable tokens retained with explicit remaining limit; no live-model or physical-phone trial. |
+
 Regression: repeated unsupported forwarding notes, queued messages treated as read, and owner corrections lost during restart. Guard: existing SQLite request/bot/session-scoped starts, outcomes and delivery receipts; bounded retrieval before main/quick replies; failed/stale/missing evidence triggers diagnosis; durable correction queue and shutdown guard. `node --test termcontrol/test/action-evidence.test.mjs termcontrol/test/bot-side-reply.test.mjs termcontrol/test/events-db.test.mjs termcontrol/test/restart-safe-replies.test.mjs`30/30 PASS; action-log12/12 PASS includes actual offline subprocess outcomes. Covers Hebrew, long histories, duplicate source IDs, failure/redaction, cross-bot isolation, unavailable logging, false model delivery claims and actual isolated bridge restart. Production activation/readback remains open. Arbitrary terminal shell actions, hook consumption and undeclared scheduling reasons remain outside coverage; no universal SQL guarantee or new scheduler.
 
 ### TF-123 — Slash skills menu — VERIFYING (2026-10-27)

@@ -1,6 +1,7 @@
 const statuses = {new:'טרם התחיל',assigned:'בטיפול',partial:'עדיין לא הושלם',waiting:'נדרש מענה',ready:'מוכן לבדיקה'};
 const tone = status => ({'נדרש מענה':'waiting','לא התקבל עדכון לאחרונה':'waiting','מוכן לבדיקה':'ready','בטיפול':'working','עובד כעת':'working'})[status] || 'new';
 const badge = status => `<span class="work-status ${tone(status)}">${esc(status)}</span>`;
+const sourceStatus = status => statuses[status] || ({done:'נרשמה השלמה',answered:'נרשם מענה',dropped:'הבקשה הוסרה',context:'מידע והסבר'})[status] || 'המצב דורש בירור';
 const categories = {termfleet:'סביבת העבודה',termcontrol:'שליטה מהטלפון','agent-manager':'ניהול העבודה','health-app':'יומן הבריאות','health-coach_dev':'יומן הבריאות','freelance-desk':'סביבת העבודה המקצועית'};
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const plain = value => String(value || '').replace(/\bR-\d+\b/g,'').replace(/\s+/g,' ').trim();
@@ -83,6 +84,58 @@ export function openTasks(items) {
     return [row];
   });
 }
+
+const receiptTime = value => {
+  const time=typeof value==='number'?value:Date.parse(value || '');
+  return Number.isFinite(time) && time>0?time:0;
+};
+const safeTarget = value => {
+  try { const url=new URL(value);return ['http:','https:'].includes(url.protocol) && !url.username && !url.password; } catch { return false; }
+};
+// Read-only interpretation, never a ledger transition. targetChecks must come from an
+// actual target visit/check, not from the ready label or the author's claim of a link.
+// Unknown metadata is deliberately left open. The UI must not invent a test handoff.
+export function projectWork(items,{targetChecks=new Map(),now=Date.now()}={}) {
+  const groups=new Map(),seen=new Set();
+  for(const item of items){
+    if(!item || seen.has(item.id))continue;
+    seen.add(item.id);
+    const topic=plain(item.topic || item.topics?.[0]);
+    const history=item.locked || ['done','answered','dropped'].includes(item.status);
+    const family=history?'history':item.status==='context' || item.kind==='context'?'context':item.kind==='machine' || item.testing?.kind==='machine'?'machine':'delivery';
+    // A topic alone is not evidence that separate messages ask for one deliverable.
+    const identity=item.deliverableId || (topic && item.msgId ? `${topic}:${item.msgId}` : item.id);
+    const key=JSON.stringify([item.source,item.project,identity,family]);
+    if(!groups.has(key))groups.set(key,{family,items:[]});
+    groups.get(key).items.push(item);
+  }
+  return [...groups.values()].map(({family,items:group})=>{
+    const first=group[0],reasons=[];
+    const tests=group.map(item=>{
+      const t=item.testing || {},check=t.targetCheck?.method==='ready-link-check'?t.targetCheck:targetChecks.get(t.link),at=receiptTime(item.statusAt);
+      if(item.status!=='ready')reasons.push(`${item.id}:delivery-open`);
+      const action=plain(t.tryText);
+      const ownerAction=/(?:^|\s)(?:(?:פתח|פתחי|לחץ|לחצי|גלול|גללי|בחר|בחרי|הקלד|הקלידי|שלח|שלחי|גרור|גררי|השווה|השווי|צפה|צפי)(?:\s|$)|(?:open|click|scroll|select|choose|type|send|drag|compare|watch)\b)/i.test(action);
+      if(action.split(/\s+/).length<3 || !ownerAction || /(?:\b(?:npm|cargo|node|sql|backend|unit test)\b|```)/i.test(action))reasons.push(`${item.id}:specific-owner-action-missing`);
+      if(plain(t.expected).length<8)reasons.push(`${item.id}:observable-outcome-missing`);
+      if(!safeTarget(t.link) || t.artifact!==t.link)reasons.push(`${item.id}:delivered-target-missing`);
+      if(!at || !(item.evidence || []).some(e=>e.scope!=='machine' && receiptTime(e.at)>=at && String(e.what || '').includes(t.artifact) && String(e.what || '').length>String(t.artifact || '').length+12))reasons.push(`${item.id}:delivery-evidence-missing`);
+      const checkedAt=receiptTime(check?.checkedAt);
+      if(!check || check.reachable!==true || checkedAt<at || checkedAt>now || now-checkedAt>15*60*1000)reasons.push(`${item.id}:target-unverified-or-unavailable`);
+      return {action,expected:plain(t.expected),link:t.link};
+    });
+    if(new Set(tests.map(t=>t.link)).size>1)reasons.push('group:delivered-target-needs-review');
+    const bucket=family==='delivery'?(reasons.length?'open':'owner'):family;
+    const topic=plain(first.topic || first.topics?.[0]);
+    const fallback={context:'הסבר שנשמר עם הבקשה',machine:'בדיקה שנמסרה למערכת',history:'תוצאה קודמת שנשמרה'}[family] || 'נדרש בירור של הבקשה';
+    const text=topicTitles[topic] || hebrew(taskText(first.words),'') || fallback;
+    return {title:text,category:categories[first.project] || hebrew(first.project,'כללי'),bucket,
+      status:bucket==='owner'?'מוכן להתנסות':bucket==='open'?'נדרש המשך טיפול':bucket==='machine'?'בדיקה של המערכת':bucket==='context'?'מידע והסבר':'תוצאה שנרשמה',
+      reasons:family==='delivery'?reasons:[`${family}:source-authority`],
+      ...(bucket==='owner'?{ownerAction:{action:[...new Set(tests.map(t=>t.action))].join(' · '),expected:[...new Set(tests.map(t=>t.expected))].join(' · '),link:tests[0].link}}:{}),
+      details:group.map(it=>({id:it.id,text:String(it.words || ''),status:it.status,source:it.source,msgId:it.msgId,part:it.part,of:it.of,locked:it.locked,confirmedBy:it.confirmedBy,note:it.note,evidence:it.evidence,testing:it.testing}))};
+  });
+}
 export function activeTerminals(panes) {
   return panes.filter(p=>p.alive!==false && !p.sleeping && ['working','producing','needs-you','waiting','stuck'].includes(p.dashboardState)).map(p=>{
     const session=p.sessionAuthority?p.sessionViewV2:null;
@@ -115,15 +168,22 @@ export function mountWorkDashboard({host,button,botId,isCurrent}) {
     if(busy || stopped || !isCurrent())return;
     busy=true;
     try {
-    const results=await Promise.allSettled([read('/api/requirements?dashboard=1&source='+encodeURIComponent('bot:'+botId),'items'),read('/api/work-terminals','panes')]);
+    const results=await Promise.allSettled([read('/api/requirements?dashboard=1&closed=1&source='+encodeURIComponent('bot:'+botId),'items'),read('/api/work-terminals','panes')]);
     if(stopped || !isCurrent()){busy=false;return;}
     const [tasks,terminals]=results;
     if(tasks.status==='fulfilled'){
-      const rows=openTasks(tasks.value.items || []);
-      host.querySelector('#work-tasks-title').textContent=`משימות פתוחות · ${rows.length}`;
+      const rows=projectWork(tasks.value.items || []);
+      host.querySelector('#work-tasks-title').textContent=`עבודה ומידע · ${rows.length}`;
       const groups=new Map();
-      for(const row of rows){if(!groups.has(row.category))groups.set(row.category,[]);groups.get(row.category).push(row);}
-      paint('tasks',rows.length?[...groups].map(([category,items])=>`<div class="work-group"><h4 class="work-group-label" dir="auto">${esc(category)}</h4><ul>${items.map(r=>`<li class="work-item ${tone(r.status)}"><div class="work-body"><p dir="auto">${esc(r.title)}</p>${badge(r.status)}${r.details?`<details><summary>הבקשות המקוריות והמצב שלהן</summary>${r.details.map(d=>`<p dir="auto">${esc(d.text)} ${badge(d.status)}</p>`).join('')}</details>`:''}</div></li>`).join('')}</ul></div>`).join(''):'<p class="work-empty">אין משימות פתוחות כרגע.</p>');
+      const labels={open:'עבודה פתוחה',machine:'בדיקות של המערכת',owner:'התנסות או בחירה שלך',context:'מידע והסבר',history:'תוצאות שנרשמו'};
+      for(const row of rows){const key=`${labels[row.bucket]} · ${row.category}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
+      const sections=['owner','open','machine','context','history'].map(bucket=>{
+        const entries=[...groups].filter(([,items])=>items[0].bucket===bucket);
+        const content=entries.map(([category,items])=>`<div class="work-group"><h4 class="work-group-label" dir="auto">${esc(category)}</h4><ul>${items.map(r=>`<li class="work-item ${tone(r.status)}" data-work-kind="${esc(r.bucket)}"><div class="work-body"><p dir="auto">${esc(r.title)}</p>${badge(r.status)}${r.ownerAction?`<p dir="auto">מה לנסות: ${esc(r.ownerAction.action)}</p><p dir="auto">מה אמור לקרות: ${esc(r.ownerAction.expected)}</p><a href="${esc(r.ownerAction.link)}" target="_blank" rel="noopener noreferrer">פתיחת התוצאה</a>`:r.bucket==='open'?'<p class="work-update">עדיין חסרים מסירה, הוכחה או הוראות התנסות שאפשר לאמת.</p>':''}<details><summary>הבקשות המקוריות והמצב שלהן</summary>${r.details.map(d=>`<p dir="auto">${esc(d.text)} ${badge(sourceStatus(d.status))}<small dir="auto"> ${esc([d.id,d.source,d.msgId,d.part?`${d.part}/${d.of || '?'}`:''].filter(Boolean).join(' · '))}</small></p>${d.locked?'<p>נשמרה נעילת התוצאה המקורית.</p>':''}${d.note?`<p dir="auto">${esc(d.note)}</p>`:''}${(d.evidence || []).map(e=>`<p dir="auto">הוכחה שנרשמה: ${esc(e.what)}</p>`).join('')}`).join('')}</details></div></li>`).join('')}</ul></div>`).join('');
+        if(!content)return '';
+        return ['context','history'].includes(bucket)?`<details data-work-section="${bucket}"><summary>${labels[bucket]} · ${entries.reduce((sum,[,items])=>sum+items.length,0)}</summary>${content}</details>`:content;
+      }).join('');
+      paint('tasks',sections || '<p class="work-empty">אין עבודה או מידע להצגה כרגע.</p>');
     }else {host.querySelector('#work-tasks-title').textContent='משימות פתוחות';paint('tasks','<p class="work-empty">לא ניתן לטעון את המשימות. ננסה שוב אוטומטית.</p>');}
     if(terminals.status==='fulfilled'){
       const data=terminals.value;

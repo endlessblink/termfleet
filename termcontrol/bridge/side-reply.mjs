@@ -93,7 +93,7 @@ export const claimsDelivery = reply => /\b(?:I (?:have )?(?:passed|sent|forwarde
 export function withPassedOn(reply, forward, incoming = []) {
   if (!forward) return reply;
   const he = HEBREW.test(incoming.join(' ')) || HEBREW.test(reply);
-  return `${reply}${reply ? ' ' : ''}${he ? 'השאלה נשמרה בתור של העבודה; עדיין אין אישור שהעובד קרא אותה.' : 'The message is saved in the work inbox; worker acknowledgement is still pending.'}`;
+  return `${reply}${reply ? '\n\n' : ''}${he ? 'השאלה נשמרה בתור של העבודה; עדיין אין אישור שהעובד קרא אותה.' : 'The message is saved in the work inbox; worker acknowledgement is still pending.'}`;
 }
 
 /** The command for one side answer: the bot's plan, no tools, no hooks, no saved session. */

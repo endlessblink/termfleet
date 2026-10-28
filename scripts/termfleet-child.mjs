@@ -26,6 +26,7 @@ import { checkBotTask, botTaskContext } from "./lib/bot-workflow-preflight.mjs";
 import { memoryGuard } from "./lib/spawn-guards.mjs";
 import { explainTaskRoute, explainProviderRoute } from "./lib/task-router.mjs";
 import { assertProviderLaunch } from "./lib/provider-launch-policy.mjs";
+import { resolveBotCaller } from './lib/bot-caller.mjs';
 
 const VERSION = "2.0.0";
 const PROVIDERS = ["claude", "codex", "opencode", "shell"];
@@ -274,7 +275,9 @@ export function threadChain(threadId, home) {
  * from the chat-to-card record the Codex status hook keeps. Getting this wrong made a
  * Codex handover continue in Claude.
  */
-export function resolveCaller(env = process.env, procRoot = "/proc", selfPid = process.pid) {
+export function resolveCaller(env = process.env, procRoot = "/proc", selfPid = process.pid, botOptions = {}) {
+  const bot = resolveBotCaller(env, botOptions);
+  if (bot) return bot;
   const envPane = env.TERMFLEET_PANE_ID?.trim() || "";
   const threadId = (env.CODEX_THREAD_ID ?? env.CODEX_SESSION_ID ?? "").trim();
   const underCodex = [...ancestors(procRoot, selfPid)].some((pid) => isProviderProcess("codex", procArgv(procRoot, pid)));
