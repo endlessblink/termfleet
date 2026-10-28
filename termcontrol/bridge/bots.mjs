@@ -24,7 +24,7 @@ import { defaultDaemonSocket, requestDaemon } from '../../scripts/termfleetctl.m
 import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements, messageProblem } from './requirements.mjs';
-import { testingHandoffProblem, readyThisTurn, saveTestingHandoff } from './bot-testing.mjs';
+import { testingHandoffProblem, readyThisTurn, saveTestingHandoff, reportsDelivery } from './bot-testing.mjs';
 import { sidePrompt, parseSide, claimsDelivery, withPassedOn, putSteer, takeSteer, nextTurnText, steerDir } from './side-reply.mjs';
 import { retrieveActionEvidence, needsDiagnosis } from './action-evidence.mjs';
 import { formatActionEvidence } from './compact-action-evidence.mjs';
@@ -504,6 +504,9 @@ export function runBrain(bot, text, { onEvent, onStart, onUsage = traceTokenUsag
     } catch (error) { resolve({ error: String(error.message || error) }); return; }
     let buffer = '', stderr = '', finalText = '', error = null, lastText = '', limit = null, completed = false, stopped = false, ownKill = false;
     const spoken = [];
+    // exec JSON has no message phase. A following work/message event proves the
+    // previous text was intermediate; retain the last text for final publication.
+    let pendingProgress = '';
     const calls = new Map();   // tool calls waiting for their result (action log)
     let usageModel = bot.model || 'unknown';
     let usageSessionId = bot.sessions?.codex || null;
@@ -548,6 +551,13 @@ export function runBrain(bot, text, { onEvent, onStart, onUsage = traceTokenUsag
         for (const done of brainToolResults(bot.provider, line)) { const use = calls.get(done.id); calls.delete(done.id); if (use) { onEvent?.({ outcome: { ...use, ok: done.ok } }); if (done.ok) onEvent?.({ action: use }); } }
         const ev = parseBrainLine(bot.provider, line);
         if (!ev) continue;
+        if (bot.provider === 'codex') {
+          if (pendingProgress && (ev.activity || (ev.text && ev.text !== pendingProgress))) {
+            onEvent?.({ said: pendingProgress, progress: true });
+            pendingProgress = '';
+          }
+          if (ev.text && !ev.final) pendingProgress = ev.text;
+        }
         if (ev.limit) { limit = limit || ev.limit; if (!ev.final) { ownKill = true; child.kill('SIGTERM'); } }
         if (ev.text) { lastText = ev.text; if (ev.final) finalText = ev.text; else spoken.push(ev.text); }
         if (ev.said) spoken.push(ev.said);
@@ -1341,7 +1351,16 @@ export class Bots {
     if (!bot) return null;
     // Resolve question history before taking the window: a later answer or withdrawal
     // must not disappear when an older, still-open original card is retained.
-    const all = markQuestionResolutions(markWithdrawnQuestions(markRepeatedQuestions(this.messages(id))));
+    const messages = this.messages(id), progress = new Map(), superseded = new Set();
+    // Keep the durable progress record, but promote matching text to its final
+    // reply in the visible chat. Never reconcile across an owner's next message.
+    for (const message of messages) {
+      if (message.role === 'operator') progress.clear();
+      if (message.progress) progress.set(message.text, message.id);
+      if (message.role === 'bot' && !message.side && progress.has(message.text))
+        superseded.add(progress.get(message.text));
+    }
+    const all = markQuestionResolutions(markWithdrawnQuestions(markRepeatedQuestions(messages.filter(message => !superseded.has(message.id)))));
     const answered = new Set(all.filter((m) => m.role === 'operator' && m.answerTo && m.deleted?.cancelled !== true).map((m) => m.answerTo));
     const chat = all.slice(-MAX_CHAT_RETURNED);
     chat.unshift(...all.slice(0, -MAX_CHAT_RETURNED).filter((m) =>
@@ -2255,7 +2274,15 @@ export class Bots {
           if (ev.action) { try { this.recordAction(id, ev.action); } catch { /* the log never stops a reply */ } return; }
           if (ev.outcome) { const use = ev.outcome; if (use.id) this.recordEvidence(id, { action_id: use.id, source_id: `${turnId}:${use.id}:result`, kind: 'tool', state: use.ok ? 'succeeded' : 'failed', tool: String(use.name || 'tool').replace(/[^\p{L}\p{N}_.:@/-]/gu, '_').slice(0, 200), result_code: use.ok ? 'tool_returned_success' : 'tool_failed' }); return; }
           if (ev.step) { const use = ev.step; if (use.id) this.recordEvidence(id, { action_id: use.id, source_id: `${turnId}:${use.id}:start`, kind: 'tool', state: 'started', tool: String(use.name || 'tool').replace(/[^\p{L}\p{N}_.:@/-]/gu, '_').slice(0, 200) }); const current = this.running.get(id); if (current?.steps) { current.steps.push({ at: this.now(), text: stepLine(ev.step) }); if (current.steps.length > 60) current.steps.splice(0, current.steps.length - 60); } return; }
-          if (ev.said) { const current = this.running.get(id); if (current?.said) { current.said.push(ev.said); if (current.said.length > 6) current.said.shift(); } }
+          if (ev.said) {
+            const current = this.running.get(id);
+            if (current?.said && current.said.at(-1) !== ev.said) {
+              current.said.push(ev.said);
+              if (current.said.length > 6) current.said.shift();
+              if (ev.progress && !reportsDelivery(ev.said) && !parseQuestion(ev.said)?.question && !parseChecklist(ev.said)?.checklist)
+                this.append(id, { role: 'activity', text: ev.said, progress: true });
+            }
+          }
           if (ev.activity) {
             const current = this.running.get(id);
             if (current && current.activity !== ev.activity) { current.activity = ev.activity; current.activityAt = this.now(); this.append(id, { role: 'activity', text: ev.activity }); }

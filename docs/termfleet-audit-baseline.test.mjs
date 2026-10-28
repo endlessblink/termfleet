@@ -1,4 +1,6 @@
-// Baseline diagnosis only: assertions document current broken behavior.
+// Historical diagnosis fixtures retained for unmarked legacy launchers and
+// untyped text with no following work event. Repair acceptance lives in
+// termcontrol/test/{bot-progress,helper-request-origin}.test.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -55,8 +57,8 @@ test('baseline: generated launch instructions become owner items and block Stop'
  t.diagnostic(`synthetic owner items=${count}; first Stop blocked=true; stop_hook_active retry allowed=true`);
 });
 
-test('baseline: hook_prompt envelope is not classified as injected',t=>{
+test('repair: hook_prompt control envelope is excluded from owner intake',t=>{
  const prompt='<hook_prompt hook_run_id="stop:synthetic">Noam has 1 item nobody has taken yet. Items: R-1 "synthetic"</hook_prompt>';
- assert.notEqual(ownerTextOf(prompt),null);assert.equal(injected(prompt),false);
- t.diagnostic('hook_prompt accepted as owner text=true; injected=false; live recapture path remains unverified');
+ assert.equal(ownerTextOf(prompt),null);assert.equal(injected(prompt),true);
+ t.diagnostic('hook_prompt excluded; production loaded bridge remains separately verified');
 });
