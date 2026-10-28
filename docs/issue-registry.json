@@ -14817,6 +14817,96 @@
           "note": "Activated PID1271056 at07:22:14.391UTC; independent authenticated14-file SHA345f8862a730761d5fd8fb6b238dd49106224839d7f0b76ce0977d72d2f3ebe7 matchesdisk; daemon2068834 unchanged. Actual synthetic queued-to-received SQLite/API readback two items PASS; output /tmp/termfleet-f04-receipt-readback.log. Natural late-worker episode untrialled; task status unchanged."
         }
       ]
+    },
+    {
+      "id": "TF-134",
+      "title": "Updated artwork is absent from its bot chat",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Exact existing spread05 v02 PNG was never published to the requested book bot; latest inline image remained v01. Separately, media extraction rejected standalone paths containing spaces or parentheses.",
+      "rootCause": "The exact v02 asset was never published to the bot chat after the producer closed. Independently, standalone local media paths containing spaces or parentheses were missed by MEDIA_FIND.",
+      "guard": "Exact authorized image SHA must appear in a real bot chat image and private preview; whitespace path regression retains file restrictions.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T07:25:49.861Z",
+          "note": "Incident cause: v02 existed but no v02 bot entry was published; latest spread05 inline remained v01. Separately MEDIA_FIND excluded spaces, parentheses and Hebrew path segments. Existing signed-file policy was retained; standalone path parsing now precedes regex fallback. Normal delivery-only testingHandoffProblem gate passed before supported Bots.append wrote exact owner-authorized asset to bot87343f93b7f1 as1808c04fc240."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T07:25:50.180Z",
+          "note": "inline-media.test.mjs8/8 PASS including red-before/green-after path-spaces/parentheses/Hebrew extraction and missing/hidden file restrictions; node --check bot-questions.mjs and git diff --check PASS. Adjacent old terminal fixture fails paneT1 navigation timeout; bot-questions old skills-list source assertion fails; neither is claimed green."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-10-28T07:25:50.493Z",
+          "note": "2026-10-28T07:24:34Z actual authenticated bot87343f93b7f1, no request interception: message1808c04fc240 image decodes1536x1024 at1440/390 widths inline and full overlay; image HTTP2002976502bytes SHA11858d5fd282ab911982d94e40cf6d4fcd2bf1eae2c2d26d48155784cadd1b31; public private-signed preview sameSHA. Disposable visual review PASS four /tmp/tc-readable-work/book-media-{live,full}-{1440,390}.png artifacts; no clipping/overlap. Physical phone, zoom and art approval untested."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner can open the existing book bot and tap the delivered v02 image; physical-device interaction and artwork approval remain separate.",
+      "history": [
+        {
+          "at": "2026-10-28T07:24:08.385Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T07:25:30.269Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Actual bot inspection confirms absent v02 publication; existing image asset and private route are intact. Spaces and parentheses are a separate reproduced parser defect."
+        },
+        {
+          "at": "2026-10-28T07:25:30.586Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Original requested bot contained v01 and no v02 entry; exact v02 SHA matched disk. Focused media extraction fixture failed before repair."
+        },
+        {
+          "at": "2026-10-28T07:25:30.900Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "New standalone whitespace/parentheses/Hebrew path regression failed before source repair and now passes."
+        },
+        {
+          "at": "2026-10-28T07:25:31.233Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Existing supported Bots.append delivered exact authorized asset after normal delivery-only gate passed; parser preserves existing validation."
+        },
+        {
+          "at": "2026-10-28T07:25:31.544Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Actual live chat now contains image1808c04fc240. Headless desktop/mobile inline/full rendering and private SHA readback pass; physical phone and art approval remain separate."
+        },
+        {
+          "at": "2026-10-28T07:25:49.861Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Incident cause: v02 existed but no v02 bot entry was published; latest spread05 inline remained v01. Separately MEDIA_FIND excluded spaces, parentheses and Hebrew path segments. Existing signed-file policy was retained; standalone path parsing now precedes regex fallback. Normal delivery-only testingHandoffProblem gate passed before supported Bots.append wrote exact owner-authorized asset to bot87343f93b7f1 as1808c04fc240."
+        },
+        {
+          "at": "2026-10-28T07:25:50.180Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "inline-media.test.mjs8/8 PASS including red-before/green-after path-spaces/parentheses/Hebrew extraction and missing/hidden file restrictions; node --check bot-questions.mjs and git diff --check PASS. Adjacent old terminal fixture fails paneT1 navigation timeout; bot-questions old skills-list source assertion fails; neither is claimed green."
+        },
+        {
+          "at": "2026-10-28T07:25:50.493Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-10-28T07:24:34Z actual authenticated bot87343f93b7f1, no request interception: message1808c04fc240 image decodes1536x1024 at1440/390 widths inline and full overlay; image HTTP2002976502bytes SHA11858d5fd282ab911982d94e40cf6d4fcd2bf1eae2c2d26d48155784cadd1b31; public private-signed preview sameSHA. Disposable visual review PASS four /tmp/tc-readable-work/book-media-{live,full}-{1440,390}.png artifacts; no clipping/overlap. Physical phone, zoom and art approval untested."
+        }
+      ]
     }
   ]
 }

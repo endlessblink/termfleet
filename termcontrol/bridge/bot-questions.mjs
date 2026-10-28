@@ -165,7 +165,15 @@ export function mediaKind(href) {
 }
 export function findMedia(text, linkOpts) {
   const media = [], seen = new Set(), shown = new Set();
-  for (const raw of String(text || '').match(MEDIA_FIND) || []) {
+  const own = (line) => line.trim().replace(/^[-*•]\s+/, '').replace(/^([`"'])(.*)\1$/, '$2').replace(/^!?\[[^\]]*\]\(\s*<?(.+?)>?\s*\)$/, '$1').trim();
+  // A whole path on its own line may contain spaces, parentheses or non-Latin
+  // names. Do not tokenize it at whitespace; cardLink still checks the real
+  // file, allowed roots and hidden-folder restrictions before signing it.
+  const candidates = String(text || '').split('\n').flatMap(line => {
+    const full = own(line);
+    return [ ...(/^(?:~?\/)/.test(full) && mediaKind(full) ? [full] : []), ...(line.match(MEDIA_FIND) || []) ];
+  });
+  for (const raw of candidates) {
     const href = cardLink(raw, linkOpts);
     if (!href) continue;
     shown.add(raw);
@@ -175,7 +183,6 @@ export function findMedia(text, linkOpts) {
     try { name = decodeURIComponent(name); } catch { /* as written */ }
     media.push({ kind: mediaKind(raw), href, name });
   }
-  const own = (line) => line.trim().replace(/^[-*•]\s+/, '').replace(/^`(.*)`$/, '$1').replace(/^!?\[[^\]]*\]\(\s*<?([^\s<>()]+)>?\s*\)$/, '$1').trim();
   const rest = String(text || '').split('\n').filter((line) => !shown.has(own(line))).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   return { text: media.length ? rest : String(text || ''), media };
 }
