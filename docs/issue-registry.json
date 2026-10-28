@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T09:08:38.146Z",
+  "updatedAt": "2026-10-28T09:10:47.181Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15207,17 +15207,22 @@
       "surface": "logic",
       "matrixRefs": [],
       "symptom": "Goal and task disappear and unfinished owner items are not required on handoff",
-      "rootCause": "",
+      "rootCause": "Two readers built literal pane names while writer persisted pane-FNV32 names; use existing paneSidecarPath utility.",
       "guard": "node --test termcontrol/test/pane-sidecar-readers.test.mjs",
       "evidence": [
         {
           "kind": "focused-test",
           "at": "2026-10-28T09:08:37.860Z",
           "note": "Actual /tmp/termfleet-f17-red.tap 1pass3fail before repair, then /tmp/termfleet-f17-focused.tap 48/48. Writer hashed-path roundtrip, exact pane separation, malformed/missing no fallback, bot route, and handoff req enforcement; no live input or model."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T09:10:47.181Z",
+          "note": "Loaded b2effb5 PID2028457 at09:09:55.503UTC17module db2a9d671a1829c342f841ac8b6ca9ecdd9d7fffb914dbbc44f8caa4efb08389 matches; GET200/401;2terminal10bot identities queues0/0 preserved daemon2068834 unchanged. CLI reviewed target hash8e012666 own-pane session/untaken0 matches ledger. /tmp/termfleet-f17-loaded-readback.json; /tmp/termfleet-f17-cli-readback.json. Natural populated fields and owner-facing proof absent."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Reproduce exact writer path in isolated readers before changing production",
+      "nextAction": "Observe naturally populated Goal/Task and real unfinished item without synthetic live injection; owner-facing trial pending. Existing FNV collision/paneId/session source matching limits are separate, six quota/cloud gates unchanged.",
       "history": [
         {
           "at": "2026-10-28T09:06:24.373Z",
@@ -15264,6 +15269,12 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Both reader lookups repaired using existing paneSidecarPath. Syntax/diff checks pass; doctor retains old desktop/keeper warnings. Source not yet loaded into bridge; require frozen17module readback and read-only runtime comparison."
+        },
+        {
+          "at": "2026-10-28T09:10:47.181Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Loaded b2effb5 PID2028457 at09:09:55.503UTC17module db2a9d671a1829c342f841ac8b6ca9ecdd9d7fffb914dbbc44f8caa4efb08389 matches; GET200/401;2terminal10bot identities queues0/0 preserved daemon2068834 unchanged. CLI reviewed target hash8e012666 own-pane session/untaken0 matches ledger. /tmp/termfleet-f17-loaded-readback.json; /tmp/termfleet-f17-cli-readback.json. Natural populated fields and owner-facing proof absent."
         }
       ]
     }
