@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T11:42:55.762Z",
+  "updatedAt": "2026-10-28T11:46:56.884Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15602,8 +15602,8 @@
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-28T11:34:54.932Z",
-          "note": "Source-only individual delivery receipts:136/136 /tmp/termfleet-delivery-accounting-final.tap; focused35/35 /tmp/termfleet-delivery-accounting-focused.tap. Real issuer private fixture store validates exact bot caller before fake runner start; corrected restart5/5. Child process pending/uncertain and receipt write/rename failures retain original pending references; no replay. Actual GET11:34:06UTC /tmp/termfleet-delivery-accounting-runtime.json remains old2252271/8d3ea43c vs24module disk03134943ffbe. No live activation or audit model/input. Old process lacks timer admission stop and already-issued effect settlement; new protocol not retroactive. Other effects partial; production older-question retention/navigation and human-owner proof missing."
+          "at": "2026-10-28T11:46:56.884Z",
+          "note": "Request-specific fresh40/40 /tmp/termfleet-question-settlement-recheck.tap includes real disposable restart with actual private issuer/validator, child callback/effect distinctions, persistence fault/reconstruction and older-question original navigation. Existing136/136 full TAP retained. Fresh GET11:45:53UTC /tmp/termfleet-question-settlement-runtime.json still2252271/18module8d3ea43c exactly35c9acd vs24module disk1bf43e3c. Host caughtTERM/INT true,USR2 false,330s mixed stop; isolated exact legacy shutdown attempts exit with pending external effect. No live signals/reload/input/model. No supported legacy bootstrap admission/timer-stop plus outstanding-effect settlement hook exists; new protocol not retroactive."
         }
       ],
       "owner": "termfleet",
@@ -15684,6 +15684,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Source-only individual delivery receipts:136/136 /tmp/termfleet-delivery-accounting-final.tap; focused35/35 /tmp/termfleet-delivery-accounting-focused.tap. Real issuer private fixture store validates exact bot caller before fake runner start; corrected restart5/5. Child process pending/uncertain and receipt write/rename failures retain original pending references; no replay. Actual GET11:34:06UTC /tmp/termfleet-delivery-accounting-runtime.json remains old2252271/8d3ea43c vs24module disk03134943ffbe. No live activation or audit model/input. Old process lacks timer admission stop and already-issued effect settlement; new protocol not retroactive. Other effects partial; production older-question retention/navigation and human-owner proof missing."
+        },
+        {
+          "at": "2026-10-28T11:46:56.884Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Request-specific fresh40/40 /tmp/termfleet-question-settlement-recheck.tap includes real disposable restart with actual private issuer/validator, child callback/effect distinctions, persistence fault/reconstruction and older-question original navigation. Existing136/136 full TAP retained. Fresh GET11:45:53UTC /tmp/termfleet-question-settlement-runtime.json still2252271/18module8d3ea43c exactly35c9acd vs24module disk1bf43e3c. Host caughtTERM/INT true,USR2 false,330s mixed stop; isolated exact legacy shutdown attempts exit with pending external effect. No live signals/reload/input/model. No supported legacy bootstrap admission/timer-stop plus outstanding-effect settlement hook exists; new protocol not retroactive."
         }
       ]
     },
