@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T16:38:49.570Z",
+  "updatedAt": "2026-10-28T18:23:47.603Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15533,6 +15533,11 @@
           "kind": "source",
           "at": "2026-10-28T12:18:47.149Z",
           "note": "Pending owner maintenance choice, no reply/approval. Review saved in runtime-truth includes exact conditional bridge-only commands, exclusive durable startup marker, existing-service infinity/no-force-kill runtime override, preservation and nonrecoverable rollback boundaries. /tmp/termfleet-maintenance-review.json12:15:58Z: old2252271/8d3ea43c,10bot queues0durable0,one working inflight,6terminal identities,daemon2068834 unchanged. Unknown legacy-effect count explicitly null, not0. New startup guard partial/manual HTTP not globally blocked. Disposable systemd unit verify validates proposed stop directives; no live config or conditional command applied. Feature remains partial, terminal open, existing choice not repeated."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T18:23:47.603Z",
+          "note": "Question dismissal final focused suite13/13 PASS, including real disposable bridge/browser, direct/legacy answered metadata race, exact frozen clear IDs, new arrival retention, rejected terminal dismissal and legacy loaded-backend capability gate. Build and syntax/diff checks PASS. Adjacent bot-question suite22/23 has baseline pre-existing skills-close regex failure. No live cleanup claimed; current working fine-tuned bot blocks no-loss activation."
         }
       ],
       "owner": "termfleet",
@@ -15601,6 +15606,18 @@
           "type": "evidence",
           "kind": "source",
           "note": "Pending owner maintenance choice, no reply/approval. Review saved in runtime-truth includes exact conditional bridge-only commands, exclusive durable startup marker, existing-service infinity/no-force-kill runtime override, preservation and nonrecoverable rollback boundaries. /tmp/termfleet-maintenance-review.json12:15:58Z: old2252271/8d3ea43c,10bot queues0durable0,one working inflight,6terminal identities,daemon2068834 unchanged. Unknown legacy-effect count explicitly null, not0. New startup guard partial/manual HTTP not globally blocked. Disposable systemd unit verify validates proposed stop directives; no live config or conditional command applied. Feature remains partial, terminal open, existing choice not repeated."
+        },
+        {
+          "at": "2026-10-28T18:21:48.037Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Dismissal transfer candidate applied and answer race reproduced red (2/3); guard reconciles current history before dismissal. Fresh focused dismissal/history/navigation 12/12 pass; original answer identity/source/text and history preserved. New arrivals retained; terminal asks rejected; no answer or provider turn from cleanup. Frontend build passes. Adjacent source-test skills-close regex already fails unchanged HEAD; installed cleanup not yet performed."
+        },
+        {
+          "at": "2026-10-28T18:23:47.603Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Question dismissal final focused suite13/13 PASS, including real disposable bridge/browser, direct/legacy answered metadata race, exact frozen clear IDs, new arrival retention, rejected terminal dismissal and legacy loaded-backend capability gate. Build and syntax/diff checks PASS. Adjacent bot-question suite22/23 has baseline pre-existing skills-close regex failure. No live cleanup claimed; current working fine-tuned bot blocks no-loss activation."
         }
       ]
     },

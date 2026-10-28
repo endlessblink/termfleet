@@ -835,3 +835,8 @@ once with latest unretracted correction context. No model retry or correction
 replay. Red15/17 and retraction19/20; affected98/98, including actual isolated
 HTTP/headless390/1400 hold/release test. Reviewed e20f8aa, acceptance5c76d98;
 follow-up production activation and ordinary semantic acceptance remain pending.
+
+
+### TF-141 historical-question dismissal
+
+Explicit dismissal retains originals without inventing answers. Regression: node --test termcontrol/test/bot-question-dismiss.test.mjs termcontrol/test/bot-unanswered-history.test.mjs termcontrol/test/bot-unanswered-navigation.test.mjs termcontrol/test/bot-question-resolution-live.test.mjs (13/13). Covers stale direct/legacy answers and resolution metadata, terminal refusal, exact clear snapshot and new arrivals, durable refresh, no send/wake, plus hidden removal controls against legacy backend. Coverage: disposable real bridge and headless390/1400; installed cleanup remains in_progress while existing bot work prevents a no-loss restart.
