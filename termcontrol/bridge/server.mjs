@@ -89,7 +89,7 @@ import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS 
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(),
-  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
@@ -367,7 +367,7 @@ if (!process.env.TC_CONFIG_DIR && !process.env.TC_NO_AUTO_SLEEP) {
   }, 60_000).unref();
 }
 
-const sendOnce = createSendOnce();
+const sendOnce = createSendOnce({dir:path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'send-receipts')});
 
 // Bots (TF-096): managers that run outside the terminals and direct terminal agents.
 const push = new Push();
@@ -1257,7 +1257,7 @@ const handle = async (req, res) => {
         // reaches the agent, as a normal message. If another question is open instead, it
         // is refused and the page keeps the draft.
         if (fresh && !freshAsk && typeof payload.answer === 'string') {
-          const result = await sendOnce(`answer-${payload.askId}`, payload.answer, () => sendToPane(fresh, payload.answer));
+          const result = await sendOnce(`answer-${payload.pane}-${payload.askId}`, payload.answer, () => sendToPane(fresh, payload.answer), {scope:fresh.id});
           return json(res, result.error && !result.busy ? 400 : 200, { ...result, sentAsMessage: true });
         }
         if (fresh && freshAsk && freshAsk.id !== payload.askId && typeof payload.answer === 'string') {
@@ -1318,7 +1318,7 @@ const handle = async (req, res) => {
       const active = pendingAsk(pane, {screen}) || screenPermissionAsk(pane,screen);
       if (active) return json(res,409,{error:'A question is open. Use its choices or Write my answer so your reply reaches the right field.'});
 
-      const result = await sendOnce(payload.sendId, payload.text, () => sendToPane(pane, payload.text, { force: Boolean(payload.force) }));
+      const result = await sendOnce(payload.sendId, payload.text, () => sendToPane(pane, payload.text, { force: Boolean(payload.force) }), {scope:pane.id});
       return json(res, result.error && !result.busy ? 400 : 200, result);
     });
     return;

@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T08:08:16.107Z",
+  "updatedAt": "2026-10-28T08:35:40.681Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15079,6 +15079,85 @@
           "type": "evidence",
           "kind": "source",
           "note": "Deployed-source verified: parent-authorized graceful bridge-only activation1537005 at07:55:19.756UTC. AuthGET200 loaded14digest5dae9c577f55db50f71fa727c9d521a58170f39cf309b925ae1b37cb47d4ffe5 equals frozen69d725e source; unauth401.4terminal triples and10bot session hashes unchanged, queues0/0, daemon2068834 unchanged. /tmp/termfleet-f07-activation.log and /tmp/termfleet-f07-loaded-readback.json. No live owner verdict/model request; physical owner trial remains separate."
+        }
+      ]
+    },
+    {
+      "id": "TF-137",
+      "title": "A retried terminal draft is typed again after uncertain send",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Text write succeeds but Enter fails and retry or restart types the same draft again",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/send-idempotency.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T08:35:12.356Z",
+          "note": "/tmp/termfleet-f18-focused.tap24/24 PASS. /tmp/termfleet-f18-red.tap baseline1pass5fail before repair"
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T08:35:40.681Z",
+          "note": "send-once durable reservation, send partial-write state and minimal server stable-ID wiring.15module provenance; independent review narrow process-restart scope"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Preserve durable scoped uncertain receipts and explicit prewrite retries with isolated regressions",
+      "history": [
+        {
+          "at": "2026-10-28T08:17:04.110Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T08:34:26.801Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "F18 candidate reserves a draft before possible writes; retain uncertain results across process restart"
+        },
+        {
+          "at": "2026-10-28T08:34:27.099Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Baseline isolated TAP1pass5fail at /tmp/termfleet-f18-red.tap"
+        },
+        {
+          "at": "2026-10-28T08:34:27.379Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Isolated real socket Enter failure, two-process same-key and SIGKILL HTTP bridge fixtures"
+        },
+        {
+          "at": "2026-10-28T08:34:27.678Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Durable scoped receipt reservation and explicit prewrite refusals"
+        },
+        {
+          "at": "2026-10-28T08:35:12.064Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Isolated24/24 PASS including actual HTTP bridge SIGKILL/restart, real concurrent same-key processes, unknown and completion persistence failures. Live load pending"
+        },
+        {
+          "at": "2026-10-28T08:35:12.357Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "/tmp/termfleet-f18-focused.tap24/24 PASS. /tmp/termfleet-f18-red.tap baseline1pass5fail before repair"
+        },
+        {
+          "at": "2026-10-28T08:35:40.681Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "send-once durable reservation, send partial-write state and minimal server stable-ID wiring.15module provenance; independent review narrow process-restart scope"
         }
       ]
     }

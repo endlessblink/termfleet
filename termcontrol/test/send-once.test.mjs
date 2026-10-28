@@ -18,10 +18,10 @@ test('a retried draft is typed once and both callers get the same outcome', asyn
   assert.equal(later.repeated, true);
 });
 
-test('a refused or failed send can be tried again for real; a changed text is refused', async () => {
+test('a proven prewrite refusal can be retried; a changed text is refused', async () => {
   const sendOnce = createSendOnce();
   let calls = 0;
-  assert.equal((await sendOnce('d2', 'x', async () => { calls++; return { error: 'busy', busy: true }; })).busy, true);
+  assert.equal((await sendOnce('d2', 'x', async () => { calls++; return { error: 'busy', busy: true, notSent: true }; })).busy, true);
   assert.equal((await sendOnce('d2', 'x', async () => { calls++; return { ok: true }; })).ok, true);
   assert.equal(calls, 2);
   assert.match((await sendOnce('d2', 'y', async () => ({ ok: true }))).error, /changed/);

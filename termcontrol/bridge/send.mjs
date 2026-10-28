@@ -25,9 +25,9 @@ function audit(entry) {
 /** The daemon wraps every reply as { ok, value } — unwrap or throw. */
 async function ask(request) {
   let res = await requestDaemon(request, defaultDaemonSocket());
-  // A busy daemon sometimes refuses or closes a fresh connection before reading it (seen as
-  // "write EPIPE" on a phone answer, 2026-10-21). Then nothing was received, so try again.
-  for (let tries = 0; tries < 2 && res?.ok !== true && /EPIPE|ECONNREFUSED/.test(String(res?.error || '')); tries++) {
+  // A lost write acknowledgement cannot prove no input reached the PTY. Only reads
+  // can be retried here; retrying writes can duplicate text inside one send receipt.
+  for (let tries = 0; tries < 2 && request.type !== 'writeSession' && res?.ok !== true && /EPIPE|ECONNREFUSED/.test(String(res?.error || '')); tries++) {
     await new Promise((resolve) => setTimeout(resolve, 200));
     res = await requestDaemon(request, defaultDaemonSocket());
   }
@@ -68,20 +68,25 @@ export function splitPictures(body, exists = (p) => { try { return fs.statSync(p
 
 export async function sendToPane(pane, text, { force = false } = {}) {
   const body = String(text ?? '');
-  if (!body.trim()) return { error: 'Nothing to send.' };
-  if (body.length > MAX_MESSAGE_CHARS) return { error: 'That message is over 2 million characters. Send it as a file instead.' };
+  if (!body.trim()) return { error: 'Nothing to send.', notSent: true };
+  if (body.length > MAX_MESSAGE_CHARS) return { error: 'That message is over 2 million characters. Send it as a file instead.', notSent: true };
 
-  if (inFlight.has(pane.id)) return { error: 'Still sending your last message.' };
+  if (inFlight.has(pane.id)) return { error: 'Still sending your last message.', busy: true, notSent: true };
+
+  // Reserve before the first asynchronous gate, including wake/list calls.
+  inFlight.add(pane.id);
+  let writeAttempted = false;
+  try {
 
   // A sleeping terminal is woken first (its conversation resumes), then the message goes in.
   if (isSleeping(pane.id)) {
     const woke = await wakePane(pane.id, { ask: (request) => requestDaemon(request, defaultDaemonSocket()) });
-    if (!woke.ok) return { error: `That terminal is asleep and could not be woken: ${woke.error}` };
+    if (!woke.ok) return { error: `That terminal is asleep and could not be woken: ${woke.error}`, notSent: true };
   }
 
   const live = await liveSessionIds();
   if (!live.has(pane.id)) {
-    return { error: 'That terminal is not running any more.' };
+    return { error: 'That terminal is not running any more.', notSent: true };
   }
 
   // Busy means either the agent says it is working, or the terminal is
@@ -96,20 +101,20 @@ export async function sendToPane(pane, text, { force = false } = {}) {
     return {
       error: 'busy',
       busy: true,
+      notSent: true,
       message: pane.producing
         ? 'This terminal is working right now. Send anyway?'
         : 'The agent is still working. Send anyway?',
     };
   }
 
-  inFlight.add(pane.id);
-  try {
     const sizeBefore = await scrollbackBytes(pane.id);
     // A picture is attached only when it is pasted on its own (2026-10-26, Claude and Codex): a
     // path inside the text stays text, and Codex ignores even a path on its own line in a longer
     // paste. So each picture line goes in first, alone, then the words.
     const { pictures, words } = splitPictures(body);
     for (const picture of pictures) {
+      writeAttempted = true;
       await ask({ type: 'writeSession', id: pane.id, data: `\u001b[200~${picture}\u001b[201~` });
       await new Promise((r) => setTimeout(r, 400));
     }
@@ -131,6 +136,7 @@ export async function sendToPane(pane, text, { force = false } = {}) {
     // Text first, then Enter as its own write: agent TUIs redraw between
     // keystrokes, and a newline arriving inside the same chunk as the text is
     // routinely swallowed. The pause gives the prompt time to settle.
+    writeAttempted = true;
     await ask({ type: 'writeSession', id: pane.id, data: wire });
     await new Promise((r) => setTimeout(r, 120));
     await ask({ type: 'writeSession', id: pane.id, data: '\r' });
@@ -147,8 +153,8 @@ export async function sendToPane(pane, text, { force = false } = {}) {
     confirmSubmitted(pane, sent, enterAt).catch(() => {});
     return { ok: true, delivered, sentAt: Date.now() };
   } catch (error) {
-    audit({ pane: pane.id, project: pane.project, bytes: body.length, ok: false, error: String(error.message || error) });
-    return { error: String(error.message || error) };
+    audit({ pane: pane.id, project: pane.project, bytes: body.length, ok: false, error: String(error.message || error), ...(writeAttempted ? { uncertain: true } : { notSent: true }) });
+    return { error: String(error.message || error), ...(writeAttempted ? { uncertain: true } : { notSent: true }) };
   } finally {
     inFlight.delete(pane.id);
   }
