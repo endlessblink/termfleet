@@ -11346,3 +11346,5 @@ acceptance5c76d98. No extra provider inference, forced stop or asset change.
 Existing release owner handles follow-up activation; loaded proof pending.
 Canonical Finetuned note resolved the actual location and a working folder link
 was provided directly; this is reviewer evidence, not bot semantic acceptance.
+
+Activation verification2026-10-28T16:37UTC: reviewed e20f8aa loaded16:36:53.011UTC/PID3090042/full digest f5c1e6b422606ec5beb4b724ef79ebf8db213c5e4d11781c181c15fefde10ca5;106/106 affected. Natural idle zero queues/operations; daemon2068834, all five terminal/conversation identities and chat prefixes preserved; only owned hold released, unpaused/no retained outcomes. Installed authenticated read-only question navigation8/8 at430/1400, including oldest beneath307 later messages; eight ambiguous cards preserved, R19768ready, no model traffic.10 proven usage intervals input13943624/cached13641344/uncached302280/output30561,16unknown excluded,health0,costunknown; organic side row and comparative savings remain unproved. Existing handoff/measurement notes contain exact UTC provenance; no separate proof file.

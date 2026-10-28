@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T16:34:33.839Z",
+  "updatedAt": "2026-10-28T16:38:49.570Z",
   "issues": [
     {
       "id": "TF-001",
@@ -16039,8 +16039,8 @@
         },
         {
           "kind": "source",
-          "at": "2026-10-28T16:19:45.206Z",
-          "note": "03c236f loaded2026-10-28T16:17:05.433Z PID2845687 sourceSHA256 f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108; combined101/101 /tmp/termfleet-exact-03c236f.tap. Private state backup and authenticated readback preserve daemon2068834, exact terminal/conversation identities and chat prefixes. Own hold released.8 proven ordinary intervals:input10829245,cached10574592,uncached254653,output24710;16unknown observations excluded,health0,costunknown. Actual ordinary side-surface usage and comparable savings remain unproved."
+          "at": "2026-10-28T16:38:49.119Z",
+          "note": "e20f8aa loaded2026-10-28T16:36:53.011Z PID3090042 digestf5c1e6b422606ec5beb4b724ef79ebf8db213c5e4d11781c181c15fefde10ca5;106/106. Daemon2068834/terminal/conversation identities/chat prefixes retained; owned hold released.10 proven usage intervals input13943624 cached13641344 uncached302280 output30561;16unknown excluded;writeFailures0;costunknown. Organic side row absent at16:36:45UTC; comparative savings unproved."
         }
       ],
       "owner": "termfleet",
@@ -16181,6 +16181,18 @@
           "type": "evidence",
           "kind": "source",
           "note": "03c236f loaded2026-10-28T16:17:05.433Z PID2845687 sourceSHA256 f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108; combined101/101 /tmp/termfleet-exact-03c236f.tap. Private state backup and authenticated readback preserve daemon2068834, exact terminal/conversation identities and chat prefixes. Own hold released.8 proven ordinary intervals:input10829245,cached10574592,uncached254653,output24710;16unknown observations excluded,health0,costunknown. Actual ordinary side-surface usage and comparable savings remain unproved."
+        },
+        {
+          "at": "2026-10-28T16:23:43.248Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Independent authenticated readback2026-10-28T16:22:49.489Z confirms PID2845687 loaded16:17:05.433Z digestf153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108, unpaused with no active/retained/delivery work.16:22:50 summary8proven intervals/16unknown,10829245input including10574592cached and254653uncached,24710output,writeFailures0; cost unknown. Independently read exact101/101 test output /tmp/termfleet-exact-03c236f.tap. No savings or semantic acceptance claimed."
+        },
+        {
+          "at": "2026-10-28T16:38:49.119Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "e20f8aa loaded2026-10-28T16:36:53.011Z PID3090042 digestf5c1e6b422606ec5beb4b724ef79ebf8db213c5e4d11781c181c15fefde10ca5;106/106. Daemon2068834/terminal/conversation identities/chat prefixes retained; owned hold released.10 proven usage intervals input13943624 cached13641344 uncached302280 output30561;16unknown excluded;writeFailures0;costunknown. Organic side row absent at16:36:45UTC; comparative savings unproved."
         }
       ]
     },
@@ -16202,8 +16214,8 @@
         },
         {
           "kind": "source",
-          "at": "2026-10-28T16:19:45.476Z",
-          "note": "Question reminder6385762 is live with all reviewed fixes; final03c236f/PID2845687 digestf153987f at16:17:05UTC,101/101. Actual installed authenticated rendered panel16:12:45UTC retains8unresolved cards/8exact-resolution controls/nooverflow; known exact legacy answer excluded from original9. No age-based retirement or forced answers. Daemon,terminal/conversation identities,original chat prefixes preserved; owned hold released.8ambiguous resolutions still need exact evidence or owner action."
+          "at": "2026-10-28T16:38:49.570Z",
+          "note": "Installed authenticated navigation2026-10-28T16:37:11.313Z at430/1400:8/8 existing cards found/focused/visible and menu closed, oldest beneath307 later messages,8 explicit resolution controls,nooverflow. No server writes or model requests allowed. Eight ambiguous original cards preserved; exact known legacy answer excluded. R19768ready, authoritative resolution still pending;106/106 and e20f8aa livePID3090042/f5c1e6b."
         }
       ],
       "owner": "termfleet",
@@ -16272,6 +16284,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "Question reminder6385762 is live with all reviewed fixes; final03c236f/PID2845687 digestf153987f at16:17:05UTC,101/101. Actual installed authenticated rendered panel16:12:45UTC retains8unresolved cards/8exact-resolution controls/nooverflow; known exact legacy answer excluded from original9. No age-based retirement or forced answers. Daemon,terminal/conversation identities,original chat prefixes preserved; owned hold released.8ambiguous resolutions still need exact evidence or owner action."
+        },
+        {
+          "at": "2026-10-28T16:38:49.570Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Installed authenticated navigation2026-10-28T16:37:11.313Z at430/1400:8/8 existing cards found/focused/visible and menu closed, oldest beneath307 later messages,8 explicit resolution controls,nooverflow. No server writes or model requests allowed. Eight ambiguous original cards preserved; exact known legacy answer excluded. R19768ready, authoritative resolution still pending;106/106 and e20f8aa livePID3090042/f5c1e6b."
         }
       ]
     },
