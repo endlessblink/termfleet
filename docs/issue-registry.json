@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T16:02:51.532Z",
+  "updatedAt": "2026-10-28T16:20:41.486Z",
   "issues": [
     {
       "id": "TF-001",
@@ -16023,22 +16023,22 @@
       "surface": "logic",
       "matrixRefs": [],
       "symptom": "Local token usage is missing without exporter configuration and repeated evidence keys consume context",
-      "rootCause": "",
+      "rootCause": "Local accounting depended on an optional exporter; Codex completion counters are session-cumulative, and side responses had no usage callback.",
       "guard": "node --test termcontrol/test/token-monitor.test.mjs termcontrol/test/compact-action-evidence.test.mjs termcontrol/test/action-evidence.test.mjs termcontrol/test/bot-side-reply.test.mjs",
       "evidence": [
         {
           "kind": "focused-test",
-          "at": "2026-10-28T15:19:20.962Z",
-          "note": "Installed Codex0.164 primary source proves cumulative thread counters. Raw live81M/140M observations are not post-cutover consumption. Corrected snapshots/intervals exclude unknown legacy/first resumed baselines; replay quarantine tested. Monitor+events28/28 /tmp/termfleet-cumulative-usage-final.tap;132/132 combined before final intervening-prompt guard; focused final7/7. Live correction pending natural drain."
+          "at": "2026-10-28T16:15:09.293Z",
+          "note": "Canonical integration of2ea2c76 preserved newer31e6b2f correction routing/prompt imports after explicit merge conflict resolution. Exact staged delta only side-reply,token-monitor,side-usage test. Combined side/usage/caller/completion/progress/server76/76 PASS,syntax and staged diff checks pass. Runtime2761374/fd42421d remains pre-side-usage; next safe activation requires independent scoped review and owner coordination, not a provider trial."
         },
         {
           "kind": "source",
-          "at": "2026-10-28T15:30:25.842Z",
-          "note": "Corrected recorder39223b2 loaded PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044 at15:21:30.550UTC. Health writeFailures0. Ten historical observations remain unknown/excluded;0 proven intervals at activation, not zero consumption. Await same-session normal-work endpoints and aligned savings comparison; no inference trials."
+          "at": "2026-10-28T16:19:45.206Z",
+          "note": "03c236f loaded2026-10-28T16:17:05.433Z PID2845687 sourceSHA256 f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108; combined101/101 /tmp/termfleet-exact-03c236f.tap. Private state backup and authenticated readback preserve daemon2068834, exact terminal/conversation identities and chat prefixes. Own hold released.8 proven ordinary intervals:input10829245,cached10574592,uncached254653,output24710;16unknown observations excluded,health0,costunknown. Actual ordinary side-surface usage and comparable savings remain unproved."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Observe ordinary same-session cumulative endpoints with explicit UTC provenance; ten legacy snapshots remain unknown. Compare aligned work/acceptance intervals before claiming savings.",
+      "nextAction": "Observe a normal bot-side-reply usage record with explicit UTC/identity; compare aligned work and comprehension before claiming savings. Sixteen unknown observations remain excluded.",
       "history": [
         {
           "at": "2026-10-28T14:21:41.878Z",
@@ -16115,6 +16115,66 @@
           "type": "evidence",
           "kind": "source",
           "note": "Corrected recorder39223b2 loaded PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044 at15:21:30.550UTC. Health writeFailures0. Ten historical observations remain unknown/excluded;0 proven intervals at activation, not zero consumption. Await same-session normal-work endpoints and aligned savings comparison; no inference trials."
+        },
+        {
+          "at": "2026-10-28T15:47:39.213Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Bounded read-only audit2026-10-28: side-reply.mjs146-169 spawns separate Codex/Claude process but parses only answer/error, never brainTokenUsage/traceTokenUsage. Coverage missing for every side invocation; no token-savings claim. Existing main monitor preserves unknown cumulative snapshots. Daily action metadata188 completed turns average124.6seconds/max1606;9>=10min and0>=30min.211 real tool failures plus6 explicitly synthetic; failure codes do not identify command retry/root cause.47 steer_persisted rows lack hook read acknowledgments (no terminal id), not proof of lost delivery."
+        },
+        {
+          "at": "2026-10-28T15:48:23.874Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Clarification:211 generic tool_failed rows are not proven production-only traffic or a specific root cause;6 other failures explicitly synthetic. Same-day aggregate excludes none beyond this labeling. Correct coverage and candidates now in MASTER_PLAN end-to-end review section. No token savings inferred."
+        },
+        {
+          "at": "2026-10-28T16:04:25.027Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Isolated registered source worktree fix/side-usage-accounting: actual fake subprocess fails3/4 before fix; final6/6 and affected66/66 pass using existing usage decoder/monitor. Covers split/no-newline Codex output, duplicate snapshots, missing usage/thread identity, failed exit/timeout emitted usage, callback failure isolation, Claude per-model cache/cost decode without provider launch. side-reply+monitor only, canonical runtime untouched while exacta964b65 activation coordinated. Source-only, not savings or live measurement proof."
+        },
+        {
+          "at": "2026-10-28T16:05:58.873Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Side usage source candidate committed2ea2c76 in registered isolated worktree;66 affected tests and6 focused pass, no provider call. Existing canonical runtime freeze retained. Timer precision: main30min/idle10min and side90sec request SIGTERM, not guaranteed hard termination of an ignoring child. Correction-chain budget and actual savings remain unproven."
+        },
+        {
+          "at": "2026-10-28T16:06:48.199Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Authenticated ordinary-work readback16:05:59UTC now4 proven intervals:1495297input,1433728cached subset,61569uncached,4153output;19observations,15unknown,measurement failures0. Cost unknown, not savings. Two intervals same conversation carry renamed bot labels; stable session identity preserved by monitor, per-name attribution is not immutable bot identity. Side coverage2ea2c76 remains isolated/unloaded."
+        },
+        {
+          "at": "2026-10-28T16:11:49.678Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Activation owner latest16:09:47 reports95tests and bounded background natural-idle waiter; coordinator bot currently answering prevents own cutover, creating observed parent-waits-child/child-waits-parent-idle cycle. Explicitly told reviewer/coordinator to finish current answer with pending status, no forced stop or human approval. New one-time continuation scheduled to preserve ownership and verify cutover after idle; side2ea2c76 remains isolated."
+        },
+        {
+          "at": "2026-10-28T16:12:55.033Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Wake correction/readback: initial native schedule write failed EROFS and no routine existed; supported CLI retried with targeted filesystem escalation approved, actual routine81473bda69 created Wed28Oct18:15 local. It removes itself before metadata verification; no unrecorded later promise. Side2ea2c76 still isolated, activation remains owned by existing background worker."
+        },
+        {
+          "at": "2026-10-28T16:15:09.293Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Canonical integration of2ea2c76 preserved newer31e6b2f correction routing/prompt imports after explicit merge conflict resolution. Exact staged delta only side-reply,token-monitor,side-usage test. Combined side/usage/caller/completion/progress/server76/76 PASS,syntax and staged diff checks pass. Runtime2761374/fd42421d remains pre-side-usage; next safe activation requires independent scoped review and owner coordination, not a provider trial."
+        },
+        {
+          "at": "2026-10-28T16:17:13.652Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Independent activation owner reviewed exact source2ea2c76/canonical3-file integration and6/6: no security/behavior blocker; fresh ephemeral Codex baseline requires actual thread identity, callback on close includes failed/timeout runs, no prompt export/settings/permissions changes. Canonical integration03c236f2d617b09cd91b3b45c829c8c6801d398b passes76/76. Existing owner owns next combined validation/idle-only activation; no competing restart."
+        },
+        {
+          "at": "2026-10-28T16:19:45.206Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "03c236f loaded2026-10-28T16:17:05.433Z PID2845687 sourceSHA256 f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108; combined101/101 /tmp/termfleet-exact-03c236f.tap. Private state backup and authenticated readback preserve daemon2068834, exact terminal/conversation identities and chat prefixes. Own hold released.8 proven ordinary intervals:input10829245,cached10574592,uncached254653,output24710;16unknown observations excluded,health0,costunknown. Actual ordinary side-surface usage and comparable savings remain unproved."
         }
       ]
     },
@@ -16126,7 +16186,7 @@
       "surface": "logic",
       "matrixRefs": [],
       "symptom": "Previously answered questions return and wake bots again",
-      "rootCause": "",
+      "rootCause": "Question admission lacked an exact successful-answer receipt fence; question-kind cards also shared permission reminders, and some older cards lacked direct answer linkage.",
       "guard": "node --test termcontrol/test/bot-question-scheduling.test.mjs",
       "evidence": [
         {
@@ -16136,12 +16196,12 @@
         },
         {
           "kind": "source",
-          "at": "2026-10-28T15:30:25.645Z",
-          "note": "39223b2 activated2026-10-28T15:21:30.550Z PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044. Own hold released, daemon2068834 and exact cutover terminal/conversation identities/chat prefixes retained. Real authenticated panel15:29:14Z shows8 from original9; known exact legacy answer excluded. Eight ambiguous retained, Already answered action present8 times. Screenshot /tmp/termfleet-question-panel-installed.png SHA4eab725e940ce973685ecdff402f67c33c8ccb83fbf715d36158bbf8dba17648; independent visual count8/legible/no horizontal clipping, lower4 rows outside crop."
+          "at": "2026-10-28T16:19:45.476Z",
+          "note": "Question reminder6385762 is live with all reviewed fixes; final03c236f/PID2845687 digestf153987f at16:17:05UTC,101/101. Actual installed authenticated rendered panel16:12:45UTC retains8unresolved cards/8exact-resolution controls/nooverflow; known exact legacy answer excluded from original9. No age-based retirement or forced answers. Daemon,terminal/conversation identities,original chat prefixes preserved; owned hold released.8ambiguous resolutions still need exact evidence or owner action."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Coordinate review of concurrent shell_environment_policy owner change before idle-only activation of reminder6385762; eight ambiguous old question resolutions require exact evidence or owner Already answered action.",
+      "nextAction": "Live scheduling/reminder repair is ready; reconcile eight ambiguous historical cards only with exact evidence or owner Already answered action. Preserve pending questions and explicit reasks.",
       "history": [
         {
           "at": "2026-10-28T14:59:23.334Z",
@@ -16200,6 +16260,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "39223b2 activated2026-10-28T15:21:30.550Z PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044. Own hold released, daemon2068834 and exact cutover terminal/conversation identities/chat prefixes retained. Real authenticated panel15:29:14Z shows8 from original9; known exact legacy answer excluded. Eight ambiguous retained, Already answered action present8 times. Screenshot /tmp/termfleet-question-panel-installed.png SHA4eab725e940ce973685ecdff402f67c33c8ccb83fbf715d36158bbf8dba17648; independent visual count8/legible/no horizontal clipping, lower4 rows outside crop."
+        },
+        {
+          "at": "2026-10-28T16:19:45.476Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Question reminder6385762 is live with all reviewed fixes; final03c236f/PID2845687 digestf153987f at16:17:05UTC,101/101. Actual installed authenticated rendered panel16:12:45UTC retains8unresolved cards/8exact-resolution controls/nooverflow; known exact legacy answer excluded from original9. No age-based retirement or forced answers. Daemon,terminal/conversation identities,original chat prefixes preserved; owned hold released.8ambiguous resolutions still need exact evidence or owner action."
         }
       ]
     },

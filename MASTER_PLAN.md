@@ -11331,3 +11331,5 @@ does not repair desktop release alignment or prove token savings.
 TF-151 follow-up31e6b2f: exact short corrections bypass side-model paraphrase and delay.
 Ordinary followups remain immediate; failed inbox uses existing retained fallback.
 Affected87/87, final side/server16/16. Production activation remains in_progress.
+
+Activation verification2026-10-28T16:17UTC: source03c236f is livePID2845687,28-module digest f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108; exact101/101 /tmp/termfleet-exact-03c236f.tap. Conservative natural-idle bridge-only cutovers preserved daemon2068834, exact terminal/conversation identities and original chat prefixes, and released only owned holds. Authenticated installed panel retains8unresolved questions/8resolution controls/nooverflow. Eight proven ordinary usage intervals total10829245input/10574592cached/254653uncached/24710output,16unknown observations excluded,health0,costunknown. Question scheduling repair ready; side usage natural observation, remaining old-question resolutions and comparative savings remain in_progress. No paid model trial or Blender action.

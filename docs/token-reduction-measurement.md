@@ -1,6 +1,6 @@
 # Token reduction: measurement contract
 
-Status: the interval correction is live in39223b2, loaded2026-10-28T15:21:30.550Z with digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044. Ordinary work now supplies proven observed intervals; actual reduction against a comparable baseline remains unverified.
+Status: the interval correction and side-response recording are live in03c236f, loaded2026-10-28T16:17:05.433Z with digest f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108. Ordinary work now supplies proven observed intervals; actual reduction against a comparable baseline remains unverified.
 
 ## Concrete changes
 
@@ -36,3 +36,7 @@ The bounded metadata-only observer started15:31:28.092UTC. At15:57:45.710UTC the
 The explicit UTC endpoints were15:44:37.877–15:55:17.472 and15:55:17.472–15:57:25.575 for one resumed thread, and15:54:05.461–15:56:14.792 plus15:56:14.792–15:57:13.459 for a separate new thread. The first new-thread interval has an explicit invocation zero baseline; the others use prior monotonic snapshots. Bot rename between the two new-thread observations did not duplicate the baseline. These are two independent timelines, not one shared wall-clock interval.
 
 One exact helper completion identity had one delivered obligation. Distinct subsequent completion eligibility still needs ordinary live observation. The observer made no provider requests and sent no user messages. These measurements prove recorder coverage and reported cache subsets, not lower consumption, subscription allowance, billing or comprehension parity.
+
+At the final16:17UTC activation there were eight proven intervals,10,829,245 input tokens including10,574,592 cached and254,653 uncached, plus24,710 output. Twenty-four observations include sixteen unknown records, and interval cost remains unknown. The retained recentIntervals metadata records every UTC pair; the newest recorded endpoint was16:09:31.950UTC. These values include ordinary work across independent threads, not one bot turn or subscription quota.
+
+The next coverage check is a naturally occurring side response. Its subprocess now records only emitted usage on close, including failure/timeout, with surface bot-side-reply. No missing usage is estimated, no prompt content is exported, and no provider call was created for acceptance. The exact integrated source passed101 affected tests including fake side subprocesses and isolated headless chat/server checks. Both conservative bridge activations preserved daemon2068834, exact terminal/conversation identities and original chat prefixes; only owned holds were released. Sixteen unknown observations are not repaired from this code change.
