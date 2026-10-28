@@ -52,8 +52,8 @@ test('a terminal prompt in a bot chat: its choices as buttons, a tap goes to tha
 });
 
 // Noam 2026-10-24: a card read "This agent is asking permission to continue", its buttons looked
-// live, and a tap only said "no longer active". A card the terminal moved on from is shown as
-// ended; a tap on an out-of-date card follows the same prompt asked again, else ends the card.
+// live, and a tap only said "no longer active". A stale identity is retired; a replacement
+// is rendered with its complete context before it can be answered.
 test('a terminal card the terminal moved on from never looks answerable', { timeout: 90000 }, async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-termask-'));
   for (const d of ['cfg', 'home']) fs.mkdirSync(path.join(tmp, d));
@@ -71,9 +71,9 @@ test('a terminal card the terminal moved on from never looks answerable', { time
     const id = await p.evaluate(async () => (await (await fetch('/api/bots', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Stale test' }) })).json()).bot.id);
     const opts = [{ key: 'yes', label: 'Yes, proceed' }, { key: 'no', label: 'No' }];
     const dead = { id: 'old', role: 'terminal-ask', pane: 'terminal-x', label: 'Ship steps', askId: 'a0', kind: 'permission', text: 'Allow this command?', detail: 'Push the steps update', options: opts, settled: true, at: Date.now() - 5000 };
-    const live = { id: 'new', role: 'terminal-ask', pane: 'terminal-y', label: 'Build APK', askId: 'a1', kind: 'permission', text: 'Allow this command?', detail: 'Build the Android app', options: opts, at: Date.now() };
-    await p.route('**/api/bot?*', async (route) => { const r = await route.fetch(); const j = await r.json(); j.messages = [...j.messages, dead, live]; await route.fulfill({ response: r, json: j }); });
-    const replies = [{ stale: true, error: 'gone', current: { id: 'a2', kind: 'permission', title: 'Allow this command?', options: ['yes', 'no'] } }, { ok: true }];
+    let live = { id: 'new', role: 'terminal-ask', pane: 'terminal-y', label: 'Build APK', askId: 'a1', kind: 'permission', text: 'Allow this command?', detail: 'Build the Android app', options: opts, at: Date.now() };
+    await p.route('**/api/bot?*', async (route) => { const r = await route.fetch(); const j = await r.json(); j.messages = [...j.messages, dead, live, { id: 'historical-reminder', role: 'reminder', card: live.id, text: 'Historical unanswered reminder', at: live.at }]; await route.fulfill({ response: r, json: j }); });
+    const replies = [{ stale: true, error: 'gone', current: { id: 'a2', kind: 'permission', title: 'Allow this command?', options: ['yes', 'no'] } }, { ok: true }, { stale: true, error: 'gone' }];
     const sent = [];
     await p.route('**/api/send', async (route) => { sent.push(JSON.parse(route.request().postData())); const body = replies.shift(); await route.fulfill({ status: body.ok ? 200 : 409, json: body }); });
     await p.evaluate(() => sessionStorage.setItem('termcontrol-pin-open', 'open'));  // the pinned question starts collapsed (#11 2026-10-27)
@@ -84,12 +84,34 @@ test('a terminal card the terminal moved on from never looks answerable', { time
     assert.equal(old.live, 0, 'an ended card has no live buttons');
     assert.doesNotMatch(old.text, /Push the steps update/, 'ended prompts collapse to a short status line');
     assert.match(old.text, /No longer open in the terminal/);
-    // Out of date, but the terminal asks the same again: the card follows it, and the next tap goes through.
+    // A new ID can describe a different command even when its generic title and keys match.
+    // Retire the old pinned card; only a fresh full-context card may answer the replacement.
     await p.locator('[data-term-ask="new"] [data-term-choice="yes"]').click();
-    await p.waitForFunction(() => /asked this again/.test(document.querySelector('[data-term-ask="new"] .askresult')?.textContent || ''), null, { timeout: 5000 });
-    await p.locator('[data-term-ask="new"] [data-term-choice="yes"]').click();
+    await p.waitForFunction(() => !document.querySelector('.term-ask-pinned'), null, { timeout: 5000 });
+    assert.equal(sent.length, 1, 'stale buttons never silently target a replacement prompt');
+    live = { ...live, askId: 'a2', detail: 'A different command with the same generic title' };
+    await p.waitForSelector('[data-term-ask="new"][data-ask="a2"] [data-term-choice="yes"]');
+    await p.locator('[data-term-ask="new"][data-ask="a2"] [data-term-choice="yes"]').click();
     await p.waitForFunction(() => /Sent/.test(document.querySelector('[data-term-ask="new"] .askresult')?.textContent || ''), null, { timeout: 5000 });
     assert.deepEqual(sent.map((s) => s.askId), ['a1', 'a2']);
+    live = { ...live, id: 'close-while-visible', askId: 'a3' };
+    await p.waitForSelector('[data-term-ask="close-while-visible"] [data-term-choice="yes"]');
+    live.promptState = 'unknown';
+    await p.waitForFunction(() => !document.querySelector('.term-ask-pinned') && /Checking whether/.test(document.querySelector('[data-term-ask="close-while-visible"]')?.textContent || ''));
+    assert.equal(await p.locator('.reminder-jump').count(), 0, 'unknown prompts cannot advertise an answer action');
+    live.promptState = 'active';
+    await p.waitForSelector('.term-ask-pinned [data-term-ask="close-while-visible"]');
+    live.settled = true;
+    await p.waitForFunction(() => !document.querySelector('.term-ask-pinned') && document.querySelector('[data-term-ask="close-while-visible"]')?.classList.contains('ended'));
+    assert.match(await p.locator('.bot-reminder').innerText(), /Historical unanswered reminder/, 'history is kept');
+    assert.equal(await p.locator('.reminder-jump').count(), 0, 'settled history has no misleading answer link');
+    live = { ...live, id: 'stale-closed', askId: 'a4', settled: false };
+    await p.waitForSelector('[data-term-ask="stale-closed"] [data-term-choice="yes"]');
+    await p.locator('[data-term-ask="stale-closed"] [data-term-choice="yes"]').click();
+    await p.waitForFunction(() => !document.querySelector('.term-ask-pinned'));
+    await wait(2300); // A late poll with the original card cannot resurrect its waiting banner.
+    assert.equal(await p.locator('.term-ask-pinned').count(), 0);
+    assert.deepEqual(sent.map((s) => s.askId), ['a1', 'a2', 'a4']);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); child.kill('SIGKILL'); fs.rmSync(tmp, { recursive: true, force: true }); }
 });

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Bots, brainCommand, brainBrief, briefStamp, parseBrainLine, runBrain, activityLine, brainEnv, isLimitText, resetTime } from '../bridge/bots.mjs';
+import crypto from 'node:crypto';
+import { contextReceipt } from '../bridge/provider-context.mjs';
+import { Bots, brainCommand, brainBrief, briefStamp, parseBrainLine, brainReplyText, runBrain, activityLine, brainEnv, isLimitText, resetTime } from '../bridge/bots.mjs';
 
 // TF-096 part 1: bots are managers outside the terminals (Grok Bot's model). These
 // tests never call Claude or Codex: the brain is a stand-in.
@@ -93,8 +95,9 @@ test('the Codex brain gets the brief on its first message and resumes after', ()
   assert.match(first.args.at(-1), /You are "Shaoruru"[\s\S]*Noam says:\nhello/);
   const later = brainCommand({ ...bot, sessions: { codex: 'T9' }, codexBrief: { session: 'T9', stamp: briefStamp(bot) } }, 'again', { bins: { codex: '/bin/codex' } });
   assert.deepEqual(later.args.slice(0, 3), ['exec', 'resume', 'T9']);
-  const roots = first.args[first.args.indexOf('-c') + 1];
+  const roots = first.args.find(arg => arg.startsWith('sandbox_workspace_write.writable_roots='));
   assert.match(roots, /writable_roots=.*terminal-workspace/, 'the bot can reach the terminal service');
+  assert.ok(first.args.includes('sandbox_mode="workspace-write"'));
   assert.ok(first.args.includes('approval_policy="never"'), 'never waits for a keyboard');
   assert.equal(later.args.at(-1), 'again');
 });
@@ -112,27 +115,29 @@ test('brain output becomes plain activity lines and a final answer', () => {
 
 test('a real background run reads the brain stream end to end (stand-in brain program)', async () => {
   const dir = tmp();
-  const fake = path.join(dir, 'fake-claude.mjs');
+  const fake = path.join(dir, 'fake-codex.mjs');
   fs.writeFileSync(fake, `#!/usr/bin/env node
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
-out({ type: 'system', subtype: 'init', session_id: 'S-fake' });
-out({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'termfleet-team list' } }] } });
-out({ type: 'result', subtype: 'success', result: 'Two agents are working: ' + process.env.TERMFLEET_BOT_NAME });
+out({ type: 'thread.started', thread_id: 'S-fake' });
+out({ type: 'item.started', item: { type: 'command_execution', id: 'list', command: 'termfleet-team list' } });
+out({ type: 'item.completed', item: { type: 'agent_message', text: 'Two agents are working: ' + process.env.TERMFLEET_BOT_NAME } });
+out({ type: 'turn.completed' });
 `, { mode: 0o755 });
-  const bots = new Bots({ checks: readyComputer(),  dir, bins: { claude: fake } });
-  const { bot } = bots.create({ name: 'Quill', cwd: dir });
+  const bots = new Bots({ checks: readyComputer(), dir, bins: { codex: fake }, run: (bot, text, options) => runBrain(bot, text, { ...options, env: { ...process.env, TERMFLEET_GENTLE_BRAINS: '0' } }) });
+  const { bot } = bots.create({ name: 'Quill', provider: 'codex', cwd: dir });
   bots.send(bot.id, 'Who is working?');
   await settle(bots, bot.id);
   const msgs = bots.view(bot.id).messages;
   assert.deepEqual(msgs.map((m) => m.role), ['system', 'operator', 'activity', 'bot']);
   assert.equal(msgs[2].text, 'Checking who is working');
   assert.equal(msgs[3].text, 'Two agents are working: Quill');
-  assert.equal(bots.read(bot.id).sessions.claude.started, true);
+  assert.equal(bots.read(bot.id).sessions.codex, 'S-fake');
 });
 
 test('a brain program that is missing or crashes ends as a plain error, not a hang', async () => {
-  const r = await runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'claude', cwd: os.tmpdir(), sessions: {} }, 'hi', { bins: { claude: '/nonexistent/claude' } });
+  const r = await runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'codex', cwd: os.tmpdir(), sessions: {} }, 'hi', { bins: { codex: '/nonexistent/codex' }, env: { ...process.env, TERMFLEET_GENTLE_BRAINS: '0' } });
   assert.ok(r.error);
+  assert.doesNotMatch(r.error, /Claude launch denied/);
 });
 
 test('deleting a bot removes it and its chat', () => {
@@ -171,8 +176,23 @@ test('each tool\'s own out-of-credits words are recognised, and ordinary errors 
 test('out of credits: the bot switches to its backup between turns, says so in one line, and answers', async () => {
   let now = new Date('2026-10-16T14:00:00').getTime();
   const used = [];
-  const bots = new Bots({ checks: readyComputer(),  dir: tmp(), now: () => now, bins: { claude: '/c', codex: '/x' }, fill: () => null,
-    run: async (bot, text, { extras }) => { used.push({ provider: bot.provider, handover: extras.handover }); return bot.provider === 'claude' && now < new Date('2026-10-16T15:45:00').getTime() ? { limit: { text: "You've hit your session limit · resets 3:45pm", resetsAt: new Date('2026-10-16T15:45:00').getTime() }, error: 'usage limit' } : { text: `answer from ${bot.provider}` }; } });
+  const sources = tmp();
+  const bots = new Bots({ checks: readyComputer(), dir: tmp(), now: () => now, bins: { claude: '/c', codex: '/x' }, fill: () => null, providerGate: () => {},
+    contextOptions: { resolveTranscript: bot => {
+      const provider = bot.active || bot.provider, file = path.join(sources, `${provider}.jsonl`);
+      fs.writeFileSync(file, JSON.stringify(provider === 'codex' ? { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Keep the phone list calm' }] } } : { type: 'user', message: { content: 'Keep the phone list calm' } }) + '\n');
+      return file;
+    } },
+    run: async (bot, text, { extras, onEvent }) => {
+      if (extras.validateHandoff) {
+        const json = text.split(/<portable-context[^>]*>\n/)[1].split('\n</portable-context>')[0];
+        onEvent({ session: `${bot.provider}-test-session` });
+        used.push({ provider: bot.provider, handover: json, receipt: true });
+        return { text: JSON.stringify(contextReceipt(JSON.parse(json), crypto.createHash('sha256').update(json).digest('hex'))) };
+      }
+      used.push({ provider: bot.provider });
+      return bot.provider === 'claude' && now < new Date('2026-10-16T15:45:00').getTime() ? { limit: { text: "You've hit your session limit · resets 3:45pm", resetsAt: new Date('2026-10-16T15:45:00').getTime() }, error: 'usage limit' } : { text: `answer from ${bot.provider}` };
+    } });
   const { bot } = bots.create({ name: 'Quill', cwd: os.tmpdir() });
   bots.append(bot.id, { role: 'operator', text: 'Keep the phone list calm' });
   bots.send(bot.id, 'status?');
@@ -180,8 +200,8 @@ test('out of credits: the bot switches to its backup between turns, says so in o
   const chat = bots.view(bot.id).messages;
   assert.ok(chat.some((m) => m.role === 'system' && /Claude reached its limit \(resets 15:45\), so Quill is continuing on Codex\./.test(m.text)));
   assert.equal(chat.at(-1).text, 'answer from codex');
-  assert.deepEqual(used.map((u) => u.provider), ['claude', 'codex']);
-  assert.match(used[1].handover, /Noam: Keep the phone list calm/, 'the backup gets the conversation');
+  assert.deepEqual(used.filter(u => !u.receipt).map((u) => u.provider), ['claude', 'codex']);
+  assert.match(used[1].handover, /Keep the phone list calm/, 'the backup acknowledges the actual retained conversation first');
   assert.equal(bots.summary(bot.id).active, 'codex');
   now = new Date('2026-10-16T15:50:00').getTime();
   bots.send(bot.id, 'and now?');
@@ -198,6 +218,7 @@ test('with no backup free, the message is kept and answered by itself after the 
   const bots = new Bots({ checks: readyComputer(),  dir: tmp(), now: () => now, bins: { claude: '/c', codex: '/x' }, fill: () => null,
     run: async (bot) => (now < resetAt ? { limit: { text: 'usage limit reached', resetsAt: resetAt }, error: 'usage limit' } : { text: `late answer from ${bot.provider}` }) });
   const { bot } = bots.create({ name: 'Hogan', cwd: os.tmpdir() });
+  bots.markLimited('codex', { text: 'backup already limited', resetsAt: resetAt });
   bots.send(bot.id, 'please check the build');
   await settle(bots, bot.id);
   assert.match(bots.view(bot.id).messages.at(-1).text, /kept your message and will answer it by itself at 15:00/);
@@ -215,30 +236,25 @@ test('with no backup free, the message is kept and answered by itself after the 
 
 // R-7394: "ממשיך לקבל את השגיאה הזו" — the bot answered, then marked his request with one
 // more tool step, so the turn's final text was empty and he only ever saw the placeholder.
-test('a Claude turn that answers and then takes one more step still shows the answer', async () => {
-  const dir = tmp();
-  const fake = path.join(dir, 'fake-claude.mjs');
-  fs.writeFileSync(fake, `#!/usr/bin/env node
-const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
-out({ type: 'system', subtype: 'init', session_id: 'S1' });
-out({ type: 'assistant', message: { content: [{ type: 'text', text: 'תיקנתי, הסטטוס יתעדכן.' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'termfleet-asks done R-1 "x"' } }] } });
-out({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } });
-out({ type: 'result', subtype: 'success', is_error: false, result: '' });
-`, { mode: 0o755 });
-  const r = await runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'claude', cwd: dir, sessions: {} }, 'hi', { bins: { claude: fake } });
-  assert.equal(r.text, 'תיקנתי, הסטטוס יתעדכן.');
+test('a Claude turn that answers and then takes one more step still shows the answer without launching Claude', () => {
+  const answer = parseBrainLine('claude', JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'תיקנתי, הסטטוס יתעדכן.' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'termfleet-asks done R-1 "x"' } }] } }));
+  const final = parseBrainLine('claude', JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '' }));
+  assert.equal(final.text, '');
+  assert.equal(brainReplyText('claude', { completed: true, finalText: final.text, spoken: [answer.said] }), 'תיקנתי, הסטטוס יתעדכן.');
+  assert.equal(brainReplyText('codex', { completed: false, lastText: 'Opening update', spoken: ['Opening update'] }), '', 'an interrupted Codex update is not a completed answer');
+  assert.equal(brainReplyText('codex', { completed: true, lastText: 'Final Codex answer' }), 'Final Codex answer');
 });
 
 test('a real brain that hits its limit is stopped at once instead of waiting for the reset', async () => {
   const dir = tmp();
-  const fake = path.join(dir, 'fake-claude.mjs');
+  const fake = path.join(dir, 'fake-codex.mjs');
   fs.writeFileSync(fake, `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'S1' }) + '\\n');
-process.stdout.write(JSON.stringify({ type: 'system', subtype: 'informational', content: 'Usage limit reached · continuing automatically at 3:45pm · esc or type to cancel' }) + '\\n');
+process.stdout.write(JSON.stringify({ type: 'thread.started', thread_id: 'S1' }) + '\\n');
+process.stdout.write(JSON.stringify({ type: 'turn.failed', error: { message: 'Usage limit reached · continuing automatically at 3:45pm · esc or type to cancel' } }) + '\\n');
 setTimeout(() => {}, 60000);
 `, { mode: 0o755 });
   const t0 = Date.now();
-  const r = await runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'claude', cwd: dir, sessions: {} }, 'hi', { bins: { claude: fake } });
+  const r = await runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'codex', cwd: dir, sessions: {} }, 'hi', { bins: { codex: fake }, env: { ...process.env, TERMFLEET_GENTLE_BRAINS: '0' } });
   assert.ok(r.limit, 'reported as a limit');
   assert.ok(Date.now() - t0 < 10000, 'did not sit in the wait');
 });
@@ -309,7 +325,7 @@ test('a brain that goes silent is stopped and reported, not waited on', async ()
   const fake = path.join(dir, 'silent.mjs');
   fs.writeFileSync(fake, '#!/usr/bin/env node\nsetTimeout(() => {}, 60000);\n', { mode: 0o755 });
   const t0 = Date.now();
-  const r = await runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'claude', cwd: dir, sessions: {} }, 'hi', { bins: { claude: fake }, idleMs: 300 });
+  const r = await runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'codex', cwd: dir, sessions: {} }, 'hi', { bins: { codex: fake }, idleMs: 300, env: { ...process.env, TERMFLEET_GENTLE_BRAINS: '0' } });
   assert.match(r.error, /went quiet for too long/);
   assert.ok(Date.now() - t0 < 5000);
 });

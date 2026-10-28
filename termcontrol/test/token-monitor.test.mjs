@@ -88,10 +88,14 @@ test('completed totals include Claude cache tokens once and preserve Codex input
     [{ model: 'claude-test', inputTokens: 5, outputTokens: 4, cost: 0.1 }]);
 });
 
-test('both provider response streams reach the mocked monitor and local summary without changing replies', async t => {
+test('Claude totals parse without a launch, and the Codex response stream reaches the mocked monitor', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-token-brain-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const { monitor, generations } = fixture(t);
+  const claudeResult = { type: 'result', result: 'Ready', usage: { input_tokens: 12, output_tokens: 3 }, total_cost_usd: 0.01 };
+  for (const usage of brainTokenUsage('claude', claudeResult, 'claude-test')) {
+    monitor.traceTokenUsage('Quill', 'claude', usage.model, usage.inputTokens, usage.outputTokens, usage.cost);
+  }
   for (const provider of ['claude', 'codex']) {
     const events = provider === 'codex' ? [
       { type: 'item.completed', item: { type: 'agent_message', text: 'Ready' } },
@@ -106,6 +110,11 @@ test('both provider response streams reach the mocked monitor and local summary 
     const result = await runBrain({ id: 'token-test', name: 'Quill', cwd: root, provider, sessions: {} }, 'test', {
       bins: { [provider]: bin }, env: { PATH: '/usr/bin:/bin', TERMFLEET_GENTLE_BRAINS: '0' }, onUsage: monitor.traceTokenUsage,
     });
+    if (provider === 'claude') {
+      assert.match(result.error, /Claude launch denied/);
+      assert.equal(generations.length, 1, 'a denied launch records no usage generation');
+      continue;
+    }
     assert.equal(result.text, 'Ready');
     assert.equal(result.error, null);
   }

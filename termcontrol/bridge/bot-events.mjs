@@ -4,6 +4,7 @@ import { followActive } from './follows.mjs';
 import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
 import { readFeed } from './feed.mjs';
 import { screenPromptAsk } from './asks.mjs';
+import { promptObservation } from './prompt-lifecycle.mjs';
 
 /**
  * TF-096 part 7: things that wake a bot without Noam writing (Grok Bot's event
@@ -60,7 +61,8 @@ export function helperState(bot, panes, now = Date.now(), { bots } = {}) {
   for (const id of ids) {
     const pane = panes.find((p) => p.id === id);
     const state = stateOf(pane);
-    if (state !== 'closed' && bots && openTerminalAsk(bots, bot.id, id)) helpersAsking++;
+    const card = bots && openTerminalAsk(bots, bot.id, id);
+    if (state !== 'closed' && card && card.promptState !== 'unknown') helpersAsking++;
     else if (state === 'working') {
       waitingOn++;
       // What that agent is doing, so "Waiting on 1 agent" is not the whole story (#24).
@@ -150,6 +152,18 @@ function settleTerminalAsk(bots, botId, cardId, patch, settled = true) {
   } catch { /* best effort: at worst the card stays as it was */ }
 }
 
+/** A rejected old button settles only its exact prompt, never its replacement. */
+export function retireTerminalPrompt(bots, paneId, askId, patch = {}) {
+  if (!paneId || !askId) return;
+  for (const bot of bots.list()) {
+    for (const card of bots.messages(bot.id)) {
+      if (card.role === 'terminal-ask' && card.pane === paneId && card.askId === askId && !card.settled) {
+        settleTerminalAsk(bots, bot.id, card.id, { promptState: 'resolved', ...patch });
+      }
+    }
+  }
+}
+
 /** The terminal's own unsaved files (what blocks `termfleet-team close`), [] when it can be closed. */
 export function unsavedFor(pane, helper) {
   try { return unsavedWork(pane.cwd, Number(helper.at) || 0, undefined, filesTheAgentChanged(pane)); } catch { return []; }
@@ -160,7 +174,17 @@ export function newPromptSince(pane, since) {
   try { return (readFeed(pane, { limit: 20 }).events || []).some((e) => e.kind === 'user' && Date.parse(e.at) > since); } catch { return false; }
 }
 
-export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, readScreen = async () => '', head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, recoveryHandled = () => false, notify = (note) => bots.notify?.(note) }) {
+const promptRounds = new WeakMap();
+export function beginPromptObservation(bots) {
+  const round = (promptRounds.get(bots) || 0) + 1;
+  promptRounds.set(bots, round);
+  return round;
+}
+export function isCurrentPromptObservation(bots, round) {
+  return promptRounds.get(bots) === round;
+}
+export async function checkBotEvents({ bots, panes, available = true, now = Date.now(), seen, readAsk, readScreen = async () => '', head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, recoveryHandled = () => false, notify = (note) => bots.notify?.(note) }) {
+  const round = beginPromptObservation(bots);
   const alert = (note) => { try { notify(note); } catch { /* a notification never blocks the events */ } };
   for (const b of bots.list()) {
     // One entry per terminal: a bot that followed the same agent twice is woken once.
@@ -168,6 +192,11 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
     for (const h of b.helpers || []) if (h?.paneId && followActive(h)) live.set(h.paneId, h);
     for (const key of [...seen.keys()]) if (key.startsWith(`${b.id}|`) && !live.has(key.slice(b.id.length + 1))) seen.delete(key);
     for (const h of live.values()) {
+      if (!available) {
+        const open = openTerminalAsk(bots, b.id, h.paneId);
+        if (open) settleTerminalAsk(bots, b.id, open.id, { promptState: 'unknown' }, false);
+        continue;
+      }
       const pane = panes.find((p) => p.id === h.paneId);
       const key = `${b.id}|${h.paneId}`;
       const before = seen.get(key) || {};
@@ -205,11 +234,21 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
       const screen = pane && (state !== 'idle' || open || before.state !== 'idle') ? String(await readScreen(pane) || '') : '';
       // The status says it moved on, but the menu is still on screen: the prompt is still open.
       const onScreen = state !== 'waiting' && pane ? (screenPromptAsk(pane, screen) || (open && screenStillAsks(screen) ? true : null)) : null;
-      const asking = state === 'waiting' || Boolean(onScreen);
-      const away = asking ? 0 : (before.away || 0) + 1;
-      if (open && away >= 2) { settleTerminalAsk(bots, b.id, open.id, {}); open = null; }
+      const ask = state === 'waiting' ? await readAsk(pane) : (onScreen === true ? null : onScreen);
+      // A slow screen/transcript read from an earlier poll must never overwrite
+      // a newer observation (including a disconnect, cancellation or replacement).
+      if (!isCurrentPromptObservation(bots, round)) return;
+      const observation = promptObservation({ card: open, pane, available, ask, screen, screenAsks: onScreen === true });
+      const asking = observation === 'active' || (observation === 'replaced' && Boolean(ask?.id));
+      const away = observation === 'absent' ? (before.away || 0) + 1 : 0;
+      if (open && (away >= 2 || observation === 'closed' || observation === 'replaced')) {
+        settleTerminalAsk(bots, b.id, open.id, { promptState: 'resolved', ...(observation === 'closed' ? { terminalClosed: true } : {}) }); open = null;
+      } else if (open && !asking) {
+        settleTerminalAsk(bots, b.id, open.id, { promptState: 'unknown' }, false);
+      }
       if (asking) {
-        const ask = state === 'waiting' ? await readAsk(pane) : (onScreen === true ? null : onScreen);
+        // Restore an approval after reconnect only from a newly verified prompt.
+        if (open) settleTerminalAsk(bots, b.id, open.id, { promptState: 'active' }, false);
         if (ask?.id && open && samePrompt(open, ask)) {
           if (open.askId !== ask.id) settleTerminalAsk(bots, b.id, open.id, { askId: ask.id }, false);
         } else if (ask?.id && open && open.kind === 'permission' && ask.kind === 'permission' && menuForm(open) !== menuForm(ask)) {
@@ -220,7 +259,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
           settleTerminalAsk(bots, b.id, open.id, { askId: fresh.askId, text: fresh.text, options: fresh.options, detail: fresh.detail }, false);
         } else if (ask?.id) {
           if (open) settleTerminalAsk(bots, b.id, open.id, {});
-          open = bots.append(b.id, terminalAskMessage(h.paneId, label, ask));
+          open = bots.append(b.id, { ...terminalAskMessage(h.paneId, label, ask), promptState: 'active', provider: pane.provider, sessionId: pane.sessionId });
           bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are pinned at the bottom of his chat with you until he answers, his phone was notified, and he is reminded after 5 minutes; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
           alert({ title: `${b.name}: a terminal is waiting for you`, body: `"${label}" asks: ${String(ask.title || '').slice(0, 160)}`, url: `/#bot:${b.id}` });
         }
