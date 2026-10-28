@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T16:20:41.486Z",
+  "updatedAt": "2026-10-28T16:34:33.839Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13294,18 +13294,18 @@
       "guard": "Pin genuine owner intake versus machine-created helper instructions, without hiding real requests.",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-10-28T15:55:29.260Z",
-          "note": "355afae adds versioned private filename, anchored generated wrapper recognition and control-envelope filtering. Unmarked legacy requests and genuine quoted/adjacent text retained; no historical ledger rewrite."
-        },
-        {
           "kind": "focused-test",
           "at": "2026-10-28T15:55:29.295Z",
           "note": "Focused50/50 and Playwright goal/session22/22 pass. Combined affected83/83 includes real isolated launcher fake listener. Broader caller-context and four Claude launcher fixtures remain separately unverified."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T16:34:33.839Z",
+          "note": "Prior intake355afae is included in activated03c236f and installed CLI source links. Release owner authenticated2845687/f153987f full readback; new machine origin fixture passes. Legacy unmarked task text deliberately retained."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Verify marked-helper intake on the loaded bridge; preserve legacy unmarked history and real owner requests.",
+      "nextAction": "Marked-helper intake repair is loaded in03c236f and CLI source links; retain historical unmarked requests and verify ordinary helper completion.",
       "history": [
         {
           "at": "2026-10-26T14:35:06.754Z",
@@ -13370,6 +13370,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Focused50/50 and Playwright goal/session22/22 pass. Combined affected83/83 includes real isolated launcher fake listener. Broader caller-context and four Claude launcher fixtures remain separately unverified."
+        },
+        {
+          "at": "2026-10-28T16:34:33.839Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Prior intake355afae is included in activated03c236f and installed CLI source links. Release owner authenticated2845687/f153987f full readback; new machine origin fixture passes. Legacy unmarked task text deliberately retained."
         }
       ]
     },
@@ -16287,12 +16293,12 @@
         },
         {
           "kind": "source",
-          "at": "2026-10-28T15:54:34.796Z",
-          "note": "Untyped Codex messages wait for following work/different text; delivery claims and cards stay on existing final checks; matching progress collapses into final view without rewriting history."
+          "at": "2026-10-28T16:34:33.760Z",
+          "note": "Prior repair a964b65 is included in activated03c236f. Release owner authenticated runtime2845687/f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108; this session independently verified systemdPID/start and ancestry. Isolated visible-before-final guard passes. Ordinary bot semantics remain separate."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Complete controlled bridge activation and authenticated loaded-source readback, then verify ordinary visible progress and one final reply.",
+      "nextAction": "Prior progress repair loaded in03c236f/2845687 per authenticated release readback; ordinary visible progress remains an acceptance check.",
       "history": [
         {
           "at": "2026-10-28T15:21:55.339Z",
@@ -16351,6 +16357,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "Untyped Codex messages wait for following work/different text; delivery claims and cards stay on existing final checks; matching progress collapses into final view without rewriting history."
+        },
+        {
+          "at": "2026-10-28T16:34:33.760Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Prior repair a964b65 is included in activated03c236f. Release owner authenticated runtime2845687/f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108; this session independently verified systemdPID/start and ancestry. Isolated visible-before-final guard passes. Ordinary bot semantics remain separate."
         }
       ]
     },
@@ -16362,22 +16374,22 @@
       "surface": "logic",
       "matrixRefs": [],
       "symptom": "Standalone corrected names have no ledger item and PASS_ON no keeps them from the worker; side inference can reinterpret the name",
-      "rootCause": "",
+      "rootCause": "Short names had no request item and the side model controlled forwarding; a pending side answer could publish prose from context before a newer correction.",
       "guard": "Exact short corrections reach the running worker once before any side response and preserve queued versus read distinction",
       "evidence": [
         {
           "kind": "focused-test",
-          "at": "2026-10-28T16:02:51.500Z",
-          "note": "87/87 affected; fresh16/16 side+server includes successive exact English/Hebrew names, stalled side responder, once-only delivery, failed inbox fallback, status-followup exclusions; isolated HTTP fake provider/daemon and headless390/1400."
+          "at": "2026-10-28T16:33:20.755Z",
+          "note": "e20f8aa plus5c76d98: residual stale quick-answer red15/17 and retraction19/20; affected98/98 now pass including actual isolated HTTP and headless390/1400 with held old-name side inference, latest English/Hebrew corrections exact, earlier question retained and wrong-name prose hidden. No real provider trial."
         },
         {
           "kind": "source",
-          "at": "2026-10-28T16:02:51.531Z",
-          "note": "31e6b2f deterministic fragment routing calls existing handOn once and preserves queued/failed receipts; no inferred worker read, path or completion. Side prompt preserves exact names and permits requested verified paths. Older in-flight side prose and main model semantic correctness are not proven."
+          "at": "2026-10-28T16:33:20.784Z",
+          "note": "Latest correction lives on per-bot side state across turn replacement. Delayed prose withheld after correction; original prior question/attachments delivered once with exact current context, no correction replay or inferred read. Retracted question/correction guarded. Activation pending release owner."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Complete controlled activation and ordinary exact correction acceptance; queued transport is not model understanding. Earlier in-flight side prose remains unproven.",
+      "nextAction": "Activate reviewed e20f8aa through existing controlled owner; verify loaded digest and ordinary exact correction outcome. Isolated HTTP/headless acceptance98/98 passed.",
       "history": [
         {
           "at": "2026-10-28T15:59:14.736Z",
@@ -16430,6 +16442,18 @@
           "type": "evidence",
           "kind": "source",
           "note": "31e6b2f deterministic fragment routing calls existing handOn once and preserves queued/failed receipts; no inferred worker read, path or completion. Side prompt preserves exact names and permits requested verified paths. Older in-flight side prose and main model semantic correctness are not proven."
+        },
+        {
+          "at": "2026-10-28T16:33:20.755Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "e20f8aa plus5c76d98: residual stale quick-answer red15/17 and retraction19/20; affected98/98 now pass including actual isolated HTTP and headless390/1400 with held old-name side inference, latest English/Hebrew corrections exact, earlier question retained and wrong-name prose hidden. No real provider trial."
+        },
+        {
+          "at": "2026-10-28T16:33:20.784Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Latest correction lives on per-bot side state across turn replacement. Delayed prose withheld after correction; original prior question/attachments delivered once with exact current context, no correction replay or inferred read. Retracted question/correction guarded. Activation pending release owner."
         }
       ]
     }

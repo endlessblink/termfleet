@@ -11333,3 +11333,16 @@ Ordinary followups remain immediate; failed inbox uses existing retained fallbac
 Affected87/87, final side/server16/16. Production activation remains in_progress.
 
 Activation verification2026-10-28T16:17UTC: source03c236f is livePID2845687,28-module digest f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108; exact101/101 /tmp/termfleet-exact-03c236f.tap. Conservative natural-idle bridge-only cutovers preserved daemon2068834, exact terminal/conversation identities and original chat prefixes, and released only owned holds. Authenticated installed panel retains8unresolved questions/8resolution controls/nooverflow. Eight proven ordinary usage intervals total10829245input/10574592cached/254653uncached/24710output,16unknown observations excluded,health0,costunknown. Question scheduling repair ready; side usage natural observation, remaining old-question resolutions and comparative savings remain in_progress. No paid model trial or Blender action.
+
+### BUG-90 / TF-151 delayed-response follow-up — in_progress
+
+Prior repairs355afae/a964b65/31e6b2f are live in03c236f, authenticated owner
+readback2845687/f153987f; independent systemd PID/start and ancestry match.
+Residual e20f8aa suppresses old quick prose after newer correction, preserves
+earlier question/attachments once with corrected context, and never replays the
+correction or reintroduces a retracted instruction. Red15/17 and19/20; final
+affected98/98 includes side usage and actual HTTP/headless390/1400 delayed-side
+acceptance5c76d98. No extra provider inference, forced stop or asset change.
+Existing release owner handles follow-up activation; loaded proof pending.
+Canonical Finetuned note resolved the actual location and a working folder link
+was provided directly; this is reviewer evidence, not bot semantic acceptance.

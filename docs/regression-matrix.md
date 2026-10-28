@@ -825,3 +825,13 @@ TF-151: exact short English/Hebrew name corrections route once without side infe
 ordinary status followups remain on quick-answer path. Red11/12 to affected87/87;
 final side/server16/16 includes stalled side and failed inbox fallback. Loaded
 semantic acceptance pending; older in-flight side prose is not proven corrected.
+
+### TF-151 delayed quick reply after correction — verifying
+
+A side reply begun on an old name could contradict a newer direct correction.
+Latest correction metadata stays on side state across main-turn changes; delayed
+prose is withheld, and prior original question/attachment context reaches worker
+once with latest unretracted correction context. No model retry or correction
+replay. Red15/17 and retraction19/20; affected98/98, including actual isolated
+HTTP/headless390/1400 hold/release test. Reviewed e20f8aa, acceptance5c76d98;
+follow-up production activation and ordinary semantic acceptance remain pending.
