@@ -2,6 +2,18 @@
 
 ## Latest readback and correction follow-up
 
+Final activation at 2026-10-28T16:36:53.011Z supersedes the earlier runtime
+below: reviewed e20f8aa, PID3090042, full 28-module SHA256
+f5c1e6b422606ec5beb4b724ef79ebf8db213c5e4d11781c181c15fefde10ca5.
+Independent disk fingerprint and service-manager PID/start-time readback match
+the release owner's authenticated loaded-version record. The owner verified
+the original conversations, chat prefixes and five terminal identity triples;
+daemon2068834 was unchanged and the matching temporary hold was released.
+Affected checks passed 98/98 here and 106/106 in the release-owner suite.
+R-20144, R-20141 and R-20190 are ready for the owner's ordinary-use check at
+https://control.in-theflow.com. Status remains in_progress for that acceptance,
+broader semantic reliability and comparative token savings; activation is proven.
+
 At16:17UTC the existing release owner activated03c236f, containing355afae,
 a964b65 and31e6b2f. Authenticated owner readback: PID2845687,
 28-module SHA256 f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108.
@@ -20,8 +32,8 @@ correction replay or inferred worker acknowledgment. Red15/17 and retraction
 red19/20 observed before green36/36. Follow-up5c76d98 proves the actual HTTP and
 headless390/1400 path with a held fake quick responder: wrong-name prose hidden,
 three corrections routed verbatim, earlier question retained and one final shown.
-Combined affected98/98 includes side-usage accounting. Current follow-up runtime
-activation remains in_progress, owned by the same release terminal.
+Combined affected98/98 includes side-usage accounting. The follow-up runtime
+activation is confirmed in the final activation record above.
 
 For the user's actual location example, a read-only filesystem check found two
 matching directories. The canonical Finetuned Project Context note explicitly
