@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T08:58:13.105Z",
+  "updatedAt": "2026-10-28T09:02:22.217Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15100,8 +15100,8 @@
         },
         {
           "kind": "source",
-          "at": "2026-10-28T08:58:13.105Z",
-          "note": "Per-pane wx durable lock and matching nonce release; uncertainty overrides success. Read-only inspector and owner-authorized manual reconciliation contract. Blocked response avoids Send anyway and force cannot bypass. Current library not loaded; existing15module47bcc49e historical"
+          "at": "2026-10-28T09:02:22.217Z",
+          "note": "Reviewed7e9f755 loaded PID1969760 SHA03cd9588d901c2b33dd53e5ec0fb29e92721a9edf73ae6eb340b8171024bf12b; GET200/unauth401;2terminals/10bots unchanged queues0/0 daemon2068834 retained. /tmp/termfleet-f18-pane-activation.log; /tmp/termfleet-f18-pane-loaded-readback.json. HTTP cooperating senders only; bypass and manual recovery gaps remain."
         }
       ],
       "owner": "termfleet",
@@ -15190,6 +15190,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "Per-pane wx durable lock and matching nonce release; uncertainty overrides success. Read-only inspector and owner-authorized manual reconciliation contract. Blocked response avoids Send anyway and force cannot bypass. Current library not loaded; existing15module47bcc49e historical"
+        },
+        {
+          "at": "2026-10-28T09:02:22.217Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Reviewed7e9f755 loaded PID1969760 SHA03cd9588d901c2b33dd53e5ec0fb29e92721a9edf73ae6eb340b8171024bf12b; GET200/unauth401;2terminals/10bots unchanged queues0/0 daemon2068834 retained. /tmp/termfleet-f18-pane-activation.log; /tmp/termfleet-f18-pane-loaded-readback.json. HTTP cooperating senders only; bypass and manual recovery gaps remain."
         }
       ]
     }
