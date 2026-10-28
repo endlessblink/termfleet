@@ -11,6 +11,10 @@ import { createEventLog } from '../bridge/events-db.mjs';
 import { runBrain } from '../bridge/bots.mjs';
 
 const configured = { LANGFUSE_PUBLIC_KEY: 'test-public', LANGFUSE_SECRET_KEY: 'test-secret' };
+const snapshot = (sessionId, extra = {}) => ({ usageScope: 'codex-session-cumulative-v1', sessionId, ...extra });
+const freshSnapshot = (sessionId, extra = {}) => snapshot(sessionId, {
+  baselineKnownZero: true, invocationStartedAt: '2026-10-28T14:00:00.000Z', ...extra,
+});
 function fixture(t, options = {}) {
   const db = createEventLog({ file: ':memory:' });
   t.after(() => db.close());
@@ -34,11 +38,125 @@ test('missing exporter keys preserve local measurements without client construct
   }
 });
 
+test('resumed Codex snapshots exclude the unknown baseline and count only proven UTC intervals', t => {
+  let time = Date.parse('2026-10-28T14:31:00Z');
+  const { db, monitor, generations } = fixture(t, { now: () => time });
+  monitor.traceTokenUsage('A', 'codex', 'm', 81000, 1200, null, snapshot('session-a', { cachedInputTokens: 79000 }));
+  let summary = monitor.getTokenSummary();
+  assert.equal(summary.total.inputTokens, 0);
+  assert.equal(summary.total.unknownUsageGenerations, 1);
+  assert.equal(generations.length, 0, 'unknown cumulative usage must not be exported as consumption');
+  time += 60000;
+  monitor.traceTokenUsage('A', 'codex', 'm', 81500, 1220, null, snapshot('session-a', { cachedInputTokens: 79400 }));
+  summary = monitor.getTokenSummary();
+  assert.equal(summary.total.inputTokens, 500);
+  assert.equal(summary.total.outputTokens, 20);
+  assert.equal(summary.total.cachedInputTokens, 400);
+  assert.equal(summary.total.uncachedInputTokens, 100);
+  assert.deepEqual(generations[0].usageDetails, { input: 500, output: 20 });
+  assert.equal(db.queryEvents({})[1].payload.inputTokens, 81500, 'raw snapshot remains intact');
+  assert.equal(summary.measurementCoverage.recentIntervals[0].from, '2026-10-28T14:31:00.000Z');
+  assert.equal(summary.measurementCoverage.recentIntervals[0].until, '2026-10-28T14:32:00.000Z');
+});
+
+test('snapshot baselines survive monitor recreation without treating renamed bots as new sessions', t => {
+  let time = Date.parse('2026-10-28T14:31:00Z');
+  const { db, monitor } = fixture(t, { env: {}, now: () => time });
+  monitor.traceTokenUsage('A', 'codex', 'm', 100, 10, null, snapshot('session-a'));
+  time += 1000;
+  const restored = createTokenMonitor({ env: {}, write: db.logEvent, read: db.queryEvents, now: () => time });
+  restored.traceTokenUsage('renamed', 'codex', 'm', 140, 15, null, snapshot('session-a'));
+  assert.equal(restored.getTokenSummary().total.inputTokens, 40);
+  assert.equal(restored.getTokenSummary().total.outputTokens, 5);
+});
+
+test('missing identity, changed session, regression and unchanged snapshot never become guessed consumption', t => {
+  let time = Date.parse('2026-10-28T14:31:00Z');
+  const { monitor } = fixture(t, { env: {}, now: () => time });
+  for (const [session, input, output] of [[null, 999, 50], ['a', 100, 10], ['b', 200, 20], ['a', 90, 9], ['a', 90, 9], ['b', 200, 20]]) {
+    monitor.traceTokenUsage('A', 'codex', 'm', input, output, null, snapshot(session));
+    time += 1000;
+  }
+  const total = monitor.getTokenSummary().total;
+  assert.equal(total.inputTokens, 0);
+  assert.equal(total.outputTokens, 0);
+  assert.equal(total.unknownUsageGenerations, 5);
+  assert.equal(total.unchangedUsageSnapshots, 1);
+});
+
+test('new Codex session may use an explicit zero baseline; legacy raw Codex totals stay unknown', t => {
+  const { db, monitor } = fixture(t);
+  db.logEvent('legacy', 'A', 'codex', 'token_usage', { inputTokens: 81000000, outputTokens: 120000 });
+  monitor.traceTokenUsage('A', 'codex', 'm', 15, 3, null, snapshot('new', {
+    baselineKnownZero: true, invocationStartedAt: '2026-10-28T14:00:00.000Z', cachedInputTokens: 10,
+  }));
+  const summary = monitor.getTokenSummary();
+  assert.equal(summary.total.inputTokens, 15);
+  assert.equal(summary.total.outputTokens, 3);
+  assert.equal(summary.total.unknownUsageGenerations, 1);
+  assert.equal(summary.measurementCoverage.recentIntervals[0].from, '2026-10-28T14:00:00.000Z');
+  assert.equal(db.queryEvents({})[0].payload.inputTokens, 81000000);
+});
+
+test('failed snapshot write does not advance a baseline or export overlapping consumption', t => {
+  let time = Date.parse('2026-10-28T14:31:00Z'), fail = false;
+  const { db, generations } = fixture(t);
+  const monitor = createTokenMonitor({ env: configured, now: () => time, read: db.queryEvents,
+    write: (...args) => fail ? false : db.logEvent(...args),
+    Client: class { on() {} generation(body) { generations.push(body); } },
+  });
+  monitor.traceTokenUsage('A', 'codex', 'm', 100, 10, null, snapshot('write-failure'));
+  time += 1000; fail = true;
+  assert.equal(monitor.traceTokenUsage('A', 'codex', 'm', 120, 12, null, snapshot('write-failure')), false);
+  assert.equal(generations.length, 0);
+  time += 1000; fail = false;
+  monitor.traceTokenUsage('A', 'codex', 'm', 140, 15, null, snapshot('write-failure'));
+  const summary = monitor.getTokenSummary();
+  assert.equal(summary.total.inputTokens, 40);
+  assert.equal(summary.measurementHealth.writeFailures, 1);
+  assert.equal(summary.measurementCoverage.recentIntervals[0].from, '2026-10-28T14:31:00.000Z');
+  assert.deepEqual(generations[0].usageDetails, { input: 40, output: 5 });
+});
+
+test('future zero baseline and impossible cache increments stay unknown', t => {
+  let time = Date.parse('2026-10-28T14:31:00Z');
+  const { monitor } = fixture(t, { env: {}, now: () => time });
+  monitor.traceTokenUsage('A', 'codex', 'm', 10, 2, null, snapshot('future', {
+    baselineKnownZero: true, invocationStartedAt: '2026-10-28T14:32:00Z',
+  }));
+  monitor.traceTokenUsage('A', 'codex', 'm', 100, 10, null, snapshot('cache-invalid', { cachedInputTokens: 50 }));
+  time += 1000;
+  monitor.traceTokenUsage('A', 'codex', 'm', 110, 11, null, snapshot('cache-invalid', { cachedInputTokens: 80 }));
+  assert.equal(monitor.getTokenSummary().total.inputTokens, 0);
+  assert.equal(monitor.getTokenSummary().total.unknownUsageGenerations, 3);
+});
+
+test('regressed counter chains remain quarantined across restart instead of counting a replayed prefix twice', t => {
+  let time = Date.parse('2026-10-28T14:31:00Z');
+  const { db, monitor } = fixture(t, { env: {}, now: () => time });
+  for (const input of [100, 150, 100]) {
+    monitor.traceTokenUsage('A', 'codex', 'm', input, 10, null, snapshot('same-session'));
+    time += 1000;
+  }
+  const restored = createTokenMonitor({ env: {}, read: db.queryEvents, write: db.logEvent, now: () => time });
+  for (const input of [150, 180]) {
+    restored.traceTokenUsage('A', 'codex', 'm', input, 10, null, snapshot('same-session'));
+    time += 1000;
+  }
+  let summary = restored.getTokenSummary();
+  assert.equal(summary.total.inputTokens, 50, 'later recovery of the old counters is not a proven new epoch');
+  assert.equal(summary.total.unknownUsageGenerations, 4);
+  assert.equal(db.queryEvents({}).at(-1).payload.interval.reason, 'baseline-chain-invalidated');
+  restored.traceTokenUsage('A', 'codex', 'm', 20, 3, null, freshSnapshot('genuinely-new-session'));
+  summary = restored.getTokenSummary();
+  assert.equal(summary.total.inputTokens, 70, 'a distinct known-new session remains measurable');
+});
+
 test('mocked Langfuse gets metadata and usage only; SQLite supplies cached per-bot/provider totals', t => {
   let time = Date.now();
   const { db, monitor, generations, clients } = fixture(t, { now: () => time });
   monitor.traceTokenUsage('Quill', 'claude', 'claude-test', 12, 3, 0.02);
-  monitor.traceTokenUsage('Quill', 'codex', 'codex-test', 10, 5);
+  monitor.traceTokenUsage('Quill', 'codex', 'codex-test', 10, 5, null, freshSnapshot('quill'));
   monitor.traceTokenUsage('Desk', 'claude', 'claude-test', 8, 2, 0);
   assert.equal(clients.length, 1);
   assert.equal(clients[0].baseUrl, 'https://cloud.langfuse.com');
@@ -48,15 +166,16 @@ test('mocked Langfuse gets metadata and usage only; SQLite supplies cached per-b
   assert.equal('input' in generations[0], false);
   assert.equal('output' in generations[0], false);
   const summary = monitor.getTokenSummary();
-  assert.deepEqual(summary.total, { generations: 3, inputTokens: 30, outputTokens: 10, cost: 0.02, unknownCostGenerations: 1, cachedInputTokens: 0, uncachedInputTokens: 0, unknownCacheGenerations: 3 });
+  assert.deepEqual(summary.total, { generations: 3, inputTokens: 30, outputTokens: 10, cost: 0.02, unknownCostGenerations: 1, cachedInputTokens: 0, uncachedInputTokens: 0, unknownCacheGenerations: 3,
+    usageObservations: 3, unknownUsageGenerations: 0, unchangedUsageSnapshots: 0 });
   assert.equal(summary.byBot.find(b => b.botName === 'Quill').generations, 2);
   assert.equal(summary.byProvider.find(p => p.provider === 'claude').inputTokens, 20);
   summary.total.inputTokens = -1;
-  db.logEvent('other', 'Desk', 'codex', 'token_usage', { model: 'test', inputTokens: 7, outputTokens: 1, cost: null });
+  db.logEvent('other', 'Desk', 'claude', 'token_usage', { model: 'test', inputTokens: 7, outputTokens: 1, cost: null });
   assert.equal(monitor.getTokenSummary().total.inputTokens, 30);
   time += 5001;
   assert.equal(monitor.getTokenSummary().total.inputTokens, 37);
-  monitor.traceTokenUsage('Desk', 'codex', 'test', 1, 1);
+  monitor.traceTokenUsage('Desk', 'claude', 'test', 1, 1);
   assert.equal(monitor.getTokenSummary().total.inputTokens, 38);
 });
 
@@ -64,7 +183,7 @@ test('custom host, invalid counts and exporter/storage failures are safe', t => 
   const { monitor, clients } = fixture(t, { env: { ...configured, LANGFUSE_HOST: 'https://example.invalid' } });
   for (const input of [-1, NaN, Infinity, '10', 0.5]) assert.equal(monitor.traceTokenUsage('A', 'codex', 'm', input, 1), false);
   assert.equal(monitor.traceTokenUsage('A', 'codex', 'm', 1, 1, -1), false);
-  monitor.traceTokenUsage('A', 'codex', 'm', 0, 0, 0);
+  monitor.traceTokenUsage('A', 'claude', 'm', 0, 0, 0);
   assert.equal(clients[0].baseUrl, 'https://example.invalid');
   const broken = createTokenMonitor({ env: configured, Client: class { constructor() { throw Error('offline'); } }, write() { throw Error('disk'); } });
   assert.doesNotThrow(() => broken.traceTokenUsage('A', 'claude', 'm', 1, 2, 0));
@@ -72,7 +191,7 @@ test('custom host, invalid counts and exporter/storage failures are safe', t => 
 
 test('summary pages beyond 1000 events and never queries the remote client', t => {
   const { db, monitor, clients } = fixture(t);
-  for (let i = 0; i < 1005; i++) db.logEvent('bot-token:A', 'A', 'codex', 'token_usage', { inputTokens: 1, outputTokens: 2 });
+  for (let i = 0; i < 1005; i++) db.logEvent('bot-token:A', 'A', 'claude', 'token_usage', { inputTokens: 1, outputTokens: 2 });
   assert.equal(monitor.getTokenSummary().total.generations, 1005);
   assert.equal(monitor.getTokenSummary().total.outputTokens, 2010);
   assert.equal(clients.length, 0);
@@ -80,7 +199,7 @@ test('summary pages beyond 1000 events and never queries the remote client', t =
 
 test('completed totals include Claude cache tokens once and preserve Codex input totals', () => {
   assert.deepEqual(brainTokenUsage('codex', { type: 'turn.completed', usage: { input_tokens: 30, cached_input_tokens: 20, output_tokens: 4 } }, 'gpt-test'),
-    [{ model: 'gpt-test', inputTokens: 30, outputTokens: 4, cost: null, cachedInputTokens: 20 }]);
+    [{ model: 'gpt-test', inputTokens: 30, outputTokens: 4, cost: null, cachedInputTokens: 20, usageScope: 'codex-session-cumulative-v1' }]);
   const result = { type: 'result', modelUsage: { 'claude-test': { inputTokens: 2, cacheReadInputTokens: 20, cacheCreationInputTokens: 3, outputTokens: 4, costUSD: 0.01 } }, usage: { input_tokens: 999, output_tokens: 999 } };
   assert.deepEqual(brainTokenUsage('claude', result), [{ model: 'claude-test', inputTokens: 25, outputTokens: 4, cost: 0.01 }]);
   assert.deepEqual(brainTokenUsage('claude', { type: 'assistant', message: { usage: { input_tokens: 10, output_tokens: 3 } } }), []);
@@ -98,6 +217,7 @@ test('Claude totals parse without a launch, and the Codex response stream reache
   }
   for (const provider of ['claude', 'codex']) {
     const events = provider === 'codex' ? [
+      { type: 'thread.started', thread_id: 'fixture-fresh-thread' },
       { type: 'item.completed', item: { type: 'agent_message', text: 'Ready' } },
       { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 6, output_tokens: 2 } },
     ] : [
@@ -125,6 +245,31 @@ test('Claude totals parse without a launch, and the Codex response stream reache
   assert.equal(monitor.getTokenSummary().total.cachedInputTokens, 6);
   assert.equal(monitor.getTokenSummary().total.uncachedInputTokens, 4);
   assert.equal(monitor.getTokenSummary().total.unknownCacheGenerations, 1);
+});
+
+test('resumed caller never invents a zero baseline when thread.started changes identity or is missing', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-token-resume-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bin = path.join(root, 'codex');
+  for (const threadId of ['existing-session', 'unexpected-replacement', null]) {
+    const { monitor } = fixture(t, { env: {} });
+    const events = [
+      ...(threadId ? [{ type: 'thread.started', thread_id: threadId }] : []),
+      { type: 'item.completed', item: { type: 'agent_message', text: 'Ready' } },
+      { type: 'turn.completed', usage: { input_tokens: 81000, cached_input_tokens: 79000, output_tokens: 1200 } },
+    ];
+    fs.writeFileSync(bin, `#!/bin/sh\ncat <<'TOKEN_FIXTURE'\n${events.map(e => JSON.stringify(e)).join('\n')}\nTOKEN_FIXTURE\n`, { mode: 0o700 });
+    const observed = [];
+    const result = await runBrain({ id: 'token-test', name: 'Quill', cwd: root, provider: 'codex', sessions: { codex: 'existing-session' } }, 'test', {
+      bins: { codex: bin }, env: { PATH: '/usr/bin:/bin', TERMFLEET_GENTLE_BRAINS: '0' },
+      onUsage: (...args) => { observed.push(args.at(-1)); return monitor.traceTokenUsage(...args); },
+    });
+    assert.equal(result.text, 'Ready');
+    assert.equal(observed[0].baselineKnownZero, false);
+    assert.equal(observed[0].sessionId, threadId || 'existing-session');
+    assert.equal(monitor.getTokenSummary().total.inputTokens, 0);
+    assert.equal(monitor.getTokenSummary().total.unknownUsageGenerations, 1);
+  }
 });
 
 test('summary route requires authentication and reads persisted usage without Langfuse keys', async t => {
@@ -156,8 +301,9 @@ test('summary route requires authentication and reads persisted usage without La
   const response = await fetch(base + '/api/tokens/summary', { headers: { cookie } });
   assert.equal(response.status, 200);
   const summary = await response.json();
-  assert.equal(summary.total.inputTokens, 14);
-  assert.equal(summary.total.outputTokens, 3);
+  assert.equal(summary.total.inputTokens, 0, 'unscoped historical Codex usage cannot prove consumption');
+  assert.equal(summary.total.outputTokens, 0);
+  assert.equal(summary.total.unknownUsageGenerations, 1);
   assert.equal(summary.byBot[0].botName, 'Quill');
   assert.equal(summary.byProvider[0].provider, 'codex');
 });
@@ -165,12 +311,13 @@ test('summary route requires authentication and reads persisted usage without La
 // Missing and invalid cache counters must not become fabricated zero-cache usage.
 test('cache breakdown covers only valid reported subsets and retains historical unknowns', t => {
   const { monitor, db, generations } = fixture(t);
-  monitor.traceTokenUsage('A', 'codex', 'm', 30, 4, null, { cachedInputTokens: 20 });
-  monitor.traceTokenUsage('A', 'codex', 'm', 10, 2, null, { cachedInputTokens: 0 });
+  monitor.traceTokenUsage('A', 'codex', 'm', 30, 4, null, freshSnapshot('cache-a', { cachedInputTokens: 20 }));
+  monitor.traceTokenUsage('A', 'codex', 'm', 10, 2, null, freshSnapshot('cache-b', { cachedInputTokens: 0 }));
+  let id = 0;
   for (const value of [undefined, null, -1, 11, NaN, '5']) {
-    monitor.traceTokenUsage('A', 'codex', 'm', 10, 1, null, { cachedInputTokens: value });
+    monitor.traceTokenUsage('A', 'codex', 'm', 10, 1, null, freshSnapshot(`invalid-${id++}`, { cachedInputTokens: value }));
   }
-  db.logEvent('legacy', 'A', 'codex', 'token_usage', { inputTokens: 7, outputTokens: 1 });
+  db.logEvent('legacy', 'A', 'claude', 'token_usage', { inputTokens: 7, outputTokens: 1 });
   const total = monitor.getTokenSummary().total;
   assert.equal(total.inputTokens, 107);
   assert.equal(total.cachedInputTokens, 20);
@@ -193,6 +340,7 @@ test('fake Codex stream keeps replying while exposing failed measurement writes'
   const bin = path.join(root, 'codex');
   fs.writeFileSync(bin, `#!/bin/sh
 cat <<'TOKEN_FIXTURE'
+${JSON.stringify({ type: 'thread.started', thread_id: 'fixture-fresh-thread' })}
 ${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Ready' } })}
 ${JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 6, output_tokens: 2 } })}
 TOKEN_FIXTURE

@@ -2268,7 +2268,7 @@ function showMediaFull(href,label){
 }
 let mediaPopSkip=false;
 document.addEventListener('click',event=>{const item=event.target.closest?.('[data-media-full]');if(!item)return;event.preventDefault();showMediaFull(item.dataset.mediaFull,item.querySelector('img')?.alt);});
-const botQuestionAnswer=(m,messages)=>messages.find(x=>x.role==='operator' && x.deleted?.cancelled!==true && x.answerTo===m.id);
+const botQuestionAnswer=(m,messages)=>m.questionResolution?.state==='answered'?m.questionResolution:messages.find(x=>x.role==='operator' && x.deleted?.cancelled!==true && x.answerTo===m.id);
 function unansweredChatQuestions(messages){
   const seen=new Set(),open=[];
   for(const m of messages){
@@ -2284,11 +2284,12 @@ function botQuestionHtml(m,messages){
   // A card whose answers are things to look at carries "Open to compare" and a link per answer
   // (Noam 2026-10-24: "שתמיד יהיה לינק עם אופציות"); a card the bot took back shows "No longer needed".
   const q=m.question,later=botQuestionAnswer(m,messages),answered=Boolean(later),gone=Boolean(m.withdrawn) && !answered,off=answered || gone;
-  const own=answered && !q.options.includes(later.text)?`<p class="bot-q-mine" dir="auto">${ui('Your answer:','התשובה שלך:')} <bdi>${esc(later.text)}</bdi></p>`:'';
+  const own=answered && later.text && !q.options.includes(later.text)?`<p class="bot-q-mine" dir="auto">${ui('Your answer:','התשובה שלך:')} <bdi>${esc(later.text)}</bdi></p>`:'';
   const open=(href,cls,label,name)=>`<a class="msg-link ${cls}" href="${esc(href)}" target="_blank" rel="noopener noreferrer"${name?` aria-label="${esc(name)}"`:''}>${label}</a>`;
   const top=(q.link && mediaKindOf(q.link)?`<div class="bot-q-thumb">${mediaItemHtml({kind:mediaKindOf(q.link),href:q.link,name:q.text})}</div>`:'')+(q.link?open(q.link,'bot-q-link',`${ui('Open to compare','לפתוח להשוואה')} ↗`):'');
   const rows=q.options.map((o,i)=>`<div class="bot-q-row">${mediaKindOf(q.optionLinks?.[i])?`<div class="bot-q-thumb">${mediaItemHtml({kind:mediaKindOf(q.optionLinks[i]),href:q.optionLinks[i],name:o})}</div>`:''}<button type="button" dir="auto" data-answer="${esc(o)}"${q.recommended===i?' class="recommended"':''}${off?' disabled':''}${answered && later.text===o?' aria-pressed="true"':''}>${esc(o)}${q.recommended===i?`<small>${ui('recommended','מומלץ')}</small>`:''}</button>${q.optionLinks?.[i]?open(q.optionLinks[i],'bot-q-optlink',`${ui('Open','פתיחה')} ↗`,ui(`Open ${o}`,`לפתוח את ${o}`)):''}</div>`).join('');
-  return `<div class="bot-question${off?' answered':''}${gone?' withdrawn':''}" data-qid="${esc(m.id)}" data-card-reply="${esc(m.id)}" data-card-title="${esc(ui('Question','שאלה')+': '+q.text)}" role="group" aria-label="${ui('Question from the bot','שאלה מהבוט')}">${cardReplyButton()}<p dir="auto">${esc(q.text)}</p>${gone?`<p class="bot-q-gone" dir="auto">${ui('No longer needed: the bot took this question back.','כבר לא נחוץ: הבוט ביטל את השאלה הזו.')}</p>`:''}${top}<div class="bot-q-opts">${rows}</div>${own}${off?'':`<button type="button" class="bot-q-own" aria-expanded="false">${ui('Write my own answer','לכתוב תשובה משלי')}</button><form class="bot-q-write" hidden><textarea rows="2" dir="auto" enterkeyhint="send" aria-label="${ui('Your own answer','התשובה שלך')}" placeholder="${ui('Your own answer…','התשובה שלך…')}"></textarea><button type="submit" class="primary" disabled>${ui('Send answer','שליחת התשובה')}</button></form>`}</div>`;
+  const resolved=answered && later.source==='owner'?`<p class="bot-q-gone">${ui('Marked already answered.','סומנה כשאלה שכבר נענתה.')}</p>`:'';
+  return `<div class="bot-question${off?' answered':''}${gone?' withdrawn':''}" data-qid="${esc(m.id)}" data-card-reply="${esc(m.id)}" data-card-title="${esc(ui('Question','שאלה')+': '+q.text)}" role="group" aria-label="${ui('Question from the bot','שאלה מהבוט')}">${cardReplyButton()}<p dir="auto">${esc(q.text)}</p>${gone?`<p class="bot-q-gone" dir="auto">${ui('No longer needed: the bot took this question back.','כבר לא נחוץ: הבוט ביטל את השאלה הזו.')}</p>`:''}${top}<div class="bot-q-opts">${rows}</div>${own}${resolved}${off?'':`<button type="button" class="bot-q-own" aria-expanded="false">${ui('Write my own answer','לכתוב תשובה משלי')}</button><button type="button" class="bot-q-own" data-resolve-question>${ui('Already answered','כבר עניתי')}</button><form class="bot-q-write" hidden><textarea rows="2" dir="auto" enterkeyhint="send" aria-label="${ui('Your own answer','התשובה שלך')}" placeholder="${ui('Your own answer…','התשובה שלך…')}"></textarea><button type="submit" class="primary" disabled>${ui('Send answer','שליחת התשובה')}</button></form>`}</div>`;
 }
 // A bot that ends its reply waiting for Noam's go-ahead, with no question card, gets
 // "Go ahead" / "Not yet" under it (Noam 2026-10-21: "ה go ahead היה צריך להיות כפתור").
@@ -3982,9 +3983,14 @@ async function openBot(id,{motion=null}={}){
       applyBotLists(main,[...data.messages,...pendingSends.filter(e=>e.listTo && e.state!=='failed').map(e=>({role:'operator',listTo:e.listTo,listChoices:e.choices}))],entry=>{following=true;pendingSends.push(entry);deliver(entry);});
       // The bots' question card: a tap is sent as Noam's answer; "write my own" opens the box.
       main.querySelectorAll('.bot-question:not(.answered) [data-answer]').forEach(b=>{b.onclick=()=>{const card=b.closest('.bot-question');card.querySelectorAll('button').forEach(x=>x.disabled=true);following=true;const entry={text:b.dataset.answer,images:[],state:'sending',answerTo:card.dataset.qid};pendingSends.push(entry);deliver(entry);};});
+      main.querySelectorAll('[data-resolve-question]').forEach(b=>{b.onclick=async()=>{
+        b.disabled=true;
+        try{const response=await fetch('/api/bot/question/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,questionId:b.closest('[data-qid]').dataset.qid}),signal:AbortSignal.timeout(8000)});const result=await response.json();if(!response.ok)throw new Error(result.error);await render();}
+        catch(e){b.disabled=false;note(e.message || ui('That did not work.','זה לא הצליח.'),true);}
+      };});
       // Go ahead / Not yet: sent once as his own message; the pending send keeps it settled.
       main.querySelectorAll('.bot-goahead:not(.answered) [data-go]').forEach(b=>{b.onclick=()=>{const group=b.closest('.bot-goahead');if(group.dataset.sent)return;group.dataset.sent='1';group.querySelectorAll('button').forEach(x=>x.disabled=true);b.setAttribute('aria-pressed','true');following=true;const entry={text:b.textContent.trim(),images:[],state:'sending',goAheadTo:group.dataset.gid};goAheadTapped.set(entry.goAheadTo,entry.text);pendingSends.push(entry);deliver(entry);};});
-      main.querySelectorAll('.bot-question:not(.answered) .bot-q-own').forEach(b=>{const card=b.closest('.bot-question'),form=card.querySelector('.bot-q-write'),box=form.querySelector('textarea'),go=form.querySelector('[type=submit]');
+      main.querySelectorAll('.bot-question:not(.answered) .bot-q-own:not([data-resolve-question])').forEach(b=>{const card=b.closest('.bot-question'),form=card.querySelector('.bot-q-write'),box=form.querySelector('textarea'),go=form.querySelector('[type=submit]');
         b.onclick=()=>{form.hidden=false;b.hidden=true;b.setAttribute('aria-expanded','true');box.focus();box.scrollIntoView({block:'nearest'});};
         box.oninput=()=>{go.disabled=!box.value.trim();box.style.height='auto';box.style.height=Math.min(box.scrollHeight,200)+'px';};
         box.onkeydown=e=>{if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();form.requestSubmit();}else if(e.key==='Escape' && !box.value.trim()){form.hidden=true;b.hidden=false;b.setAttribute('aria-expanded','false');}};

@@ -1,20 +1,25 @@
 # Token reduction: measurement contract
 
-Status: source verification only; actual reduction remains unverified until the reviewed build is loaded and observed.
+Status: the original measurement build is live, but its initial Codex rows are cumulative thread snapshots and do not prove post-cutover consumption. The interval correction below is source verification only until the corrected build is loaded and observed; actual reduction remains unverified.
 
 ## Concrete changes
 
 - Persist valid completed-turn usage locally whether or not an optional Langfuse exporter is configured. No transcript content is exported.
-- Preserve existing inputTokens/outputTokens/cost meanings. Codex cachedInputTokens is a subset of inputTokens and is never added to it.
+- Preserve original raw inputTokens/outputTokens/cache snapshot values. Codex cachedInputTokens is a subset of inputTokens and is never added to it.
+- Codex CLI0.164.0 emits cumulative thread usage in exec turn.completed, including restored usage on resume. Store usageScope, sessionId, observation UTC timestamp and interval provenance alongside the raw snapshot. The first resumed snapshot, missing identity, counter/time regression and unavailable baseline are unknown; never sum them as current consumption. A known new thread may start at an explicit invocation UTC timestamp with zero counters. Otherwise only a monotonic same-session snapshot pair supplies an observed interval. Unchanged snapshots add no consumption. Intervals can span multiple invocations or failed/missing observations; they are not per-invocation billing claims.
+- Keep historical unscoped Codex rows intact and count them as unknownUsageGenerations, excluding them from trusted consumption totals. Do not repair them by guessing session identity from a bot name. Claude's completed-result accounting is unchanged. Summary usageObservations and unknown/unchanged counts distinguish stored evidence from measured intervals; recentIntervals retains explicit UTC endpoints and baseline provenance for the latest100 intervals, with an omitted count for earlier intervals.
+- A counter or timestamp regression quarantines the session's later snapshot chain, including after monitor recreation. Recovering an earlier counter value cannot establish a new epoch: otherwise100→150→100→150 would count the same50 twice. Existing proven intervals remain; later snapshots stay unknown until a distinct session supplies an independently established baseline. A failed local write never advances the durable baseline or exports overlapping usage.
 - Aggregate cachedInputTokens and uncachedInputTokens only for records with a valid reported subset. unknownCacheGenerations includes legacy, missing and invalid subsets; these are not fabricated zero-cache records. Thus the two cache subtotals cover only known records, not all input when unknowns exist. Claude remains unknown in this new breakdown; its existing total semantics are unchanged.
-- Expose local write failures as sanitized current-process measurementHealth counters/timestamp. They invalidate the summary cache immediately, exclude missing writes from totals, survive no process restart, and never interrupt a reply. Historical measurement gaps cannot be reconstructed from this counter.
-- Export cache details as metadata only; preserve the exporter's existing input/output usage fields to avoid introducing overlapping counted quantities. No subscription allowance or billing attribution is inferred.
+- Expose local write failures as sanitized current-process measurementHealth counters/timestamp. They invalidate the summary cache immediately, survive no process restart, and never interrupt a reply. Missing observations supply no standalone usage; a later proven snapshot interval can span them. Historical measurement gaps cannot be reconstructed from this counter.
+- Export only proven Codex interval deltas; unknown and unchanged cumulative snapshots remain local evidence. Export cache details as metadata only to avoid overlapping counted quantities. No subscription allowance or billing attribution is inferred.
+
+Version-specific source: [Codex0.164.0 JSON processor](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/exec/src/event_processor_with_jsonl_output.rs) copies usage.total into turn.completed; [thread usage protocol](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server-protocol/src/protocol/v2/thread.rs) separates total and last; [resume replay](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server/src/request_processors/token_usage_replay.rs) restores persisted snapshots. The installed package and codex --version both report0.164.0. No model request was needed to establish this behavior.
 
 ## Proof
 
 Before the implementation, focused regressions failed on absent local writes without exporter keys, absent Codex cache extraction and absent cache summary coverage. The implemented10-test suite exercises fake Codex response-stream reporting, unavailable/invalid cache metadata, historical rows, local storage exceptions/negative receipts, exporter failures, pagination, summary-cache invalidation and authenticated isolated summary retrieval. No provider/model request is needed.
 
-Command: node --test termcontrol/test/token-monitor.test.mjs
+Command: node --test termcontrol/test/token-monitor.test.mjs. Four additional cumulative-accounting regressions failed before the correction (10/14 passed): unknown resumed baseline, same-session deltas after monitor recreation/rename, missing/changed identity plus regression/unchanged observations, and known-new zero baseline with legacy rows retained. Review then exposed a replay-after-regression chain; its restart-spanning guard failed16/17 before quarantine. The fake Codex stream also verifies caller session identity/start-time wiring without inference.
 
 ## Live comparison
 

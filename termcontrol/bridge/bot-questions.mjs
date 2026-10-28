@@ -132,6 +132,31 @@ export function markRepeatedQuestions(messages) {
   });
 }
 
+/** Reconcile durable answers before trimming history. Legacy choice buttons sent
+ * the exact option as the next operator message without an answerTo field.
+ * Unrelated free text, routed messages and cancelled answers remain ambiguous.
+ */
+export function markQuestionResolutions(messages) {
+  const resolutions = new Map();
+  let latest = null;
+  for (const m of messages) {
+    if (m.role !== 'operator') latest = null;
+    if (m.role === 'bot' && m.question) latest = m;
+    if (m.role === 'question-resolution' && m.resolution === 'answered')
+      resolutions.set(m.questionId, { state: 'answered', source: 'owner', id: m.id, text: '' });
+    if (m.role !== 'operator') continue;
+    if (m.deleted?.cancelled !== true) {
+      if (m.answerTo) resolutions.set(m.answerTo, { state: 'answered', source: 'answerTo', id: m.id, text: m.text });
+      else if (latest && !m.from && !m.replyTo && !m.goAheadTo && !m.listTo &&
+        latest.question.options?.includes(m.text))
+        resolutions.set(latest.id, { state: 'answered', source: 'legacy-exact-choice', id: m.id, text: m.text });
+    }
+    latest = null;
+  }
+  return messages.map(m => m.role === 'bot' && m.question && resolutions.has(m.id)
+    ? { ...m, questionResolution: resolutions.get(m.id) } : m);
+}
+
 /**
  * The same terminal prompt posted twice before Noam replied (Noam 2026-10-22: "אין צורך
  * בהודעות כפולות") shows once, the newest card; the "is waiting for Noam" note repeated

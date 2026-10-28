@@ -18,7 +18,7 @@ import { stalledFor, conversationMtime } from './session-status.mjs';
 import { asksForFile } from '../../scripts/termfleet-asks.mjs';
 import { uploadDir } from './uploads.mjs';
 import { skillPrompt } from './skills.mjs';
-import { parseQuestion, findMedia, MEDIA_RULE, QUESTION_RULE, markRepeatedQuestions, markRepeatedTerminalAsks, markWithdrawnQuestions, needsLink, sameQuestion, nearDuplicate, NOTHING_NEW, alreadyAnsweredNote } from './bot-questions.mjs';
+import { parseQuestion, findMedia, MEDIA_RULE, QUESTION_RULE, markRepeatedQuestions, markRepeatedTerminalAsks, markWithdrawnQuestions, markQuestionResolutions, needsLink, sameQuestion, nearDuplicate, NOTHING_NEW, alreadyAnsweredNote } from './bot-questions.mjs';
 import { parseChecklist, CHECKLIST_RULE, carryCard, checklistAnswer } from './bot-checklist.mjs';
 import { defaultDaemonSocket, requestDaemon } from '../../scripts/termfleetctl.mjs';
 import { endFollows } from './follows.mjs';
@@ -500,12 +500,20 @@ export function runBrain(bot, text, { onEvent, onStart, onUsage = traceTokenUsag
     const spoken = [];
     const calls = new Map();   // tool calls waiting for their result (action log)
     let usageModel = bot.model || 'unknown';
+    let usageSessionId = bot.sessions?.codex || null;
+    let baselineKnownZero = !usageSessionId;
+    const invocationStartedAt = new Date().toISOString();
     const recordUsage = (line) => {
       try {
         const event = JSON.parse(line);
+        if (bot.provider === 'codex' && event.type === 'thread.started' && event.thread_id) {
+          if (usageSessionId && usageSessionId !== event.thread_id) baselineKnownZero = false;
+          usageSessionId = event.thread_id;
+        }
         if (event.type === 'system' && event.subtype === 'init' && event.model) usageModel = event.model;
         for (const u of brainTokenUsage(bot.provider, event, usageModel)) {
-          onUsage(bot.name, bot.provider, u.model, u.inputTokens, u.outputTokens, u.cost, u);
+          onUsage(bot.name, bot.provider, u.model, u.inputTokens, u.outputTokens, u.cost,
+            bot.provider === 'codex' ? { ...u, sessionId: usageSessionId, baselineKnownZero, invocationStartedAt } : u);
         }
       } catch { /* missing usage or monitoring failure must not interrupt the reply */ }
     };
@@ -1327,14 +1335,26 @@ export class Bots {
     if (!bot) return null;
     // Resolve question history before taking the window: a later answer or withdrawal
     // must not disappear when an older, still-open original card is retained.
-    const all = markWithdrawnQuestions(markRepeatedQuestions(this.messages(id)));
+    const all = markQuestionResolutions(markWithdrawnQuestions(markRepeatedQuestions(this.messages(id))));
     const answered = new Set(all.filter((m) => m.role === 'operator' && m.answerTo && m.deleted?.cancelled !== true).map((m) => m.answerTo));
     const chat = all.slice(-MAX_CHAT_RETURNED);
     chat.unshift(...all.slice(0, -MAX_CHAT_RETURNED).filter((m) =>
       !m.repeated && ((m.role === 'terminal-ask' && !m.settled) ||
-      (m.role === 'bot' && m.question && !m.withdrawn && !m.duplicate && !answered.has(m.id)))));
+      (m.role === 'bot' && m.question && !m.withdrawn && !m.duplicate && !m.questionResolution && !answered.has(m.id)))));
     const busy = this.running.has(id) || (this.queues.get(id) || []).length > 0 || Boolean(bot.retry);
     return { bot: { ...this.summary(id), rules: bot.rules }, messages: markReceipts(markRepeatedTerminalAsks(chat), { busy }) };
+  }
+
+  /** Owner marks a historical card already answered, without sending work or
+   * answering/approving anything in a terminal. Keep the original and audit event.
+   */
+  resolveQuestion(id, questionId) {
+    if (!this.read(id)) return { error: 'That bot no longer exists.' };
+    const messages = this.messages(id);
+    if (!messages.some(m => m.id === questionId && m.role === 'bot' && m.question)) return { error: 'That question no longer exists.' };
+    if (!messages.some(m => m.role === 'question-resolution' && m.questionId === questionId && m.resolution === 'answered'))
+      this.append(id, { role: 'question-resolution', questionId, resolution: 'answered' });
+    return { ok: true };
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */

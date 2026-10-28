@@ -186,7 +186,7 @@ export function beginPromptObservation(bots) {
 export function isCurrentPromptObservation(bots, round) {
   return promptRounds.get(bots) === round;
 }
-export async function checkBotEvents({ bots, panes, available = true, now = Date.now(), seen, readAsk, readScreen = async () => '', head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, readCompletion = completionLifecycle, recoveryHandled = () => false, notify = (note) => bots.notify?.(note) }) {
+export async function checkBotEvents({ bots, panes, available = true, now = Date.now(), seen, readAsk, readScreen = async () => '', readAnswerReceipt = () => null, head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, readCompletion = completionLifecycle, recoveryHandled = () => false, notify = (note) => bots.notify?.(note) }) {
   const round = beginPromptObservation(bots);
   const alert = (note) => { try { notify(note); } catch { /* a notification never blocks the events */ } };
   for (const b of bots.list()) {
@@ -256,6 +256,14 @@ export async function checkBotEvents({ bots, panes, available = true, now = Date
         settleTerminalAsk(bots, b.id, open.id, { promptState: 'unknown' }, false);
       }
       if (asking) {
+        // Successful durable answers are authoritative for this exact prompt.
+        // A stale provider/status snapshot must not create another model turn.
+        // ChoiceReceipts deliberately returns null for a newly repeated screen
+        // prompt, preserving that existing explicit reask/new-prompt behavior.
+        if (ask?.id && readAnswerReceipt(h.paneId, ask.id)?.state === 'sent') {
+          if (open?.askId === ask.id) settleTerminalAsk(bots, b.id, open.id, { promptState: 'resolved', answered: true });
+          continue;
+        }
         // Restore an approval after reconnect only from a newly verified prompt.
         if (open) settleTerminalAsk(bots, b.id, open.id, { promptState: 'active' }, false);
         if (ask?.id && open && samePrompt(open, ask)) {

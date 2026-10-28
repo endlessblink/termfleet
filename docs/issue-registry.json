@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T14:32:01.268Z",
+  "updatedAt": "2026-10-28T15:20:29.699Z",
   "issues": [
     {
       "id": "TF-001",
@@ -14326,14 +14326,14 @@
       "guard": "Validated per-run caller capability, conflicting identity rejection and terminal caller regressions.",
       "evidence": [
         {
-          "kind": "focused-test",
-          "at": "2026-10-28T06:55:58.911Z",
-          "note": "Legacy close follow-up: actual owner315a has historical non-followed quota73bd2cec record266ms after live start; later observer does not grant close rights. Five latest request assignments transferredD-297f2720 to context. New regressions3/3 prove transfer removes current old-owner count, completion labels historical snapshot/fresh check, and validated real owner survives later observer while unrelated/forged callers fail. Actual close was not attempted by root terminal, which lacks bot authority; no force kill or ownership mutation."
+          "kind": "source",
+          "at": "2026-10-28T15:18:45.083Z",
+          "note": "Read-only review 2026-10-28T15: Reviewer767d3792e7b8 bot metadata has no helpers field and helpers.json absent. R20059 latest assignment targets review pane e3bf5a6f with deliveryD-2bd2ad92, but completion poll enumerates only registered helpers. Live caller absence reported by reviewer; issuer-to-spawn source preserves capability, actual Codex shell boundary remains unproved. Identity-only denial is expected protection. Owner-authenticated helper-observation is existing recovery route; no caller spoof, recovery mutation or deployment performed."
         },
         {
-          "kind": "source",
-          "at": "2026-10-28T07:00:20.549Z",
-          "note": "Timestamped completion snapshot source bound to finalPID1086383 twelve-module digest8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0. Existing queued notices/history not rewritten; current folded five transfer assignments verifiedD-297f2720. Root did not close quota worker or forge bot authority. Original bot-card observer proof remains time-specific exact session and actual headless visual evidence."
+          "kind": "focused-test",
+          "at": "2026-10-28T15:18:45.561Z",
+          "note": "Baseline diagnosis only: node --test termcontrol/test/bot-caller.test.mjs termcontrol/test/codex-completion-delivery.test.mjs termcontrol/test/follows.test.mjs termcontrol/test/token-monitor.test.mjs =>52/53 PASS. Failing follows CLI fixture injects only BOT_ID, no issued capability; refusal expected under current authority contract. Caller9/9 and completion lifecycle protections pass, but no real Codex tool-shell propagation or reviewer notification acceptance proven."
         }
       ],
       "owner": "termfleet",
@@ -14402,6 +14402,18 @@
           "type": "evidence",
           "kind": "source",
           "note": "Timestamped completion snapshot source bound to finalPID1086383 twelve-module digest8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0. Existing queued notices/history not rewritten; current folded five transfer assignments verifiedD-297f2720. Root did not close quota worker or forge bot authority. Original bot-card observer proof remains time-specific exact session and actual headless visual evidence."
+        },
+        {
+          "at": "2026-10-28T15:18:45.083Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Read-only review 2026-10-28T15: Reviewer767d3792e7b8 bot metadata has no helpers field and helpers.json absent. R20059 latest assignment targets review pane e3bf5a6f with deliveryD-2bd2ad92, but completion poll enumerates only registered helpers. Live caller absence reported by reviewer; issuer-to-spawn source preserves capability, actual Codex shell boundary remains unproved. Identity-only denial is expected protection. Owner-authenticated helper-observation is existing recovery route; no caller spoof, recovery mutation or deployment performed."
+        },
+        {
+          "at": "2026-10-28T15:18:45.561Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Baseline diagnosis only: node --test termcontrol/test/bot-caller.test.mjs termcontrol/test/codex-completion-delivery.test.mjs termcontrol/test/follows.test.mjs termcontrol/test/token-monitor.test.mjs =>52/53 PASS. Failing follows CLI fixture injects only BOT_ID, no issued capability; refusal expected under current authority contract. Caller9/9 and completion lifecycle protections pass, but no real Codex tool-shell propagation or reviewer notification acceptance proven."
         }
       ]
     },
@@ -15878,8 +15890,8 @@
         },
         {
           "kind": "source",
-          "at": "2026-10-28T14:32:01.205Z",
-          "note": "eb45a87 minimal non-EEXIST propagation live in bridge1257104 at14:31:13UTC; native self send D-3d00103e received and request mutation/readback R20034 passed. Parent sandbox write remains separate; no access expanded."
+          "at": "2026-10-28T15:19:50.957Z",
+          "note": "Activated eb45a87 bridge1257104/digest bf74cceaacb6e37aa4fa248a970b9a0819fab1b7cdb47f67cf68e9368bf6fe7f; native safe receipt D-3d00103e and real R20034 mutation/readback pass. Own hold released14:48:54UTC; access boundary unchanged; ready for owner."
         }
       ],
       "owner": "termfleet",
@@ -15936,6 +15948,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "eb45a87 minimal non-EEXIST propagation live in bridge1257104 at14:31:13UTC; native self send D-3d00103e received and request mutation/readback R20034 passed. Parent sandbox write remains separate; no access expanded."
+        },
+        {
+          "at": "2026-10-28T15:19:50.957Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Activated eb45a87 bridge1257104/digest bf74cceaacb6e37aa4fa248a970b9a0819fab1b7cdb47f67cf68e9368bf6fe7f; native safe receipt D-3d00103e and real R20034 mutation/readback pass. Own hold released14:48:54UTC; access boundary unchanged; ready for owner."
         }
       ]
     },
@@ -15951,14 +15969,14 @@
       "guard": "node --test termcontrol/test/token-monitor.test.mjs termcontrol/test/compact-action-evidence.test.mjs termcontrol/test/action-evidence.test.mjs termcontrol/test/bot-side-reply.test.mjs",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-10-28T14:32:01.237Z",
-          "note": "Exact57cc0a9 integration eb45a87 loaded by bridge1257104, digest bf74cceaacb6e37aa4fa248a970b9a0819fab1b7cdb47f67cf68e9368bf6fe7f at2026-10-28T14:31:13.863Z. Daemon2068834 and terminal/session identities retained, startup automatic hold active; zero queues/uncertain records."
+          "kind": "focused-test",
+          "at": "2026-10-28T15:19:20.962Z",
+          "note": "Installed Codex0.164 primary source proves cumulative thread counters. Raw live81M/140M observations are not post-cutover consumption. Corrected snapshots/intervals exclude unknown legacy/first resumed baselines; replay quarantine tested. Monitor+events28/28 /tmp/termfleet-cumulative-usage-final.tap;132/132 combined before final intervening-prompt guard; focused final7/7. Live correction pending natural drain."
         },
         {
-          "kind": "focused-test",
-          "at": "2026-10-28T14:32:01.267Z",
-          "note": "109/109 /tmp/termfleet-token-integration-affected.tap; candidate implementation exact except independent requirements error diagnostic. Live summary200 measurementHealth.writeFailures0; no ordinary completed generations yet, no savings claim."
+          "kind": "source",
+          "at": "2026-10-28T15:20:29.699Z",
+          "note": "Additional confirmed source gap: side-reply.mjs runSide launches a separate ephemeral Codex process, parses only reply/error, and has no usage/traceTokenUsage path; bots.sideAnswer passes no usage callback. Main runBrain records usage separately. Thus quick status responses are outside current local consumption coverage. Candidate: record distinct side/main surface provenance from real completed usage, retain missing/failed usage as unknown, add fake side-stream regressions before change. No provider session launched by this diagnosis."
         }
       ],
       "owner": "termfleet",
@@ -16015,6 +16033,103 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "109/109 /tmp/termfleet-token-integration-affected.tap; candidate implementation exact except independent requirements error diagnostic. Live summary200 measurementHealth.writeFailures0; no ordinary completed generations yet, no savings claim."
+        },
+        {
+          "at": "2026-10-28T15:18:45.353Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Read-only review 2026-10-28T15:14-15:20UTC: live bridge1257104 started14:31:13UTC, daemon2068834 reachable. Readonly database has9 Codex token observations across5 identities, all lack usageScope/interval status. Current token-monitor/bots/server mtimes postdate service start, so source correction is not loaded proof. Minimal synthetic brief12381bytes and side prompt2757bytes are prompt payload sizes, not tokenizer/billing savings. Actual uncached usage and aligned savings remain unknown."
+        },
+        {
+          "at": "2026-10-28T15:19:20.962Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Installed Codex0.164 primary source proves cumulative thread counters. Raw live81M/140M observations are not post-cutover consumption. Corrected snapshots/intervals exclude unknown legacy/first resumed baselines; replay quarantine tested. Monitor+events28/28 /tmp/termfleet-cumulative-usage-final.tap;132/132 combined before final intervening-prompt guard; focused final7/7. Live correction pending natural drain."
+        },
+        {
+          "at": "2026-10-28T15:20:29.699Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Additional confirmed source gap: side-reply.mjs runSide launches a separate ephemeral Codex process, parses only reply/error, and has no usage/traceTokenUsage path; bots.sideAnswer passes no usage callback. Main runBrain records usage separately. Thus quick status responses are outside current local consumption coverage. Candidate: record distinct side/main surface provenance from real completed usage, retain missing/failed usage as unknown, add fake side-stream regressions before change. No provider session launched by this diagnosis."
+        }
+      ]
+    },
+    {
+      "id": "TF-148",
+      "title": "Answered terminal prompts can schedule another bot wake",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Previously answered questions return and wake bots again",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/bot-question-scheduling.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T15:20:04.912Z",
+          "note": "133/133 /tmp/termfleet-token-question-final.tap includes exact answered exclusion, unanswered findability/no reask, new identity eligibility, explicit repeated screen prompt, owner resolution and headless route/card/nav. Live old panel nine: one exact legacy answer, eight ambiguous kept."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T15:20:05.464Z",
+          "note": "Card/nav/history share durable questionResolution; explicit Already answered action never launches a model or sends terminal input. Existing answer receipts block exact automatic re-admission; no age or arbitrary later-reply suppression."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reproduce exact successful answer receipt re-admission; preserve new questions and screen reasks",
+      "history": [
+        {
+          "at": "2026-10-28T14:59:23.334Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T15:20:02.055Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Exact receipt admission and legacy question resolution guarded: scheduling4/6 red, history3/5 red, intervening-prompt regression red; final133/133 source and real isolated headless panel pass. Installed correction pending."
+        },
+        {
+          "at": "2026-10-28T15:20:02.633Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Exact receipt admission and legacy question resolution guarded: scheduling4/6 red, history3/5 red, intervening-prompt regression red; final133/133 source and real isolated headless panel pass. Installed correction pending."
+        },
+        {
+          "at": "2026-10-28T15:20:03.264Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Exact receipt admission and legacy question resolution guarded: scheduling4/6 red, history3/5 red, intervening-prompt regression red; final133/133 source and real isolated headless panel pass. Installed correction pending."
+        },
+        {
+          "at": "2026-10-28T15:20:03.703Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Exact receipt admission and legacy question resolution guarded: scheduling4/6 red, history3/5 red, intervening-prompt regression red; final133/133 source and real isolated headless panel pass. Installed correction pending."
+        },
+        {
+          "at": "2026-10-28T15:20:04.390Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Exact receipt admission and legacy question resolution guarded: scheduling4/6 red, history3/5 red, intervening-prompt regression red; final133/133 source and real isolated headless panel pass. Installed correction pending."
+        },
+        {
+          "at": "2026-10-28T15:20:04.912Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "133/133 /tmp/termfleet-token-question-final.tap includes exact answered exclusion, unanswered findability/no reask, new identity eligibility, explicit repeated screen prompt, owner resolution and headless route/card/nav. Live old panel nine: one exact legacy answer, eight ambiguous kept."
+        },
+        {
+          "at": "2026-10-28T15:20:05.464Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Card/nav/history share durable questionResolution; explicit Already answered action never launches a model or sends terminal input. Existing answer receipts block exact automatic re-admission; no age or arbitrary later-reply suppression."
         }
       ]
     }

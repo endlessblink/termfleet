@@ -28,3 +28,24 @@ test('long answered history does not copy every full remaining suffix',()=>{
  rows.slice=function(...args){const out=Array.prototype.slice.apply(this,args);copied+=out.length;return out;};
  view(rows);assert.ok(copied<10000,'full-history classification copied '+copied+' entries');
 });
+test('legacy immediate exact choice is answered, but unrelated or routed replies remain open',()=>{
+ const rows=[q('legacy','Choose the reporting scope'),{id:'legacy-a',role:'operator',text:'Yes'},
+ q('ambiguous','Choose a color'),{id:'other',role:'operator',text:'Please inspect the logs'},
+ q('routed','Choose a date'),{id:'routed-a',role:'operator',text:'Yes',answerTo:'some-other-card'},...tail()];
+ const result=view(rows);
+ assert.equal(result.some(m=>m.id==='legacy'),false);
+ assert.ok(result.some(m=>m.id==='ambiguous'));
+ assert.ok(result.some(m=>m.id==='routed'));
+});
+test('explicit owner question resolution survives the history window without discarding other questions',()=>{
+ const rows=[q('resolved','Should I proceed with the old choice?'),q('pending','Which new scope?'),
+ {id:'resolution',role:'question-resolution',questionId:'resolved',resolution:'answered'},...tail()];
+ const result=view(rows);
+ assert.equal(result.some(m=>m.id==='resolved'),false);
+ assert.ok(result.some(m=>m.id==='pending'));
+});
+test('a reply to an intervening terminal question cannot resolve an older bot question',()=>{
+ const rows=[q('pending','Which scope?'),{id:'terminal',role:'terminal-ask',text:'Continue?',pane:'p'},
+ {id:'answer',role:'operator',text:'Yes'},...tail()];
+ assert.ok(view(rows).some(m=>m.id==='pending'));
+});
