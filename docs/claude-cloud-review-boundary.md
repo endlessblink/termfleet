@@ -3,8 +3,8 @@
 This is a concrete proposal for one bounded code review, not an authorization to
 start it. No cloud session, upload, account change, payment, or live financial
 verification has been performed. TermFleet's current all-Claude denial remains
-in force. The earlier disposable input is a historical candidate and must be
-refrozen against current source before an approved upload.
+in force. A refreshed disposable input is frozen below for review, with no cloud
+execution or upload permission.
 
 ## What the documented account controls do
 
@@ -157,10 +157,15 @@ transcripts, unrelated files or local configuration:
 - tests/provider-launch-boundaries.test.mjs
 
 The earlier local candidate under `/tmp/termfleet-cloud-review-20261028`, synthetic
-revision `ddbe2afd5e1f31556cfa700c28f3b223c0317e51`, is stale; it is not current
-review input or an approved upload. Recreate its explicit allowlist only after
-source freeze. The supported submission shape below is documentation, **not a
-command to execute now**; its working directory must be the newly checked package:
+revision `ddbe2afd5e1f31556cfa700c28f3b223c0317e51`, is stale. The refreshed local
+package is `/tmp/termfleet-cloud-review-20261028-v2`, synthetic revision
+`77e5fe84c0a1e6f990808e9a3f8abb1c730e4c2c`, sourced exactly from
+`b9b44bcdfca2190f70aeebda4ef48579598b0ed2`. It contains the eight files above plus
+`REVIEW_TASK.md` with per-file hashes and constraints, exactly one commit and no
+remote. Preparation verified9 tracked files,1 commit,0 remotes,0 provider calls
+and0 uploads. This is current bounded review input, not approval to upload it.
+The supported submission shape below is documentation, **not a command to
+execute now**; its working directory must be that separately checked package:
 
 ```bash
 claude --cloud "Read REVIEW_TASK.md and review only the listed files. Return evidence-based findings and proposed tests. Do not edit, deploy, publish, merge, start helpers or take external actions."
