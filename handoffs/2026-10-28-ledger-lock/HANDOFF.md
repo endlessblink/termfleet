@@ -1,0 +1,79 @@
+# HANDOFF — requirements ledger lock repair — in_progress
+
+This is a handover of my own active work, not a helper task. Continue this exact narrow repair in the same checkout. The latest developer explicitly required immediate handover at context25%; the usual owner instruction disables automatic handovers, but this later higher-priority instruction required this one. Do not create another successor merely because this document mentions one.
+
+## First command and immediate next action
+
+First run `git status --short`, then read `termcontrol/bridge/requirements.mjs` lines190–220 and `termcontrol/bridge/bots.mjs` lines290–307. Read this entire handoff before mutation. No production lock code has been changed. Diagnose/reproduce masking safely with an isolated filesystem fixture, then write a focused regression BEFORE the fix. The likely actual caller failure is sandbox EACCES, not a live competing lock. Do not widen access; report that boundary distinctly from the diagnostic code repair.
+
+## Current request and authority
+
+Orchestrating agent sent through TermFleet, delivery D-cf265011:
+
+> in_progress: Noam asks how to fix repeated requirements-ledger busy errors that prevent task delivery and request updates. Own this focused repair in requirements.mjs and relevant tests, preserving other work. Diagnose actual lock path, holder/permissions and failure cause before changing anything; withLock currently treats every mkdir error as contention and attempts stale removal after 10 seconds. Reproduce exact failure safely, choose smallest fix, apply required regression skills, verify real termfleet-team send plus request mutation/read-back. No blind lock deletion, no killing writers, no data loss or screen takeover. Report evidence and working HTTPS acceptance link if a user-facing release changes. Coordinate other TermFleet owners before deployment.
+
+Owner's exact request is R-20034: `איך מתקנים את זה?` It is assigned to my pane `terminal-a5ce7ba3-2c21-4183-96f9-74618b98772c-9a9732ed-da5c-4d76-813d-74d60ff58243` under project fine-tuned, message7883c7869f74. `termfleet-asks show R-20034` confirmed this assignment. This authorizes the focused repair and real internal delivery verification, not arbitrary permission/policy changes or service restart. User expects final1–3 plain sentences, no item IDs/table/quoted words, describing what works, what remains, and what to try; mark request using normal termfleet-asks with a real test-output or tester link, no separate proof files committed.
+
+Goal: allow task delivery and request mutation without false busy errors. Done means diagnosed actual cause, regression red for correct reason, minimal source fix preserving protection, focused/adjacent checks, native team send and mutation/readback proved where permitted, commit only own changes and honest remaining runtime/access gates. If caller remains sandbox-denied, do not claim restoring its writes merely from clearer errors.
+
+## Findings proved this turn
+
+* `ledgerDir()` is TERMFLEET_REQ_DIR override, else TC_CONFIG_DIR/requirements for private bridge, else XDG_DATA_HOME or ~/.local/share plus termfleet/requirements.
+* Actual default directory `/home/endlessblink/.local/share/termfleet/requirements` exists owned endlessblink:endlessblink mode0700; parent termfleet dir0775; ledger.jsonl0600. At15:55:48+0200 ledger existed and was recently modified. `.lock` was ABSENT on stat and ls. Thus no lock holder could be identified at that moment; no stale lock was removed or modified.
+* `withLock` requirements.mjs201–214 calls mkdir dir, then loops `mkdirSync(.lock)` catching ALL errors without inspecting code. It retries5s, busy-spins15ms, and removes an empty lock by mtime age>10s, without owner/PID validation. Finally removes lock. Any access/read-only/storage/non-directory failure during mkdir(.lock) can be mislabeled contention. Long live writers can be reaped by age. No owner metadata exists.
+* Codex `brainCommand` bots.mjs299–301 roots are ~/.local/share/terminal-workspace, /run/user/1000/terminal-workspace, defaultDir() (~/.config/termcontrol/bots), BOTS_HOME() (~/TermFleet/bots). They OMIT ~/.local/share/termfleet/requirements. A previous process inspection during the completion integration showed Agent-Manager running these explicit roots. This is strong source-backed cause for parent sandbox denial, but no raw EACCES diagnostic from that actual failing parent was captured yet. Do not call the sandbox cause reproduced until obtained. Unix file owner/mode is correct; widening roots is outside current permission boundary.
+* Our normal native `termfleet-asks` writes succeeded previously, and `show R-20034` succeeds now. Parent failures and this caller have different write permissions. Avoid confusing successful local mutation with success inside parent sandbox.
+* Installed CLI symlinks point directly to this checkout's scripts/termfleet-asks.mjs and scripts/termfleet-team.mjs. Therefore a narrow shared requirements module fix reaches new native CLI invocations without restarting bridge. Loaded bridge remains old until separate activation gate.
+* `npm run issues -- check` passed141 records before this new issue. No matching busy/lock issue existed. I created TF-146 via normal CLI with surface logic, title Requirements writes report busy for permission failures, guard `node --test termcontrol/test/requirements-lock.test.mjs`, next action reproduce error masking/preserve live locks/verify native mutations+send. It remains reported; its new record is my uncommitted change.
+* Skill router returned regression planner/verifier, both read fully and applied. Their docs are `.agents/skills/termfleet-regression-planner/SKILL.md` and verifier equivalent. Existing requirements-ledger tests import captureMessage/record etc and use disposable temp dirs. New dedicated test `termcontrol/test/requirements-lock.test.mjs` is only planned, NOT CREATED.
+* `termfleet-sure` recorded HIGH for: all mkdir errors swallowed; no current lock; roots omission; fix classification and conservative ownership handling only, never widen roots. It warned side effect abandoned legacy locks need diagnosis rather than unsafe age deletion. This confidence does not prove access denial in actual parent yet. Re-evaluate smallest fix: classification alone may be appropriate; avoid large lock rewrite without failing guard/need.
+
+## Coordination and failed operations
+
+`termfleet-team list` showed only six terminals, including our pane, ImagineBox workers, a Desk conversation repair worker, idle LifeBoat worker, idle motion2mixamo. No other listed TermFleet owner besides us. I attempted authorized internal coordination:
+`termfleet-team send Agent-Manager --no-req 'coordinate the assigned ledger lock repair' '<diagnosis and request raw sanitized error>'`
+It FAILED `No terminal matches "Agent-Manager".` No message was sent. Do not assume parent knows findings except final/chat updates it reads. Use a valid discovered terminal if needed, or return findings in this conversation; do not guess identity or start helpers. Real send verification still REQUIRED and not yet performed.
+
+Lean-ctx rejected a batched command containing `namei` because it is not allowlisted; NO segment executed. Did not change allowlist or retry namei. Reissued stat/ls/source reads WITHOUT namei and obtained facts above. Do not work around restrictions. `python3 -c` is blocked by lean-ctx; use script files if needed. No lock deletion, writer kill, chmod, sandbox policy change, service reload, daemon change, terminal input or visible browser was performed.
+
+## Files and dirty state
+
+HEAD at active task start is c421ed26cb084a0ff0321ffb78d40771f9b18c1b (prior completed source integration below); verify current HEAD because others can work concurrently.
+
+Before this repair, dirty state was:
+* M MASTER_PLAN.md — unrelated dirty text, preserved; our prior integration additions already committed separately via index.
+* M docs/regression-matrix.md — same unrelated existing edits preserved.
+* ?? .backups/, HANDOFF-CLAUDE-QUOTA.md, HANDOFF-action-evidence.md, live.json — unrelated artifacts, never touch/stage.
+
+Only current repair edit is docs/issue-registry.json new TF-146, created through CLI. This HANDOFF.md is my new owned handoff; existing root HANDOFF.md is an old October26 source record and was read, never overwritten. No requirements.mjs/tests edits yet. Commit only the new issue and owned handoff if required by spawn recipe; never stage dirty plan/matrix wholesale. After code fix, merge minimal additive plan/matrix content and stage ONLY own hunks as previous integration did.
+
+## Prior task completed source integration, not the active repair
+
+Initial task file `/home/endlessblink/.local/share/terminal-workspace/child-tasks/8eb5f6c1-499a-453a-8ddd-69b1b2e4930b.md` requested exact Codex duplicate completion candidate26914f7f29cf8217e49b90286bb9d6756fd63382 on matching base4b0d52ca3aba01054d7ecf24a2334974629bc0da. Genuine owner go verified `termfleet-team verify 497f5e7b72d7`. Bundle `/tmp/termfleet-codex-drain.bundle` SHAa6e1fb90ad21567e78d39448e4d9b78671f756c1dd3dda09ed004974b12c3881 and patch SHA794eb080566f0fd7afb0eaf235dac793f6c39422a353aebd9571cf1f56e352a6 verified. Imported exact code and staged only own four additive lines into dirty plan/matrix. Source commit c421ed2 has14files, code byte-identical to candidate; integration status docs and TF-145 added. Fresh focused35/35 `/tmp/termfleet-codex-integration-focused.tap`, broader85/87 `/tmp/termfleet-codex-integration-broad.tap`, event17/19 `/tmp/termfleet-codex-integration-events.tap`; four failures exactly same documented baseline (Claude Edit/Write configuration, old-prompt retirement, repeated question lifecycle, missing bot caller fixture). Syntax and diff checks passed. No live savings claim. TF-145 verifying. Registry evidence own1line committed in bots-directory as1d8cd54 preserving its unrelated dirty work.
+
+R-20020, R-20021, R-20022 partial and wrapper R-20023–27 answered; aggregate local #1 partial. Parent confirmed source integration and35/35 independently. R-20011 bookkeeping answer was saved through `termfleet-asks answered` and exact show readback confirmed answered: health diagnostic separate, completion wakes reinject context, integrated source not live. Do not redo prior audit.
+
+## Runtime and activation boundary (unchanged)
+
+Live TermControl PID2252271 started2026-10-28 11:41:07. systemctl readback with XDG_RUNTIME_DIR=/run/user/1000 and DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus showed active, Restart=always, TimeoutStopUSec=5min30s, KillMode=mixed, KillSignal15, SendSIGKILL=yes. Daemon2068834 previously retained; do not restart it. Bridge listens local7810, user URL https://control.in-theflow.com. Exact old18module digest8d3ea43cbb73 reconstructed from35c9acd per docs/runtime-truth.md; live PID unchanged was rechecked. No new authenticated loaded hash collected during bounded read-only step.
+
+Read docs/runtime-truth.md148–370 and421–524. Old process supports individual sleep/routine disable and TERM/INT bot-only drain. Shutdown waits bots.closeDown(max5min), saves queues, then closes HTTP/waits10s, exits. Internal routine/room/held/recovery/cleanup timers not cancelled/accounted, existing effects lack complete stable-ID receipts. New automatic pause marker and SIGUSR2 handshake are NOT understood by old PID: never SIGUSR2 it. Existing `/tmp/termfleet-legacy-barrier-diagnosis.tap`3 counterexamples shows ingress closure leaves routine timer dispatching and equal durable state can mean applied or unapplied effect. No current operator command guarantees lossless/duplicate-free cutover. Missing capability: supported old-process admission/timer stop and durable ordered queue ACK plus per-producer daemon/desktop fence and outcome reconciliation. New broker cannot retrospectively recreate absent receipts. Alternative documented maintenance exception explicitly accepts old uncertain/lost work with no automatic replay; owner was already shown the specific risk choice in parent, do not ask generic go again. Current repair does not authorize activation or risk waiver. Parent explicitly asked coordination before any deployment.
+
+## Other messages are unrelated
+
+Orchestrating parity messages discuss fine-tuned/Desk provider work: isolated4e2fa7e, search guards, classifier timeout, gateway nonstream disconnect cancellation, full1427 suite rerun. Latest D-73e936e7 says owner found Codex orphan9m59 after60s timeout; only their owned servers stopped; cancellation regression underway, no release. These messages steer no change here. Do not inspect/fix their provider code or claim its status verified.
+
+## Working rules and remaining steps
+
+Read cwd AGENTS.md, continuation contract, lean-ctx rules; skill router was run this scope. No agents/helpers unless material authorized work (none needed). Use ctx_shell/read/search; named tools discover through ALL_TOOLS. Keep one plain Task current, Goal/Task lines for cockpit. No visible browser/screen control without button approval; use headless/private screen if required. No credentials/.env/private transcript reads. Registry termcontrol checkout checker was verified earlier snapshot5916583b63e77d5646b59a762085f892a4227f74d6d8980d86e7203c999beb15; changed registry now has evidence line, refresh before bot edits as current instructions require. Owner durable context is synced vault canonical notes; prior termfleet note read, don't promote projects or make personal claims. Memory quick-pass found no relevant lock-specific guidance; do not rely on unrelated old memories. Final memory citation needed only if actually relying on memory.
+
+Next sequence:
+1. Preserve dirty work, read current source and issue; get actual sanitized EACCES/error from failing context if possible without new model runs/widening access.
+2. Define minimum candidate and falsifiable reason: retry ONLY EEXIST, propagate exact filesystem code+path immediately; do not call access denial contention; preserve live locks. Decide separately whether age-reap needs minimal conservative removal; no speculative huge protocol.
+3. Write focused temp-dir tests. Safely inject mkdirSync error or use disposable EACCES fixture (process euid1000), EROFS/ENOSPC/EIO mocks; assert original error/code/path, no retry and no lock removal. Real existing live lock remains untouched; contention serializes writes, duplicate capture remains idempotent. Avoid brittle5s waits if possible without broad public API changes.
+4. Run red, implement minimal patch, run green, syntax, adjacent requirements/CLI/team suites; don't run full app build for Node-only change unless evidence requires. Update issue state/evidence via CLI and keep unresolved actual sandbox/runtime gates honest.
+5. Native termfleet-team send to a real DISCOVERED authorized teammate for test plus real request mutation/readback, not fabricated ledger item or blind send. Parent identity not in terminals list; coordinate carefully. No messages to outside humans.
+6. Report whether source repair restores actual caller or only diagnostics; sandbox roots omission is a permissions gate not silently adjustable. No release/restart until other owners coordinate and original maintenance boundary cleared.
+7. Commit own source/tests/issue/own plan lines with Constraint/Rejected/Tested. Mark R-20034 appropriately with one real evidence path/link. No separate committed proof artifact. Final1–3 plain sentences, first states not done if anything open.
+
+Original source records and all temp test output remain preserved. No attachments for this active repair; all referenced paths above exist except project notes script `/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/scripts/project-notes/notes.py` was previously missing (Errno2), so no note state update succeeded. Do not claim notes saved.

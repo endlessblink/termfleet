@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T13:38:38.003Z",
+  "updatedAt": "2026-10-28T13:57:11.803Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15857,6 +15857,27 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "/tmp/termfleet-codex-integration-focused.tap35/35; broader85/87 and event17/19 match documented baseline failures. No live token savings proof."
+        }
+      ]
+    },
+    {
+      "id": "TF-146",
+      "title": "Requirements writes report busy for permission failures",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Task delivery and request updates repeatedly report ledger busy although no writer lock exists",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/requirements-lock.test.mjs",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Reproduce filesystem error masking and preserve live writer locks; verify native request mutation and team send",
+      "history": [
+        {
+          "at": "2026-10-28T13:57:11.802Z",
+          "type": "created",
+          "note": null
         }
       ]
     }
