@@ -1,9 +1,89 @@
 # TermFleet / TermControl delay and token audit — 2026-10-28
 
-Audit status: reviewed across host resources, terminal transport, bot execution,
-progress delivery, request intake, completion controls, instructions and usage
-measurement. Repairs remain **in_progress**. This is diagnosis, not production
-acceptance or a claim that all reported problems are fixed.
+Audit status: **complete — bounded evidence review**, reconciled through the
+independent authenticated readback at2026-10-28T16:22:50UTC. Product repair and
+ordinary-use acceptance are separate statuses below. No longitudinal savings,
+billing attribution or universal task-success claim is made. The original
+diagnostic record is retained below as historical evidence, not current status.
+
+## Consolidated answer to the five complaints
+
+| Complaint | Confirmed evidence and root cause | Current repair / remaining uncertainty |
+| --- | --- | --- |
+| Something basic broke | Signed bot caller context was lost at the Codex tool-shell boundary under core environment inheritance. A bot ID alone correctly failed authorization. Separately, generated helper instructions became owner obligations, and the actual reviewer task lacked an observation link. | Scoped caller repair de86aaf and origin repair355afae are in the loaded source. Supported observation registration recovered this exact task's completion. No authentication bypass. New marked-wrapper behavior is fixture-proven; all legacy wrappers and future bot tasks are not universally proved. |
+| Too many Codex tokens and unclear answers | Cumulative thread snapshots had been mistaken for consumption; side subprocess usage was not recorded. Instruction stack38673bytes, three tool descriptions11725characters, minimal brain brief12381bytes and side prompt2757bytes are measured payload sizes, not tokens. Owner-correction evidence records wrong folder names and missing location; old side routing could paraphrase/drop an empty-item correction and its prompt discouraged filenames. | Main interval accounting and side recording03c236f are live. Exact correction routing31e6b2f is live and fixture-proven. Eight trusted intervals show substantial cached input; sixteen observations remain unknown. No comparable savings, subscription cost or corrected-folder understanding is established. The documented standalone token-script contract is still incompatible with its implementation. |
+| Works for a long time without results | One host readlink process used21913240KiB RSS and99.9% CPU for over two hours; it was terminated and memory pressure fell. Missing intermediate Codex publication was reproduced. Same-day188completed turns averaged124.6s, maximum1606s, with9at least600s. | Progress repair a964b65 is loaded, isolated chat proves progress before completion and one final. The specific runaway process ended; the broken Claude path has no repair proof. Long-turn metadata does not prove useful result, retry cause or speedup. Per-invocation SIGTERM deadlines are not a hard bound on an ignoring child or a chain of turns. |
+| Review end to end | Intake, instruction load, provider accounting/cache, side replies, tools/retries, delegation/wakes/publication, elapsed/results, clarity and installed provenance are reconciled in this report. Source, historical diagnosis, isolated repair proof and actual installed observations are distinguished. | The audit deliverable is complete. Remaining product repairs and acceptance checks are named below; missing future savings does not keep the audit open. |
+| Launched tasks do not return | Exact task-to-reviewer observation was absent. Supported owner-authenticated registration linked the existing bot-owned assignment and original conversation. Completion event b333b6c192c312555b097f3c4a70f5b75c10cdb62b4b76caeefba35b87a543fb is delivered to reviewer767d3792e7b8. | Independent16:22:49UTC readback: zero unresolved helper turns, inflight work or queued returns for this reviewer. One actual completion is proved. A fresh ordinary delegated task is ready for the owner to try; different task types and subsequent completions are not inferred from this one. |
+
+## Evidence by stage of the request-to-result path
+
+| Stage | Evidence / quantity | What it supports and what it does not |
+| --- | --- | --- |
+| Request intake and completion obligations | Original generated-launch reproduction added5owner items and blocked first Stop; active-stop retry was allowed.355afae adds explicit private-wrapper origin and control-envelope filtering, preserving genuine adjacent/quoted requests and unmarked legacy history. | Confirmed origin defect;83affected tests and22goal/session checks cover source repair. Loaded ancestry is verified. No proof of an infinite same-finish loop or retroactive cleanup of old obligations. |
+| Instructions and prompts | Historical disk stack38673bytes; selected tool descriptions11725characters. Minimal constructed brain brief12381bytes and side prompt2757bytes. Brain brief is sent on initial/rebrief paths, not automatically every Codex turn. Side process starts fresh per side batch. | Quantified context burden and a plausible contributor to overhead/conflicting replies. These sizes overlap different surfaces and must not be summed as one invocation. No tokenizer, billed-cost or causal answer-quality result. |
+| Codex usage and caching | Installed CLI0.164.0 emits thread-cumulative counters. Trusted summary16:22:50UTC:8intervals,10829245input,10574592cached subset,254653uncached,24710output;24observations including16unknown; writeFailures0. Latest recorded interval endpoint16:09:31.950UTC. | Consumption over explicit independent session intervals, which may span invocations. Cached input is included in total input. First resumed/legacy/identity-missing snapshots are excluded; raw81M/140M historical counters are not current consumption. Cost is unknown, including when a numeric summary cost field is0. Not an aligned before/after comparison. |
+| Side replies | Old runSide parsed answers/errors without accounting.03c236f wires emitted usage through the existing decoder/monitor on close, including failed/timeout exits; callback errors cannot change the answer. Actual thread identity is required before a new-thread zero baseline. |6fake-subprocess/decoder tests and76integration tests pass. Read-only16:23:49UTC query found no ordinary bot-side-reply rows yet. Live code presence is not organic coverage or savings proof; absent usage remains unknown. |
+| Tools, retries and host pressure |217failed-tool rows:6explicitly synthetic and211generic;84turns contain generic failures, maximum10per turn. Runaway readlink host measurements and post-termination memory recovery are in the historical record. | One proven host resource fault, plus bounded failure prevalence. Generic metadata cannot identify repeated commands, production-only traffic or a retry root cause. No raw private command/transcript content was read. No arbitrary retry suppression is justified. |
+| Delegation, wakes and publication | Real reviewer completion delivered once; no pending return at readback. Main30min/idle10min and side90s timers request SIGTERM. Nudge kinds have10min cooldown; testing-link correction cap2; no total correction-chain budget. One cutover coordination cycle waited for a coordinator that itself waited for cutover; ending its reply allowed natural idle. | Actual completion receipt and concrete coordination hazard. Timer/cooldown source is not useful-result proof or guaranteed process termination.47unmatched steer_persisted rows lack terminal/read coverage; they are not47proven lost messages. Temporary continuation routines were removed after readback; none substitutes for this report. |
+| Elapsed time and outcomes |188completed turns: mean124.6s, maximum1606s (26min46s),9at least10min, none at least30min. Snapshot377turn rows/259request-linked,2672tool rows/2197linked,59delivery rows/57linked. | Representative long-work case is the26min46s completed turn;9/188were at least10min. These are lifecycle outcomes, not9failed or9useful results. Incomplete linkage prevents a reliable task-success rate. The two-hour host lookup is a separate host fault, not that turn's measured cause. |
+| Reply clarity and visible progress | Recorded owner folder-correction case: finetune/finecut/finetuned were acknowledged with wrong names and no location (TF-151).31e6b2f sends clear short corrections verbatim through the existing inbox before side response. Historical missing Codex progress was reproduced; a964b65 preserves publication checks and one final. termfleet-say still only prints success; top-level summary extraction is truncated140characters and can miss nested/batched calls (TF-150). | Confirmed transport/presentation defects and an observed unclear-answer case; not a general semantic score.101suite includes actual isolated HTTP correction transport and headless390/1400 progress/final checks with fake provider/daemon. It does not prove organic installed progress, corrected-folder meaning or phone acceptance. Whitespace reflow cannot repair meaning. |
+| Installed runtime |03c236f loaded16:17:05.433UTC, PID2845687, digest f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108; independently matched16:22:49UTC. Contains355afae,a964b65,31e6b2f,de86aaf,6385762. Daemon2068834, terminal/conversation identities and original chat prefixes retained by coordinated activation. | Exact loaded source, not disk HEAD alone. Unpaused, no active/retained/delivery work in the observation. Installed panel8cards/8resolution buttons/nooverflow at16:12:45 proves controls, not semantic correctness. No new restart, provider trial or visible screen control for this audit reconciliation. |
+
+## Priorities after the completed audit
+
+1. **High: replace the false progress receipt (TF-150).** Use a pane-bound durable
+   receipt. Nested/batched/long output must be exact or explicitly fail; preserve
+   final publication and deduplication. The successful shell exit currently proves
+   neither visibility nor delivery. This remains a repair candidate, not shipped.
+2. **High: prevent recurrence of the host path fault.** Verify the installed Claude
+   executable and symlink ownership, then repair the exact bad link and bound path
+   resolution. Do not rerun unbounded canonicalization or stop a parent conversation.
+   The old process was removed; recurrence prevention remains unproved.
+3. **High: repair the token-drain script/skill mismatch.** Implement or remove its
+   undocumented interval/JSON contract, reuse trusted snapshot semantics, and test
+   resumed/unknown/cache/reasoning cases without inference. Do not use its existing
+   totals for billing, fixed overhead or savings. Current bot recorder is separate.
+4. **Medium: bound repeated corrections by request and failure cause**, only after
+   identifying a repeated chain. Offline falsification must preserve fresh owner
+   input, legitimate new helper completions, pending work and permission prompts.
+   Current generic failure counts justify diagnosis, not disabling protections.
+5. **Medium: consolidate repeated instructions with owner review.** Preserve all
+   authority and verification rules and prove lossless reconstruction. Payload
+   reduction alone does not prove fewer tokens or clearer answers.
+
+Already shipped: caller propagation, explicit helper origin, intermediate progress,
+exact short-correction forwarding, interval accounting and side usage recording.
+Their remaining ordinary-use checks are separate product acceptance, not missing
+audit sections. Use normal authorized work; no synthetic/live improvement search
+or paid counterfactual is needed to complete this review.
+
+## Readable evidence and delivery
+
+- Existing report: this file (original committed audit af32bf6, now reconciled).
+- Current exact affected-suite output: `/tmp/termfleet-exact-03c236f.tap`,101/101;
+  canonical caller/delivery36/36 and side integration76/76 are earlier narrower
+  evidence, not additional101tests or independent production trials.
+- Actual supported readbacks: `/tmp/termfleet-reviewer-observation.mjs` and
+  `/tmp/termfleet-token-live-readback.mjs`; metadata only, authenticated local
+  embedded route, no credential-store reading or provider requests.
+- Activation records: existing owner backup
+  `/home/endlessblink/.config/termcontrol/maintenance-backups/side-usage-03c236f-20261028T161703Z/released.json`
+  and `after.json`; execution log `/tmp/termfleet-side-usage-cutover.log`.
+- Measurement definitions and interval endpoints:
+  [token-reduction-measurement.md](token-reduction-measurement.md).
+- Ordinary result-return try:
+  [existing reviewer conversation](https://control.in-theflow.com/#bot:767d3792e7b8).
+
+Why the prior response stopped: the report existed, but its original snapshot was
+not reconciled with the later caller/measurement findings, and audit completion
+was incorrectly coupled to future product savings/semantic acceptance. A real
+completion event had reached the reviewer, while the final reply pointed to
+scattered plan notes rather than this consolidated report. This revision and
+explicit report-path delivery remedy that handoff failure. No scheduled wake is
+substituted for delivery, and no universal product-completion claim is made.
+
+## Historical baseline — superseded status, retained observations
 
 ## What the evidence establishes
 
