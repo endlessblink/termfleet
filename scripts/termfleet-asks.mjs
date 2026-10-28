@@ -31,7 +31,7 @@ import { mergeHookResults, projectSyncHook } from './lib/agent-sync-hook.mjs';
 import { stripOpenRequestReminder } from '../termcontrol/bridge/bot-request-panel.mjs';
 import { testingHandoffProblem, readyThisTurn } from '../termcontrol/bridge/bot-testing.mjs';
 import {
-  captureMessage, ownerTextOf, projectOf, stopProblem, escalate, briefedIds, briefItems, briefBlock, ledgerDir,
+  captureMessage, ownerTextOf, stripMachinePrompt, projectOf, stopProblem, escalate, briefedIds, briefItems, briefBlock, ledgerDir,
   markItem, record, addTopic, setTopicVisual, normId, itemsView, itemsText, evidenceProblem, answerProblem, loadLedger, clip as clipItem,
 } from '../termcontrol/bridge/requirements.mjs';
 import { writeRequestDoc, requestDocsDir } from '../termcontrol/bridge/request-docs.mjs';
@@ -58,7 +58,10 @@ const textOf = (content) => typeof content === 'string' ? content
   : Array.isArray(content) ? content.filter((b) => ['text', 'input_text', 'output_text'].includes(b?.type)).map((b) => b.text || '').join('\n') : '';
 
 /** Text the harness or a hook puts in a user turn is not Noam speaking. */
-export const injected = (text) => /^\s*(<(system-reminder|agent-message|command-|local-command|task-notification|user-prompt-submit-hook|environment_context|user_instructions|turn_aborted)|\[SYSTEM NOTIFICATION|\[Message from (the agent|the bot|an orchestrating)|Caveat:|# AGENTS\.md|This session is being continued from a previous conversation|\[Request interrupted)/i.test(text);
+export const injected = (text) => {
+  const own = stripMachinePrompt(text);
+  return (Boolean(String(text || '').trim()) && !own) || /^\s*(<(hook_prompt|system-reminder|agent-message|command-|local-command|task-notification|user-prompt-submit-hook|environment_context|user_instructions|turn_aborted)|\[SYSTEM NOTIFICATION|\[Message from (the agent|the bot|an orchestrating)|Caveat:|# AGENTS\.md|This session is being continued from a previous conversation|\[Request interrupted)/i.test(own);
+};
 
 /** A short yes/go/continue is an answer, not a new request. */
 export const acknowledgement = (text) => {
@@ -152,19 +155,19 @@ function applyLines(state, lines) {
     if (o?.isSidechain || o?.isMeta) continue;
     if (o?.type === 'attachment' && o.attachment?.type === 'queued_command' && (o.attachment.origin?.kind === 'human' || o.attachment.humanTurn === true)) {
       const p = o.attachment.prompt;
-      const text = stripOpenRequestReminder(typeof p === 'string' ? p : Array.isArray(p) ? p.filter((b) => b?.type === 'text').map((b) => b.text).join('\n') : '');
+      const text = stripMachinePrompt(stripOpenRequestReminder(typeof p === 'string' ? p : Array.isArray(p) ? p.filter((b) => b?.type === 'text').map((b) => b.text).join('\n') : ''));
       if (text && !injected(text) && !acknowledgement(text)) asks.push({ n: asks.length + 1, text, at: o.timestamp || null, status: 'open', note: '' });
       continue;
     }
     if (o?.type === 'user') {
       const content = o.message?.content;
       if (Array.isArray(content) && content.some((b) => b?.type === 'tool_result')) continue;
-      const text = stripOpenRequestReminder(textOf(content));
+      const text = stripMachinePrompt(stripOpenRequestReminder(textOf(content)));
       if (text && !injected(text) && !acknowledgement(text)) asks.push({ n: asks.length + 1, text, at: o.timestamp || null, status: 'open', note: '' });
     } else if (o?.type === 'assistant' && Array.isArray(o.message?.content)) {
       for (const b of o.message.content) if (b?.type === 'tool_use') marks.push(...parseMarks(commandOf(b.input)));
     } else if (o?.type === 'response_item' && o.payload?.type === 'message' && o.payload.role === 'user') {
-      const text = stripOpenRequestReminder(textOf(o.payload.content));
+      const text = stripMachinePrompt(stripOpenRequestReminder(textOf(o.payload.content)));
       if (text && !injected(text) && !acknowledgement(text)) asks.push({ n: asks.length + 1, text, at: o.timestamp || null, status: 'open', note: '' });
     } else if (o?.type === 'response_item' && ['function_call', 'local_shell_call', 'custom_tool_call'].includes(o.payload?.type)) {
       marks.push(...parseMarks(commandOf(o.payload.arguments ?? o.payload.action ?? o.payload.input)));
@@ -425,7 +428,7 @@ export function hook(payload, { readLines = null, env = process.env, cacheDir } 
   }
 
   if (/^UserPromptSubmit$/i.test(event) || event === 'user_prompt_submit') {
-    const prompt = stripOpenRequestReminder(payload.prompt ?? payload.user_prompt ?? '');
+    const prompt = stripMachinePrompt(stripOpenRequestReminder(payload.prompt ?? payload.user_prompt ?? ''));
     let newest = null;
     // The new message is not in the record yet when this runs.
     if (prompt && !injected(prompt) && !acknowledgement(prompt) && !asks.some((a) => a.text === prompt && a === asks.at(-1))) {

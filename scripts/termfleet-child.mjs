@@ -19,6 +19,7 @@ import { basename, join, resolve } from "node:path";
 import { paneSidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
 import { ancestors, argv as procArgv, isProviderProcess } from "./lib/single-chat-owner.mjs";
 import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
+import { HELPER_TASK_PREFIX } from "../termcontrol/bridge/requirements.mjs";
 import { findTranscript } from "./lib/handoff-user-words.mjs";
 import { enumerateSessionSourceJournals } from './lib/session-event-journal.mjs';
 import { createHandoffCapsule, handoffTask, capsuleFreshness } from "./lib/handoff-capsule.mjs";
@@ -172,7 +173,7 @@ function resolveTask(options) {
     // Long text never rides on a command line: the child reads it from a private file.
     const dir = join(root, "child-tasks");
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const file = join(dir, `${randomUUID()}.md`);
+    const file = join(dir, `${HELPER_TASK_PREFIX}${randomUUID()}.md`);
     writeFileSync(file, text, { mode: 0o600 });
     // A bare "Read <file>" pointer names no work, so the card had nothing to show as the
     // helper's Goal and fell back to the agent's own guess (report 2026-10-14). The goal

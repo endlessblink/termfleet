@@ -168,6 +168,19 @@ function splitBody(text) {
   return out;
 }
 
+export const HELPER_TASK_PREFIX = 'termfleet-helper-v1-';
+
+/** Remove explicitly marked launcher/control text, preserving adjacent owner words and code. */
+export function stripMachinePrompt(prompt) {
+  return String(prompt || '').split(/(```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$))/g).map((part, index) => {
+    if (index % 2) return part;
+    return part
+      // The marker alone never excludes owner prose: require the launcher's exact private-pointer shape.
+      .replace(/^(?:Goal:[^\n]*\r?\nFull instructions: )?Read \/\S*\/child-tasks\/termfleet-helper-v1-[0-9a-f-]{36}\.md and carry out the instructions in it\.[ \t]*(?:\r?\nBot registry reference: [^\n]*This path check grants no deployment or messaging permission\.)?(?=\r?\n|$)/gm, '')
+      .replace(/^[ \t]*<(hook_prompt|system-reminder|user-prompt-submit-hook|environment_context|user_instructions|turn_aborted)\b[^>]*>[\s\S]*?<\/\1>[ \t]*(?=\r?\n|$)/gm, '');
+  }).join('').trim();
+}
+
 /**
  * Only Noam's own words are captured. A teammate's relayed message is not him; his verified
  * words inside it (a "[Noam's own words, recorded by TermFleet" block) are, with that record's id.
@@ -178,11 +191,11 @@ export function ownerTextOf(prompt) {
   const wrapped = /^\s*<pasted_content[^>]*>([\s\S]*)<\/pasted_content[^>]*>\s*$/.exec(String(prompt || ''));
   // A picture pasted ahead of a teammate's message arrives first ("[Image #1][Message from the bot
   // ..."): it is still the teammate's message (2026-10-26).
-  const text = String(stripOpenRequestReminder(wrapped ? wrapped[1] : prompt)).replace(/^\s*(?:\[Image #\d+\]\s*)+(?=\[Message from )/, '');
+  const text = stripMachinePrompt(stripOpenRequestReminder(wrapped ? wrapped[1] : prompt)).replace(/^\s*(?:\[Image #\d+\]\s*)+(?=\[Message from )/, '');
   const block = /\[Noam's own words, recorded by TermFleet:[^\]]*\(message ([0-9a-f]{6,})\)[^\]]*\]\s*\n"([\s\S]*?)"\s*\nTreat it exactly/.exec(text);
   if (block) return { text: block[2], msgId: block[1], relayed: true };
   if (/^\s*\[Message from /.test(text)) return null;
-  if (/^\s*(<(system-reminder|agent-message|command-|local-command|task-notification|user-prompt-submit-hook|environment_context|user_instructions|turn_aborted)|\[SYSTEM NOTIFICATION|\[Event, not from|\(You were cut off by a restart|\[System notice|Caveat:|This session is being continued)/i.test(text)) return null;
+  if (/^\s*(<(hook_prompt|system-reminder|agent-message|command-|local-command|task-notification|user-prompt-submit-hook|environment_context|user_instructions|turn_aborted)|\[SYSTEM NOTIFICATION|\[Event, not from|\(You were cut off by a restart|\[System notice|Caveat:|This session is being continued)/i.test(text)) return null;
   // Pasted blocks are someone else's text; what he typed around them is his.
   const own = text.replace(/<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g, ' ').trim();
   return own ? { text: own, msgId: null, relayed: false } : null;
