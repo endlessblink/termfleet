@@ -14,14 +14,14 @@ function setup(t) {
   const { bot } = bots.create({ name: 'Quill', cwd: os.tmpdir() });
   fs.writeFileSync(path.join(bots.folder(bot.id), 'helpers.json'), JSON.stringify([{ paneId: 'terminal-h', task: 'review' }]));
   const receipts = new ChoiceReceipts(path.join(dir, 'receipts.json'));
-  const wakes = [];
+  const wakes = [], notices = [];
   bots.wake = (_id, text) => wakes.push(text);
   const ask = { id: 'vendor-question-1', kind: 'question', title: 'Which result?', options: [{ key: '1', label: 'First' }, { key: '2', label: 'Second' }] };
-  const poll = (question = ask, seen = new Map()) => checkBotEvents({ bots, seen, now: Date.now(),
+  const poll = (question = ask, seen = new Map(), now = Date.now()) => checkBotEvents({ bots, seen, now,
     panes: [{ id: 'terminal-h', provider: 'codex', sessionId: 'session-1', turn: 'waiting' }],
-    readAsk: async () => question, readCompletion: () => ({ unresolved: 'not needed for question admission' }), notify: () => {},
+    readAsk: async () => question, readCompletion: () => ({ unresolved: 'not needed for question admission' }), notify: notice => notices.push(notice),
     readAnswerReceipt: (pane, id) => receipts.get(pane, id) });
-  return { bots, bot, receipts, wakes, ask, poll };
+  return { bots, bot, receipts, wakes, notices, ask, poll };
 }
 
 test('an asked unanswered question stays findable without another automatic wake, including a fresh polling cursor', async t => {
@@ -70,4 +70,13 @@ test('a definitely not-sent answer never suppresses the unanswered question', as
   await receipts.send('terminal-h', ask.id, '1', async () => ({ error: 'not sent', notSent: true }));
   await poll();
   assert.equal(wakes.length, 1);
+});
+test('an unanswered question remains available after five minutes without an automatic reask notification', async t => {
+  const { bots, bot, wakes, notices, ask, poll } = setup(t);
+  await poll();
+  await poll(ask, new Map(), Date.now() + 6 * 60_000);
+  assert.equal(wakes.length, 1);
+  assert.equal(notices.length, 1, 'only the first genuinely new question notifies');
+  assert.equal(bots.messages(bot.id).filter(m => m.role === 'reminder').length, 0);
+  assert.equal(bots.view(bot.id).messages.filter(m => m.role === 'terminal-ask' && !m.settled).length, 1);
 });

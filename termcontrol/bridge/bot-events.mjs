@@ -277,12 +277,12 @@ export async function checkBotEvents({ bots, panes, available = true, now = Date
         } else if (ask?.id) {
           if (open) settleTerminalAsk(bots, b.id, open.id, {});
           open = bots.append(b.id, { ...terminalAskMessage(h.paneId, label, ask), promptState: 'active', provider: pane.provider, sessionId: pane.sessionId });
-          bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are pinned at the bottom of his chat with you until he answers, his phone was notified, and he is reminded after 5 minutes; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
+          bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are pinned at the bottom of his chat with you until he answers, his phone was notified${ask.kind === 'question' ? '' : ', and he is reminded after 5 minutes'}; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
           alert({ title: `${b.name}: a terminal is waiting for you`, body: `"${label}" asks: ${String(ask.title || '').slice(0, 160)}`, url: `/#bot:${b.id}` });
         }
         // Unanswered: remind him after 5 minutes, then every 15, up to MAX_REMINDERS times.
         // After that, stop — hours of buzzing is noise, not signal.
-        if (open?.at) {
+        if (open?.at && open.kind !== 'question') {
           const count = Number(open.reminderCount || 0);
           if (count < MAX_REMINDERS) {
             const last = Number(open.remindedAt || open.at);

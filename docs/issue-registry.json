@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T15:20:29.699Z",
+  "updatedAt": "2026-10-28T15:30:25.842Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15975,8 +15975,8 @@
         },
         {
           "kind": "source",
-          "at": "2026-10-28T15:20:29.699Z",
-          "note": "Additional confirmed source gap: side-reply.mjs runSide launches a separate ephemeral Codex process, parses only reply/error, and has no usage/traceTokenUsage path; bots.sideAnswer passes no usage callback. Main runBrain records usage separately. Thus quick status responses are outside current local consumption coverage. Candidate: record distinct side/main surface provenance from real completed usage, retain missing/failed usage as unknown, add fake side-stream regressions before change. No provider session launched by this diagnosis."
+          "at": "2026-10-28T15:30:25.842Z",
+          "note": "Corrected recorder39223b2 loaded PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044 at15:21:30.550UTC. Health writeFailures0. Ten historical observations remain unknown/excluded;0 proven intervals at activation, not zero consumption. Await same-session normal-work endpoints and aligned savings comparison; no inference trials."
         }
       ],
       "owner": "termfleet",
@@ -16051,6 +16051,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "Additional confirmed source gap: side-reply.mjs runSide launches a separate ephemeral Codex process, parses only reply/error, and has no usage/traceTokenUsage path; bots.sideAnswer passes no usage callback. Main runBrain records usage separately. Thus quick status responses are outside current local consumption coverage. Candidate: record distinct side/main surface provenance from real completed usage, retain missing/failed usage as unknown, add fake side-stream regressions before change. No provider session launched by this diagnosis."
+        },
+        {
+          "at": "2026-10-28T15:30:25.842Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Corrected recorder39223b2 loaded PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044 at15:21:30.550UTC. Health writeFailures0. Ten historical observations remain unknown/excluded;0 proven intervals at activation, not zero consumption. Await same-session normal-work endpoints and aligned savings comparison; no inference trials."
         }
       ]
     },
@@ -16072,8 +16078,8 @@
         },
         {
           "kind": "source",
-          "at": "2026-10-28T15:20:05.464Z",
-          "note": "Card/nav/history share durable questionResolution; explicit Already answered action never launches a model or sends terminal input. Existing answer receipts block exact automatic re-admission; no age or arbitrary later-reply suppression."
+          "at": "2026-10-28T15:30:25.645Z",
+          "note": "39223b2 activated2026-10-28T15:21:30.550Z PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044. Own hold released, daemon2068834 and exact cutover terminal/conversation identities/chat prefixes retained. Real authenticated panel15:29:14Z shows8 from original9; known exact legacy answer excluded. Eight ambiguous retained, Already answered action present8 times. Screenshot /tmp/termfleet-question-panel-installed.png SHA4eab725e940ce973685ecdff402f67c33c8ccb83fbf715d36158bbf8dba17648; independent visual count8/legible/no horizontal clipping, lower4 rows outside crop."
         }
       ],
       "owner": "termfleet",
@@ -16130,6 +16136,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "Card/nav/history share durable questionResolution; explicit Already answered action never launches a model or sends terminal input. Existing answer receipts block exact automatic re-admission; no age or arbitrary later-reply suppression."
+        },
+        {
+          "at": "2026-10-28T15:30:25.645Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "39223b2 activated2026-10-28T15:21:30.550Z PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044. Own hold released, daemon2068834 and exact cutover terminal/conversation identities/chat prefixes retained. Real authenticated panel15:29:14Z shows8 from original9; known exact legacy answer excluded. Eight ambiguous retained, Already answered action present8 times. Screenshot /tmp/termfleet-question-panel-installed.png SHA4eab725e940ce973685ecdff402f67c33c8ccb83fbf715d36158bbf8dba17648; independent visual count8/legible/no horizontal clipping, lower4 rows outside crop."
         }
       ]
     }
