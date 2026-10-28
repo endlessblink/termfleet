@@ -1238,6 +1238,13 @@ const handle = async (req, res) => {
         const freshScreen = fresh ? live ?? visible ?? '' : '';
         const freshAsk = fresh && (pendingAsk(fresh, { screen: freshScreen }) || screenPermissionAsk(fresh, freshScreen));
         if (fresh && !String(live ?? '').trim()) return json(res, 503, { error: 'The current terminal question could not be verified. Your answer was not sent.', notSent: true });
+        // Vendor/status records can outlive their approval and leave the same
+        // card over a draft or shell. They never authorize a key by themselves.
+        // Require the same permission parsed from the daemon's current screen,
+        // including status fallbacks without a vendor timestamp or tool ID.
+        if (fresh?.provider === 'claude' && freshAsk?.kind === 'permission' && screenPermissionAsk(fresh, live)?.id !== freshAsk.id) {
+          return json(res, 409, { error: 'This permission is not verified on the current terminal screen. Your answer was not sent; check the terminal.', notSent: true });
+        }
         if (!fresh || !freshAsk || freshAsk.id !== payload.askId) retireTerminalPrompt(bots, payload.pane, payload.askId);
         // A typed answer whose question is gone (answered at the PC, or withdrawn) still
         // reaches the agent, as a normal message. If another question is open instead, it

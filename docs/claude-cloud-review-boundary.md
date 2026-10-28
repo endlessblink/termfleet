@@ -3,7 +3,8 @@
 This is a concrete proposal for one bounded code review, not an authorization to
 start it. No cloud session, upload, account change, payment, or live financial
 verification has been performed. TermFleet's current all-Claude denial remains
-in force. The frozen local review input is unchanged.
+in force. The earlier disposable input is a historical candidate and must be
+refrozen against current source before an approved upload.
 
 ## What the documented account controls do
 
@@ -130,3 +131,67 @@ turn for a read-only result operation.
 No implementation or cloud trial is proposed as already complete. The safe next
 review is this configuration and capability design together with the frozen task;
 actual account checks and any narrowly authorized execution remain owner gates.
+
+## Concrete preparation handoff — 2026-10-28
+
+State: **in_progress**, preparation only. Context owner retains the task; the
+provider-policy owner controls launch authorization. Preserve the existing
+unanswered owner approval R19277; do not create another approval card or move
+credentials. No cloud call, upload, billing change or paid fallback is authorized.
+
+The first candidate is one read-only review of the provider policy and context
+transaction, returning findings and proposed regression tests, with no edits,
+merge, deployment, helper starts or external actions. Freeze only these source
+files and the review task in a new disposable repository with no remote and one
+synthetic initial commit; include each source hash and original revision in the
+task. Do not copy the shared checkout's git history, credentials, vault content,
+transcripts, unrelated files or local configuration:
+
+- scripts/lib/provider-launch-policy.mjs
+- termcontrol/bridge/provider-context.mjs
+- termcontrol/bridge/bots.mjs
+- termcontrol/test/provider-context.test.mjs
+- termcontrol/test/provider-context-runtime.test.mjs
+- termcontrol/test/bot-provider.test.mjs
+- tests/provider-launch-policy.test.mjs
+- tests/provider-launch-boundaries.test.mjs
+
+The earlier local candidate under `/tmp/termfleet-cloud-review-20261028`, synthetic
+revision `ddbe2afd5e1f31556cfa700c28f3b223c0317e51`, is stale; it is not current
+review input or an approved upload. Recreate its explicit allowlist only after
+source freeze. The supported submission shape below is documentation, **not a
+command to execute now**; its working directory must be the newly checked package:
+
+```bash
+claude --cloud "Read REVIEW_TASK.md and review only the listed files. Return evidence-based findings and proposed tests. Do not edit, deploy, publish, merge, start helpers or take external actions."
+```
+
+No-remote repositories use a local bundle. Official documentation says a full
+clone can upload history across all branches and tracked dirty files, which is
+why the shared checkout must never be the working directory for this candidate.
+[Official bundle behavior](https://code.claude.com/docs/en/claude-code-on-the-web#send-local-repositories-without-github)
+
+The exact missing financial control is a **provider-enforced stop before bonus
+exhaustion can consume regular allowance**. Current official rules describe
+fallback to regular plan usage, not that stop. Usage credits OFF and auto-reload
+OFF address additional charges, but neither proves bonus-only use; account state
+is still owner-unverified. Do not substitute polling, a prompt, an API budget flag
+or a positive bonus balance for an enforceable cutoff.
+[Promotion rules rechecked 2026-10-28](https://support.claude.com/en/articles/17152539-cloud-sessions-bonus-credit-promotion)
+
+The exact missing capability control is a separately protected broker/OS identity
+with no agent-readable account credential or unrestricted authenticated browser,
+exposing only fixed-package submit, same-session receipt and bounded result read.
+The result-only provider transport is itself unproven. Account settings and
+credential isolation require the existing owner-only approval and a safe agreed
+cutover, followed by provider-free capability rejection tests. Approval alone
+would not prove a bonus-only cutoff. While strict bonus-only remains required,
+absence of that mechanism means no submission.
+
+For later result verification, bind the accepted session ID to the approved
+package/task hashes, distinguish queued receipt from completed findings, verify
+every finding locally on that frozen source, and keep unknown or unavailable
+results explicit. No receipt means retry diagnosis, never a second session or
+paid fallback. Manual owner reading of the canonical session URL is the present
+proposal; teleport is not a cloud result reader and must not modify this dirty
+checkout. These live account, submit and result steps remain untested.

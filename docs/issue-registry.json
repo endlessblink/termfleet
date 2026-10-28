@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T07:00:29.807Z",
+  "updatedAt": "2026-10-28T07:17:26.456Z",
   "issues": [
     {
       "id": "TF-001",
@@ -14645,6 +14645,85 @@
           "type": "evidence",
           "kind": "source",
           "note": "OnlyanswerScreenChoice rejects unavailable freshreads; scoped43bdda3, sendSHA96035d99ce97b2b82f4719df8ab164b2a412962f85115faca5783f2c4c9b443f. Authenticated GET readbackPID1086383 loaded06:59:41.541UTC twelvefileSHA8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0 matchesdisk. No liveprompt experiment, F09/F18notcovered."
+        }
+      ]
+    },
+    {
+      "id": "TF-132",
+      "title": "Refuse stale Claude approvals",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Status-only approval can send Enter into an unrelated live draft",
+      "rootCause": "Synthetic permission survives without matching live screen",
+      "guard": "Isolated HTTP daemon regression asserts zero writes and valid screen choices",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T07:17:25.612Z",
+          "note": "Seven-line Claude permission guard compares fresh parsed daemon-screen ID before any new receipt/input; independent review no blocker. MCP-masked screens conservatively refuse; atomic compare-write remains open."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T07:17:25.987Z",
+          "note": "Isolated HTTP dated/undated vendor draft/shell wrote Enter before fix. After fix29/29 across vendorHTTP/vendorAsk/screen/receipt/sendOnce/typedAnswer, including native question flow; no real inputs or models."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reproduce stale status approval before minimal live-screen guard",
+      "history": [
+        {
+          "at": "2026-10-28T07:11:34.212Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T07:14:12.793Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Two isolated vendor status cases returned HTTP200 and wrote into draft/shell before fix; timestamp-less status covered. Existing unknown and replacement menu refusals preserved."
+        },
+        {
+          "at": "2026-10-28T07:14:13.110Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T07:17:24.125Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T07:17:24.905Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T07:17:25.612Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Seven-line Claude permission guard compares fresh parsed daemon-screen ID before any new receipt/input; independent review no blocker. MCP-masked screens conservatively refuse; atomic compare-write remains open."
+        },
+        {
+          "at": "2026-10-28T07:17:25.987Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Isolated HTTP dated/undated vendor draft/shell wrote Enter before fix. After fix29/29 across vendorHTTP/vendorAsk/screen/receipt/sendOnce/typedAnswer, including native question flow; no real inputs or models."
+        },
+        {
+          "at": "2026-10-28T07:17:26.455Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": null
         }
       ]
     }
