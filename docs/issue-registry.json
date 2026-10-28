@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T09:40:21.833Z",
+  "updatedAt": "2026-10-28T09:42:01.995Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15290,18 +15290,18 @@
       "guard": "node --test termcontrol/test/held-integrity.test.mjs termcontrol/test/held-quarantine.test.mjs",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-10-28T09:29:25.457Z",
-          "note": "b8ce057 loaded PID2163220 at09:28:41UTC,18module5c02b70d matches authenticated GET200/unauth401;2terminal10bot unchanged; real held queues0. Actual /tmp/termfleet-f16-activation.log and loaded-readback.json. Natural owner receipt not claimed."
-        },
-        {
           "kind": "focused-test",
           "at": "2026-10-28T09:40:21.832Z",
           "note": "Retention extension /tmp/termfleet-f16-quarantine-red.tap 1pass3fail before production; /tmp/termfleet-f16-quarantine-combined.tap63/63 PASS. Exact bytes, age/dead/sleep, returned target, process death and SQL-before-ack restart; no real held trial. Prior live5c02b70d remains historical until activation."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T09:42:01.995Z",
+          "note": "Retention35c9acd loaded PID2252271 at09:41:08UTC;18module8d3ea43c authenticated200 matches,unauth401. /tmp/termfleet-f16-quarantine-activation.log and loaded-readback.json;3terminal10bot unchanged,queues0,daemon retained. No actual held mutation/replay or natural owner proof."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Freeze and activate reviewed quarantine only over an empty real held queue; verify loaded source and unchanged conversations. Observe natural internal delivery status/owner proof; quarantined targets require explicit authorized maintenance, never replay or expiry.",
+      "nextAction": "Observe naturally occurring quarantine and internal status/owner-facing acceptance without live failure injection. Any recovery needs explicit scoped authorization, quiesced senders and hash/target/actual-receipt reconciliation; six quota/cloud gates remain pending.",
       "history": [
         {
           "at": "2026-10-28T09:16:01.724Z",
@@ -15360,6 +15360,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Retention extension /tmp/termfleet-f16-quarantine-red.tap 1pass3fail before production; /tmp/termfleet-f16-quarantine-combined.tap63/63 PASS. Exact bytes, age/dead/sleep, returned target, process death and SQL-before-ack restart; no real held trial. Prior live5c02b70d remains historical until activation."
+        },
+        {
+          "at": "2026-10-28T09:42:01.995Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Retention35c9acd loaded PID2252271 at09:41:08UTC;18module8d3ea43c authenticated200 matches,unauth401. /tmp/termfleet-f16-quarantine-activation.log and loaded-readback.json;3terminal10bot unchanged,queues0,daemon retained. No actual held mutation/replay or natural owner proof."
         }
       ]
     }
