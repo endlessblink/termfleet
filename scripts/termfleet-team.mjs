@@ -45,7 +45,7 @@ import {
 } from '../termcontrol/bridge/orchestrate.mjs';
 import { endFollows } from '../termcontrol/bridge/follows.mjs';
 import { resolveCaller } from './termfleet-child.mjs';
-import { explainProviderRoute } from './lib/task-router.mjs';
+import { assertProviderLaunch } from './lib/provider-launch-policy.mjs';
 import { findOwnerWords, recentOwnerWords } from '../termcontrol/bridge/owner-words.mjs';
 import { Routines, describeDays } from '../termcontrol/bridge/routines.mjs';
 import { screenOf } from '../termcontrol/bridge/liveness.mjs';
@@ -77,6 +77,8 @@ export function recordHelper(helper, env = process.env) {
 import { requestDaemon, defaultDaemonSocket } from './termfleetctl.mjs';
 import { briefItems, briefBlock, newDeliveryId, normId, idsIn, record as recordRequirement, loadLedger } from '../termcontrol/bridge/requirements.mjs';
 import { confirmReceipt, confirmStarted, trustDecision } from '../termcontrol/bridge/delivery.mjs';
+import { recordActionEvidence } from '../termcontrol/bridge/events-db.mjs';
+import { recordTeamDelivery } from '../termcontrol/bridge/action-evidence.mjs';
 import { adapterFor } from '../termcontrol/bridge/feed.mjs';
 import { PATHS } from '../termcontrol/bridge/paths.mjs';
 import { mkdirSync } from 'node:fs';
@@ -311,13 +313,17 @@ async function main(argv) {
     const since = Date.now();
     const wasBusy = pane.turn === 'working' || pane.producing === true;
     const sent = await delegate(pane, text, { from, ownerWords, requirements, delivery });
-    if (sent.error) fail(sent.message || sent.error);
+    if (sent.error) {
+      recordTeamDelivery(recordActionEvidence, { bot_id: process.env.TERMFLEET_BOT_ID, terminal_id: pane.id, session_id: pane.sessionId || null, delivery, request_ids: reqs.ids, state: 'failed' });
+      fail(sent.message || sent.error);
+    }
     // Delivered means received: the mark is in its conversation, or it started a turn. A message
     // held for a busy Codex agent goes in, with any others, the moment its turn ends.
     const receipt = sent.held
       ? { received: false, queued: true, notes: [], message: 'it is in the middle of a turn, so the message is held and handed to it, together with any others, as soon as that turn ends.' }
       : await confirmReceipt(pane, { token: `[delivery ${delivery}]`, wasBusy, timeoutMs: (Number(flags['receipt-timeout']) || 25) * 1000, deps: receiptDeps() });
     for (const note of receipt.notes) out(note);
+    recordTeamDelivery(recordActionEvidence, { bot_id: process.env.TERMFLEET_BOT_ID, terminal_id: pane.id, session_id: pane.sessionId || null, delivery, request_ids: reqs.ids, state: receipt.received ? 'received' : receipt.queued ? 'queued' : 'failed' });
     const name = pane.profile?.name || pane.project;
     if (!receipt.received && !receipt.queued) {
       recordInBot({ role: 'handoff', pane: pane.id, to: name, text: `NOT delivered: ${receipt.message}`.slice(0, 600) });
@@ -385,15 +391,9 @@ async function main(argv) {
     // Every terminal gets a plain name: on its map card and in TermControl's list (complaint #17).
     const startName = terminalName(flags.name, taskText);
     if (startName && typeof flags.title !== 'string') flags.title = startName;
-    // Codex unless the task itself needs Claude (Noam 2026-10-26, complaint #19: 41 of 43 bot helpers
-    // in three days were started in Claude by a bare --provider claude the router would not pick).
-    if (ownDir && flags.provider === 'claude') {
-      const route = explainProviderRoute(taskText);
-      if (route.provider !== 'claude') {
-        flags.provider = 'codex';
-        out('Starting in Codex: new terminals run in Codex unless the task needs Claude. If it does, say so in the task (for example "use Claude: it handles a conversation").');
-      }
-    }
+    // Reject explicitly; silently rewriting a prohibited choice hides the denial.
+    try { assertProviderLaunch(flags.provider, { surface: 'team-start' }); }
+    catch (error) { fail(error.message, 4); }
     const reqs = taskText ? requirementIds(flags, taskText, { selfId }) : { ids: [] };
     if (reqs.error) fail(reqs.error);
     const delivery = taskText ? newDeliveryId() : null;
@@ -428,6 +428,7 @@ async function main(argv) {
       if (taskText && flags['no-wait'] !== true) {
         const started = await confirmStarted(made.childPaneId, { token: `[delivery ${delivery}]`, timeoutMs: (Number(flags['start-timeout']) || 90) * 1000, deps: receiptDeps() });
         for (const note of started.notes) out(note);
+        recordTeamDelivery(recordActionEvidence, { bot_id: process.env.TERMFLEET_BOT_ID, terminal_id: made.childPaneId, delivery, request_ids: reqs.ids, state: started.started ? 'received' : 'failed', started: started.started });
         if (!started.started) {
           recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: `NOT started: ${started.message}`.slice(0, 600) });
           fail(`The new terminal (${made.childPaneId}) did NOT start its task. ${started.message}`, 3);

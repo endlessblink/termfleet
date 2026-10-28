@@ -9,6 +9,8 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
+import { createHash } from 'node:crypto';
+import { retrieveActionEvidence } from './action-evidence.mjs';
 import { getTokenSummary } from './token-monitor.mjs';
 import { canvasSidebarView, listPanes, reconcileLivePanes, readWorkspace, inventoryVersion } from './inventory.mjs';
 import { rolloutForStart, promptToken } from './adapters/codex.mjs';
@@ -36,6 +38,7 @@ import { ChoiceReceipts } from './choice-receipts.mjs';
 import { visibleScreenOf, liveScreenOf } from './screen.mjs';
 import { readSessionStatus, subscribeSessionEventHeads, applyVendorStatus, stalledFor, conversationMtime } from './session-status.mjs';
 import { readUsageLimits } from './usage-limits.mjs';
+import { assertProviderLaunch, providerLaunchStatus } from '../../scripts/lib/provider-launch-policy.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { listFolders } from './list-folders.mjs';
@@ -65,7 +68,8 @@ import { listSkills, approveSkill, rejectSkill, suggestSkill, checkSkill } from 
 import { BotBrowser, BROWSER_PORT } from './bot-browser.mjs';
 import { sweepWindows, setTakeover, clearTakeover, handBackText, readWindows } from './bot-windows.mjs';
 import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
-import { checkBotEvents, helperState } from './bot-events.mjs';
+import { checkBotEvents, helperState, retireTerminalPrompt, screenStillAsks, beginPromptObservation, isCurrentPromptObservation } from './bot-events.mjs';
+import { promptObservation } from './prompt-lifecycle.mjs';
 import { startWatchdog } from './watchdog.mjs';
 import { recoverBotHelpers } from './helper-recovery.mjs';
 import { Push } from './push.mjs';
@@ -77,10 +81,12 @@ import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 import { itemsView, replyDetails, record as recordRequirement, loadLedger as loadRequirementLedger } from './requirements.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 import { tryNowItems } from './bot-testing.mjs';
-import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity } from './events-db.mjs';
+import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity, recordActionEvidence, queryActionEvidence } from './events-db.mjs';
 import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS } from './terminal-health.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(),
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
@@ -378,7 +384,7 @@ function refreshAgentHealth() {
 }
 setTimeout(refreshAgentHealth, 90_000).unref();
 setInterval(refreshAgentHealth, 60 * 60_000).unref();
-const bots = new Bots({ side: runSide, notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
+const bots = new Bots({ actionEvidence: { recordActionEvidence, queryActionEvidence }, side: runSide, notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
 
 /** Bots join group chats like terminal agents do: as members with a chat to read. */
 function botMembers() {
@@ -415,7 +421,7 @@ async function botEvents() {
     } finally { helperRecoveryRunning = false; }
   }
   await checkBotEvents({
-    bots, panes: current.panes, seen: helperSeen,
+    bots, panes: current.panes, available: current.daemon, seen: helperSeen,
     recoveryHandled: (botId, pane) => (bots.messages(botId) || []).some((m) => m.role === 'helper-recovery' && m.pane === pane.id && m.sessionId === pane.sessionId),
     readAsk: async (pane) => { const screen = visibleScreenOf(pane.id) ?? await screenOf(pane.id); return pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen); },
     readScreen: async (pane) => visibleScreenOf(pane.id) ?? await screenOf(pane.id),
@@ -630,6 +636,17 @@ const handle = async (req, res) => {
     try { return json(res, 200, getTokenSummary()); }
     catch { return json(res, 503, { error: 'Token history is temporarily unavailable.' }); }
   }
+  // Owner-authenticated metadata only. Exact bot scope is mandatory and cannot be overridden.
+  if (req.method === 'GET' && url.pathname === '/api/action-evidence') {
+    const bot_id = url.searchParams.get('bot_id');
+    if (!bot_id || !/^[A-Za-z0-9_-]{1,100}$/.test(bot_id)) return json(res, 400, { error: 'A valid bot scope is required.' });
+    const filters = { bot_id, limit: 20 };
+    for (const key of ['request_id', 'message_id', 'terminal_id', 'session_id']) if (url.searchParams.has(key)) filters[key] = url.searchParams.get(key);
+    try {
+      return json(res, 200, { scope: { bot_id }, runtime: actionEvidenceRuntime, events: queryActionEvidence(filters),
+        evidence: retrieveActionEvidence({ bot_id, query: scoped => queryActionEvidence({ ...scoped, ...filters, limit: scoped.limit }), requests: filters.request_id ? [{ id: filters.request_id, status: 'evidence_only' }] : [] }) });
+    } catch { return json(res, 503, { error: 'Scoped action evidence is unavailable.' }); }
+  }
   if(req.method==='GET' && url.pathname==='/api/session-events') {
     res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});
     // retry: tells the browser to come back after 1 s if the stream drops (restart).
@@ -838,14 +855,30 @@ const handle = async (req, res) => {
     // read=1: the chat is on screen, so what it shows counts as read (unread badge in the list).
     try { if (url.searchParams.get('read') === '1') bots.markRead(url.searchParams.get('id')); view = bots.view(url.searchParams.get('id')); } catch { view = null; }
     if (view && (view.bot.helpers?.length || view.messages.some(m => m.role === 'terminal-ask'))) {
-      const { panes, daemon } = await currentPanes();
-      // An unavailable terminal service does not prove that a terminal closed.
-      if (daemon) {
-        const live = new Set(panes.map(p => p.id));
-        view.messages = view.messages.map(m => m.role === 'terminal-ask' && !live.has(m.pane) ? { ...m, settled: true, terminalClosed: true } : m);
-      }
+      const promptRound = beginPromptObservation(bots);
+      const { panes, daemon } = await currentPanes({ fresh: true });
+      // A chat refresh checks its open cards without waking bots or scheduling
+      // reminders. Only the live daemon screen can prove a prompt has gone.
+      view.messages = await Promise.all(view.messages.map(async (card) => {
+        if (card.role !== 'terminal-ask' || card.settled) return card;
+        const pane = panes.find((p) => p.id === card.pane);
+        const screen = daemon && pane ? await liveScreenOf(pane.id) : null;
+        if (!isCurrentPromptObservation(bots, promptRound)) return bots.messages(view.bot.id).find((m) => m.id === card.id) || { ...card, promptState: 'unknown' };
+        const ask = daemon && pane && screen !== null ? pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen) : null;
+        const state = promptObservation({ card, pane, available: daemon, ask, screen: screen ?? '', screenAsks: screenStillAsks(screen) });
+        if (['closed', 'replaced', 'absent'].includes(state) || (ask?.id && ask.id !== card.askId)) {
+          retireTerminalPrompt(bots, card.pane, card.askId);
+          return { ...card, settled: true, promptState: 'resolved' };
+        }
+        return { ...card, promptState: state === 'active' ? 'active' : 'unknown' };
+      }));
       view.bot.helpers ||= [];
-      view.bot.helpers = view.bot.helpers.map((h) => { const p = panes.find((x) => x.id === h.paneId); return { ...h, state: !p ? 'closed' : p.attention ? 'needs-you' : (p.turn === 'working' && p.stalledForMs > 0) ? 'stuck' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null }; });
+      view.bot.helpers = view.bot.helpers.map((h) => {
+        const p = panes.find((x) => x.id === h.paneId);
+        const card = view.messages.filter((m) => m.role === 'terminal-ask' && m.pane === h.paneId).at(-1);
+        const asking = card && !card.settled && card.promptState !== 'unknown';
+        return { ...h, state: !daemon || !isCurrentPromptObservation(bots, promptRound) ? 'unknown' : !p ? 'closed' : asking ? 'needs-you' : (p.turn === 'working' && p.stalledForMs > 0) ? 'stuck' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null };
+      });
     }
     // The item ledger owns bot requests; transcript turns include harness reminders and omit older items.
     if (view) { try { view.asks = botAsksFromItems(itemsView({ source: `bot:${view.bot.id}`, includeClosed: true }).items); } catch { view.asks = []; } }
@@ -1059,6 +1092,8 @@ const handle = async (req, res) => {
     });
   }
 
+  if(url.pathname==='/api/provider-policy' && req.method==='GET')return json(res,200,providerLaunchStatus());
+
   if(url.pathname==='/api/projects' && req.method==='GET'){
     if(!projectLaunchReady(projectLaunchCapabilityPath()))return json(res,404,{error:'Open the updated TermFleet app to enable the global project picker.',capabilityVersion:1});
     return json(res,200,{projects:projectCatalog(readWorkspace()),providers:PROJECT_PROVIDERS,ready:true,capabilityVersion:2});
@@ -1073,6 +1108,7 @@ const handle = async (req, res) => {
     const task=typeof body.task==='string'?body.task.trim():'';
     if(!provider)return json(res,400,{error:'Choose an available agent provider.'});
     if(!task)return json(res,400,{error:'Say what the new agent should do.'});
+    try{assertProviderLaunch(provider,{surface:'web-spawn'});}catch(error){return json(res,403,{error:error.message,code:error.code,auditId:error.auditId});}
     let project,legacy;
     if(body.projectId===undefined && typeof body.project==='string'){
       if(!['claude','codex'].includes(provider))return json(res,400,{error:'Choose Claude or Codex for an existing project group.'});
@@ -1161,9 +1197,13 @@ const handle = async (req, res) => {
     req.on('end', async () => {
       let payload = {};
       try { payload = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'bad request' }); }
-      const { panes } = await currentPanes();
+      const { panes, daemon } = await currentPanes();
+      if (!daemon) return json(res, 503, { error: 'The terminal connection is unavailable. Your answer was not sent.', notSent: true });
       const pane = panes.find((p) => p.id === payload.pane);
-      if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
+      if (!pane) {
+        retireTerminalPrompt(bots, payload.pane, payload.askId);
+        return json(res, 404, { error: 'That terminal has been closed.', stale: true, notSent: true });
+      }
 
       if (payload.key) {
         const result = await sendKey(pane, payload.key);
@@ -1180,10 +1220,15 @@ const handle = async (req, res) => {
         }
         // Re-read immediately before injecting a key. A phone can keep an old
         // prompt visible after the terminal has moved on or asked a new one.
-        const fresh = (await currentPanes({ fresh: true })).panes.find((candidate) => candidate.id === payload.pane);
+        const current = await currentPanes({ fresh: true });
+        if (!current.daemon) return json(res, 503, { error: 'The terminal connection is unavailable. Your answer was not sent.', notSent: true });
+        const fresh = current.panes.find((candidate) => candidate.id === payload.pane);
         const visible = fresh ? visibleScreenOf(fresh.id) : null;
-        const freshScreen = fresh ? visible ?? await screenOf(fresh.id) : '';
+        const live = fresh ? await liveScreenOf(fresh.id) : null;
+        const freshScreen = fresh ? live ?? visible ?? '' : '';
         const freshAsk = fresh && (pendingAsk(fresh, { screen: freshScreen }) || screenPermissionAsk(fresh, freshScreen));
+        if (fresh && !String(live ?? '').trim()) return json(res, 503, { error: 'The current terminal question could not be verified. Your answer was not sent.', notSent: true });
+        if (!fresh || !freshAsk || freshAsk.id !== payload.askId) retireTerminalPrompt(bots, payload.pane, payload.askId);
         // A typed answer whose question is gone (answered at the PC, or withdrawn) still
         // reaches the agent, as a normal message. If another question is open instead, it
         // is refused and the page keeps the draft.

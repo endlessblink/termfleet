@@ -7,6 +7,7 @@ import { Bots, brainCommand, brainEnv } from '../bridge/bots.mjs';
 import { sidePrompt, parseSide, withPassedOn, sideCommand, sideOutput, putSteer, takeSteer, steerDir } from '../bridge/side-reply.mjs';
 import { steer } from '../../scripts/termfleet-bot-steer-hook.mjs';
 import { loadLedger } from '../bridge/requirements.mjs';
+import { createEventLog } from '../bridge/events-db.mjs';
 
 // R-7173 (Noam 2026-10-24: "when I ask questions - the answers need to be instant while the
 // bot is working"). A message that arrives while the bot works gets a quick side answer at
@@ -25,13 +26,14 @@ function readyComputer() {
 const until = async (fn, ms = 2000) => { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error('timed out'); await new Promise((r) => setTimeout(r, 5)); } };
 
 /** A bot whose first turn runs until released, with a stand-in side responder. */
-function busyBot({ sideText = 'REPLY: I am halfway through.\nPASS_ON: no', sideFails = false } = {}) {
+function busyBot({ sideText = 'REPLY: I am halfway through.\nPASS_ON: no', sideFails = false, actionEvidence = null, onRun = () => {}, onSide = () => {} } = {}) {
   let release;
   const turns = [], sides = [];
   const bots = new Bots({
-    checks: readyComputer(), dir: tmp(), bins: { claude: '/bin/true', codex: '/bin/true' },
+    actionEvidence, checks: readyComputer(), dir: tmp(), bins: { claude: '/bin/true', codex: '/bin/true' },
     run: (bot, text, { onEvent }) => {
       turns.push({ text, steerFolder: bot.steerFolder });
+      onRun({ onEvent, text });
       if (turns.length === 1) {
         onEvent({ step: { name: 'Bash', input: { command: 'termfleet-team list' } } });
         onEvent({ activity: 'Checking who is working' });
@@ -39,7 +41,7 @@ function busyBot({ sideText = 'REPLY: I am halfway through.\nPASS_ON: no', sideF
       }
       return Promise.resolve({ text: `next: ${text.slice(0, 40)}` });
     },
-    side: async (bot, prompt) => { sides.push({ bot, prompt }); return sideFails ? { error: 'boom' } : { text: sideText }; },
+    side: async (bot, prompt) => { onSide({ bot, prompt }); sides.push({ bot, prompt }); return sideFails ? { error: 'boom' } : { text: sideText }; },
   });
   bots.ownerWordsBase = tmp();
   const { bot } = bots.create({ name: 'Sider', cwd: os.tmpdir() });
@@ -90,7 +92,8 @@ test('an instruction sent mid-turn is handed to the running turn after its next 
   const ctx = out.hookSpecificOutput.additionalContext;
   assert.equal(out.hookSpecificOutput.hookEventName, 'PostToolUse');
   assert.match(ctx, /make it playable on mobile too/);
-  assert.match(ctx, /Already answered: "Got it, I passed it on/);
+  assert.match(ctx, /Already answered: "The action outcomes and delivery/);
+  assert.doesNotMatch(ctx, /I passed it on/, 'unverified model claim is not retained as fact');
   assert.match(ctx, /do not repeat that answer/);
   assert.equal(steer({ hook_event_name: 'PostToolUse' }, { TERMFLEET_BOT_ID: b.id, TERMFLEET_BOT_STEER: b.bots.folder(b.id) }), null, 'handed over once');
   b.release();
@@ -107,9 +110,9 @@ test('an instruction the turn never got to starts the next turn, marked as alrea
   b.release();
   await until(() => b.turns.length === 2 && !b.bots.running.has(b.id));
   assert.match(b.turns[1].text, /use the blue theme/);
-  assert.match(b.turns[1].text, /already answered this in the chat: "Passed it on\."/);
+  assert.match(b.turns[1].text, /already answered this in the chat: "The action outcomes and delivery/);
   const order = b.bots.messages(b.id).filter((m) => m.role === 'bot').map((m) => m.text);
-  assert.equal(order[0], 'Passed it on.', 'the quick answer came before the main answer');
+  assert.match(order[0], /saved in the work inbox.*acknowledgement.*pending/, 'the quick answer came first with the actual receipt state');
 });
 
 test('if the side answer fails, the message still reaches the bot as before', async () => {
@@ -165,13 +168,78 @@ test('the side responder is read-only on the bot\'s own plan, and its answer is 
   assert.deepEqual(parseSide('REPLY: Yes, Monday works.\nPASS_ON: no'), { reply: 'Yes, Monday works.', forward: false });
   assert.deepEqual(parseSide('REPLY: Will do.\nPASS_ON: yes'), { reply: 'Will do.', forward: true });
   assert.equal(parseSide('Just some text').forward, true, 'unclear: pass it on, never lose an instruction');
-  assert.match(withPassedOn('בסדר.', true, ['תעשה את זה כחול']), /העברתי/);
+  assert.match(withPassedOn('בסדר.', true, ['תעשה את זה כחול']), /נשמרה בתור.*אין אישור/);
   assert.equal(withPassedOn('Sure.', false, ['?']), 'Sure.');
   assert.deepEqual(sideOutput('claude', '{"type":"result","subtype":"success","result":"REPLY: hi\\nPASS_ON: no"}'), { text: 'REPLY: hi\nPASS_ON: no' });
   assert.equal(sideOutput('codex', '{"type":"item.completed","item":{"type":"agent_message","text":"REPLY: a"}}').text, 'REPLY: a');
   const prompt = sidePrompt({ bot: { name: 'P', job: 'game' }, task: 'Build', startedAt: Date.now() - 5 * 60000, steps: [{ at: Date.now(), text: 'Reading files' }], chat: [{ who: 'Noam', text: 'hi' }], incoming: ['ready?'] });
   assert.match(prompt, /started 5 min ago/);
   assert.match(prompt, /Never say something was done/);
+});
+
+test('real side path retrieves failed action evidence before answering and queues Hebrew why for diagnosis', async () => {
+  const store = createEventLog({ file: ':memory:' });
+  let emit;
+  const b = busyBot({ actionEvidence: store, sideText: 'REPLY: The failed check needs investigation.\nPASS_ON: no', onRun: ({ onEvent }) => {
+    emit = onEvent;
+    onEvent({ step: { id: 'call-1', name: 'Bash', input: { command: 'DO_NOT_STORE_PRIVATE_COMMAND' } } });
+    onEvent({ outcome: { id: 'call-1', name: 'Bash', ok: false } });
+  } });
+  try {
+    b.bots.send(b.id, 'Build the game page', { owner: true });
+    await until(() => b.turns.length === 1);
+    const initialIds = b.bots.openWork(b.id).map(w => w.id);
+    const incoming = b.bots.send(b.id, 'למה הכפתור עדיין חסר?', { owner: true });
+    await until(() => b.bots.messages(b.id).some(m => m.side));
+    assert.match(b.sides[0].prompt, /"state":"failed"/);
+    assert.match(b.sides[0].prompt, /"request_id":"R-/);
+    const reply = b.bots.messages(b.id).find(m => m.side);
+    assert.equal(reply.side.diagnosis, true);
+    assert.equal(reply.side.forward, true, 'unanswered why is investigated even if model says no');
+    assert.equal(reply.side.receipts[0].state, 'queued');
+    const queuedIds = store.queryActionEvidence({ bot_id: b.id, message_id: incoming.message.id })[0].request_ids;
+    assert.ok(queuedIds.length);
+    emit({ step: { id: 'call-2', name: 'Bash' } });
+    assert.deepEqual(store.queryActionEvidence({ bot_id: b.id, action_id: 'call-2' })[0].request_ids, initialIds, 'queued question is not evidence the worker read it');
+    assert.doesNotMatch(JSON.stringify(store.queryActionEvidence({ bot_id: b.id })), /DO_NOT_STORE/);
+    const entries = takeSteer(b.bots.folder(b.id));
+    assert.equal(entries.length, 1);
+    assert.match(entries[0].brain, /Bounded diagnosis required/);
+    b.release();
+    await until(() => !b.bots.running.has(b.id));
+  } finally { store.close(); }
+});
+
+test('a model forwarding claim cannot bypass inbox delivery or fabricate acknowledgement', async () => {
+  const b = busyBot({ sideText: 'REPLY: I passed it on and the worker read it.\nPASS_ON: no' });
+  b.bots.send(b.id, 'Build the game page', { owner: true });
+  await until(() => b.turns.length === 1);
+  b.bots.send(b.id, 'also cover the other points', { owner: true });
+  await until(() => b.bots.messages(b.id).some(m => m.side));
+  const reply = b.bots.messages(b.id).find(m => m.side);
+  assert.equal(reply.side.forward, true);
+  assert.equal(reply.side.receipts[0].state, 'queued');
+  assert.doesNotMatch(reply.text, /the worker read it|I passed it on/);
+  assert.match(reply.text, /acknowledgement.*pending/);
+  assert.equal(takeSteer(b.bots.folder(b.id)).length, 1);
+  b.release();
+  await until(() => !b.bots.running.has(b.id));
+});
+
+test('failed inbox write preserves the message for the next turn and publishes no success claim', async () => {
+  const b = busyBot({ sideText: 'REPLY: I passed it on.\nPASS_ON: yes' });
+  b.bots.send(b.id, 'Build the game page', { owner: true });
+  await until(() => b.turns.length === 1);
+  fs.writeFileSync(steerDir(b.bots.folder(b.id)), 'file blocks inbox directory');
+  b.bots.send(b.id, 'do not lose this correction', { owner: true });
+  await until(() => b.bots.messages(b.id).some(m => m.side));
+  const reply = b.bots.messages(b.id).find(m => m.side);
+  assert.match(reply.text, /failed|could not/i);
+  assert.doesNotMatch(reply.text, /I passed it on/);
+  assert.equal(reply.side.receipts[0].state, 'failed');
+  assert.ok(b.bots.read(b.id).queued.some(t => t.includes('do not lose this correction')), 'existing restart queue retains failed delivery');
+  b.release();
+  await until(() => !b.bots.running.has(b.id));
 });
 
 test('only a bot\'s running turn gets the steer hook and folder', () => {
