@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Bots, brainCommand, brainEnv } from '../bridge/bots.mjs';
-import { sidePrompt, parseSide, withPassedOn, sideCommand, sideOutput, putSteer, takeSteer, steerDir } from '../bridge/side-reply.mjs';
+import { sidePrompt, parseSide, withPassedOn, sideCommand, sideOutput, putSteer, takeSteer, steerDir, isCorrectionFragment } from '../bridge/side-reply.mjs';
 import { steer } from '../../scripts/termfleet-bot-steer-hook.mjs';
 import { loadLedger } from '../bridge/requirements.mjs';
 import { createEventLog } from '../bridge/events-db.mjs';
@@ -110,6 +110,64 @@ test('PASS_ON no cannot resolve or discard multiple actionable points', async ()
     await until(() => !b.bots.running.has(b.id));
     store.close();
   }
+});
+
+test('short name corrections reach the worker verbatim without side-model delay or paraphrase', async t => {
+  const b = busyBot({ sideText: 'REPLY: You meant finecut.\nPASS_ON: no' });
+  b.bots.send(b.id, 'Find the main project folder.', { owner: true });
+  await until(() => b.turns.length === 1);
+  t.after(async () => { b.release(); await until(() => !b.bots.running.has(b.id)); });
+  const texts = ['finetune', 'finecut לא', 'התכוונתי לfinetuned'];
+  for (const text of texts) {
+    const sent = b.bots.send(b.id, text, { owner: true });
+    const entries = takeSteer(b.bots.folder(b.id));
+    assert.deepEqual(entries.map(entry => entry.text), [text]);
+    assert.equal(entries[0].msgId, sent.message.id);
+    assert.ok(entries[0].brain.includes(text));
+  }
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(b.sides.length, 0, 'correction fragments need no model to restate them');
+  assert.deepEqual(takeSteer(b.bots.folder(b.id)), [], 'each correction is delivered once');
+  assert.equal(b.bots.messages(b.id).some(message => message.side), false);
+});
+
+test('correction routing is narrow and location answers allow only verified exact paths', () => {
+  for (const text of ['finetuned', 'finecut לא', 'not finecut', 'I meant finetuned', 'התכוונתי לfinetuned']) assert.equal(isCorrectionFragment(text), true, text);
+  for (const text of ['thanks', 'yes', 'hello', 'why', 'why?', 'where is the folder?', 'Find the main folder', 'finecut\nfinetuned', 'update', 'news', 'status', 'progress', 'well', 'התחברתי', 'ניסיתי']) assert.equal(isCorrectionFragment(text), false, text);
+  const prompt = sidePrompt({ bot: { name: 'Fixture' }, incoming: ['Where is the finetuned folder?'] });
+  assert.match(prompt, /verified exact path or working link/);
+  assert.match(prompt, /Preserve project and folder names exactly/);
+  assert.doesNotMatch(prompt, /No code, file names, commands or jargon/);
+});
+
+test('correction bypasses an already stalled side reply and is not redelivered afterward', async t => {
+  const b = busyBot();
+  let releaseSide;
+  b.bots.side = () => new Promise(resolve => { releaseSide = resolve; });
+  b.bots.send(b.id, 'Find the main project folder.', { owner: true });
+  await until(() => b.turns.length === 1);
+  t.after(async () => { releaseSide?.({ text: 'REPLY: Still checking.\nPASS_ON: no' }); b.release(); await until(() => !b.bots.running.has(b.id)); });
+  b.bots.send(b.id, 'What are you checking?', { owner: true });
+  await until(() => Boolean(releaseSide));
+  const sent = b.bots.send(b.id, 'I meant finetuned', { owner: true });
+  assert.equal(sent.receipt.state, 'queued');
+  assert.deepEqual(takeSteer(b.bots.folder(b.id)).map(entry => entry.text), ['I meant finetuned']);
+  releaseSide({ text: 'REPLY: Still checking.\nPASS_ON: no' });
+  await until(() => !b.bots.sides.get(b.id).busy);
+  assert.equal(takeSteer(b.bots.folder(b.id)).some(entry => entry.msgId === sent.message.id), false);
+});
+
+test('failed direct correction delivery preserves its exact next-turn fallback', async t => {
+  const b = busyBot();
+  b.bots.send(b.id, 'Find the main project folder.', { owner: true });
+  await until(() => b.turns.length === 1);
+  t.after(async () => { b.release(); await until(() => !b.bots.running.has(b.id)); });
+  fs.writeFileSync(steerDir(b.bots.folder(b.id)), 'blocks inbox');
+  const sent = b.bots.send(b.id, 'התכוונתי לfinetuned', { owner: true });
+  assert.equal(sent.receipt.state, 'failed');
+  assert.equal(sent.receipt.retained, true);
+  assert.ok(b.bots.read(b.id).queued.some(text => text.includes('התכוונתי לfinetuned')));
+  assert.equal(b.sides.length, 0);
 });
 
 test('an instruction sent mid-turn is handed to the running turn after its next step, with the side answer so it is not repeated', async () => {

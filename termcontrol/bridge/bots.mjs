@@ -25,7 +25,7 @@ import { endFollows } from './follows.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 import { captureMessage as captureRequirements, loadLedger as loadRequirements, ledgerDir as requirementsLedgerDir, projectOf as requirementsProject, markItem as markRequirement, record as recordRequirements, messageProblem } from './requirements.mjs';
 import { testingHandoffProblem, readyThisTurn, saveTestingHandoff, reportsDelivery } from './bot-testing.mjs';
-import { sidePrompt, parseSide, claimsDelivery, withPassedOn, putSteer, takeSteer, nextTurnText, steerDir } from './side-reply.mjs';
+import { sidePrompt, parseSide, claimsDelivery, withPassedOn, putSteer, takeSteer, nextTurnText, steerDir, isCorrectionFragment } from './side-reply.mjs';
 import { retrieveActionEvidence, needsDiagnosis } from './action-evidence.mjs';
 import { formatActionEvidence } from './compact-action-evidence.mjs';
 import { fnv, statusDir as agentStatusDir } from '../../scripts/lib/agent-status-paths.mjs';
@@ -1463,6 +1463,13 @@ export class Bots {
       } catch { /* the message itself is already on its way */ }
     }
     if (owner && this.side && this.running.has(id) && !bot.providerSwitch && !this.closing) {
+      if (!pictures.length && !attached.length && !asked && !replied && !list && isCorrectionFragment(said0)) {
+        const receipt = this.handOn(id, { at: msg.at, msgId: msg.id, text: said0, brain: forBrain, items: (items || []).map(it => it?.id).filter(Boolean) }, null);
+        // The original operator row already shows the exact correction. No model
+        // acknowledgement may rewrite it, and queued never means the worker read it.
+        if (receipt.state === 'failed') this.append(id, { role: 'error', text: receipt.retained ? 'The correction could not reach the running turn; it is retained for the next turn.' : 'The correction could not reach the running turn. Your original message remains in this chat.' });
+        return { ok: true, message: msg, queued: receipt.state === 'queued' || receipt.retained === true, correction: true, receipt };
+      }
       this.sideAnswer(id, { at: msg.at, msgId: msg.id, text: said0, pictures, brain: forBrain, items: (items || []).map((it) => it?.id).filter(Boolean) });
       return { ok: true, message: msg, queued: true, side: true };
     }

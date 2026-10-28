@@ -7,6 +7,7 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { chromium } from 'playwright';
+import { takeSteer } from '../bridge/side-reply.mjs';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -92,6 +93,13 @@ out({type:'turn.completed'});},10);
     await page.locator('.bot-activity', { hasText: 'Checking the delayed fixture.' }).waitFor();
     assert.equal(await page.getByText('The fixture returned two findings.', { exact: true }).count(), 0);
     pages.push(page);
+  }
+  for (const text of ['finetune', 'finecut לא', 'התכוונתי לfinetuned']) {
+    const response = await fetch(origin + '/api/bot/send', { method: 'POST', headers: { cookie, origin, 'content-type': 'application/json' }, body: JSON.stringify({ id, text }) });
+    const result = await response.json();
+    assert.equal(result.correction, true);
+    assert.equal(result.receipt.state, 'queued');
+    assert.deepEqual(takeSteer(folder).map(entry => entry.text), [text], 'HTTP correction persists verbatim without side inference');
   }
   fs.writeFileSync(release, 'release');
   for (const page of pages) {
