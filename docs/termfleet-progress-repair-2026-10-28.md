@@ -1,5 +1,37 @@
 # Progress and exact corrections — 2026-10-28
 
+## Latest readback and correction follow-up
+
+At16:17UTC the existing release owner activated03c236f, containing355afae,
+a964b65 and31e6b2f. Authenticated owner readback: PID2845687,
+28-module SHA256 f153987f6fb41e5d72c87dec4b5a60bf038c72063d494efdcddff3ddd31f3108.
+Independent service-manager read in this session confirms that PID/start time.
+Owner reports exact terminal/conversation identities, original chat prefixes and
+daemon2068834 retained; only owned holds removed. Evidence is recorded in
+handoffs/2026-10-28-ledger-lock/HANDOFF.md. This supersedes the earlier pending
+activation statements below for those commits only.
+
+Residual TF-151 repair e20f8aa prevents delayed quick prose from contradicting
+a newer direct correction. Latest correction metadata stays on the side state
+across main-turn changes. Stale prose is withheld; the earlier genuine question
+and attachment context reach the worker once with latest exact correction
+context. A deleted correction is not reintroduced. No extra inference retry,
+correction replay or inferred worker acknowledgment. Red15/17 and retraction
+red19/20 observed before green36/36. Follow-up5c76d98 proves the actual HTTP and
+headless390/1400 path with a held fake quick responder: wrong-name prose hidden,
+three corrections routed verbatim, earlier question retained and one final shown.
+Combined affected98/98 includes side-usage accounting. Current follow-up runtime
+activation remains in_progress, owned by the same release terminal.
+
+For the user's actual location example, a read-only filesystem check found two
+matching directories. The canonical Finetuned Project Context note explicitly
+selects content-maker/show-runner-videos/ai-short-films/finetuned; its directory
+exists. That answer was provided directly to Noam with a working folder link.
+It is a factual answer by this reviewer, not proof that the bot independently
+produced a correct semantic answer. No project assets or canonical notes changed.
+
+## Earlier implementation record
+
 Status: in_progress, shared agent-ops BUG-90. Production bridge activation and
 ordinary owner-facing result remain pending; no universal token-savings claim.
 
