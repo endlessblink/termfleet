@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T12:12:45.086Z",
+  "updatedAt": "2026-10-28T12:18:47.149Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15455,8 +15455,8 @@
         },
         {
           "kind": "source",
-          "at": "2026-10-28T12:12:45.086Z",
-          "note": "Bounded UI-only alternative: actual authenticated GET12:11:24Z PID2252271/8d3ea43c; history/messages routes404. Exact legacy view ignores pagination and omits retained old bot questions, synthetic-only diagnostic confirms. Search capped snippets omit IDs/authority and cannot enumerate. Metadata owning bot35 older question rows26 explicit answers9 without, not9 proven open. /tmp/termfleet-history-route-readback.json and /tmp/termfleet-history-capability.json. Narrow delivery gate is loading saved Bots.view retention method, no new service/answer authority. UI cannot retrieve omitted originals; no restart or raw transcript download."
+          "at": "2026-10-28T12:18:47.149Z",
+          "note": "Pending owner maintenance choice, no reply/approval. Review saved in runtime-truth includes exact conditional bridge-only commands, exclusive durable startup marker, existing-service infinity/no-force-kill runtime override, preservation and nonrecoverable rollback boundaries. /tmp/termfleet-maintenance-review.json12:15:58Z: old2252271/8d3ea43c,10bot queues0durable0,one working inflight,6terminal identities,daemon2068834 unchanged. Unknown legacy-effect count explicitly null, not0. New startup guard partial/manual HTTP not globally blocked. Disposable systemd unit verify validates proposed stop directives; no live config or conditional command applied. Feature remains partial, terminal open, existing choice not repeated."
         }
       ],
       "owner": "termfleet",
@@ -15519,6 +15519,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "Bounded UI-only alternative: actual authenticated GET12:11:24Z PID2252271/8d3ea43c; history/messages routes404. Exact legacy view ignores pagination and omits retained old bot questions, synthetic-only diagnostic confirms. Search capped snippets omit IDs/authority and cannot enumerate. Metadata owning bot35 older question rows26 explicit answers9 without, not9 proven open. /tmp/termfleet-history-route-readback.json and /tmp/termfleet-history-capability.json. Narrow delivery gate is loading saved Bots.view retention method, no new service/answer authority. UI cannot retrieve omitted originals; no restart or raw transcript download."
+        },
+        {
+          "at": "2026-10-28T12:18:47.149Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Pending owner maintenance choice, no reply/approval. Review saved in runtime-truth includes exact conditional bridge-only commands, exclusive durable startup marker, existing-service infinity/no-force-kill runtime override, preservation and nonrecoverable rollback boundaries. /tmp/termfleet-maintenance-review.json12:15:58Z: old2252271/8d3ea43c,10bot queues0durable0,one working inflight,6terminal identities,daemon2068834 unchanged. Unknown legacy-effect count explicitly null, not0. New startup guard partial/manual HTTP not globally blocked. Disposable systemd unit verify validates proposed stop directives; no live config or conditional command applied. Feature remains partial, terminal open, existing choice not repeated."
         }
       ]
     },

@@ -417,3 +417,108 @@ all-retained-questions requirement. After the separately established bridge
 cutover capability is available, verify the loaded retention method and exact
 original-message navigation headlessly with all answers/mutations blocked before
 marking R19768 ready. The broader audit is not an additional feature gate.
+
+#### Pending maintenance review — preparation only, no permission received
+
+Agent-Manager has asked the owner to choose preservation-first continuation or
+preparation of a limited maintenance exception. The existing question is pending;
+do not repeat it or interpret preparation as approval for cutover or replay.
+
+Snapshot2026-10-28T12:15:58Z, `/tmp/termfleet-maintenance-review.json`: bridge
+2252271/8d3ea43c; ten bots each have zero in-memory and persisted queued entries.
+Botc0075cf70f9b is working with an inflight marker; the other nine have none.
+No retry/provider-switch marker was observed. Six terminal ID/PID/run triples
+and ten hashed conversation identities were recorded without message bodies.
+Daemon2068834/build1:1792765418313 is unchanged. Pause marker absent; new journal
+files0. **Old uncertain-effect count: unknown**, not zero. These observations are
+a changing baseline, not a drain acknowledgement or a backup of message contents.
+
+The following exact bridge-only sequence is reviewable but **not executed**.
+First freeze reviewed source and coordinate shared ownership, then refresh the
+read-only baseline. A working bot must finish naturally; do not interrupt it or
+clear its markers. New arrivals/differences require review, not deletion/replay.
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/1000
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet
+git status --short
+git rev-parse HEAD
+node /tmp/termfleet-maintenance-review.mjs
+systemctl --user show termcontrol.service -p MainPID -p ActiveState -p KillMode -p TimeoutStopUSec -p SendSIGKILL
+```
+
+The next block is **conditional mutation**, permitted only after a specific
+maintenance decision accepts unresolved old effects. It exclusively creates the
+new-source startup hold and a runtime override for this existing service, so the
+old330-second stop deadline cannot force-kill an unfinished bot. Existing files
+must be reviewed and retained; do not overwrite them or assume they are ours.
+
+```bash
+python3 - <<'PY'
+import os,pathlib
+files={
+ pathlib.Path('/home/endlessblink/.config/termcontrol/automatic-actions.paused'):
+ b'{"version":1,"kind":"maintenance-review"}\n',
+ pathlib.Path('/run/user/1000/systemd/user/termcontrol.service.d/90-reviewed-question-maintenance.conf'):
+ b'[Service]\nTimeoutStopSec=infinity\nSendSIGKILL=no\n'
+}
+for file,body in files.items():
+    file.parent.mkdir(parents=True,exist_ok=True)
+    fd=os.open(file,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    try: os.write(fd,body);os.fsync(fd)
+    finally: os.close(fd)
+    fd=os.open(file.parent,os.O_RDONLY)
+    try: os.fsync(fd)
+    finally: os.close(fd)
+PY
+systemctl --user daemon-reload
+systemctl --user show termcontrol.service -p TimeoutStopUSec -p SendSIGKILL
+# Require infinity/no above before stopping; never force-kill a hung stop.
+systemctl --user stop termcontrol.service
+systemctl --user show termcontrol.service -p MainPID -p ActiveState
+# Require MainPID=0 and inactive. Review persisted state before the next block.
+```
+
+This marker does not pause the old process: its timers can still issue effects
+during shutdown. Removing the forced-kill limit protects only the shutdown wait;
+neither protection settles unknown effects. If stop hangs, preserve state and
+report that exact dependency; no SIGKILL, daemon restart or repeated cutover.
+Record files newly created by this attempt separately from pre-existing holds.
+While stopped, compare original queue/session metadata and preserve additions,
+order, duplicate entries, held batches and uncertain receipts. Do not erase
+inflight/retry state or copy private messages into this repository or reports.
+Any separately authorized runtime backup must stay inside the private host
+boundary with0600/0700 access. Metadata hashes alone cannot restore lost bodies.
+
+```bash
+# CONDITIONAL: only after stopped-state preservation review passes.
+systemctl --user start termcontrol.service
+systemctl --user show termcontrol.service -p MainPID -p ActiveState
+node /tmp/termfleet-maintenance-review.mjs
+```
+
+Require the new loaded hash to match reviewed source, startup
+`automatic_actions.paused:true`/`reason:maintenance marker`, unchanged daemon,
+terminal ID/PID/run triples and bot conversation hashes, and retained queue
+order/duplicates. New-source scheduled resume/retry, room/routine, cleanup,
+recovery and canary work is guarded by that pause; manual HTTP sends are not
+globally disabled and other effect coverage remains partial. Keep UI readback
+headless and mutation-blocked; prove older original retention/navigation at
+phone/desktop widths. Do not remove the pause marker or resume/replay work as
+part of this review, even if navigation passes. Release of each created hold
+requires reconciliation and must not remove pre-existing maintenance holds.
+
+Rollback boundary: keep the hold and gracefully stop only the replacement bridge
+if readback fails, preserving all new durable state. Do not automatically restart
+old unpaused source, reset the shared checkout, or restore old queue files over
+new arrivals. Code rollback cannot undo input/close, recover old process memory,
+distinguish an unacknowledged applied send from an unapplied one, or recreate a
+deleted original. The18-file old digest is not full dependency/runtime provenance;
+35c9acd is a source reference, not an exact state backup. A compatible source/config
+rollback needs separate review while retaining current durable state and the
+pause. No no-loss guarantee is made and no conditional command above was run.
+
+Status: **in_progress**, terminal open; existing owner maintenance-choice question
+unanswered. No further viable preservation implementation for the uninstrumented
+old process has been identified within the current constraints.
