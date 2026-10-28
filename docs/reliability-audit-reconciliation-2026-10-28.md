@@ -1,10 +1,111 @@
 # TermFleet reliability audit reconciliation — 2026-10-28
 
 This is **one audit**, with 22 findings, not 157 independent repair requests. The
-source audit is preserved below in its registered wording and order. Status is
-**in_progress**: several critical paths still have unsafe or unproven behavior.
+source audit is preserved below in its registered wording and order. Audit/triage
+status is **complete** after the current grouped disposition below; several
+product repairs remain open. Earlier in_progress/load notes are historical.
 This report changes no production behavior and authorizes no provider execution,
 credential migration, deployment, public publication, or spending.
+
+## Current grouped disposition — 2026-10-28 16:37UTC
+
+Canonical shared audit task: **agent-ops TASK-91**, owner
+codex-termfleet-audit. BUG-88 owns quota protection; BUG-90 owns progress/intake.
+This section reconciles the attached R-19478 fragments; it does not create a
+second task queue or mark the underlying repairs complete for being documented.
+The companion [end-to-end audit](termfleet-end-to-end-audit-2026-10-28.md),
+committed0cc4933, supplies measured context, latency, side usage and actual result
+delivery. The original static audit below remains unchanged as a historical source.
+
+Classification: **repaired** means only the named bounded behavior with cited
+proof; **still reproducible** means the retained source defect and existing
+reproduction/source proof, not a new dangerous live trial; **obsolete premise**
+means a claim contradicted by current source; **missing proof** names the exact
+unproved behavior. Mixed findings explicitly separate their pieces.
+
+### Runtime and safety evidence used for this reconciliation
+
+Independent read-only authenticated GETs at16:37:18.579UTC returned200:
+PID3090042, loaded16:36:53.011UTC, digest
+`f5c1e6b422606ec5beb4b724ef79ebf8db213c5e4d11781c181c15fefde10ca5`.
+This is e20f8aa (withholds stale side prose after newer owner corrections),
+superseding03c236f/PID2845687. The activation owner reports106/106 affected
+checks, daemon2068834 and all five terminal/conversation identities preserved,
+no active/retained/delivery work and only its own hold released. Existing log:
+`/tmp/termfleet-e20f8aa-cutover.log`; no trial or restart by this audit worker.
+
+The same current runtime's provider-policy endpoint reports
+`claudeAllowed:false`, `quota.allowed:false`, reason `quota-latched`, with a
+seven-day latch; implementation hash
+`b5bedb8c46a5852d92783de148cef385dcb89783bcfd74adb906e53eb78f06eb`,
+`protection:cooperative-launch-checks`, **credentialIsolation:false**.
+Source evaluates both raw five-hour and weekly windows at85%, denies missing,
+stale, invalid/future data, and requires a fresh later window to clear a latch.
+The current standing rule independently denies unapproved Claude launches.
+This is current gate evidence, **not** a provider-request counter, protected
+payment boundary, fresh provider-account reading or proof of zero spending.
+Existing same-UID agents/direct executables and old daemon remain outside a
+protected broker. No credentials, billing settings or private transcripts were read.
+
+### Exact request dispositions
+
+| Finding / exact request IDs | Disposition now | Evidence and exact remaining repair/proof |
+| --- | --- | --- |
+| Audit scope: R-19478 | Audit complete; repairs not collectively done | This grouped disposition plus the companion audit covers the original findings, current repairs and safety limits. Historical a772f7f source labels were not runtime proof. |
+| F01 no quota guard: R-19529 | Obsolete premise | Current shared launch policy and authenticated policy hash above contradict “no85%guard anywhere.” This does not establish universal enforcement. |
+| F01 display-only/stale/reset/reactive behavior: R-19530, R-19531, R-19532, R-19533, R-19535 | Repaired on cooperative launch routes | Policy27/27 and Rust2/2 were previously reported by quota owner; current source and endpoint retain independent85%latches/fail-closed freshness. No new provider call. A clock crossing alone cannot reset the latch. |
+| F01 all launch paths and usage provenance: R-19534, R-19536 | Missing proof | Old daemon is not proof of a loaded Rust gate; no current all-route request counter, protected provider reader or same-UID bypass exclusion. Do not infer safe usage from writable status cache or successful wrapper tests. BUG-88 retains this scope. |
+| F02 local owner-session boundary: R-19537, R-19538, R-19539, R-19540, R-19541, R-19542, R-19543 | Still reproducible source defect; protected exception missing | auth.mjs embedSignIn still accepts absent/client-forgeable destination and mints an owner session on loopback. The supported readback uses this route and cannot prove human authorization. No protected bootstrap/step-up/single-use exception or OS identity separation is deployed. No exploit or approval mutation performed. |
+| F03 uncertain choice treated as sent: R-19544, R-19545, R-19546 | Repaired, narrow answerScreenChoice behavior | TF-131 red6pass/5fail then12/12 plus20adjacent tests; null/blank reads return uncertain and no Enter on unknown. Current send module is in loaded provenance. Physical prompt use, other input routes and atomic compare/write remain outside this proof. |
+| F04 late queued receipt: R-19547, R-19548, R-19551, R-19552 | Repaired for bound bot receipts; missing wider coverage | TF-13313/13,combined46/46 and authenticated synthetic late receipt; delivery-reconciliation now rescans exact live provider/session input markers, bounded20per pass. Queued assignment text remains history. Hook consumption, non-bot/null-session and old/out-of-tail marks remain unproved. |
+| F04 dead/idle/no retry: R-19549, R-19550 | Missing proof / genuine remaining scope | Reconciliation requires a live matching pane and adds evidence only. It does not resubmit an effect or supervise every dead worker. A durable dead-target escalation is needed; blind input replay would risk duplicate work. |
+| F05 typing versus delivery: R-19553, R-19554 | Still reproducible source defect | send.mjs landedInTerminal still accepts a text prefix or scrollback growth; picture-only Enter is separate. No real message trial. Label typing separately and require exact consumed marker before “received.” |
+| F06 side responder closes owner work: R-19555, R-19556 | Repaired, bounded ledger effect | Side bulk markAnswered removed; owner55/55, current bots side path preserves main obligation. Exact correction31e6b2f and stale-prose suppression e20f8aa are now loaded. Model understanding and complete request coverage remain unproved. |
+| F07 false owner confirmation: R-19557, R-19558, R-19562 | Repaired on new explicit confirmation path | TF-13650/50 and loaded confirmation source: exact signed positive verdict, correct chat/request and newer delivery, with server-recorded timing; typed --noam-said cannot confirm. Existing locked history and same-UID ledger edits are not retroactively protected. |
+| F07 evidence and legacy completion display: R-19559, R-19560, R-19561, R-19563 | Still reproducible source paths / missing required repair | Nonvisual evidence can still be an arbitrary existing file; legacy asks apply marks parsed from tool-call input, without matching successful tool_result. Legacy open/Answered projection is not fixed by signed verdict validation. Need item-bound proof and successful-result-derived legacy marks. |
+| F08 bot identity and guessed binding: R-19564, R-19565 | Repaired for validated caller paths; wider shell proof bounded | Bot-caller issuer/validator and de86aaf preserve signed context into Codex tools without cwd guessing or forged identity. Actual local Codex fixture proves baseline loss/fixed preservation;36caller/helper/completion tests pass. Unknown/contradictory callers fail closed. Own handover still failed absent pane index: no binding was invented. |
+| F08 helper session/reuse: R-19566 | Repaired for exact observer; missing universal route proof | helper-link now requires verified live sessionId and owned assignment. This task's actual session-bound completion was delivered. That is one proof, not every old helper record or reused-pane path. |
+| F08 near-parent, retention and inherited context: R-19567, R-19568, R-19569 | Missing proof; retention source defect remains | Bots.helpers still slices last20, while team recording retains50; no25helper completion episode proof. --near lineage needs its own exact identity test. A handoff document containing environment text does not prove inherited caller authority; signed scope validation remains mandatory. |
+| F09 stale vendor permission input: R-19570, R-19571 | Repaired, bounded fresh-screen guard | TF-13229/29 after actual isolated HTTP draft/shell red reproduction. Fresh recognized permission identity must match before writing; unknown503/different409. Source guard loaded. Daemon-side atomic compare/write and all input routes remain open. |
+| F10 card/reminder state: R-19573, R-19574, R-19575, R-19576, R-19577, R-19578, R-19579, R-19580, R-19581, R-19582 | Repaired lifecycle slice; exact incident proof missing | Shared tri-state lifecycle/exact identity retirement5314c11+985a420,35/35 and served fixture2/2 already reported. Later reminder6385762 loaded. Current installed8cards/8controls and owner-reported navigation8/8 with307later messages prove controls/navigation, not the incident's flap/wake history or physical phone. Do not read raw incident chat merely to manufacture proof; use sanitized matching episode evidence if available. |
+| F11 helper death/followed recovery: R-19583, R-19584, R-19585 | Still reproducible source gap / missing episode proof | helper-recovery requires alive and excludes followed helpers; no proven working→missing→missing one-wake episode naming remaining requests. A correct completion observer is not a death supervisor. Add durable closed transition without typing into a replacement conversation. |
+| F12 abrupt crash durability/heap: R-19586, R-19587, R-19588 | Missing crash proof; graceful preservation repaired | saveQueue now writes copied ordered queue before removing memory prefix and preserves duplicates. That proves graceful/error behavior, not append-on-arrival durability for every sides.pending/waitedFor/handed state. SIGKILL/power loss and current heap-before-RSS threshold remain unproved; no service environment/credentials exposed or crash trial performed. |
+| F13 testability: R-19589, R-19590, R-19592, R-19593, R-19594, R-19595 | Still partial; terminal-ready premise has a narrower scope | Bot ready now requires Try; terminal-origin items still lack that universal requirement. Structured --expected exists but is optional; legacy evidence validation may check a different link from the note. link checker still permits local links, and reportsDelivery misses bare done/finished/works. Need one normalized intended-device Try/expected/artifact contract across all routes. PC reachability is not phone reachability. |
+| F13 blanket404 receipt claim: R-19591 | Obsolete premise for requirements linkProblem; alternate path missing proof | Both baseline/current requirements reject non2xx and an existing regression expects404 rejection. Exact alternate browser-receipt path must be supplied before attributing a universal404 acceptance bug. Do not declare all browser receipts correct from this one validator. |
+| F14 provider transfer: R-19596, R-19597, R-19598, R-19599 | Repaired bounded switch transaction; residual fresh-start paths open | acb228e context capture retains accessible public records/attachments/ledger, rejects oversize instead of silent truncation, and carries retry in a verified reversible transaction.26/26 and earlier35/35/31/31reported; module loaded. Target starts new session and other freshStartHandover paths still clip12messages. No semantic equivalence or target-old-session+delta claim. |
+| F14 side notes, limit retry and active fill: R-19600, R-19601, R-19602 | Still reproducible source gap / exact proof missing | provider-context payload does not explicitly retain sideNotes; defaultFill checks preferred bot.provider. Full limit-switch external-action idempotency and delta-restatement evidence absent. Preserve retries/open IDs and require cut-off context before any duplicate-risk effect; no new model trial. |
+| F15 busy tools, prompts and cleanup: R-19603, R-19604, R-19605, R-19606, R-19607 | Bounded protection repaired and loaded; residual wording/incident proof open | dfaac60 source guards pendingTools/output, idle-only recovery, fresh screen and cleanup recheck;78/78existing tests. session-status/helper-recovery/idle-cleanup are in current28module digest, superseding earlier “not loaded.” bot-events still has a stuck/followed-gated branch prescribing close/crash: not universally repaired.46historical silences and current false-positive rate were not remeasured. |
+| F19 evidence retrieval versus authenticity: R-19619, R-19620, R-19621, R-19622, R-19623, R-19624, R-19625 | Partial repair; ingestion source defect remains | New scoped action evidence is queried by side/main, with outcomes and unknowns; old “no responder ever queries evidence” is obsolete for that store. Legacy events/log still precedes auth and lacks own-Origin/content-type enforcement. Typed fact/reason/hypothesis provenance, full bot/Codex legacy hook coverage, timed pruning and surfaced append failures are not collectively proved. Do not confuse authenticated read with trusted ingest. |
+| F20 Claude cache totals: R-19626, R-19628 | Still reproducible source defect | brainTokenUsage still adds Claude cache-read/cache-create to input and exports aggregate input; exact100–300× magnitude not remeasured. It is not a quota calculation. Separate raw categories with provider semantics; preserve historical uncertainty. |
+| F20 missing Codex cache: R-19627 | Repaired | Current decoder retains cached_input_tokens; interval monitor treats cache as subset and exports only proven deltas.03c236f loaded;8trusted intervals/16unknown at16:22UTC and zero monitor write failures. No billing or savings inference. |
+| F21 counts and scorecard: R-19629, R-19630, R-19631 | Obsolete old bot-header premise; legacy/scorecard scope remains | Bot header now separates ready/done; active projection intentionally excludes done/locked, not necessarily an error. Legacy rail aggregation still needs real-ledger totals proof. bot-scorecard scans only today/yesterday Codex folders and counts historical ready/done transitions; mixed-provider/older-window coverage and exact labels remain repairs. |
+| F22 memory/fallback/retention: R-19632, R-19633, R-19634 | Still reproducible bounded-reader/fallback defects; blanket PNG premise obsolete | tailLines reads all growth and retains uncapped fragments. Daemon-down fallback still needs owned/aged filtering;234/6historical count not reproduced. Native screen monitor already prunes PNGs, so “PNGs never pruned” is false as a blanket claim; monitor schedule and orphan status/tmp retention remain unproved. No deletion or pressure trial. |
+| Hard protection/payment requests: R-19266, R-19267, R-19277, R-19278, R-19279, R-19438, R-15307 | Missing protected-boundary proof; keep open | Current85%latch evidence above is cooperative only. Protected separate identity/broker/credential isolation and owner-presence single-use exceptions remain a design, not installed. No provider billing/credit auto-top-up restriction was verified. A flag, lack of a paid trial, current quota block or local cookie cannot guarantee no money can be spent. Existing concrete migration approval remains distinct from this audit. |
+| Earlier watchdog/provider control requests: R-16344, R-16548 | Missing exact acceptance; keep existing owners | Receipt reconciliation and helper completion improve watchdog scope, but durable death/stale-late cases remain. Existing provider picker/transaction source is not authenticated owner slash-picker acceptance or complete native migration; no new trial. |
+| Lifecycle fragments: R-19511, R-19512, R-19513, R-19514, R-19515, R-19516, R-19517, R-19518, R-19519, R-19520, R-19521, R-19522, R-19523, R-19524 | Grouped disposition, not22new repairs | Receipt storage/intake F06/F08/intake-origin improved; crash durability F12, legacy counts/evidence F07/F21 and busy-ledger handling remain incomplete. Queued receipt F04 now rescans; text delivery F05 remains heuristic. Execution F11/F15 and owner evidence F07/F13 remain bounded. release:install stays a separate dock-release boundary. Live readbacks now exist, so “none” is obsolete; old80/116count is not current147record registry proof. Signed owner confirmation validation is repaired narrowly, while F02 prevents a protected human boundary. |
+
+### Genuine next repairs, not new authority
+
+1. Protected provider/account isolation and human-bound grants (BUG-88): retain
+   the existing concrete approval gate; first require an approved fake-provider
+   counter/identity migration design. No credential move or launch by this audit.
+2. Separate typed/queued/consumed/delivered receipt states (F05), repair false
+   termfleet-say success (TF-150), then durable dead-helper episode reporting
+   (F11). Keep command replay out of receipt reconciliation.
+3. Protect legacy event ingestion before trusting it (F19), and cap tail growth
+   plus daemon-down fallback (F22). Specify safe retention before any pruning.
+4. Finish crash-on-arrival queue guarantees (F12), remaining provider delta and
+   preferred/active issues (F14), legacy evidence/marks/testability (F07/F13),
+   Claude cache categories (F20) and mixed-provider counts (F21).
+5. Preserve ordinary acceptance for already-loaded progress/correction and result
+   return. Organic side usage, semantic understanding and aligned savings remain
+   unproved; they are not prerequisites to closing this bounded audit task.
+
+No new models, broad test sweeps, restarts, implementation or shared task takeover
+were performed. Parent retains PR10 CI/merge. The old finding rows below are
+evidence history; this section supersedes their stale “still present/not loaded”
+labels only where explicitly stated. Findings are not marked repaired by mere
+documentation, and their existing locks/owner trials are preserved.
 
 ## Evidence boundary
 

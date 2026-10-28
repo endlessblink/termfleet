@@ -60,6 +60,17 @@ or paid counterfactual is needed to complete this review.
 
 ## Readable evidence and delivery
 
+- Historical static-audit reconciliation: the current exact-ID disposition in
+  [reliability-audit-reconciliation-2026-10-28.md](reliability-audit-reconciliation-2026-10-28.md)
+  covers all118attached request IDs. Shared audit task is agent-ops TASK-91;
+  repair ownership and ordinary acceptance remain separate.
+- Later runtime readback16:37:18.579UTC: e20f8aa/PID3090042 loaded16:36:53.011UTC,
+  digest f5c1e6b422606ec5beb4b724ef79ebf8db213c5e4d11781c181c15fefde10ca5,
+  supersedes the16:22snapshot. Owner reports106/106checks and retained daemon/
+  identities. Stale side prose after a newer correction is now withheld; ordinary
+  semantic correctness and savings remain unproved. Current provider endpoint
+  reports quota-latched, Claude denied, credentialIsolation:false; this is not a
+  protected payment boundary or guarantee of zero spending.
 - Existing report: this file (original committed audit af32bf6, now reconciled).
 - Current exact affected-suite output: `/tmp/termfleet-exact-03c236f.tap`,101/101;
   canonical caller/delivery36/36 and side integration76/76 are earlier narrower
