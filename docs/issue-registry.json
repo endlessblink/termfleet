@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T06:57:11.469Z",
+  "updatedAt": "2026-10-28T07:00:29.807Z",
   "issues": [
     {
       "id": "TF-001",
@@ -14554,6 +14554,11 @@
           "kind": "focused-test",
           "at": "2026-10-28T06:57:11.469Z",
           "note": "Baseline screen suite6pass5fail; afterfix12/12 plusadjacent suites20/20, includes durable uncertainty across ChoiceReceiptsreload"
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T07:00:29.806Z",
+          "note": "OnlyanswerScreenChoice rejects unavailable freshreads; scoped43bdda3, sendSHA96035d99ce97b2b82f4719df8ab164b2a412962f85115faca5783f2c4c9b443f. Authenticated GET readbackPID1086383 loaded06:59:41.541UTC twelvefileSHA8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0 matchesdisk. No liveprompt experiment, F09/F18notcovered."
         }
       ],
       "owner": "termfleet",
@@ -14604,6 +14609,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Baseline screen suite6pass5fail; afterfix12/12 plusadjacent suites20/20, includes durable uncertainty across ChoiceReceiptsreload"
+        },
+        {
+          "at": "2026-10-28T07:00:29.807Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "OnlyanswerScreenChoice rejects unavailable freshreads; scoped43bdda3, sendSHA96035d99ce97b2b82f4719df8ab164b2a412962f85115faca5783f2c4c9b443f. Authenticated GET readbackPID1086383 loaded06:59:41.541UTC twelvefileSHA8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0 matchesdisk. No liveprompt experiment, F09/F18notcovered."
         }
       ]
     }
