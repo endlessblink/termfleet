@@ -14034,6 +14034,256 @@
           "note": "Latest capture/subprocess26/26 and independent context/provider UI31/31 pass; earlier full provider/UI/restart35/35 passed. Local fake subprocess verifies stdin/full payload then exact acknowledged-session resume. Both provider directions mocked; no real Claude/cloud request. Timer hold,35 arrivals/duplicates, idle/restart/shutdown races, partial receipt and missing/corrupt required context covered."
         }
       ]
+    },
+    {
+      "id": "TF-124",
+      "title": "Claude launches ignore the subscription limit and owner routing rule",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Claude helpers can start after the owner required a stop at 85 percent",
+      "rootCause": "Memory and soft routing lacked a common launch check; explicit helper routes bypassed bot-only rewrites and raw usage was display-only.",
+      "guard": "Provider launch gate and reset regressions",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T05:55:15.051Z",
+          "note": "2026-10-28: current quota, launch-boundary and task-router tests27/27 pass including exact85, stale/missing data, persistent latch/reset, concurrency, forged environment/task approval and fake absolute provider binaries. Adapter fixture passed earlier; no paid provider calls. Shared integration currently51/54 because three action-evidence sibling tests fail. Runtime protection remains partial: bridge not reloaded, daemon old, same-UID credentials accessible."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T06:25:55.644Z",
+          "note": "Normal immutable desktop release44c6674cbe13-aa4517a48763-304bf167188e-7b45e62702f5 promoted; verify:installed-release PASS sha256aa4517a48763ec6bbdb9db7e6258722ca1010eb3d58e553d8a0a06d719f49875. Existing daemon PID2068834 startOct24 unchanged; no relaunch or credential migration. Latest quota/prompt/token55/55, restart-inclusive bots32/33 with known baseline tool-restriction assertion failing. Protected migration approval remains pending; no all-route claim."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner reviews protected credential/identity migration approval; arrange safe daemon activation without interrupting live sessions. Existing shared launch guards are live; all-route isolation and protected exceptions remain unimplemented.",
+      "history": [
+        {
+          "at": "2026-10-28T05:29:14.310Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:29:56.321Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Launch boundary audit underway; same-user credential isolation is outside wrapper guarantees."
+        },
+        {
+          "at": "2026-10-28T05:33:55.527Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Three focused regressions failed on automatic route, child queue, and bot/side subprocess before fixes; tests used isolated queue and fake executables."
+        },
+        {
+          "at": "2026-10-28T05:33:55.999Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "27 focused policy/router/boundary checks pass after guard implementation; production runtime proof pending."
+        },
+        {
+          "at": "2026-10-28T05:33:57.805Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Integrating common daemon spawn and adapter boundaries; no daemon termination allowed."
+        },
+        {
+          "at": "2026-10-28T05:55:15.051Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-10-28: current quota, launch-boundary and task-router tests27/27 pass including exact85, stale/missing data, persistent latch/reset, concurrency, forged environment/task approval and fake absolute provider binaries. Adapter fixture passed earlier; no paid provider calls. Shared integration currently51/54 because three action-evidence sibling tests fail. Runtime protection remains partial: bridge not reloaded, daemon old, same-UID credentials accessible."
+        },
+        {
+          "at": "2026-10-28T05:55:15.813Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Cooperative checks implemented; next coordinate shared bridge activation and verify loaded policy hash, explicit denial, durable audit and unchanged sessions. Protected owner approval and credential-isolated migration remain unimplemented; no all-route completion claim."
+        },
+        {
+          "at": "2026-10-28T06:05:24.692Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Quota-only commit b5ae625 saved. Current focused policy/router/boundary27/27, Rust2/2 and cargo check pass; build and map source verifier pass. Prompt scope now35/35 including late refresh and unavailable cached-menu refusal. Combined provider-context/action-evidence/restart49/49 pass. Bridge still PID3448413 and old daemon retained, awaiting shared owners readiness. Same-UID security and protected exceptions remain open."
+        },
+        {
+          "at": "2026-10-28T06:15:50.925Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Activated bridge PID478750 at2026-10-28 08:09:45IST after graceful drain. Authenticated live verifier passed loaded policy SHA b5bedb8c46a5852d92783de148cef385dcb89783bcfd74adb906e53eb78f06eb,403Claude denial, exact new owner-visible audit ID and unchanged daemon identities across denied request. Startup digest728a8edfc80b10b8ff5a148a7d1dca4810328badfa8fc9605c53d089043dc90f independently matches six shared files. Provider-call count not instrumented live; fake executable tests prove pre-spawn denial. Same-UID bypass/protected exception and old daemon remain open. Release install retry uses documented raw mode after wrapper120second timeout; no promotion yet."
+        },
+        {
+          "at": "2026-10-28T06:25:55.645Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Normal immutable desktop release44c6674cbe13-aa4517a48763-304bf167188e-7b45e62702f5 promoted; verify:installed-release PASS sha256aa4517a48763ec6bbdb9db7e6258722ca1010eb3d58e553d8a0a06d719f49875. Existing daemon PID2068834 startOct24 unchanged; no relaunch or credential migration. Latest quota/prompt/token55/55, restart-inclusive bots32/33 with known baseline tool-restriction assertion failing. Protected migration approval remains pending; no all-route claim."
+        }
+      ]
+    },
+    {
+      "id": "TF-126",
+      "title": "Quick replies lack action evidence and delivery receipts",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Why questions repeat unknown or forwarded without inspecting per-request outcomes",
+      "rootCause": "Quick responder has no SQL retrieval; tool failures omitted; forwarding claim published before handOn",
+      "guard": "Action evidence SQL and real Bots side adapter regressions",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T06:07:31.322Z",
+          "note": "node --test action-evidence,bot-side-reply,events-db,restart-safe-replies:30/30 PASS; action-log12/12 PASS includes actual fake Codex tool succeeded/failed/unfinished outcomes. Broader team-close external global instruction wording baseline failure remains; no production policy change."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Lock failure then wire scoped evidence and confirmed inbox receipts",
+      "history": [
+        {
+          "at": "2026-10-28T05:40:17.874Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:40:48.040Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:40:48.468Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T06:07:12.618Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression fixtures reproduced missing retrieval, false delivery wording and restart loss before fixes; focused tests now passing."
+        },
+        {
+          "at": "2026-10-28T06:07:18.125Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Applied actual outcome and receipt instrumentation plus bounded scoped retrieval before replies."
+        },
+        {
+          "at": "2026-10-28T06:07:30.743Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "30/30 evidence/reply/authenticated-route/restart and12/12 action-log pass. Coordinated production activation and loaded readback pending; arbitrary shell and unrecorded scheduling reasons remain outside coverage."
+        },
+        {
+          "at": "2026-10-28T06:07:31.322Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test action-evidence,bot-side-reply,events-db,restart-safe-replies:30/30 PASS; action-log12/12 PASS includes actual fake Codex tool succeeded/failed/unfinished outcomes. Broader team-close external global instruction wording baseline failure remains; no production policy change."
+        }
+      ]
+    },
+    {
+      "id": "TF-127",
+      "title": "Closed quota prompts keep waiting banners and overdue reminders",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Closed terminal quota prompt remains pinned as waiting and generates overdue reminders.",
+      "rootCause": "Stale waiting status overrode absent live prompts, and disabled historical cards still fed waiting banners and reminder links without exact prompt lifecycle reconciliation.",
+      "guard": "Authoritative prompt reconciliation, stale answer retirement, disconnected state and isolated headless tests.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T05:52:01.710Z",
+          "note": "bot-events waiting OR onScreen reset away even when readAsk returned null; UI stale branch disabled buttons without settling local prompt identity or removing pinned waiting summary. Shared prompt-lifecycle classifier and exact-ID retirement now implemented."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T06:15:51.748Z",
+          "note": "Latest lifecycle/reminder/headless35/35 pass with shared observation revision and cached-live refusal. Authenticated ACTUAL served-page phone390/desktop1600 synthetic checks2/2 pass: closed pin removed/history retained; unknown retains history without controls; replacement active stays actionable; stale send removes old pin. Served HTML SHA d26a4b01d01fa19624b1dcf6961fab07a11a74236fd16e13985a9380a2b471eb equals disk.26mock API calls per viewport, zero real APIs/terminal/business actions. Bridge active PID478750; owner actual-device acceptance pending."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Owner refreshes the existing bot chat and checks a closed question is no longer pinned or awaiting an answer; preserve active approvals and history.",
+      "history": [
+        {
+          "at": "2026-10-28T05:45:45.596Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T05:45:57.423Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Source traces distinguish stale waiting status from missing live prompt and local UI stale response from persisted card state."
+        },
+        {
+          "at": "2026-10-28T05:45:57.728Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Isolated persistence and headless stale-answer fixtures will lock the failure."
+        },
+        {
+          "at": "2026-10-28T05:46:26.971Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Seven isolated lifecycle regressions fail on current code; replacement baseline passes."
+        },
+        {
+          "at": "2026-10-28T05:46:27.287Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implementing observed prompt validity and stale UI retirement without touching real terminals."
+        },
+        {
+          "at": "2026-10-28T05:52:01.710Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "bot-events waiting OR onScreen reset away even when readAsk returned null; UI stale branch disabled buttons without settling local prompt identity or removing pinned waiting summary. Shared prompt-lifecycle classifier and exact-ID retirement now implemented."
+        },
+        {
+          "at": "2026-10-28T05:52:02.023Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Seven lifecycle failures reproduced before fix. Lifecycle/reminder/status/closed-terminal headless suites now 24/24 pass; browser terminal prompt and pinned suites 3/3 pass before final exact-ID local-dismissal refinement. npm run build, node --check and git diff --check pass. Coordinated server activation and authenticated production read-back remain open."
+        },
+        {
+          "at": "2026-10-28T05:52:02.320Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source and isolated headless regressions pass; parent integrating fresh-service authority and exact-ID stale-answer retirement in shared server before coordinated activation."
+        },
+        {
+          "at": "2026-10-28T05:55:14.592Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final combined prompt lifecycle, reminder, status, closed-terminal and headless bot UI suites: 30/30 passed. Added passive API refresh source-execution guards after parent integration: prompt-lifecycle.test.mjs 16/16 passed, including immediate absent closure, unknown retention and exact active approval preservation. Build, syntax and whitespace passed; no production restart/read-back performed."
+        },
+        {
+          "at": "2026-10-28T06:15:51.748Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Latest lifecycle/reminder/headless35/35 pass with shared observation revision and cached-live refusal. Authenticated ACTUAL served-page phone390/desktop1600 synthetic checks2/2 pass: closed pin removed/history retained; unknown retains history without controls; replacement active stays actionable; stale send removes old pin. Served HTML SHA d26a4b01d01fa19624b1dcf6961fab07a11a74236fd16e13985a9380a2b471eb equals disk.26mock API calls per viewport, zero real APIs/terminal/business actions. Bridge active PID478750; owner actual-device acceptance pending."
+        }
+      ]
     }
   ]
 }
