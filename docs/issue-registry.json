@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T09:54:49.140Z",
+  "updatedAt": "2026-10-28T10:18:53.906Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15434,6 +15434,85 @@
           "type": "evidence",
           "kind": "source",
           "note": "Actual /tmp/termfleet-f15-red.tap and unknown-red.tap fail before guards. /tmp/termfleet-f15-green.tap77/77. No helper close, input or model trial."
+        }
+      ]
+    },
+    {
+      "id": "TF-141",
+      "title": "Buried unanswered bot questions cannot be found easily",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Open structured bot questions scroll away under later messages while terminal prompts alone stay pinned",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/bot-unanswered-navigation.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T10:15:26.686Z",
+          "note": "Actual /tmp/termfleet-unanswered-final.tap3/3. Synthetic phone/desktop; failures before fix in history-red, delete-red and race-red. Visual child reviewed four captures. Headless real Agent-Manager chat GET has zero open cards; no natural jump proof. Backend retention source not loaded, F15 activation gate remains."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T10:18:53.906Z",
+          "note": "Actual /tmp/termfleet-unanswered-final-focused.tap10/10 and served-final.tap5/5 pass. History/operator barriers, repeated questions and allocation regression; phone/desktop exact jumps, drafts, deleted answers, send failures, refresh/switch and delayed-response refusal. Natural headless existing-bot jump readback passed without answers; backend not loaded."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reproduce a buried exact question and add derived persistent jump navigation",
+      "history": [
+        {
+          "at": "2026-10-28T10:04:02.663Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T10:15:26.687Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Actual /tmp/termfleet-unanswered-final.tap3/3. Synthetic phone/desktop; failures before fix in history-red, delete-red and race-red. Visual child reviewed four captures. Headless real Agent-Manager chat GET has zero open cards; no natural jump proof. Backend retention source not loaded, F15 activation gate remains."
+        },
+        {
+          "at": "2026-10-28T10:15:43.951Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed missing derived navigation and history window loss."
+        },
+        {
+          "at": "2026-10-28T10:15:43.981Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Isolated red fixtures saved."
+        },
+        {
+          "at": "2026-10-28T10:15:44.013Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "History, consumed-deletion and delayed-refresh regressions falsify harmful behavior."
+        },
+        {
+          "at": "2026-10-28T10:15:44.043Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Minimal derived list and exact anchors preserve original controls."
+        },
+        {
+          "at": "2026-10-28T10:15:44.082Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "3/3 local checks; real authenticated existing-bot navigation PASS; older history backend not loaded."
+        },
+        {
+          "at": "2026-10-28T10:18:53.906Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Actual /tmp/termfleet-unanswered-final-focused.tap10/10 and served-final.tap5/5 pass. History/operator barriers, repeated questions and allocation regression; phone/desktop exact jumps, drafts, deleted answers, send failures, refresh/switch and delayed-response refusal. Natural headless existing-bot jump readback passed without answers; backend not loaded."
         }
       ]
     }

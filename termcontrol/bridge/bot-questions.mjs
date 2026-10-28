@@ -88,8 +88,12 @@ export function markWithdrawnQuestions(messages) {
       if (e.role === 'bot' && e.question) out[j] = { ...out[j], withdrawn: true };
     }
     // ...and the same card re-attached to the message that takes it back.
-    const before = messages.slice(0, i).filter((e) => e.role === 'bot' && e.question);
-    if (m.question && before.some((e) => sameQuestion(e.question, m.question))) out[i] = { ...out[i], withdrawn: true };
+    if (m.question) {
+      for (let j = 0; j < i; j++) {
+        const earlier = messages[j];
+        if (earlier.role === 'bot' && sameQuestion(earlier.question, m.question)) { out[i] = { ...out[i], withdrawn: true }; break; }
+      }
+    }
   });
   return out;
 }
@@ -119,7 +123,8 @@ export function sameQuestion(a, b) {
 export function markRepeatedQuestions(messages) {
   return messages.map((m, i) => {
     if (m.role !== 'bot' || !m.question) return m;
-    for (const later of messages.slice(i + 1)) {
+    for (let j = i + 1; j < messages.length; j++) {
+      const later = messages[j];
       if (later.role === 'operator') break;
       if (later.role === 'bot' && sameQuestion(later.question, m.question)) return { ...m, repeated: true };
     }

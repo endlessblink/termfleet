@@ -1229,12 +1229,16 @@ export class Bots {
   view(id) {
     const bot = this.read(id);
     if (!bot) return null;
-    const all = this.messages(id);
+    // Resolve question history before taking the window: a later answer or withdrawal
+    // must not disappear when an older, still-open original card is retained.
+    const all = markWithdrawnQuestions(markRepeatedQuestions(this.messages(id)));
+    const answered = new Set(all.filter((m) => m.role === 'operator' && m.answerTo && m.deleted?.cancelled !== true).map((m) => m.answerTo));
     const chat = all.slice(-MAX_CHAT_RETURNED);
-    // A terminal's card still waiting for Noam is always returned, however busy the chat got since.
-    chat.unshift(...all.slice(0, -MAX_CHAT_RETURNED).filter((m) => m.role === 'terminal-ask' && !m.settled));
+    chat.unshift(...all.slice(0, -MAX_CHAT_RETURNED).filter((m) =>
+      !m.repeated && ((m.role === 'terminal-ask' && !m.settled) ||
+      (m.role === 'bot' && m.question && !m.withdrawn && !m.duplicate && !answered.has(m.id)))));
     const busy = this.running.has(id) || (this.queues.get(id) || []).length > 0 || Boolean(bot.retry);
-    return { bot: { ...this.summary(id), rules: bot.rules }, messages: markReceipts(markRepeatedTerminalAsks(markWithdrawnQuestions(markRepeatedQuestions(chat))), { busy }) };
+    return { bot: { ...this.summary(id), rules: bot.rules }, messages: markReceipts(markRepeatedTerminalAsks(chat), { busy }) };
   }
 
   /** Adds the operator's message and starts (or queues) the bot's turn. */
