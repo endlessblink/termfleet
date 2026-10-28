@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T15:30:25.842Z",
+  "updatedAt": "2026-10-28T16:02:51.532Z",
   "issues": [
     {
       "id": "TF-001",
@@ -13285,7 +13285,7 @@
     {
       "id": "TF-115",
       "title": "Disposable helper task wrappers become owner requests and block completion",
-      "state": "reported",
+      "state": "verifying",
       "severity": "medium",
       "surface": "logic",
       "matrixRefs": [],
@@ -13295,12 +13295,17 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-10-26T14:41:56.464Z",
-          "note": "Authorized disposable helper recovered exact original context, then Stop retried after synthetic harness instructions became four owner rows and status recording reported ledger busy. Probe closed and four synthetic items marked context; /tmp/termfleet-recovery-live-after.json. No universal hook-reliability claim."
+          "at": "2026-10-28T15:55:29.260Z",
+          "note": "355afae adds versioned private filename, anchored generated wrapper recognition and control-envelope filtering. Unmarked legacy requests and genuine quoted/adjacent text retained; no historical ledger rewrite."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T15:55:29.295Z",
+          "note": "Focused50/50 and Playwright goal/session22/22 pass. Combined affected83/83 includes real isolated launcher fake listener. Broader caller-context and four Claude launcher fixtures remain separately unverified."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Reproduce helper capture and ledger write failure in an isolated fixture before selecting a bounded guard.",
+      "nextAction": "Verify marked-helper intake on the loaded bridge; preserve legacy unmarked history and real owner requests.",
       "history": [
         {
           "at": "2026-10-26T14:35:06.754Z",
@@ -13312,6 +13317,59 @@
           "type": "evidence",
           "kind": "source",
           "note": "Authorized disposable helper recovered exact original context, then Stop retried after synthetic harness instructions became four owner rows and status recording reported ledger busy. Probe closed and four synthetic items marked context; /tmp/termfleet-recovery-live-after.json. No universal hook-reliability claim."
+        },
+        {
+          "at": "2026-10-28T15:21:56.539Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "End-to-end audit confirms generated task launch text enters owner intake; isolated five-item reproduction available."
+        },
+        {
+          "at": "2026-10-28T15:21:57.134Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Synthetic generated launch produced five owner items and blocked first Stop. stop_hook_active allowed retry; an unlimited same-finish loop is not proven."
+        },
+        {
+          "at": "2026-10-28T15:25:03.187Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-10-28 audit: generated launch fixture adds five owner items and blocks first Stop; retry with stop_hook_active is allowed. Durable baseline and limits in docs/termfleet-end-to-end-audit-2026-10-28.md."
+        },
+        {
+          "at": "2026-10-28T15:55:29.156Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Failing marker/control-envelope regression captured before fix; genuine surrounding prose preserved."
+        },
+        {
+          "at": "2026-10-28T15:55:29.189Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Explicit private helper filename provenance and control-envelope exclusion implemented in355afae."
+        },
+        {
+          "at": "2026-10-28T15:55:29.229Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused50/50 and goal/session22/22 pass; source-linked installed commands current; loaded bridge activation pending."
+        },
+        {
+          "at": "2026-10-28T15:55:29.261Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "355afae adds versioned private filename, anchored generated wrapper recognition and control-envelope filtering. Unmarked legacy requests and genuine quoted/adjacent text retained; no historical ledger rewrite."
+        },
+        {
+          "at": "2026-10-28T15:55:29.295Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused50/50 and Playwright goal/session22/22 pass. Combined affected83/83 includes real isolated launcher fake listener. Broader caller-context and four Claude launcher fixtures remain separately unverified."
         }
       ]
     },
@@ -16142,6 +16200,170 @@
           "type": "evidence",
           "kind": "source",
           "note": "39223b2 activated2026-10-28T15:21:30.550Z PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044. Own hold released, daemon2068834 and exact cutover terminal/conversation identities/chat prefixes retained. Real authenticated panel15:29:14Z shows8 from original9; known exact legacy answer excluded. Eight ambiguous retained, Already answered action present8 times. Screenshot /tmp/termfleet-question-panel-installed.png SHA4eab725e940ce973685ecdff402f67c33c8ccb83fbf715d36158bbf8dba17648; independent visual count8/legible/no horizontal clipping, lower4 rows outside crop."
+        }
+      ]
+    },
+    {
+      "id": "TF-149",
+      "title": "Codex progress messages disappear while a bot is working",
+      "state": "verifying",
+      "severity": "high",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Codex intermediate text is parsed but absent from running chat and progress history until final completion",
+      "rootCause": "Codex emits text events while the running bot event handler only records said events",
+      "guard": "Synthetic fake-Codex stream must show an intermediate update before final completion and preserve one final reply",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T15:54:34.688Z",
+          "note": "83/83 affected checks pass including bot-progress5/5 and bot-progress-server1/1; synthetic executable held while visible progress observed at390/1400, exactly one visible final after release. No provider inference or real terminal input."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T15:54:34.796Z",
+          "note": "Untyped Codex messages wait for following work/different text; delivery claims and cards stay on existing final checks; matching progress collapses into final view without rewriting history."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Complete controlled bridge activation and authenticated loaded-source readback, then verify ordinary visible progress and one final reply.",
+      "history": [
+        {
+          "at": "2026-10-28T15:21:55.339Z",
+          "type": "created",
+          "note": "Audit diagnosis only; no production fix or deployment. See docs/termfleet-end-to-end-audit-2026-10-28.md."
+        },
+        {
+          "at": "2026-10-28T15:24:39.373Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Exact fake Codex stream reproduces parsed but invisible intermediate text. Production behavior remains unverified."
+        },
+        {
+          "at": "2026-10-28T15:24:39.916Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Durable diagnostic docs/termfleet-audit-baseline.test.mjs passes assertions documenting the defect; this is not a passing repair regression."
+        },
+        {
+          "at": "2026-10-28T15:25:05.557Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-10-28 audit: fake Codex intermediate message parsed1, visible0, said0 while working; final delivered1. Source digest and preserved reproduction in docs/termfleet-end-to-end-audit-2026-10-28.md. No fix or live acceptance."
+        },
+        {
+          "at": "2026-10-28T15:54:34.114Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Failing fake-Codex stream regression captured before repair; follow-up red cases prove unchecked completion and duplicate-last-message hazards."
+        },
+        {
+          "at": "2026-10-28T15:54:34.195Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Forward proven intermediate text only; retain final classification and completion-report protections."
+        },
+        {
+          "at": "2026-10-28T15:54:34.225Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "83/83 affected checks pass, including isolated real bridge/headless phone and desktop DOM; production activation remains pending."
+        },
+        {
+          "at": "2026-10-28T15:54:34.688Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "83/83 affected checks pass including bot-progress5/5 and bot-progress-server1/1; synthetic executable held while visible progress observed at390/1400, exactly one visible final after release. No provider inference or real terminal input."
+        },
+        {
+          "at": "2026-10-28T15:54:34.796Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Untyped Codex messages wait for following work/different text; delivery claims and cards stay on existing final checks; matching progress collapses into final view without rewriting history."
+        }
+      ]
+    },
+    {
+      "id": "TF-151",
+      "title": "Short folder corrections can be dropped or paraphrased by the quick responder",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Standalone corrected names have no ledger item and PASS_ON no keeps them from the worker; side inference can reinterpret the name",
+      "rootCause": "",
+      "guard": "Exact short corrections reach the running worker once before any side response and preserve queued versus read distinction",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T16:02:51.500Z",
+          "note": "87/87 affected; fresh16/16 side+server includes successive exact English/Hebrew names, stalled side responder, once-only delivery, failed inbox fallback, status-followup exclusions; isolated HTTP fake provider/daemon and headless390/1400."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T16:02:51.531Z",
+          "note": "31e6b2f deterministic fragment routing calls existing handOn once and preserves queued/failed receipts; no inferred worker read, path or completion. Side prompt preserves exact names and permits requested verified paths. Older in-flight side prose and main model semantic correctness are not proven."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Complete controlled activation and ordinary exact correction acceptance; queued transport is not model understanding. Earlier in-flight side prose remains unproven.",
+      "history": [
+        {
+          "at": "2026-10-28T15:59:14.736Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T15:59:14.776Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "User screenshots show finetune/finecut/finetuned corrections acknowledged with wrong names and no location; code path confirms empty-item PASS_ON no bypass."
+        },
+        {
+          "at": "2026-10-28T15:59:14.806Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Candidate: clear correction fragments bypass side-model paraphrase and go verbatim into existing steer inbox; verified path replies permitted when requested."
+        },
+        {
+          "at": "2026-10-28T16:02:51.411Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Red11/12 reproduces standalone finetune absent from inbox before side response; raw correction regression now green."
+        },
+        {
+          "at": "2026-10-28T16:02:51.444Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Clear short corrections go verbatim via existing inbox without side inference. Ordinary followups/acknowledgments and attachments/replies retain routes; exact paths permitted when requested."
+        },
+        {
+          "at": "2026-10-28T16:02:51.472Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "31e6b2f:87 affected checks and fresh16/16 side+server pass. Production activation and actual semantic outcome pending."
+        },
+        {
+          "at": "2026-10-28T16:02:51.500Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "87/87 affected; fresh16/16 side+server includes successive exact English/Hebrew names, stalled side responder, once-only delivery, failed inbox fallback, status-followup exclusions; isolated HTTP fake provider/daemon and headless390/1400."
+        },
+        {
+          "at": "2026-10-28T16:02:51.532Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "31e6b2f deterministic fragment routing calls existing handOn once and preserves queued/failed receipts; no inferred worker read, path or completion. Side prompt preserves exact names and permits requested verified paths. Older in-flight side prose and main model semantic correctness are not proven."
         }
       ]
     }

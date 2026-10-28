@@ -813,3 +813,15 @@ Automatic polling did not consult successful durable answer receipts before appe
 ### TF-147 — Cumulative provider counters are not invocation usage — verifying
 
 Official installed Codex0.164 exec serializes total thread usage and restores it on resume. Keep raw snapshots/session/UTC provenance and exclude unknown first/legacy observations; compute only monotonic same-session interval deltas. Preserve gaps explicitly and quarantine reset/replayed chains across monitor recreation; never subtract by bot name or infer subscription savings. Write failure never advances the durable baseline. Focused red10/14 and replay red16/17; final monitor+events28/28 `/tmp/termfleet-cumulative-usage-final.tap`; combined132/132 above. Live old totals are invalid for interval consumption; corrected loaded runtime and ordinary-work interval proof pending.
+
+# 2026-10-28 TF-149 / TF-115 follow-up
+
+| Symptom | Cause | Guard | Current proof |
+|---|---|---|---|
+| Working Codex chat hides intermediate words | exec text has no phase; running handler only consumed said | Publish after next work/different-text event; withhold delivery claims/cards; promote matching progress into final view | bot-progress5/5 and disposable bridge browser1/1; affected83/83. Production pending |
+| Helper instructions create owner tasks and Stop retries | No origin distinction in launch pointer/control envelopes | Versioned private task filename and anchored generated shape; preserve adjacent owner words, fenced examples and legacy unmarked pointers | helper-request-origin6/6, focused50/50, goal/session22/22. Installed CLI source links current; loaded bridge pending |
+
+TF-151: exact short English/Hebrew name corrections route once without side inference;
+ordinary status followups remain on quick-answer path. Red11/12 to affected87/87;
+final side/server16/16 includes stalled side and failed inbox fallback. Loaded
+semantic acceptance pending; older in-flight side prose is not proven corrected.

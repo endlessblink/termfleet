@@ -11305,3 +11305,29 @@ Focused failures preserved before changes: cumulative usage10/14, replay16/17, s
 Activated39223b2 at2026-10-28T15:21:30.550Z bridge2040585/source a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044 after fresh zero active/queue/retry metadata. Normal graceful bridge-only stop/start retained original chats/session identities and daemon2068834; exact own marker/override removed. Final133/133 after red intervening-prompt review regression; build/syntax/diff/144-issue validation pass. Actual authenticated panel15:29:14Z has8 from9 and8 Already answered actions, no horizontal overflow. Independent visual confirms count8/legible visible4rows (crop cannot assess lower4). Screenshot `/tmp/termfleet-question-panel-installed.png` SHA4eab725e940ce973685ecdff402f67c33c8ccb83fbf715d36158bbf8dba17648. Eight ambiguous histories retained. Ten old usage observations unknown/excluded,0 reliable intervals at15:30:25Z is not zero consumption; health0 failures. Bounded thirty-minute metadata observer shell_21d3d0b1b55140c1 records UTC usage/identity in private `/tmp/termfleet-postcutover-usage.jsonl` without model calls. Savings and natural exact-completion/new-turn observation remain in_progress.
 
 Question-only timed reminder follow-up remains source-only: controlled-clock red6/7, final14/14 `/tmp/termfleet-question-reminder-green.tap`, existing permission-reminder1/1 `/tmp/termfleet-permission-reminders.tap`. Keep pending question accessible without five-minute reask notification; permission reminders unchanged. Another owner added unreviewed bots.mjs shell_environment_policy inherit/include_only delta and caller regression; do not activate that policy by guesswork or stage it. Shared owner coordination delivered to audit terminal e3bf5a6f; active bot315a observed15:33:32UTC also precludes restart. Existing live39223b2 and own released hold remain unchanged.
+
+# 2026-10-28 progress and request-origin repair — in_progress
+
+Shared authority: agent-ops BUG-90, owner codex-termfleet-progress. TF-149 and
+TF-115 remain verifying until loaded production and owner-facing readback.
+Codex progress is published after a subsequent work/message event establishes
+it as intermediate. Delivery claims and cards retain final publication checks.
+Matching progress promotes into one final visible reply; durable history remains.
+Private helper task filenames identify machine origin; control envelopes are
+excluded while genuine surrounding owner words and quoted examples remain intact.
+Legacy unmarked launchers are deliberately not guessed or bulk-cleaned.
+
+Proof: affected `node --test` suites bot-progress, bot-side-reply, bot-caller,
+helper-request-origin, asks, requirements-ledger, requirements-lock,
+asks-not-requests, bot-progress-server, bot-unanswered-history — 83/83.
+Real disposable bridge, fake provider/daemon, headless Chromium390/1400:
+progress visible before release, one visible final after release. No real provider
+call or terminal mutation. Helper goal/session compatibility22/22. Follow-up red
+tests caught unchecked claims and bookkeeping duplication before repair
+(3pass/2fail, then5/5). `npm run doctor`: one stale desktop build failure and one
+keeper-age warning; dock release verified, daemon retained. This bridge-only patch
+does not repair desktop release alignment or prove token savings.
+
+TF-151 follow-up31e6b2f: exact short corrections bypass side-model paraphrase and delay.
+Ordinary followups remain immediate; failed inbox uses existing retained fallback.
+Affected87/87, final side/server16/16. Production activation remains in_progress.
