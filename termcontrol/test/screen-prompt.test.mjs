@@ -71,6 +71,48 @@ test('a tap presses only the digit when the menu acts on it', async () => {
   assert.deepEqual(sent, ['1']);
 });
 
+for (const unavailable of [null, undefined, '', '   \n\t']) {
+  test(`an unreadable screen after the digit stays uncertain (${JSON.stringify(unavailable)})`, async () => {
+    const { sent, opts } = fake([unavailable]);
+    const records = [];
+    const result = await answerScreenChoice({ id: 'p' }, prompt, '1', { ...opts, record: entry => records.push(entry) });
+    assert.equal(result.uncertain, true);
+    assert.notEqual(result.ok, true);
+    assert.deepEqual(sent, ['1'], 'no Enter when the fresh prompt cannot be read');
+    assert.equal(records.length, 1);
+    assert.equal(records[0].ok, false, 'unavailable observations cannot produce a success audit');
+  });
+}
+
+test('an unreadable screen after Enter does not confirm that the answer was accepted', async () => {
+  const { sent, opts } = fake([HOOK, HOOK, HOOK, null]);
+  const records = [];
+  const result = await answerScreenChoice({ id: 'p' }, prompt, '1', { ...opts, record: entry => records.push(entry) });
+  assert.equal(result.uncertain, true);
+  assert.notEqual(result.ok, true);
+  assert.deepEqual(sent, ['1', '\r'], 'Enter is only sent after three readable matching observations');
+  assert.equal(records.length, 1);
+  assert.equal(records[0].ok, false);
+});
+
+test('an unreadable observation persists uncertainty and blocks a second tap after receipt reload', async () => {
+  const { ChoiceReceipts } = await import('../bridge/choice-receipts.mjs');
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-unreadable-choice-'));
+  const file = path.join(dir, 'receipts.json');
+  try {
+    const { sent, opts } = fake([null]);
+    const receipts = new ChoiceReceipts(file);
+    const first = await receipts.send('p', prompt.id, '1', () => answerScreenChoice({ id: 'p' }, prompt, '1', opts));
+    assert.equal(first.uncertain, true);
+    assert.equal(receipts.get('p', prompt.id).state, 'uncertain');
+    const reloaded = new ChoiceReceipts(file);
+    const second = await reloaded.send('p', prompt.id, '1', () => answerScreenChoice({ id: 'p' }, prompt, '1', opts));
+    assert.equal(second.uncertain, true);
+    assert.deepEqual(sent, ['1'], 'uncertain submission is not typed again after reload');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('Enter follows only when the same prompt is still open with the cursor on that choice', async () => {
   const moved = HOOK.replace(' ❯ 1. Yes', '   1. Yes').replace('   2. No', ' ❯ 2. No');
   const { sent, opts } = fake([moved, moved, moved, 'answered']);

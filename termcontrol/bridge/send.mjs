@@ -325,14 +325,19 @@ export async function answerScreenChoice(pane, prompt, choice, {
     return lines.slice(Math.max(0, end - 12), end).some((line) => new RegExp(`^\\s*[❯›>]\\s*${option.key}\\.`).test(line.replace(/[│┃]/g, ' ')));
   };
   const done = () => { record({ pane: pane.id, project: pane.project, askId: prompt.id, choice: option.key, ok: true }); return { ok: true, sentAt: Date.now() }; };
+  const readScreen = async () => {
+    const snapshot = await screen();
+    if (typeof snapshot !== 'string' || !snapshot.trim()) throw new Error('The terminal screen is unavailable. The choice may have been sent; check it before trying again.');
+    return snapshot;
+  };
   try {
     await write(option.key);
     let snapshot = '';
-    for (let n = 0; n < 14; n++) { await pause(150); snapshot = await screen(); if (!open(snapshot)) return done(); if (onChoice(snapshot) && n >= 2) break; }
+    for (let n = 0; n < 14; n++) { await pause(150); snapshot = await readScreen(); if (!open(snapshot)) return done(); if (onChoice(snapshot) && n >= 2) break; }
     if (!open(snapshot)) return done();
     if (!onChoice(snapshot)) return { error: 'The terminal did not take the choice. Check it before trying again.', uncertain: true };
     await write('\r');
-    for (let n = 0; n < 14; n++) { await pause(150); snapshot = await screen(); if (!open(snapshot)) return done(); }
+    for (let n = 0; n < 14; n++) { await pause(150); snapshot = await readScreen(); if (!open(snapshot)) return done(); }
     return { error: 'The prompt is still open in the terminal. Check it before trying again.', uncertain: true };
   } catch (error) {
     record({ pane: pane.id, project: pane.project, askId: prompt.id, choice: option.key, ok: false, error: String(error.message || error) });

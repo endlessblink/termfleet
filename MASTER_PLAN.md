@@ -11113,6 +11113,12 @@ Stable-source rerun: `node --test --test-name-pattern='PC app.*scrolled up' term
 Final focused run: `node --test --test-concurrency=1 termcontrol/test/skills.test.mjs termcontrol/test/slash-skills-browser.test.mjs termcontrol/test/bot-provider.test.mjs` passes21/21 in8.6s. The existing provider-browser fixture now waits for intercepted polling requests before closing its browser, preventing a disposal-time unhandled rejection. Runtime files and the previously reviewed live hashes are unchanged by that test-only correction.
 
 
+### TF-131 — unreadable answers remain uncertain (VERIFYING, 2026-10-28)
+
+External audit F03 reproduced with isolated screen input: five new unavailable-screen cases failed before production edits (six existing cases passed). Only answerScreenChoice now rejects null, undefined, empty and whitespace reads in both polling phases before treating a prompt as closed. The digit is not followed by Enter after an unavailable observation; no success audit is produced. Uncertainty survives ChoiceReceipts reload and prevents another tap. Readable menu transitions retain their assertions.
+
+`node --test termcontrol/test/screen-prompt.test.mjs termcontrol/test/choice-receipts.test.mjs termcontrol/test/vendor-permission-ask.test.mjs termcontrol/test/send-once.test.mjs`20/20 PASS; syntax/diff checks PASS; independent review no blocker. Source frozen at send SHA96035d99ce97b2b82f4719df8ab164b2a412962f85115faca5783f2c4c9b443f. SQL owner confirmed no overlapping edits and owns the single coordinated bridge activation. Loaded send provenance pending; no live operator prompt experiment, provider call, daemon restart or frontend build. F09 and F18 remain open.
+
 ### TF-125 — provider switches retain public context (VERIFYING, 2026-10-28)
 
 Existing bot provider controls stage a recoverable transaction: capture retained public chat/source records, rules and memory, the full owner-work ledger, tool/action evidence, unfinished work and hashed attachment references. A separate restricted receipt derives counts, open IDs and unfinished text from the actual payload before the new session receives work. Wrong/partial/tool-using receipts restore original sessions and hold work for explicit Retry. Claude remains denied by the independent launch policy. Missing, malformed, unsupported, forked-prefix, credential-bearing or oversized context stops explicitly. Hidden provider reasoning is excluded; identical understanding is never claimed.

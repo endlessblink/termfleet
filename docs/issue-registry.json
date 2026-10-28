@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T06:36:12.010Z",
+  "updatedAt": "2026-10-28T06:57:11.469Z",
   "issues": [
     {
       "id": "TF-001",
@@ -14536,6 +14536,74 @@
           "type": "evidence",
           "kind": "source",
           "note": "Loaded formatter bound toPID73385610file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006. Actual served renderer1440/390 exact synthetic audit text:8paragraphs, all words retained, own RTL tail,no overflow/errors; disposable visualPASS. Actual HTMLd26a4b01d01fa19624b1dcf6961fab07a11a74236fd16e13985a9380a2b471eb and formatter7c6a11ddc32fd290f54fb0aead43887a687fe09a9209da25b53722e3f6600f10. No real live-model reply or physical phone trial."
+        }
+      ]
+    },
+    {
+      "id": "TF-131",
+      "title": "Unreadable terminal screen falsely confirms a prompt answer",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "After typing a choice digit, null or blank screen reads are treated as prompt closure and recorded successful",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/screen-prompt.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T06:57:11.469Z",
+          "note": "Baseline screen suite6pass5fail; afterfix12/12 plusadjacent suites20/20, includes durable uncertainty across ChoiceReceiptsreload"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Preserve uncertainty on unreadable reads and prove no extra Enter; coordinated bridge load remains separate",
+      "history": [
+        {
+          "at": "2026-10-28T06:56:24.253Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T06:56:24.610Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "External audit F03 current source path confirmed; SQL owner confirms no adjacent edits"
+        },
+        {
+          "at": "2026-10-28T06:56:24.949Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Isolated screen-prompt suite six pass five fail: null undefined blank whitespace and post-Enter null incorrectly return success"
+        },
+        {
+          "at": "2026-10-28T06:57:10.474Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Five independent unavailable-screen cases failed before production changes; exact digit/Enter and audit assertions preserved"
+        },
+        {
+          "at": "2026-10-28T06:57:10.785Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Reject null undefined empty whitespace reads before prompt-closure success in both polling phases"
+        },
+        {
+          "at": "2026-10-28T06:57:11.095Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "20/20 focused screen, receipt persistence, vendor and send-once regressions pass; no live prompt experiment; coordinated bridge activation and loaded send hash pending"
+        },
+        {
+          "at": "2026-10-28T06:57:11.469Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Baseline screen suite6pass5fail; afterfix12/12 plusadjacent suites20/20, includes durable uncertainty across ChoiceReceiptsreload"
         }
       ]
     }
