@@ -843,3 +843,8 @@ Explicit dismissal retains originals without inventing answers. Regression: node
 
 
 TF-141 installed follow-up: audit events remain durable but must not render as conversational notes. Real bridge regression now compares note rows before/after9dismissals and reload; original failure reproduced9undefined, final focused13/13 and actual mobile refresh0undefined. Real pending0/audits9, screenshot independentPASS. Maintenance release/resumption remains owner-approval-gated after automatic review rejection.
+
+
+### TF-152 safe group bot lifecycle
+
+Guard: `node --test termcontrol/test/bot-batch.test.mjs termcontrol/test/bot-batch-snapshot.test.mjs termcontrol/test/bot-batch-ui.test.mjs termcontrol/test/bot-close.test.mjs termcontrol/test/bot-remove.test.mjs` (29/29). Covers visible group/search selection, new bot/helper/session/activity after confirmation, cancel, token replay/expiry, partial failure, manager acknowledgment, busy/queued/unknown or unsaved work, and legacy backend capability mismatch. Mobile390/desktop1280 disposable bridge UI and independent confirmation visual review PASS. Individual lifecycle and old-question fixes retained. Installed acceptance in_progress: automatic approval rejected live drain; PID85549 retains pause/queues, unsupported controls hidden. No real bot execution permitted in verification.

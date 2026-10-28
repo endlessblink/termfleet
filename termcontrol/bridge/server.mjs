@@ -23,6 +23,8 @@ import { checkStalledBots } from './stall-wake.mjs';
 import { checkCanary, readCanary, CANARY_EVERY_MS } from './canary.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice, answerMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
+import { createBotBatchSnapshot } from './bot-batch-snapshot.mjs';
+import { createBotBatch } from './bot-batch.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
 import { cleanupPlan, cleanupScreenState, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
 import { appendAction, paneLogFile } from './action-log.mjs';
@@ -98,7 +100,7 @@ const automaticTimeout = (action, ms, label) => automatic.schedule(action, {ms,l
   set:setTimeout,clear:clearTimeout,onError:error=>console.error(`[automatic ${label}]`,error.message)});
 let maintenanceDrain = null;
 const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(), get automatic_actions(){return {...automatic.status(),maintenance:maintenanceDrain};},
-  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'compact-action-evidence.mjs', 'token-monitor.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'helper-completions.mjs', 'adapters/codex.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs', 'session-status.mjs', 'helper-recovery.mjs', 'idle-cleanup.mjs', 'automation-pause.mjs', 'rooms.mjs', 'routines.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'compact-action-evidence.mjs', 'token-monitor.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'helper-completions.mjs', 'adapters/codex.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs', 'session-status.mjs', 'helper-recovery.mjs', 'idle-cleanup.mjs', 'automation-pause.mjs', 'rooms.mjs', 'routines.mjs', 'bot-batch.mjs', 'bot-close.mjs', 'bot-batch-snapshot.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
@@ -569,6 +571,37 @@ automaticInterval(async () => {
 
 // Scheduled messages go out through the same checked path as a typed one.
 const routines = new Routines({ send: (pane, text) => (String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4), text) : sendToPane(pane, text)) });
+// Group actions reuse Close and recoverable Remove, with a frozen confirmation.
+// No permanent folder deletion is exposed here.
+const botBatchSnapshot = createBotBatchSnapshot({bots,routines,currentPanes,unsavedWork,filesTheAgentChanged});
+const botBatch = createBotBatch({
+  snapshot: botBatchSnapshot,
+  close: async saved => {
+    const results=[];
+    // Recheck between awaited terminal closes; never extend to a new arrival.
+    for (const item of saved.plan.items) {
+      const fresh=await botBatchSnapshot(saved.id);
+      const oldSession=saved.identity.sessions.find(p=>`terminal:${p.id}`===item.id);
+      const newSession=fresh?.identity.sessions.find(p=>`terminal:${p.id}`===item.id);
+      if(!fresh || fresh.blocked || fresh.identity.config!==saved.identity.config || fresh.identity.conversation!==saved.identity.conversation || (oldSession && JSON.stringify(oldSession)!==JSON.stringify(newSession))) {
+        results.push({id:item.id,label:item.label,ok:false,error:fresh?.blocked || 'Its activity changed. Check it again.'});break;
+      }
+      const currentItem=fresh.plan.items.find(i=>i.id===item.id);
+      if(!currentItem)continue;
+      if(JSON.stringify(currentItem)!==JSON.stringify(item)){results.push({id:item.id,label:item.label,ok:false,error:'That activity changed. Check it again.'});break;}
+      const result=await closeBotItems({botId:saved.id,ids:[item.id],plan:fresh.plan,bots,routines,requestClose});results.push(...result.results);
+      if(!result.ok)break;
+    }
+    return {ok:results.every(r=>r.ok),results};
+  },
+  archive: async saved => {
+    const fresh=await botBatchSnapshot(saved.id);
+    if(!fresh || fresh.blocked || fresh.identity.config!==saved.identity.config || fresh.identity.conversation!==saved.identity.conversation || fresh.plan.items.some(i=>!saved.plan.items.some(old=>JSON.stringify(old)===JSON.stringify(i))) || fresh.identity.sessions.some(p=>!saved.identity.sessions.some(old=>JSON.stringify(old)===JSON.stringify(p))))return {ok:false,error:fresh?.blocked || 'Its activity changed while closing. It was not removed; check it again.'};
+    // The final synchronous archive never replans or closes new activity.
+    bots.append(saved.id,{role:'note',text:'Noam removed this bot with the selected group. Its chat and memory are archived and can be brought back.'});
+    return bots.archive(saved.id);
+  },
+});
 let routineTicking = false;
 automaticInterval(async () => {
   if (automatic.paused || routineTicking || !routines.data.routines.some((r) => r.enabled && r.nextRunAt && r.nextRunAt <= Date.now())) return;
@@ -779,7 +812,7 @@ const handle = async (req, res) => {
   // Bots (TF-096). Same sign-in gate as every route below it.
   if (url.pathname === '/api/bots' && req.method === 'GET') {
     const livePanes = await currentPanes().then((r) => r.panes || []).catch(() => []);
-    return json(res, 200, { bots: bots.list().map((b) => ({ ...b, ...helperState(b, livePanes, Date.now(), { bots }) })), groups: bots.groups.list(), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
+    return json(res, 200, { botBatch: true, bots: bots.list().map((b) => ({ ...b, ...helperState(b, livePanes, Date.now(), { bots }) })), groups: bots.groups.list(), archived: bots.archived(), providers: BOT_PROVIDERS, models: Object.fromEntries(BOT_PROVIDERS.map((p) => [p, modelChoices(p)])), home: os.homedir(), skillsWaiting: listSkills().filter((k) => k.status === 'suggested').length });
   }
   // Where a bot works (Noam 2026-10-22): folders the fleet knows, browsing, and one empty new folder.
   if (url.pathname === '/api/bot/folders' && req.method === 'GET') {
@@ -1217,6 +1250,12 @@ const handle = async (req, res) => {
   // Close a terminal card (Noam 2026-10-20), after he confirmed it in the page. The
   // TermFleet app closes it exactly as the card's X does; nothing here kills a process.
   // "Close this bot": what it is running, then close only what Noam ticked.
+  if (['/api/bot-batch/preview','/api/bot-batch/execute','/api/bot-batch/cancel'].includes(url.pathname) && req.method === 'POST') {
+    let body;try { body=await readJson(req,16*1024); } catch(error) { return json(res,error.code || 400,{error:error.message}); }
+    const result=url.pathname.endsWith('/preview') ? await botBatch.preview(body.ids,body.action)
+      : url.pathname.endsWith('/execute') ? await botBatch.execute(body.token,{confirmManager:body.confirmManager===true}) : botBatch.cancel(body.token);
+    return json(res,result.ok ? 200 : 409,result);
+  }
   if (url.pathname === '/api/bot-close' && (req.method === 'GET' || req.method === 'POST')) {
     const botId = req.method === 'GET' ? url.searchParams.get('bot') : null;
     let body = {};

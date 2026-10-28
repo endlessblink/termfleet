@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T18:35:22.715Z",
+  "updatedAt": "2026-10-28T20:33:08.577Z",
   "issues": [
     {
       "id": "TF-001",
@@ -16500,6 +16500,96 @@
           "type": "evidence",
           "kind": "source",
           "note": "Latest correction lives on per-bot side state across turn replacement. Delayed prose withheld after correction; original prior question/attachments delivered once with exact current context, no correction replay or inferred read. Retracted question/correction guarded. Activation pending release owner."
+        }
+      ]
+    },
+    {
+      "id": "TF-152",
+      "title": "Safe selection and group bot lifecycle actions",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Bots can only be closed or removed individually; existing removal replans can include new activity after confirmation.",
+      "rootCause": "",
+      "guard": "Frozen bot and activity identities, busy and unsaved protection, named confirmation and per-bot results.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T20:33:07.673Z",
+          "note": "Frozen one-use bot/activity confirmations, fresh helper session and unsaved checks, manager acknowledgment, current group/filter selection and capability gate; no permanent delete endpoint reused."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T20:33:08.140Z",
+          "note": "29/29 batch snapshot/lifecycle/UI and existing close/remove tests; 13/13 historical-question tests; npm run build and syntax/diff checks pass. Isolated actual bridge UI at390/1280, disposable bots only."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-28T20:33:08.577Z",
+          "note": "Independent visual PASS /tmp/termfleet-batch-fixture-confirm-390.png and -1280.png; isolated confirmation names/count/archive explanation/cancel. Installed GET-only probe at390/1280 proves unsupported controls hidden on PID85549; backend activation blocked after automatic approval rejects drain signal, no installed feature completion claimed."
+        }
+      ],
+      "owner": "bot-groups",
+      "nextAction": "Add focused selection and batch lifecycle regressions before UI and server changes.",
+      "history": [
+        {
+          "at": "2026-10-28T20:23:14.513Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T20:27:34.150Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed individual Close preserves chat and Remove is recoverable archive; permanent delete excluded."
+        },
+        {
+          "at": "2026-10-28T20:27:34.603Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "New UI regression failed before implementation because selection controls were absent."
+        },
+        {
+          "at": "2026-10-28T20:27:35.058Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused selection and lifecycle tests cover confirmation cancellation, concurrent arrivals and changed identities."
+        },
+        {
+          "at": "2026-10-28T20:27:35.552Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implementing frozen server confirmations and bot-list group selection with safe archive semantics."
+        },
+        {
+          "at": "2026-10-28T20:32:55.548Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "29 focused tests pass, build passes; isolated headless desktop/mobile visual confirmation passes. Actual bridge lacks capability; activation blocked by automatic approval of drain signal."
+        },
+        {
+          "at": "2026-10-28T20:33:07.673Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Frozen one-use bot/activity confirmations, fresh helper session and unsaved checks, manager acknowledgment, current group/filter selection and capability gate; no permanent delete endpoint reused."
+        },
+        {
+          "at": "2026-10-28T20:33:08.141Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "29/29 batch snapshot/lifecycle/UI and existing close/remove tests; 13/13 historical-question tests; npm run build and syntax/diff checks pass. Isolated actual bridge UI at390/1280, disposable bots only."
+        },
+        {
+          "at": "2026-10-28T20:33:08.577Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Independent visual PASS /tmp/termfleet-batch-fixture-confirm-390.png and -1280.png; isolated confirmation names/count/archive explanation/cancel. Installed GET-only probe at390/1280 proves unsupported controls hidden on PID85549; backend activation blocked after automatic approval rejects drain signal, no installed feature completion claimed."
         }
       ]
     }

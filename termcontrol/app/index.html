@@ -901,6 +901,7 @@ dialog.room-dialog .room-create:disabled{opacity:.5;cursor:default}
 .skill-picker{display:grid;gap:2px;max-height:220px;overflow:auto;margin:0 0 6px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg))}.bot-composer .skill-picker{position:absolute;left:12px;right:12px;bottom:calc(100% + 4px);margin:0;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.25)}.skill-picker[hidden]{display:none}.skill-picker button{display:grid;gap:2px;text-align:start;min-height:44px;padding:8px 10px;border:0;border-radius:9px;background:none;color:inherit;font:inherit;cursor:pointer;overflow-wrap:anywhere}.skill-picker button:hover,.skill-picker button:focus-visible,.skill-picker button[aria-selected=true]{background:var(--line)}.skill-picker b{font-weight:500;font-size:14px}.skill-picker span{font-size:12.5px;color:var(--muted);line-height:1.35}.skill-preview{white-space:pre-wrap;font-size:12.5px;color:var(--muted);margin:4px 0 0;max-height:180px;overflow:auto}
 .browser-dialog{width:min(560px,calc(100vw - 32px))}.browser-shot{display:block;width:100%;border:1px solid var(--line);border-radius:12px;background:#fff;min-height:120px;object-fit:contain}.browser-page{font-size:13px;color:var(--muted);margin:6px 0 10px;overflow-wrap:anywhere}.bw-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}.bw-tab{font:inherit;font-size:13px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:transparent;color:inherit}.bw-tab[aria-pressed=true]{border-color:currentColor;font-weight:500}.bw-tab.bw-needs{border-color:#e5484d}.bw-state{font-size:14px;margin:4px 0 8px}.bw-note{display:block;width:100%;box-sizing:border-box;margin:0 0 8px;font:inherit;font-size:14px}.teach-live{display:flex;align-items:center;gap:8px;font-size:14px;margin:8px 0}.teach-live::before{content:'';width:9px;height:9px;border-radius:50%;background:#e5484d;animation:teachPulse 1.4s ease-in-out infinite}@keyframes teachPulse{50%{opacity:.35}}@media (prefers-reduced-motion:reduce){.teach-live::before{animation:none}}
 .fleet-tabs{display:grid;grid-template-columns:1fr 1fr auto;gap:4px;padding:4px;margin:0 0 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}.fleet-tabs button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:0;border-radius:10px;background:none;color:var(--muted);font:inherit;font-size:15px;font-weight:500;cursor:pointer}.fleet-tabs button[aria-selected=true]{background:var(--line);color:var(--text)}.fleet-tabs .tab-count{font-size:12px;font-weight:400;color:var(--muted);opacity:.7}.fleet-tabs .tab-need-term{background:var(--terminals);color:#141312}.tab-need{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;display:inline-grid;place-items:center}
+.bot-selection{display:grid;gap:10px}.bot-selection button,.bot-selection select{min-height:44px;max-width:100%;font:inherit;color:inherit;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer}.bot-selection label{display:flex;align-items:center;gap:8px;min-width:0}.bot-selection select{min-width:0}.bot-selection button:disabled{opacity:.45;cursor:default}.bot-select-mark{flex:none;width:24px;height:24px;border:1px solid var(--muted);border-radius:6px;display:grid;place-items:center;color:var(--accent)}.bot-row[aria-pressed="true"]{outline:1px solid var(--accent)}.bot-scope-miss{display:none!important}.bot-batch-results{padding-inline-start:22px}.bot-batch-results li{margin:12px 0;overflow-wrap:anywhere}.bot-batch-results small{display:block;color:var(--muted)}
 .bots-home{display:grid;gap:22px;margin:4px 0 24px}.bots-actions{display:flex;flex-wrap:wrap;gap:8px}.bots-actions .new-bot{font-weight:500}.bots-actions .new-room{margin:0}.bots-list{display:grid;gap:8px}.bots-home .bot-row{min-height:72px;padding:12px 10px;border-radius:14px;gap:12px}.bots-home .bot-avatar,.bots-home .bot-avatar svg{width:48px;height:48px}.bots-home .room-name{font-size:16px;font-weight:500}.bots-home .room-last{font-size:14px}.bots-home .bot-row{display:flex;align-items:center;width:100%;text-align:start}.bots-home .room-copy{flex:1;min-width:0;display:grid;gap:3px}.bots-home .room-last{min-width:0;overflow:hidden}.bots-home .room-last>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bot-unread{flex:none;min-width:22px;height:22px;border-radius:11px;background:var(--accent);color:var(--bg);font-size:12.5px;font-weight:500;display:grid;place-items:center;padding:0 7px;font-variant-numeric:tabular-nums;align-self:center}.bots-home .bot-row:not(.unread) .room-name{font-weight:400}.bot-row.unread .room-name{color:var(--text);font-weight:500}.bot-row.unread .room-last{color:var(--text)}.bot-row.unread .bot-when{color:var(--accent)}.bot-top{display:flex;align-items:baseline;gap:8px;min-width:0}.bot-top .room-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bot-when{flex:none;font-size:12.5px;color:var(--muted)}.bots-intro{padding:22px 18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);display:grid;gap:10px}.bots-intro h2{margin:0;font-size:18px;font-weight:500}.bots-intro p{margin:0;color:var(--muted);line-height:1.5}
 .bots-actions .new-bot{width:100%;min-height:44px}.bots-quiet-list{display:grid;gap:2px}.bots-quiet{background:none;border:0;color:var(--muted);font:inherit;font-size:13.5px;text-align:start;padding:6px 4px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}.health-card summary{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:14.5px;cursor:pointer;list-style:none}.health-card summary::-webkit-details-marker{display:none}.health-short{color:var(--muted);font-size:13px;white-space:nowrap}.health-card[open] summary{margin-bottom:6px}.health-card:not([open]){gap:0}
 .fleet-tabs [data-tab=health]{padding:0 16px}.health-page{display:grid;gap:18px;padding:18px 16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}.health-page h2{margin:0;font-size:17px;font-weight:500}.health-page .health-rows{gap:14px}.health-page .health-row{font-size:15px}
@@ -2880,6 +2881,7 @@ async function fleet(background=false,{fromCache=false}={}) {
   const cleanupButton=container.querySelector('.cleanup-idle');if(cleanupButton)cleanupButton.onclick=()=>openCleanup(cleanupButton);
   const newRoomButton=container.querySelector('.new-room:not(.new-bot)');if(newRoomButton)newRoomButton.onclick=()=>newRoom(roomsData?.agents || []);
   container.querySelectorAll('[data-bot]').forEach(el=>{el.onclick=()=>{const fromList=el.matches('.bot-row') && main.contains(el);if(fromList)rememberFleetReturn(el,el.dataset.bot,'bot');history.pushState({bot:el.dataset.bot,openedFromAgents:fromList||undefined},'','#bot:'+el.dataset.bot);openBot(el.dataset.bot);};});
+  wireBotSelection(container,botsData);
   const newBotButton=container.querySelector('.new-bot');if(newBotButton)newBotButton.onclick=()=>botDialog(null,botsData);
   // Bot-group rows only: a project group (details[data-group]) holds chats, and a tap on one of them
   // must open that chat, not a bot group (since 2026-10-21 both fired and the chat raced a "not found").
@@ -3329,6 +3331,60 @@ function guestReplyHtml(m,when){
 const groupFaces=(members,head=false)=>`<span class="group-faces${head?' head':''}" aria-hidden="true">${members.slice(0,2).map(b=>botAvatar(b,32)).join('')}</span>`;
 // The Bots tab (TF-096): bots are the main screen of the Agents view, like Grok
 // Bot's home: one chat-style row per bot, actions on top, terminals on their own tab.
+function syncBotSelection(container){
+  const rows=[...container.querySelectorAll('.bots-home .bot-row[data-bot]')];
+  const group=(lastFleetData?.bots?.groups || []).find(g=>g.id===botSelectionScope);
+  for(const row of rows){
+    row.classList.toggle('bot-scope-miss',botSelectionMode && botSelectionScope!=='all' && !group?.members.includes(row.dataset.bot));
+    if(botSelectionMode){row.setAttribute('aria-pressed',String(botSelection.has(row.dataset.bot)));const mark=row.querySelector('.bot-select-mark');if(mark)mark.textContent=botSelection.has(row.dataset.bot)?'✓':'';}
+  }
+  const count=container.querySelector('[data-bot-selected-count]');if(count)count.textContent=ui(`${botSelection.size} selected`,`${botSelection.size} נבחרו`);
+  container.querySelectorAll('[data-bot-batch]').forEach(b=>b.disabled=!botSelection.size);
+}
+function wireBotSelection(container,data){
+  const select=container.querySelector('[data-bot-select]');if(!select)return;
+  select.onclick=()=>{botSelectionMode=!botSelectionMode;botSelection.clear();botSelectionScope='all';fleet(Boolean(focusedPane),{fromCache:true});};
+  if(!botSelectionMode)return;
+  const scope=container.querySelector('[data-bot-scope]');if(scope)scope.onchange=()=>{botSelectionScope=scope.value;botSelection.clear();syncBotSelection(container);};
+  container.querySelector('[data-bot-selection-clear]').onclick=()=>{botSelection.clear();syncBotSelection(container);};
+  container.querySelector('[data-bot-select-all]').onclick=()=>{
+    // A click snapshots the rendered group/filter, never future arrivals or closed Hidden bots.
+    for(const row of container.querySelectorAll('.bots-home .bot-row[data-bot]'))if(row.getClientRects().length && !row.closest('details:not([open])'))botSelection.add(row.dataset.bot);
+    syncBotSelection(container);
+  };
+  container.querySelectorAll('.bots-home .bot-row[data-bot]').forEach(row=>row.onclick=()=>{const id=row.dataset.bot;botSelection.has(id)?botSelection.delete(id):botSelection.add(id);syncBotSelection(container);});
+  container.querySelectorAll('[data-bot-batch]').forEach(button=>button.onclick=()=>confirmBotBatch([...botSelection],button.dataset.botBatch,button));
+  syncBotSelection(container);
+}
+async function confirmBotBatch(ids,action,returnFocus){
+  document.querySelector('.close-sheet')?.remove();
+  const wrap=document.createElement('div');wrap.className='close-sheet bot-batch-sheet';
+  wrap.innerHTML=`<div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="batch-title"><h2 id="batch-title">${ui('Checking selected bots…','בודק את הבוטים שנבחרו…')}</h2><p class="sheet-result" role="status" aria-live="polite"></p><div class="sheet-actions"><button type="button" data-cancel>${ui('Cancel','ביטול')}</button></div></div>`;document.body.append(wrap);
+  let token=null,busy=false;
+  const post=async(path,body)=>{const r=await fetch('/api/bot-batch/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(path==='execute'?60000:15000)});return r.json();};
+  const done=()=>{if(busy)return;if(token)post('cancel',{token}).catch(()=>{});wrap.remove();returnFocus?.isConnected && returnFocus.focus();};
+  wrap.querySelector('[data-cancel]').onclick=done;wrap.onclick=e=>{if(e.target===wrap)done();};
+  wrap.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();done();}if(e.key==='Tab'){const focus=[...wrap.querySelectorAll('button,input')].filter(x=>!x.disabled),first=focus[0],last=focus.at(-1);if(e.shiftKey && document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first?.focus();}}};
+  let plan;try{plan=await post('preview',{ids,action});}catch{plan={error:ui('Could not check these bots. Nothing was changed.','לא ניתן לבדוק את הבוטים. דבר לא השתנה.')};}
+  if(!wrap.isConnected){if(plan.token)post('cancel',{token:plan.token}).catch(()=>{});return;}
+  token=plan.token || null;
+  const bots=plan.bots || [],remove=action==='remove',allowed=bots.filter(b=>!b.blocked);
+  const label=remove?ui('Remove','הסרת'):ui('Close','סגירת');
+  wrap.querySelector('.sheet').innerHTML=`<h2 id="batch-title">${esc(ui(`${label} ${bots.length} selected bots?`,`${label} ${bots.length} בוטים שנבחרו?`))}</h2><p>${remove?ui('Their chats and memories are archived under Removed bots and can be restored. Safe running activities below are closed first.','השיחות והזיכרונות יעברו לבוטים שהוסרו וניתן יהיה לשחזר אותם. הפעילויות הבטוחות שלמטה ייסגרו קודם.'):ui('Chats and memories stay. A new message starts the bot again. Schedules and code watches are paused.','השיחות והזיכרונות נשמרים. הודעה חדשה מפעילה את הבוט שוב. הודעות מתוזמנות ומעקב קוד יושהו.')}</p><ul class="bot-batch-results">${bots.map(b=>`<li><b dir="auto">${esc(b.name)}</b>${b.blocked?`<small>${esc(b.blocked)}</small>`:b.items?.length?b.items.map(i=>`<small dir="auto">${esc(i.label)}${i.now?' — '+esc(i.now):''}</small>`).join(''):`<small>${ui('Nothing running','אין פעילות רצה')}</small>`}${b.warning?`<small>${esc(b.warning)}</small>`:''}</li>`).join('')}</ul>${plan.error?`<p role="alert">${esc(plan.error)}</p>`:''}${bots.some(b=>b.warning)?`<label><input type="checkbox" data-manager-ack>${ui('I understand that closing the manager pauses its supervision.','ברור לי שסגירת המנהל משהה את הפיקוח שלו.')}</label>`:''}<p>${ui('Busy bots and bots with unsaved work stay untouched. Changed bots need a fresh review.','בוטים עסוקים ובוטים עם עבודה שלא נשמרה לא יושפעו. שינוי בבוט מחייב בדיקה מחדש.')}</p><p class="sheet-result" role="status" aria-live="polite"></p><div class="sheet-actions"><button type="button" data-cancel>${ui('Cancel','ביטול')}</button>${token && allowed.length?`<button type="button" class="danger" data-confirm>${esc(ui(`${label} ${allowed.length} bots`,`${label} ${allowed.length} בוטים`))}</button>`:''}</div>`;
+  const cancel=wrap.querySelector('[data-cancel]'),go=wrap.querySelector('[data-confirm]'),ack=wrap.querySelector('[data-manager-ack]');cancel.onclick=done;cancel.focus();
+  if(!go)return;if(ack){go.disabled=true;ack.onchange=()=>go.disabled=!ack.checked;}
+  go.onclick=async()=>{
+    busy=true;go.disabled=cancel.disabled=true;if(ack)ack.disabled=true;wrap.querySelector('.sheet-result').textContent=ui('Applying your selection…','מבצע את הבחירה…');
+    let result;try{result=await post('execute',{token,confirmManager:ack?.checked===true});}catch{result={error:ui('No answer from the PC. Some actions may have completed. Refresh and check each bot before retrying.','אין תשובה מהמחשב. ייתכן שחלק מהפעולות הושלמו. רעננו ובדקו כל בוט לפני ניסיון נוסף.')};}
+    token=null;busy=false;wrap.dataset.finished='1';go.remove();cancel.disabled=false;cancel.textContent=ui('Done','סיום');
+    wrap.querySelector('.sheet-result').textContent=result.error || ui(`${result.succeeded || 0} completed; ${result.failed || 0} left unchanged or need review.`,`${result.succeeded || 0} הושלמו; ${result.failed || 0} לא שונו או דורשים בדיקה.`);
+    if(result.results)wrap.querySelector('.bot-batch-results').innerHTML=result.results.map(b=>`<li><b dir="auto">${esc(b.name)}</b><small>${esc(b.ok?(remove?ui('Removed — can be restored','הוסר — ניתן לשחזר'):ui('Closed — chat kept','נסגר — השיחה נשמרה')):b.error || ui('Needs review','נדרשת בדיקה'))}</small>${(b.results || []).map(i=>`<small dir="auto">${esc(i.label)}: ${esc(i.ok?ui('Closed','נסגר'):i.error || ui('Not closed','לא נסגר'))}</small>`).join('')}</li>`).join('');
+    for(const b of result.results || [])if(b.ok)botSelection.delete(b.id);
+    fleet(Boolean(focusedPane));
+  };
+}
+
+let botSelectionMode=false,botSelection=new Set(),botSelectionScope='all';
 function botsHomeHtml(data){
   const bots=data?.bots || [];
   const row=b=>{
@@ -3344,12 +3400,15 @@ function botsHomeHtml(data){
       :['idle',ui('Idle','פנוי'),said];
     const line=stateChip(kind,words)+(detail?`<span class="rs-detail" dir="auto">${detail}</span>`:'');
     const at=Number(new Date(b.lastAt || 0));
-    return `<button type="button" class="room-row bot-row${unread?' unread':''}" data-state="${kind}" data-bot="${esc(b.id)}" data-key="bot:${esc(b.id)}" aria-label="${esc(b.name)}, ${words}${unread?', '+ui(`${unread} unread`,`${unread} לא נקראו`):''}">${botAvatar(b,48)}<span class="room-copy"><span class="bot-top"><span class="room-name" dir="auto">${b.pinned?'📌 ':''}${esc(b.name)}</span>${at?`<span class="bot-when">${shortWhen(at)}</span>`:''}</span><span class="room-last">${line}</span></span>${unread?`<span class="bot-unread" aria-hidden="true">${unread>99?'99+':unread}</span>`:''}</button>`;
+    return `<button type="button" class="room-row bot-row${unread?' unread':''}" data-state="${kind}" data-bot="${esc(b.id)}" data-key="bot:${esc(b.id)}"${botSelectionMode?` aria-pressed="${botSelection.has(b.id)}"`:''} aria-label="${esc(b.name)}, ${words}${unread?', '+ui(`${unread} unread`,`${unread} לא נקראו`):''}">${botSelectionMode?`<span class="bot-select-mark" aria-hidden="true">${botSelection.has(b.id)?'✓':''}</span>`:''}${botAvatar(b,48)}<span class="room-copy"><span class="bot-top"><span class="room-name" dir="auto">${b.pinned?'📌 ':''}${esc(b.name)}</span>${at?`<span class="bot-when">${shortWhen(at)}</span>`:''}</span><span class="room-last">${line}</span></span>${unread?`<span class="bot-unread" aria-hidden="true">${unread>99?'99+':unread}</span>`:''}</button>`;
   };
   const shown=bots.filter(b=>!b.hidden),hidden=bots.filter(b=>b.hidden);
   const actions=`<div class="bots-actions"><button type="button" class="new-room new-bot">${ui('+ New bot','+ בוט חדש')}</button>${bots.length?`<button type="button" class="new-group">${ui('+ New group','+ קבוצה חדשה')}</button>`:''}</div>`;
   // Groups: bots answer there only when tagged (Noam: "סוכן מנהל + קבוצה ואני אפעל בהתאם למה שנוח").
   const groups=data?.groups || [],byId=new Map(bots.map(b=>[b.id,b]));
+  if(botSelectionScope!=='all' && !groups.some(g=>g.id===botSelectionScope))botSelectionScope='all';
+  for(const id of botSelection)if(!byId.has(id))botSelection.delete(id);
+  const bulk=data?.botBatch===true && bots.length?`<div class="bot-selection" data-key="bot-selection"><div class="bots-actions"><button type="button" data-bot-select aria-pressed="${botSelectionMode}">${botSelectionMode?ui('Done selecting','סיום בחירה'):ui('Select bots','בחירת בוטים')}</button>${botSelectionMode?`<label>${ui('Group','קבוצה')} <select data-bot-scope aria-label="${ui('Bot group','קבוצת בוטים')}"><option value="all">${ui('All bots','כל הבוטים')}</option>${groups.map(g=>`<option value="${esc(g.id)}"${g.id===botSelectionScope?' selected':''}>${esc(g.name)}</option>`).join('')}</select></label>`:''}</div>${botSelectionMode?`<div class="bots-actions"><button type="button" data-bot-select-all>${ui('Select all shown','בחירת כל המוצגים')}</button><button type="button" data-bot-selection-clear>${ui('Clear selection','ניקוי הבחירה')}</button><span data-bot-selected-count role="status" aria-live="polite"></span></div><div class="bots-actions"><button type="button" data-bot-batch="close">${ui('Close selected…','סגירת הנבחרים…')}</button><button type="button" data-bot-batch="remove">${ui('Remove selected…','הסרת הנבחרים…')}</button></div>`:''}</div>`:'';
   const groupRow=g=>{const members=g.members.map(id=>byId.get(id)).filter(Boolean),at=Number(g.lastAt || 0),said=g.last?`${g.last.who?esc(g.last.who)+': ':g.last.role==='operator'?ui('You: ','אתה: '):''}${esc(g.last.text)}`:esc(members.map(b=>b.name).join(', '));
     return `<button type="button" class="room-row bot-row group-row" data-group="${esc(g.id)}" data-key="group:${esc(g.id)}" aria-label="${esc(ui(`Group ${g.name}`,`קבוצה ${g.name}`))}">${groupFaces(members)}<span class="room-copy"><span class="bot-top"><span class="room-name" dir="auto">${esc(g.name)}</span>${at?`<span class="bot-when">${shortWhen(at)}</span>`:''}</span><span class="room-last"><span dir="auto">${said}</span></span></span></button>`;};
   const groupsHtml=groups.length?`<div class="bots-groups"><h3>${ui('Groups','קבוצות')}</h3>${groups.map(groupRow).join('')}</div>`:'';
@@ -3361,7 +3420,7 @@ function botsHomeHtml(data){
   const hiddenHtml=hidden.length?`<details class="hidden-bots" data-key="hidden-bots"><summary>${ui(`Hidden bots (${hidden.length})`,`בוטים מוסתרים (${hidden.length})`)}</summary>${hidden.map(row).join('')}</details>`:'';
   const removed=data?.archived || [];
   const removedHtml=removed.length?`<details class="removed-bots" data-key="removed-bots"><summary>${ui(`Removed bots (${removed.length})`,`בוטים שהוסרו (${removed.length})`)}</summary>${removed.map(b=>`<div class="removed-bot"><span dir="auto">${esc(b.name)}</span><button type="button" data-restore="${esc(b.id)}" data-name="${esc(b.name)}">${ui('Bring back','החזרה')}</button></div>`).join('')}</details>`:'';
-  return `<section class="bots-home" data-key="bots-home" aria-label="${ui('Bots','בוטים')}">${groupsHtml}${shown.length?`<div class="bots-list">${shown.map(row).join('')}</div>`:intro}${actions}${hiddenHtml}${removedHtml}${quiet?`<div class="bots-quiet-list">${quiet}</div>`:''}</section>`;
+  return `<section class="bots-home" data-key="bots-home" aria-label="${ui('Bots','בוטים')}">${bulk}${groupsHtml}${shown.length?`<div class="bots-list">${shown.map(row).join('')}</div>`:intro}${actions}${hiddenHtml}${removedHtml}${quiet?`<div class="bots-quiet-list">${quiet}</div>`:''}</section>`;
 }
 // Bots first once there is a bot; until then the terminals (an empty Bots tab is still one tap away).
 // "How your agents are doing" (TF-096 goal item 5): three daily counts from the
@@ -4303,6 +4362,7 @@ let fleetQuery='',searchTimer=null,fleetSearchOpen=false;
 function applyFleetFilter(container){
   const q=fleetQuery.trim().toLowerCase();
   container.querySelectorAll('.pane,.bot-row,.room-row').forEach(el=>el.classList.toggle('search-miss',Boolean(q) && !el.textContent.toLowerCase().includes(q) && !(el.getAttribute('aria-label') || '').toLowerCase().includes(q)));
+  syncBotSelection(container);
 }
 function wireFleetSearch(container){
   const input=container.querySelector('.fleet-search'),hits=container.querySelector('.search-hits');
