@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T10:18:53.906Z",
+  "updatedAt": "2026-10-28T10:21:48.491Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15513,6 +15513,74 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Actual /tmp/termfleet-unanswered-final-focused.tap10/10 and served-final.tap5/5 pass. History/operator barriers, repeated questions and allocation regression; phone/desktop exact jumps, drafts, deleted answers, send failures, refresh/switch and delayed-response refusal. Natural headless existing-bot jump readback passed without answers; backend not loaded."
+        }
+      ]
+    },
+    {
+      "id": "TF-142",
+      "title": "Authenticated tailnet previews fail local delivery read checks",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Mapped private loopback proxy rejects unauthenticated local read with403 while original HTTPS preview works",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/link-check-auth-route.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T10:21:48.491Z",
+          "note": "Actual /tmp/termfleet-auth-probe-green.tap passes routing/auth matrix and existing ledger/link regressions; /tmp/termfleet-auth-probe-live.json10:21:21UTC exact HTTPS returns problem:null through real Serve. Public errors/timeouts remain rejected. Bridge not reloaded; native CLI fresh import uses candidate."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Retry exact original configured HTTPS address on mapped local401/403 without injected identity",
+      "history": [
+        {
+          "at": "2026-10-28T10:20:53.167Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T10:20:53.203Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Exact Tailscale mapping verified; proxy auth refusal is expected."
+        },
+        {
+          "at": "2026-10-28T10:20:53.230Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Synthetic protected-local403 and public200 fails existing gate."
+        },
+        {
+          "at": "2026-10-28T10:20:53.259Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Falsifiable matrix rejects public errors and preserves local success/missing page behavior."
+        },
+        {
+          "at": "2026-10-28T10:20:53.286Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Only checker routing fallback; no proxy/auth changes."
+        },
+        {
+          "at": "2026-10-28T10:21:48.356Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused routing/auth and existing ledger/link regressions passed; native read-only exact HTTPS probe now accepts actual preview. No proxy change or bridge restart."
+        },
+        {
+          "at": "2026-10-28T10:21:48.491Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Actual /tmp/termfleet-auth-probe-green.tap passes routing/auth matrix and existing ledger/link regressions; /tmp/termfleet-auth-probe-live.json10:21:21UTC exact HTTPS returns problem:null through real Serve. Public errors/timeouts remain rejected. Bridge not reloaded; native CLI fresh import uses candidate."
         }
       ]
     }

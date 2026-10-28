@@ -525,12 +525,24 @@ export function linkProblem(evidence) {
     toOpen.push({ shown: link.url, target });
   }
 
-  for (const r of probeUrls([...new Set(toOpen.map((t) => t.target))])) {
-    const shown = toOpen.filter((t) => t.target === r.url).map((t) => t.shown).join(', ');
-    const via = shown === r.url ? '' : ` (opened on this PC as ${r.url})`;
+  const inspect = (r, shown, via = '') => {
     if (r.error) problems.push(`${shown}${via} does not open: ${plainNetError(r.error)}`);
     else if (r.status < 200 || r.status > 299) problems.push(`${shown}${via} answered ${r.status} instead of a working page`);
     else { const bad = bodyProblem(r.body); if (bad) problems.push(`${shown}${via}: ${bad}`); }
+  };
+  for (const r of probeUrls([...new Set(toOpen.map((t) => t.target))])) {
+    const matches = toOpen.filter((t) => t.target === r.url);
+    // Private Tailscale proxies require identity supplied by Serve itself. A
+    // direct loopback 401/403 cannot test that route; use the original HTTPS
+    // address with the same ordinary fetch, never invented identity headers.
+    if (!r.error && [401, 403].includes(r.status) && matches.length && matches.every((t) => t.shown !== t.target && t.shown.startsWith('https://'))) {
+      for (const original of probeUrls([...new Set(matches.map((t) => t.shown))])) {
+        inspect(original, original.url, ` (mapped local ${r.url} answered ${r.status}; checked original HTTPS address)`);
+      }
+      continue;
+    }
+    const shown = matches.map((t) => t.shown).join(', ');
+    inspect(r, shown, shown === r.url ? '' : ` (opened on this PC as ${r.url})`);
   }
 
   if (problems.length) return `has links that do not work, so it cannot be marked yet. Fix them or give a link that opens: ${problems.join('; ')}`;
