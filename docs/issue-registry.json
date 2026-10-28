@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T09:27:30.303Z",
+  "updatedAt": "2026-10-28T09:29:25.457Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15286,17 +15286,22 @@
       "surface": "logic",
       "matrixRefs": [],
       "symptom": "Held rows disappear or can reach a different conversation and sleeping terminal",
-      "rootCause": "",
+      "rootCause": "Held rows were destructively removed before dispatch, had no exact target binding and inferred receipt from transport success; sender reporting could suppress failed recipients.",
       "guard": "node --test termcontrol/test/held-integrity.test.mjs",
       "evidence": [
         {
           "kind": "focused-test",
           "at": "2026-10-28T09:27:30.020Z",
           "note": "Actual /tmp/termfleet-f16-combined.tap 55/55 PASS. Initial baseline red7/7; review isolated sender/uncertainty failures and nested-marker red verified. Synthetic process death/restart and exact structured input receipts; no live held replay."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T09:29:25.457Z",
+          "note": "b8ce057 loaded PID2163220 at09:28:41UTC,18module5c02b70d matches authenticated GET200/unauth401;2terminal10bot unchanged; real held queues0. Actual /tmp/termfleet-f16-activation.log and loaded-readback.json. Natural owner receipt not claimed."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Prove loss, uncertain replay, changed identity and sleeping delivery in isolated fixtures; preserve all real held work",
+      "nextAction": "Observe natural exact-session receipt and owner-facing retained/unconfirmed reports without forced replay; design recoverable quarantine and explicit maintenance for legacy/unbound or crash-reserved batches. Preserve six pending quota/cloud gates.",
       "history": [
         {
           "at": "2026-10-28T09:16:01.724Z",
@@ -15343,6 +15348,12 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Source candidate guarded; freeze and empty-real-queue preflight before graceful bridge activation. Natural receipt, owner proof, recoverable manual maintenance and bonus-only isolation remain unverified."
+        },
+        {
+          "at": "2026-10-28T09:29:25.457Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "b8ce057 loaded PID2163220 at09:28:41UTC,18module5c02b70d matches authenticated GET200/unauth401;2terminal10bot unchanged; real held queues0. Actual /tmp/termfleet-f16-activation.log and loaded-readback.json. Natural owner receipt not claimed."
         }
       ]
     }
