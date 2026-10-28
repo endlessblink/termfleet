@@ -144,3 +144,37 @@ and current desktop heartbeat before claiming the source change is active.
 Initial scoped acceptance: candidate `98d2508ebff6-8a596f5f9d5e-b23b2b7ff1e9` ran as UI1656110 with the expected binary checksum and a fresh per-PID heartbeat beyond startup grace. Watchdog1655916 executes the current script inode/hash. Daemon18932 and all29 session IDs/PTY PIDs survive unchanged. Canonical installed-release verification passes against archived frontend provenance. The broad doctor still compares against a different primary target build and reports one artifact mismatch; do not call that diagnostic fully green. Evidence is in the TC-199 activation report.
 
 Current accepted unified release (2026-10-04): release `b4ecac5f18ea-9e0b177f1906-9b58af6507ab`; source `b4ecac5f18ea18e57dfb62c0bde456c022e2ee96`; UI4142165; binary SHA256 `9e0b177f190608ff7a07023761079ae48ef191e05aa7b6a7a441f079758b7522`; watchdog4133321; daemon18932; all32 original PTY IDs/PIDs preserved. Target, installed file and running executable match; canonical installed verification and host doctor pass. Runtime source revision is the clean b4ecac5 implementation/test/documentation tree; its later evidence-only receipt is not a new embedded runtime revision. The exact32 before-install session IDs/PTY PIDs are preserved, and daemon18932 was not restarted. Current per-PID heartbeat advances beyond startup grace. Recovery/archive decisions and repeat proof are in `docs/git-reconciliation-tc201.md`.
+
+### Automatic-action pause candidate (TF-143, not activated)
+
+The bridge candidate reads `automatic-actions.paused` in its existing TermControl
+configuration directory, or `TC_PAUSE_AUTOMATIC_ACTIONS=1`. Presence or an
+unreadable marker prevents admission of automatic cleanup, sleep, recovery,
+held-message passes, room/routine polling, retries, startup resume and canary
+runs. Cleanup close, helper nudge and health recovery callbacks also recheck
+immediately before their guarded effects. Graceful shutdown latches that pause
+before awaiting bot replies. Existing manual routes retain their own guards.
+
+The marker has no timeout. Removing the exact maintenance marker reverses its
+admission pause; a shutdown latch lasts until process exit. Do not remove an
+unknown marker or resume automatic work as part of a read check. No marker has
+been created on the live service for this candidate.
+
+**Paused does not mean quiescent.** Already-issued daemon requests, an already
+running canary, an admitted held/room/routine operation, internal bot
+continuations and existing health subprocesses are not cancelled or proved
+settled. Status explicitly reports `quiescence_verified: false`. In-flight
+scheduled delivery is not converted into an artificial failure or consumed by a
+globally guarded manual-send callback. No universal no-model or no-input claim
+is supported by this candidate.
+
+The current legacy process cannot observe this new marker. Its graceful drain
+tracks bot replies and HTTP requests, not all automatic jobs/outbound effects.
+An idle bot/queue snapshot and startup environment changes therefore cannot
+certify its first reload. Activation remains gated on a source-backed legacy
+bootstrap/settlement mechanism; no such mechanism was found in the existing
+service. Do not restart the daemon, inject terminal input, hot-patch the process,
+or infer permission to accept that gap. After a coordinated bootstrap is proven,
+start with the marker already present, read authenticated pause status and the
+loaded digest, preserve every terminal/bot identity and queue, and verify older
+unanswered questions by read-only navigation before resuming automatic work.

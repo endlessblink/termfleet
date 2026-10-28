@@ -84,12 +84,14 @@ import { itemsView, replyDetails, record as recordRequirement, loadLedger as loa
 import { recordOwnerWords } from './owner-words.mjs';
 import { tryNowItems } from './bot-testing.mjs';
 import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity, recordActionEvidence, queryActionEvidence, pendingActionDeliveries } from './events-db.mjs';
+import { createAutomaticActionBarrier } from './automation-pause.mjs';
 import { createDeliveryReconciler } from './delivery-reconciliation.mjs';
 import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS } from './terminal-health.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(),
-  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs', 'session-status.mjs', 'helper-recovery.mjs', 'idle-cleanup.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
+const automatic = createAutomaticActionBarrier({file:path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config/termcontrol'),'automatic-actions.paused')});
+const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(), get automatic_actions(){return automatic.status();},
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs', 'session-status.mjs', 'helper-recovery.mjs', 'idle-cleanup.mjs', 'automation-pause.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
@@ -321,8 +323,9 @@ async function idleCleanupPlan({fresh=false}={}) {
 // safe; (Q3) each close is a quiet line in the starter's activity log, never a notification.
 // Only the real service sweeps: test bridges (their own config folder) never close anything.
 async function sweepFinishedHelpers() {
+  if(automatic.paused)return {closed:0,paused:true};
   const plan = await idleCleanupPlan();
-  return autoCloseFinished({ plan, requestClose, canClose:async(item)=>{
+  return autoCloseFinished({ plan, requestClose:automatic.guard(requestClose), canClose:async(item)=>{
     const fresh=await idleCleanupPlan({fresh:true});
     return fresh.offer.some(p=>p.id===item.id&&!p.warning&&p.startedBy===item.startedBy&&p.provider===item.provider&&p.sessionId===item.sessionId&&p.pid===item.pid);
   }, log: (text, item, ok) => {
@@ -354,13 +357,14 @@ function lastVisitAt(id) {
   try { const all = JSON.parse(fs.readFileSync(visits.file, 'utf8')); return Math.max(0, ...Object.values(all).map((v) => Number(v?.[id]) || 0)); } catch { return 0; }
 }
 export async function sweepIdleAgents() {
+  if(automatic.paused)return {slept:[],freedBytes:0,paused:true};
   const { panes, daemon } = await currentPanes();
   if (!daemon) return { slept: [], freedBytes: 0 };
   const table = processTable();
   return sweepSleep({
     panes, visitedAt: lastVisitAt,
     processes: (p) => workProcesses(p.pid, table),
-    sleep: (p) => sleepPane(p, { ask: daemonAsk, rssOf: (x) => treeRss(x.pid, table) }),
+    sleep: automatic.guard((p) => sleepPane(p, { ask: automatic.guard(daemonAsk), rssOf: (x) => treeRss(x.pid, table) })),
     log: (pane, r) => {
       const mb = Math.round((r.freedBytes || 0) / 1048576);
       try { appendAction(paneLogFile(pane.id), { at: Date.now(), actor: 'termfleet', kind: 'terminal', text: `Went to sleep while idle; freed about ${mb} MB. It wakes when opened or sent a message.`, auto: true, paneId: pane.id }); } catch { /* the sleep itself succeeded */ }
@@ -390,7 +394,7 @@ setInterval(() => { sweepWindows({ port: BROWSER_PORT }).catch(() => {}); }, 150
 // in a separate low-priority process: a few minutes the first time, seconds after.
 let healthRun = null;
 function refreshAgentHealth() {
-  if (healthRun || process.env.TC_NO_AGENT_HEALTH) return;
+  if (automatic.paused || healthRun || process.env.TC_NO_AGENT_HEALTH) return;
   healthRun = spawn('nice', ['-n', '15', process.execPath, fileURLToPath(new URL('../../scripts/termfleet-agent-health.mjs', import.meta.url))], { stdio: 'ignore' });
   healthRun.on('exit', () => { healthRun = null; });
   healthRun.on('error', () => { healthRun = null; });
@@ -398,6 +402,8 @@ function refreshAgentHealth() {
 setTimeout(refreshAgentHealth, 90_000).unref();
 setInterval(refreshAgentHealth, 60 * 60_000).unref();
 const bots = new Bots({ callerIssuer: issueBotCaller, actionEvidence: { recordActionEvidence, queryActionEvidence }, side: runSide, notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
+// Bind original methods to preserve bot state; only automatic wake is guarded.
+const automaticBots = new Proxy(bots,{get(target,key){const value=Reflect.get(target,key,target);return typeof value!=='function'?value:key==='wake'?automatic.guard(value.bind(target)):value.bind(target);}});
 
 /** Bots join group chats like terminal agents do: as members with a chat to read. */
 function botMembers() {
@@ -405,15 +411,17 @@ function botMembers() {
 }
 async function roomPanes() { return [...(await currentPanes()).panes, ...botMembers()]; }
 // A turn cut off by a restart is picked up again.
-setTimeout(() => { try { bots.resumeInterrupted(); } catch (error) { console.error('[bots]', error.message); } }, 3000).unref?.();
+setTimeout(() => { try { automatic.run(()=>bots.resumeInterrupted()); } catch (error) { console.error('[bots]', error.message); } }, 3000).unref?.();
 // TF-096 part 7: events wake bots (helper finished, approval expired, new code).
 const helperSeen = new Map();
 let helperRecoveryRunning = false;
 const reconcileDeliveries = createDeliveryReconciler({ pending: pendingActionDeliveries, record: recordActionEvidence,
   recordForPane: pane => ({ file: adapterFor(pane)?.transcriptPath(pane), provider: pane.provider, sessionId: pane.sessionId }) });
 async function botEvents() {
+  if(automatic.paused)return;
   if (!bots.list().length) return;
   const current = await currentPanes();
+  if(automatic.paused)return;
   if (current.daemon) {
     try { reconcileDeliveries(current.panes); }
     catch { console.error('[action evidence] late receipt reconciliation unavailable'); }
@@ -422,57 +430,58 @@ async function botEvents() {
     helperRecoveryRunning = true;
     try {
       await recoverBotHelpers({
-        bots, panes: current.panes, items: itemsView().items,
+        bots:automaticBots, panes: current.panes, items: itemsView().items,
         readAsk: async (pane) => pendingAsk(pane),
         readScreen: async (pane) => visibleScreenOf(pane.id) ?? await screenOf(pane.id),
         recheck: async (pane, work) => {
           const fresh = await currentPanes({ fresh: true });
           const live = fresh.panes.find((p) => p.id === pane.id);
-          if (!fresh.daemon || !live?.alive || live.sleeping || live.attention || live.pendingTools===true || live.producing || live.turn!=='idle' || live.sessionId !== pane.sessionId || live.provider !== pane.provider || pendingAsk(live) || stateOf(live)!=='idle') return false;
+          if (automatic.paused || !fresh.daemon || !live?.alive || live.sleeping || live.attention || live.pendingTools===true || live.producing || live.turn!=='idle' || live.sessionId !== pane.sessionId || live.provider !== pane.provider || pendingAsk(live) || stateOf(live)!=='idle') return false;
           const latest = itemsView().items;
           return work.every((item) => latest.some((it) => it.id === item.id && it.status === item.status && it.assigned?.at(-1)?.pane === pane.id && it.assigned.at(-1).at === item.assigned.at(-1).at));
         },
         // Busy Codex messages ordinarily wait until its turn ends. A stuck turn
         // never ends, so this guarded continuation uses the normal agent queue.
-        nudge: (pane, text, bot) => sendToPane(pane, `[Automatic recovery from your owning bot ${bot.name}; not a new request from Noam]\n${text}`),
+        nudge: automatic.guard((pane, text, bot) => sendToPane(pane, `[Automatic recovery from your owning bot ${bot.name}; not a new request from Noam]\n${text}`)),
         log: (line) => console.error(line),
       });
     } finally { helperRecoveryRunning = false; }
   }
   await checkBotEvents({
-    bots, panes: current.panes, available: current.daemon, seen: helperSeen,
+    bots:automaticBots, panes: current.panes, available: current.daemon, seen: helperSeen,
     recoveryHandled: (botId, pane) => (bots.messages(botId) || []).some((m) => m.role === 'helper-recovery' && m.pane === pane.id && m.sessionId === pane.sessionId),
     readAsk: async (pane) => { const screen = visibleScreenOf(pane.id) ?? await screenOf(pane.id); return pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen); },
     readScreen: async (pane) => visibleScreenOf(pane.id) ?? await screenOf(pane.id),
   });
   // Open requests with nothing running get one nudge after 15 quiet minutes (stall-wake.mjs).
-  if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') checkStalledBots({ bots, panes: current.panes });
+  if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') automatic.run(()=>checkStalledBots({ bots:automaticBots, panes: current.panes }));
 }
 setInterval(() => { botEvents().catch((error) => console.error('[bot events]', error.message)); }, 30_000).unref?.();
 // Messages held for a Codex agent that was mid-turn go in together once that turn ends (held-messages.mjs).
-setInterval(() => { currentPanes().then(async ({ panes, daemon }) => {
+setInterval(() => { if(automatic.paused)return;currentPanes().then(async ({ panes, daemon }) => {
+  if(automatic.paused)return;
   await deliverHeld({ panes, send: sendToPane, resolveTarget: async(id)=>(await fleetPanes()).find(p=>p.id===id), log: (m) => console.error('[held]', m), notify:(s)=>{
     const text=strandedText(s);console.error('[held]',text);
     if(!bots.read(s.sender))return;
-    bots.append(s.sender,{role:'stuck',pane:s.pane,text});bots.wake(s.sender,text);
+    bots.append(s.sender,{role:'stuck',pane:s.pane,text});automatic.run(()=>bots.wake(s.sender,text));
   } });
   // Messages whose terminal is gone or stuck are never left behind silently: the sender is told in words.
-  if (daemon) sweepStranded({ panes, status:(event)=>recordHeldQuarantineStatus(event,recordActionEvidence), notify: (s) => {
+  if (daemon && !automatic.paused) sweepStranded({ panes, status:(event)=>recordHeldQuarantineStatus(event,recordActionEvidence), notify: (s) => {
     const text = strandedText(s);
     console.error('[held]', text);
     if (!bots.read(s.sender)) return;
     bots.append(s.sender, { role: 'stuck', pane: s.pane, text });
-    bots.wake(s.sender, text);
+    automatic.run(()=>bots.wake(s.sender, text));
   } });
 }).catch((error) => console.error('[held]', error.message)); }, 15_000).unref?.();
 // Work that went quiet (a silent "working" terminal, a handed-over request nobody finished) is
 // found every 15 minutes and kept in the event log. Test copies (TC_CONFIG_DIR) stay quiet.
 if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') startWatchdog({ bots, panes: async () => {
   const current = await currentPanes();
-  return current.daemon ? current.panes : [];
+  return !automatic.paused && current.daemon ? current.panes : [];
 }, record: (finding, owners) => logEvent(finding.pane || 'watchdog', owners[0] || null, 'termcontrol', `watchdog-${finding.kind}`, finding) });
 // A message that waited for a plan to reset is answered once one does.
-setInterval(() => { try { bots.retryDue(); } catch (error) { console.error('[bots]', error.message); } }, 60_000).unref?.();
+setInterval(() => { try { automatic.run(()=>bots.retryDue()); } catch (error) { console.error('[bots]', error.message); } }, 60_000).unref?.();
 
 /**
  * TF-096 part 2: the operator's requests in one conversation, in his words, with
@@ -524,18 +533,18 @@ const rooms = new Rooms({
 });
 let roomPolling = false;
 setInterval(async () => {
-  if (roomPolling || !rooms.data.rooms.some((room) => room.pending.length)) return;
+  if (automatic.paused || roomPolling || !rooms.data.rooms.some((room) => room.pending.length)) return;
   roomPolling = true;
-  try { await rooms.poll(await roomPanes()); } catch (error) { console.error('[rooms]', error.message); } finally { roomPolling = false; }
+  try { const panes=await roomPanes();if(!automatic.paused)await rooms.poll(panes); } catch (error) { console.error('[rooms]', error.message); } finally { roomPolling = false; }
 }, 3000).unref();
 
 // Scheduled messages go out through the same checked path as a typed one.
 const routines = new Routines({ send: (pane, text) => (String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4), text) : sendToPane(pane, text)) });
 let routineTicking = false;
 setInterval(async () => {
-  if (routineTicking || !routines.data.routines.some((r) => r.enabled && r.nextRunAt && r.nextRunAt <= Date.now())) return;
+  if (automatic.paused || routineTicking || !routines.data.routines.some((r) => r.enabled && r.nextRunAt && r.nextRunAt <= Date.now())) return;
   routineTicking = true;
-  try { await routines.tick(await roomPanes()); } catch (error) { console.error('[routines]', error.message); } finally { routineTicking = false; }
+  try { const panes=await roomPanes();if(!automatic.paused)await routines.tick(panes); } catch (error) { console.error('[routines]', error.message); } finally { routineTicking = false; }
 }, 30000).unref();
 
 async function readJson(req, max = 64 * 1024) {
@@ -1526,7 +1535,7 @@ setInterval(() => { liveness().catch(() => {}); }, 3000).unref?.();
 // A throwaway terminal proves start, typing, reading and closing end to end (canary.mjs). Test copies skip it.
 const canaryDir = process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config/termcontrol');
 if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_CANARY !== '1') {
-  const runCanary = () => checkCanary({ dir: canaryDir, notify: (note) => push.notify(note).catch((error) => console.error('[canary push]', error.message)) }).catch((error) => console.error('[canary]', error.message));
+  const runCanary = () => {if(automatic.paused)return;return checkCanary({ dir: canaryDir, notify: (note) => push.notify(note).catch((error) => console.error('[canary push]', error.message)) }).catch((error) => console.error('[canary]', error.message));};
   setTimeout(runCanary, 2 * 60_000).unref?.();
   setInterval(runCanary, CANARY_EVERY_MS).unref?.();
 }
@@ -1549,12 +1558,12 @@ const terminalHealth = createTerminalHealth({
     return { reachable, byId, panes, agents: agentsByPane({ fresh: true }) };
   },
   activity: lastActivity,
-  recover: (pane) => recoverTerminal(pane, { ask: (request) => requestDaemon(request, defaultDaemonSocket()) }),
-  retire: (pane) => requestClose(pane.id, { by: 'terminal-health' }),
+  recover: automatic.guard((pane) => recoverTerminal(pane, { ask: automatic.guard((request) => requestDaemon(request, defaultDaemonSocket())) })),
+  retire: automatic.guard((pane) => requestClose(pane.id, { by: 'terminal-health' })),
   log: (pane, evidence) => logEvent(pane.id, pane.bot?.name || null, pane.provider, 'stall', { healthRecovery: evidence }),
 });
 if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_TERMINAL_HEALTH !== '1') {
-  setInterval(() => { terminalHealth.sweep({ repair: true }).catch((error) => console.error('[terminal health]', error.message)); }, HEALTH_INTERVAL_MS).unref?.();
+  setInterval(() => { if(automatic.paused)return;terminalHealth.sweep({ repair: true }).catch((error) => console.error('[terminal health]', error.message)); }, HEALTH_INTERVAL_MS).unref?.();
 }
 // Requests per terminal for the desktop app's side panel (see asks-sidecar.mjs).
 const writeAsksSidecars = createAsksSidecarWriter({ asksOf: (pane) => asksForTranscript(adapterFor(pane)?.transcriptPath(pane)) });
@@ -1584,6 +1593,7 @@ liveness().catch(() => {});
 async function shutdownGracefully(reason, { exitCode = 0, graceMs = 10000 } = {}) {
   if (stopping) return;
   stopping = true;
+  automatic.beginDrain();
   console.log(`[bridge] stopping (${reason}); ${inFlight} request(s) in flight, ${streams.size} stream(s) open`);
   // Bot replies finish first (the phone keeps working meanwhile); new ones wait for the new bridge.
   if (bots.running.size) console.log(`[bridge] waiting for ${bots.running.size} bot repl${bots.running.size === 1 ? 'y' : 'ies'} to finish`);

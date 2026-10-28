@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T10:21:48.491Z",
+  "updatedAt": "2026-10-28T10:42:21.413Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15581,6 +15581,91 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Actual /tmp/termfleet-auth-probe-green.tap passes routing/auth matrix and existing ledger/link regressions; /tmp/termfleet-auth-probe-live.json10:21:21UTC exact HTTPS returns problem:null through real Serve. Public errors/timeouts remain rejected. Bridge not reloaded; native CLI fresh import uses candidate."
+        }
+      ]
+    },
+    {
+      "id": "TF-143",
+      "title": "Bridge reload lacks an automatic-action pause",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Idle bot queues do not prove cleanup and recovery timers or outstanding daemon work are quiescent during reload",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/automation-pause.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T10:41:02.050Z",
+          "note": "Final narrow candidate actual7/7 PASS in /tmp/termfleet-automation-pause-narrow.tap, including actual cleanup async sink and positive control plus actual sleep entry. Previously broader draft was narrowed to avoid consuming scheduled work and blocking manual room delivery. Source-only; quiescence_verified:false, no activation."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T10:42:21.413Z",
+          "note": "Final read-only reviewer found no accidental manual-send wrapping; candidate is saveable only as unactivated checkpoint. Actual final94/94 /tmp/termfleet-automation-pause-final.tap. Authenticated existing embed-session GET10:41:50UTC in /tmp/termfleet-automation-pause-runtime.json still2252271/8d3ea43cbb73, disk22module7909ab20 mismatch. No marker mutation/restart; legacy job/outbound settlement remains missing. No human-owner claim."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Prove legacy bootstrap and active automatic-job settlement before activating the paused bridge",
+      "history": [
+        {
+          "at": "2026-10-28T10:39:54.466Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T10:39:54.751Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Fragmented startup flags do not cover in-flight automatic jobs; no existing live pause route."
+        },
+        {
+          "at": "2026-10-28T10:39:55.058Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Two isolated actual server-function fixtures close and nudge before the candidate; no real terminal touched."
+        },
+        {
+          "at": "2026-10-28T10:39:55.348Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Marker and final close/input callback guards pass isolated fixtures."
+        },
+        {
+          "at": "2026-10-28T10:39:55.667Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Narrow reversible admission and cleanup/recovery sink pause; owner routes unchanged."
+        },
+        {
+          "at": "2026-10-28T10:39:55.957Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Candidate only, not activated: legacy bootstrap and automatic job settlement unproven."
+        },
+        {
+          "at": "2026-10-28T10:39:56.258Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Actual /tmp/termfleet-automation-pause-narrow.tap4/4; carry87/87 in /tmp/termfleet-automation-pause-carry.tap. Original red2/2 failures in /tmp/termfleet-automation-pause-red.tap. Candidate pauses automatic admission and guarded cleanup/recovery calls, not a universal quiescence boundary; old bridge2252271 lacks it."
+        },
+        {
+          "at": "2026-10-28T10:41:02.050Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Final narrow candidate actual7/7 PASS in /tmp/termfleet-automation-pause-narrow.tap, including actual cleanup async sink and positive control plus actual sleep entry. Previously broader draft was narrowed to avoid consuming scheduled work and blocking manual room delivery. Source-only; quiescence_verified:false, no activation."
+        },
+        {
+          "at": "2026-10-28T10:42:21.413Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Final read-only reviewer found no accidental manual-send wrapping; candidate is saveable only as unactivated checkpoint. Actual final94/94 /tmp/termfleet-automation-pause-final.tap. Authenticated existing embed-session GET10:41:50UTC in /tmp/termfleet-automation-pause-runtime.json still2252271/8d3ea43cbb73, disk22module7909ab20 mismatch. No marker mutation/restart; legacy job/outbound settlement remains missing. No human-owner claim."
         }
       ]
     }
