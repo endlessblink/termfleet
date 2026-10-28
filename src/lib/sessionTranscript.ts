@@ -277,6 +277,13 @@ export function briefPointerPath(text: string | undefined): string | undefined {
   return /Read (\/\S*\/child-tasks\/[\w-]+\.md) and carry out the instructions in it/.exec(text)?.[1];
 }
 
+/** The "Goal:" line a helper's opening message carries (termfleet-child --goal), before any brief file is read. */
+export function briefOpeningGoal(text: string | undefined): string | undefined {
+  if (!text || !briefPointerPath(text)) return undefined;
+  const goal = /^\s*Goal:\s*(.+?)(?:\s+Full instructions:|$)/im.exec(text)?.[1]?.replace(/\s+/g, " ").trim().slice(0, 160);
+  return goal || undefined;
+}
+
 /** The goal a brief states: its "Goal:" line, else its first "# heading". */
 export function briefFileGoal(text: string): string | undefined {
   const line =

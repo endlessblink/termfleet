@@ -16,9 +16,9 @@ const settle = async (bots, id) => { for (let i = 0; i < 400 && bots.running.has
 const ready = () => { const home = tmp(); fs.mkdirSync(path.join(home, '.claude')); fs.writeFileSync(path.join(home, '.claude', '.credentials.json'), '{}'); fs.writeFileSync(path.join(home, 'daemon.sock'), ''); return { home, socket: path.join(home, 'daemon.sock') }; };
 
 test('a brain killed from outside is reported as killed, not as a failed answer', async () => {
-  const dir = tmp(), fake = path.join(dir, 'slow-claude.mjs');
+  const dir = tmp(), fake = path.join(dir, 'slow-codex.mjs');
   fs.writeFileSync(fake, '#!/usr/bin/env node\nsetTimeout(() => {}, 30000);\n', { mode: 0o755 });
-  const p = runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'claude', cwd: dir, sessions: {} }, 'hi', { bins: { claude: fake } });
+  const p = runBrain({ id: 'abcdefabcdef', name: 'X', provider: 'codex', cwd: dir, sessions: {} }, 'hi', { bins: { codex: fake }, env: { ...process.env, TERMFLEET_GENTLE_BRAINS: '0' } });
   await wait(300);
   execFileSync('pkill', ['-TERM', '-f', fake]);
   const r = await p;
@@ -93,18 +93,34 @@ test('a reply killed outside a restart is re-run once in place; only a second ki
 test('real service restart with a throwaway bot mid-reply', { timeout: 120000 }, async () => {
   const root = tmp(), cfg = path.join(root, 'cfg'), home = path.join(root, 'home');
   for (const d of [cfg, home]) fs.mkdirSync(d);
-  const fake = path.join(root, 'fake-claude.mjs'), count = path.join(root, 'count');
+  const fake = path.join(root, 'fake-codex.mjs'), count = path.join(root, 'count');
+  const services = [];
+  // Keep the genuine issuer/validation, but use its explicit private test store.
+  // Never borrow or mutate the real user's caller receipts for a throwaway bridge.
+  const entry = path.resolve('termcontrol/bridge/.restart-fixture-' + path.basename(root) + '.mjs');
+  const source = fs.readFileSync(path.resolve('termcontrol/bridge/server.mjs'), 'utf8');
+  assert.equal(source.split('callerIssuer: issueBotCaller').length, 2);
+  fs.writeFileSync(entry, source.replace('callerIssuer: issueBotCaller',
+    'callerIssuer: identity => issueBotCaller(identity, {base:' + JSON.stringify(path.join(root, 'callers')) + '})'));
+
   fs.writeFileSync(fake, `#!/usr/bin/env node
 import fs from 'node:fs';
+import {resolveBotCaller} from '${new URL('../../scripts/lib/bot-caller.mjs',import.meta.url).href}';
+const caller=resolveBotCaller(process.env,{base:'${path.join(root,'callers')}'});
+if(caller.botFolder!=='${path.join(cfg,'bots')}/'+caller.id)throw Error('Wrong fixture caller');
 const n = (Number(fs.existsSync('${count}') ? fs.readFileSync('${count}', 'utf8') : 0) || 0) + 1;
 fs.writeFileSync('${count}', String(n));
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
-out({ type: 'system', subtype: 'init', session_id: '11111111-1111-4111-8111-11111111111' + n });
-setTimeout(() => out({ type: 'result', subtype: 'success', result: 'Reply number ' + n }), Number(process.env.FAKE_MS || 3000));
+out({ type: 'thread.started', thread_id: '11111111-1111-4111-8111-11111111111' + n });
+setTimeout(() => {
+  out({ type: 'item.completed', item: { type: 'agent_message', text: 'Reply number ' + n } });
+  out({ type: 'turn.completed' });
+}, Number(process.env.FAKE_MS || 3000));
 `, { mode: 0o755 });
   const start = (extra = {}) => {
     const port = 7300 + Math.floor(Math.random() * 200);
-    const child = spawn(process.execPath, [path.resolve('termcontrol/bridge/server.mjs')], { env: { ...process.env, TC_PORT: String(port), TC_CONFIG_DIR: cfg, TC_HOST: '127.0.0.1', TC_BOTS_HOME: home, TC_NO_AGENT_HEALTH: '1', TC_CLAUDE_BIN: fake, TC_DESK_STT: '0', ...extra }, stdio: 'ignore' });
+    const child = spawn(process.execPath, [entry], { env: { ...process.env, TC_PORT: String(port), TC_CONFIG_DIR: cfg, TC_HOST: '127.0.0.1', TC_BOTS_HOME: home, TC_NO_AGENT_HEALTH: '1', TC_CODEX_BIN: fake, TC_DESK_STT: '0', TERMFLEET_GENTLE_BRAINS: '0', ...extra }, stdio: 'ignore' });
+    services.push(child);
     child.exited = new Promise((r) => child.on('exit', () => r(Date.now())));
     return { port, child };
   };
@@ -123,9 +139,11 @@ setTimeout(() => out({ type: 'result', subtype: 'success', result: 'Reply number
     // 1) Restart while replying: the service waits for the reply, and a message sent meanwhile is answered after.
     let s = start({ FAKE_MS: '3000' }); await up(s.port);
     let p = await login(s.port);
-    const id = await p.evaluate(async () => (await (await fetch('/api/bots', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Restart throwaway' }) })).json()).bot.id);
+    const id = await p.evaluate(async () => (await (await fetch('/api/bots', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Restart throwaway', provider: 'codex' }) })).json()).bot.id);
     await say(p, id, 'first question');
     await wait(800);
+    assert.equal(fs.existsSync(count), true, 'fake runner must be established before testing shutdown');
+    assert.equal(chat(id).some(m => m.role === 'error'), false, 'fixture setup must not hide a failed bot turn');
     const signalled = Date.now();
     s.child.kill('SIGTERM');
     await wait(300);
@@ -135,7 +153,7 @@ setTimeout(() => out({ type: 'result', subtype: 'success', result: 'Reply number
     assert.ok(chat(id).some((m) => m.role === 'bot' && m.text === 'Reply number 1'));
     s = start({ FAKE_MS: '200' }); await up(s.port);
     for (let i = 0; i < 100 && !chat(id).some((m) => m.text === 'Reply number 2'); i++) await wait(100);
-    assert.ok(chat(id).some((m) => m.text === 'Reply number 2'), 'the message sent during the restart got its answer');
+    assert.ok(chat(id).some((m) => m.text === 'Reply number 2'), `the message sent during the restart got its answer: ${JSON.stringify(chat(id).map(({ role, text }) => ({ role, text })))}`);
     s.child.kill('SIGTERM'); await s.child.exited;
     // 2) A reply longer than the wait: it is cut, then re-run after the restart with no error in the chat.
     s = start({ FAKE_MS: '20000', TC_RESTART_WAIT_MS: '500' }); await up(s.port);
@@ -146,9 +164,16 @@ setTimeout(() => out({ type: 'result', subtype: 'success', result: 'Reply number
     try { execFileSync('pkill', ['-KILL', '-f', fake]); } catch { /* already gone */ }   // what systemd does to leftovers
     s = start({ FAKE_MS: '200' }); await up(s.port);
     for (let i = 0; i < 100 && !chat(id).some((m) => m.text === 'Reply number 4'); i++) await wait(100);
-    const tail = chat(id).slice(-3).map((m) => [m.role, m.text]);
+    const tail = chat(id).filter(m => m.role !== 'activity').slice(-3).map((m) => [m.role, m.text]);
     assert.deepEqual(tail, [['operator', 'a long job'], ['system', 'Restart throwaway was cut off by a restart and is picking up where it was.'], ['bot', 'Reply number 4']]);
     assert.equal(chat(id).some((m) => m.role === 'error'), false);
     s.child.kill('SIGTERM'); await s.child.exited;
-  } finally { await browser.close(); try { execFileSync('pkill', ['-KILL', '-f', fake]); } catch { /* none */ } fs.rmSync(root, { recursive: true, force: true }); }
+  } finally {
+    await browser.close();
+    for (const child of services) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    await Promise.all(services.map((child) => child.exited));
+    try { execFileSync('pkill', ['-KILL', '-f', fake]); } catch { /* none */ }
+    fs.rmSync(entry, { force: true });
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

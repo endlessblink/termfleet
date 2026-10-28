@@ -1,0 +1,13 @@
+[Unit]
+Description=Private Tailscale adapter for linked Blender studio
+Wants=imaginebox-workspace.service
+After=imaginebox-workspace.service
+
+[Service]
+EnvironmentFile=%h/.config/termfleet/workspace-access.env
+ExecStart=/usr/bin/env node ${TERMFLEET_SOURCE}/scripts/private-workspace-proxy.mjs 8813 8810 ${STUDIO_ORIGIN} --studio
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -1,6 +1,6 @@
 # Dropoff — TF-096 TermFleet bots — 2026-10-19 21:55 Monday (Israel time)
 
-You are continuing work in TermFleet (`/media/endlessblink/data/my-projects/ai-development/devops/termfleet`) on branch `main`. The agent that wrote this was Claude (Opus 5.5, later Sonnet 5.5). You continue as Claude. Noam is a non-technical PM with ADHD: decide for him, never ask him to run commands, answer in 1-4 plain sentences, no paths/code in the final message.
+You are continuing work in TermFleet (`/opt/example/local-path`) on branch `main`. The agent that wrote this was Claude (Opus 5.5, later Sonnet 5.5). You continue as Claude. Noam is a non-technical PM with ADHD: decide for him, never ask him to run commands, answer in 1-4 plain sentences, no paths/code in the final message.
 
 ## 1. What Noam asked, in his words (keep these, do not summarise away)
 
@@ -14,7 +14,7 @@ You are continuing work in TermFleet (`/media/endlessblink/data/my-projects/ai-d
 ## 2. Current state — the ONE thing still open
 
 Goal item 4: **a phone notification has never reached Noam's phone.** Evidence (bridge journal, `[push]` lines): his Android Chrome home-screen app opens fine (latest check-ins show `notifications supported: true, permission: denied, signed up: false, home screen app: true`). On 17 Oct 17:26 it first reported `permission: default` and Chrome hid the allow question; later (19 Oct 00:14 onward) it reports `permission: denied`. A web app cannot undo "denied"; Noam must switch notifications on in Android: long-press the TermControl icon -> App info -> Notifications -> on, then open the app once. The app now says exactly this when he taps "Turn on phone notifications", and it asks on his first tap anywhere in the app.
-- A watcher is running: `node /home/endlessblink/.claude/jobs/4a777531/tmp/push-when-ready.mjs` (waits up to 36 h from ~19 Oct 17:25; when `~/.config/termcontrol/push.json` gets a subscription it sends a test notification from paper-bot_dev and prints the push service's answer; its output file is under `/home/endlessblink/.cache/termfleet/tmp/claude-1000/-media-endlessblink-data-my-projects-ai-development-devops-termfleet/4a777531-9754-4638-8e1d-09d20301bd72/tasks/` — it was background task `btcr4exif`; that session's tasks die with it, so after a handover RESTART it yourself the same way if `pgrep -f push-when-ready` shows nothing).
+- A watcher is running: `node /opt/example/local-path` (waits up to 36 h from ~19 Oct 17:25; when `~/.config/termcontrol/push.json` gets a subscription it sends a test notification from paper-bot_dev and prints the push service's answer; its output file is under `/opt/example/local-path` — it was background task `btcr4exif`; that session's tasks die with it, so after a handover RESTART it yourself the same way if `pgrep -f push-when-ready` shows nothing).
 - To close item 4: when the log shows `[push] phone signed up for notifications` (check `journalctl --user -u termcontrol.service --since "-1 day" | grep "\[push\]"`), the watcher's test goes out; then confirm delivery with Noam in plain words (one yes/no), then `termfleet-asks done 35 "<proof>"` and the goal is complete. Until then report ONE short line per goal check-in; Noam (via paper-bot_dev) asked not to be reminded every 2 h — keep the watcher on silently, report only when something changes (or at most once a day).
 - Also due: **24 Oct 2026** the Health tab shows its first before/after verdict (baseline week 10-16 Oct, after week 17-23 Oct, per 100 of Noam's messages: lost track = automatic memory squeezes, corrected = he had to correct an agent, stuck = errors/cut-offs). Baseline numbers measured on 16 Oct: lost 41.9, corrected 3.8, stuck 5.7. When the verdict appears, tell Noam in plain words whether agents got better, same or worse (and #13-#16 in his request list stay "partial" until then).
 
@@ -38,12 +38,12 @@ Commits (oldest first, all "TF-096: ..."): c89110c (the big one: bots, memory, r
 - Bots are NOT connected to Grok Bot (his explicit correction); only its architecture is copied. Bots run on Noam's Claude/Codex PLANS (no API keys), with automatic fallback to the other plan on a limit; never rotate several accounts of one provider.
 - HARD RULE: no live calls to cloud LLM providers with his accounts for probing/testing; every live bot run needed his explicit yes (he approved the Claude run, and 3 short Codex runs). Do not run more without asking. I also reproduced the Codex-sandbox problem WITHOUT any AI call using `codex sandbox ...`.
 - Rejected: optimistic echo; making the bots' tools broader than read-only (the code-running browser tool `browser_run_code_unsafe` and the plugin's `ctx_execute` are blocked); restarting the terminal keeper (kills his running agents).
-- The PC TermFleet window must not be clicked while he is using it: the live-window checks only ran after `xidle` (X idle time via `/home/endlessblink/.claude/jobs/4a777531/tmp/xidle.py`) showed >= 10 min idle, with only the TermFleet window touched and focus restored. Reuse that approach (scripts `away-phase*.sh` in the same folder).
+- The PC TermFleet window must not be clicked while he is using it: the live-window checks only ran after `xidle` (X idle time via `/opt/example/local-path`) showed >= 10 min idle, with only the TermFleet window touched and focus restored. Reuse that approach (scripts `away-phase*.sh` in the same folder).
 
 ## 6. Uncommitted / unpushed state — IMPORTANT
 
 - 15 TF-096 commits were on local `main` ahead of `origin/main`; the dropoff pushed them once (check `git status -sb`). Per his CI-cost rule: never re-push the same commits, never re-run workflows.
-- The working tree has ~125 modified/untracked files that are NOT mine (other agents' work: cockpit, handover, hooks, docs...). NEVER `git add -A`. Stage only your own files; helper scripts that stage only matching hunks are in `/home/endlessblink/.claude/jobs/4a777531/tmp/` (`stage_hunks.py <file> <regex>`, `stage_plan.py`, `stage_sidebar.py`) — read them before reuse. The earlier mixed files were handled this way: `MASTER_PLAN.md` (my TF-096/TF-097 entries were committed in c89110c, the rest left to others), `src/components/WorkbenchSidebar.tsx` (only the two Bots-section lines).
+- The working tree has ~125 modified/untracked files that are NOT mine (other agents' work: cockpit, handover, hooks, docs...). NEVER `git add -A`. Stage only your own files; helper scripts that stage only matching hunks are in `/opt/example/local-path` (`stage_hunks.py <file> <regex>`, `stage_plan.py`, `stage_sidebar.py`) — read them before reuse. The earlier mixed files were handled this way: `MASTER_PLAN.md` (my TF-096/TF-097 entries were committed in c89110c, the rest left to others), `src/components/WorkbenchSidebar.tsx` (only the two Bots-section lines).
 - `scripts/termfleet-asks.mjs` currently has an UNCOMMITTED edit by someone else that shortens the hook texts (the request-ledger lines, the "promised step" block message). It looks intentional (token saving). My committed version of the promise check is in 1cabbd4; leave their edit alone unless it breaks `termcontrol/test/asks.test.mjs`.
 - This handoff file is `HANDOFF-tf096-bots.md` (NOT `HANDOFF.md`, which belongs to an older TF-074 handoff).
 
@@ -62,7 +62,7 @@ Commits (oldest first, all "TF-096: ..."): c89110c (the big one: bots, memory, r
 ## 8. Running things
 
 - `termcontrol.service` active on 127.0.0.1:7810. Bots' browser (port 9333) is closed unless a bot opens it. Phone watcher `push-when-ready.mjs` (see section 2). TermFleet desktop app + terminal keeper are Noam's live ones (not mine, don't touch).
-- Test helpers live in `/home/endlessblink/.claude/jobs/4a777531/tmp/` (job dir; may be deleted when the old job is). Screenshots in `/tmp/bot-shots/` (volatile).
+- Test helpers live in `/opt/example/local-path` (job dir; may be deleted when the old job is). Screenshots in `/tmp/bot-shots/` (volatile).
 
 ## 9. Exact next steps
 

@@ -11,6 +11,7 @@
 //  - Command for agents and bots:
 //      termfleet-asks done <n[,n]> "<proof: what ran and what it showed>"
 //      termfleet-asks ready <n> "<exactly what Noam should try, in a few words>"
+//      termfleet-asks ready R-<n> --try "<specific action>" --expected "<observable result>" --artifact "<working URL>" --evidence "<delivered result and same URL>" [--test-kind experience|choice|machine]
 //      termfleet-asks partial <n> "<what is still missing>"
 //      termfleet-asks dropped <n> "<why, and who decided>"
 //      termfleet-asks topic-meta <topic> --visual true|false [--owner-words <id>]
@@ -650,15 +651,16 @@ export function itemsCli(args, env = process.env) {
         said = `${ow.text} (message ${ow.id})`;
         ownerMsg = ow.id;
       }
-      if (said.length < 2) return { ok: false, message: 'A lock is Noam confirming it works: add --noam-said "<his words>" or --owner-words <message id>.' };
+      if (said.length < 2) return { ok: false, message: 'A lock is Noam confirming it works: add --owner-words <his targeted confirmation message id>.' };
       const { items } = loadLedger({ dir });
       const notDelivered = ids.filter((id) => !['done', 'ready'].includes(items.get(id)?.status));
       if (notDelivered.length) return { ok: false, message: `${notDelivered.join(', ')} ${notDelivered.length === 1 ? 'is' : 'are'} not marked ready or done with evidence yet; only delivered items can be locked.` };
-      // Words an agent typed are not his confirmation: a screen item needs his recorded message.
-      const screen = ids.filter((id) => items.get(id)?.visual);
-      if (screen.length && !ownerMsg) return { ok: false, message: `${screen.join(', ')} ${screen.length === 1 ? 'is' : 'are'} on a screen topic: only Noam's own recorded message closes ${screen.length === 1 ? 'it' : 'them'}. Use --owner-words <his message id> (termfleet-team verify <id> checks it); --noam-said is not enough.` };
-      record(ids.map((id) => ({ e: 'lock', id, by: said, ...(ownerMsg ? { ownerMsg } : {}) })), { dir });
-      record(ids.map((id) => ({ e: 'status', id, status: 'done', note: `Noam confirmed: ${clipItem(said, 160)}`, evidence: `Noam: ${said}`, by, ...(ownerMsg ? { ownerMsg } : {}) })), { dir });
+      if (!ownerMsg) return { ok: false, message: `${ids.join(', ')}: only Noam's own recorded message closes it. Use --owner-words <his message id>; agent-written --noam-said is not confirmation.` };
+      // One transaction prevents a failed later item/status from leaving an earlier lock.
+      record(ids.flatMap(id => [
+        { e: 'lock', id, by: said, ownerMsg },
+        { e: 'status', id, status: 'done', note: `Noam confirmed: ${clipItem(said, 160)}`, evidence: `Noam: ${said}`, by, ownerMsg },
+      ]), { dir });
       return { ok: true, message: `Locked ${ids.join(', ')}: any later change on the same topic must re-check ${ids.length === 1 ? 'it' : 'them'} first.` };
     }
     if (command === 'reverify') {
@@ -680,7 +682,8 @@ export function itemsCli(args, env = process.env) {
     if ((command === 'done' || command === 'ready' || command === 'partial') && ids.length !== 1) return { ok: false, message: `Mark ${command} one item at a time, each with its own evidence.` };
     const events = [];
     for (const id of ids) {
-      const result = markItem({ status: command, id, note: note || (typeof flags.note === 'string' ? flags.note : ''), evidence: typeof flags.evidence === 'string' ? flags.evidence : '', open: typeof flags.open === 'string' ? flags.open.split(/\s*;\s*/) : [], by }, { dir });
+      const result = markItem({ status: command, id, note: note || (typeof flags.note === 'string' ? flags.note : ''), evidence: typeof flags.evidence === 'string' ? flags.evidence : '', open: typeof flags.open === 'string' ? flags.open.split(/\s*;\s*/) : [], by,
+        tryText:typeof flags.try==='string'?flags.try:'',expected:typeof flags.expected==='string'?flags.expected:'',artifact:typeof flags.artifact==='string'?flags.artifact:'',testKind:typeof flags['test-kind']==='string'?flags['test-kind']:'experience' }, { dir });
       if (result.error) return { ok: false, message: result.error };
       events.push(...result.events);
     }

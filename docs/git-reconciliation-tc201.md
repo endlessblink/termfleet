@@ -19,7 +19,7 @@ User approval covers reviewed integration, recoverable archiving, tests and inst
 
 ## Recovery proof
 
-`/media/endlessblink/data/.dev-tmp/endlessblink/termfleet-reconciliation/approved-20261004T140016Z`
+`/opt/example/local-path`
 
 Every one of the21 original changed/untracked files is preserved under `files/` with SHA-256, file mode and mtime in `manifest.json`; binary diff, index diff, refs and a full Git bundle are also retained. Archived untracked originals are under `retired/`. All hashes were reverified before and after mutation; staged index and HEAD were checked first. No source was hidden in a stash or discarded. Earlier inactive-checkout PNG variants and candidate frontend provenance remain in the separate 20261004T090849Z recovery archive.
 

@@ -110,7 +110,7 @@ test('"/grill-me" and the picker\'s wording both carry the full skill; other tex
     assert.match(skillPrompt('/grill-me'), /wrote nothing else/);
     assert.match(skillPrompt('Use the grill-me skill: the pricing page'), /the pricing page/);
     assert.equal(skillPrompt('/no-such-skill hi'), null);
-    assert.equal(skillPrompt('please /grill-me later'), null);
+    assert.match(skillPrompt('please /grill-me later'), /started the "grill-me" skill/);
     assert.equal(skillPrompt('/../../etc/passwd'), null);
   } finally { s.done(); }
 });
@@ -127,11 +127,11 @@ test('a bot gets the skill steps while the chat keeps exactly what Noam typed', 
     const seen = [];
     const bots = new Bots({ checks: { home, socket: path.join(home, 'daemon.sock') }, dir: fs.mkdtempSync(path.join(os.tmpdir(), 'tc-grill-bots-')), run: async (bot, text) => { seen.push(text); return { text: 'Question 1: ...' }; } });
     const { bot } = bots.create({ name: 'Griller', cwd: os.tmpdir() });
-    assert.equal(bots.send(bot.id, '/grill-me my launch plan').ok, true);
+    assert.equal(bots.send(bot.id, 'Please /grill-me my launch plan').ok, true);
     for (let i = 0; i < 200 && bots.running.has(bot.id); i++) await new Promise((r) => setTimeout(r, 5));
     assert.match(seen[0], /ONE question per message/);
     assert.match(seen[0], /my launch plan/);
-    assert.equal(bots.messages(bot.id).find((m) => m.role === 'operator').text, '/grill-me my launch plan');
+    assert.equal(bots.messages(bot.id).find((m) => m.role === 'operator').text, 'Please /grill-me my launch plan');
   } finally { s.done(); }
 });
 
@@ -158,7 +158,48 @@ test('a skill asked for mid-message, in Hebrew or English, from his own skill fo
     assert.equal(skillPrompt('use the map and zoom out a bit'), null, 'a skill written with spaces needs a run word right before it');
     assert.match(skillPrompt('run zoom out on this'), /Look at the whole system/);
     assert.match(skillPrompt('use zoom-out'), /Look at the whole system/);
-    assert.equal(skillPrompt('please /grill-me later'), null);
+    assert.match(skillPrompt('please /grill-me later'), /started the "grill-me" skill/);
+  } finally { s.done(); }
+});
+
+test('installed skills are listed once with shared and built-in precedence and readable metadata', () => {
+  const s = sandbox();
+  try {
+    for (const dir of [s.claude, s.codex]) {
+      fs.mkdirSync(path.join(dir, 'audit'));
+      fs.writeFileSync(path.join(dir, 'audit', 'SKILL.md'), '---\nname: audit\ndescription: >\n  Audit interface quality\n  across screen sizes.\n---\n**First**: Use the frontend-design skill for design principles.');
+    }
+    assert.equal(listSkills().filter(k => k.name === 'audit').length, 1);
+    assert.equal(listSkills()[0].description, 'Audit interface quality across screen sizes.');
+    assert.equal(listSkills()[0].family, 'Impeccable');
+    assert.equal(listSkills()[0].status, 'approved');
+    fs.mkdirSync(path.join(s.library, 'audit'), { recursive: true });
+    fs.writeFileSync(path.join(s.library, 'audit', 'SKILL.md'), '---\nname: audit\ndescription: "Owner version"\n---\nOwner instructions.');
+    assert.equal(listSkills().filter(k => k.name === 'audit').length, 1);
+    assert.equal(listSkills()[0].description, 'Owner version');
+    assert.equal(skillText('audit'), 'Owner instructions.');
+    fs.mkdirSync(path.join(s.claude, 'adapt'));
+    fs.writeFileSync(path.join(s.claude, 'adapt', 'SKILL.md'), '---\nname: adapt\ndescription: Adapt to different screen sizes.\n---\nUse the frontend-design skill. Run teach-impeccable first.');
+    assert.equal(listSkills().find(k => k.name === 'adapt').family, 'Impeccable');
+    fs.mkdirSync(path.join(s.claude, 'impeccable'));
+    fs.mkdirSync(path.join(s.claude, 'extract'));
+    fs.writeFileSync(path.join(s.claude, 'impeccable', 'SKILL.md'), '---\nname: impeccable\ndescription: Design tools.\n---\n| `extract [target]` | Build | Extract tokens |\n');
+    fs.writeFileSync(path.join(s.claude, 'extract', 'SKILL.md'), '---\nname: extract\ndescription: Extract tokens.\n---\nConsolidate components.');
+    assert.equal(listSkills().find(k => k.name === 'extract').family, 'Impeccable');
+  } finally { s.done(); }
+});
+
+test('explicit slash works mid-sentence without run words and preserves the full request', () => {
+  const s = sandbox();
+  try {
+    fs.mkdirSync(path.join(s.claude, 'audit'));
+    fs.writeFileSync(path.join(s.claude, 'audit', 'SKILL.md'), '---\nname: audit\ndescription: Audit the interface.\n---\nCheck contrast and overflow.');
+    for (const text of ['please /audit this screen', 'בבקשה /audit למסך הזה', 'A line\n/audit', 'Please /AUDIT, then explain', 'Ignore /unknown then /audit this']) {
+      const prompt = skillPrompt(text);
+      assert.match(prompt, /Check contrast and overflow/);
+      assert.ok(prompt.includes(text));
+    }
+    for (const text of ['https://example.test/audit', '/audit/assets', 'Look at /audit/assets', 'word/audit', 'please /auditing', 'please /unknown', '/../../etc/passwd']) assert.equal(skillPrompt(text), null, text);
   } finally { s.done(); }
 });
 

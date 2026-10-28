@@ -29,4 +29,4 @@ Pending question for Noam (from handoff 4): he pasted a transcript of ANOTHER in
 Patch .ts/.tsx SOURCE with node/python script files (Edit/Write reformat the whole file and break source verifiers; tests are fine to Edit). Not mine, leave alone: docs/issue-registry.json, baseline PNGs, scripts/verify-clipboard-paste.sh, .kilo/, HANDOFF-feature-64.md, tests/scratch-eval.spec.ts. Use lean-ctx ctx_* tools (ToolSearch select:mcp__lean-ctx__ctx_shell,mcp__lean-ctx__ctx_read,mcp__lean-ctx__ctx_search). Declare a plain cockpit task. Final answer: 1-4 plain sentences + Next steps. Never tmux; spawn via termfleet-child. Work on main, commit only own files with the co-author line from the system reminder. Run the issue check (`npm run issues -- check`, `list`) before production-code changes.
 
 ## First command
-`cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && git status --short && npm run issues -- list 2>&1 | grep -i TF-069`
+`cd /opt/example/local-path && git status --short && npm run issues -- list 2>&1 | grep -i TF-069`

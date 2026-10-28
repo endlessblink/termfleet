@@ -36,4 +36,4 @@ Noam pasted a transcript of a different instance (Upwork block in today's plan a
 Patch .ts/.tsx SOURCE with node/python script files (Edit/Write reformat the whole file and break source verifiers; heredoc python is blocked, write a script to the scratchpad). Not mine, leave alone: docs/issue-registry.json, baseline PNGs, scripts/verify-clipboard-paste.sh, .kilo/, HANDOFF-feature-64.md, tests/scratch-eval.spec.ts. Use lean-ctx ctx_* tools (load via ToolSearch select:mcp__lean-ctx__ctx_shell,mcp__lean-ctx__ctx_read,mcp__lean-ctx__ctx_search). Declare a plain cockpit task. Final answer: 1-4 plain sentences + Next steps. Never tmux. Work on main. Commit co-author line per system reminder.
 
 ## First command
-`cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && git status --short && npx playwright test tests/project-reconciliation.spec.ts -g "stays in its start-folder" --reporter=line 2>&1 | tail -30`
+`cd /opt/example/local-path && git status --short && npx playwright test tests/project-reconciliation.spec.ts -g "stays in its start-folder" --reporter=line 2>&1 | tail -30`

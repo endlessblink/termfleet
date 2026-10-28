@@ -61,7 +61,7 @@ Positive notes worth preserving: `cockpit-header-trace.jsonl` *is* rotated (comm
 | Persisted workspace state | `workspace.json` 1.5 MB (was 0.3–0.5 MB per the TF-015 note) | grows with `closedSessionIds`, `closedRestoreTargets`, `dismissedRecoverySessionKeys`, `recoveryTransfers` (workspace.ts:5385-5395) | per closed pane | arrays unbounded **(verify caps in reducers)** | S |
 
 Class key: R release, T temp, E evidence/screenshot, S state-small, U user session data, A archive/backup, L log, W webview, C crash, D dev-only.
-Reclaimable at a glance: ≈ 18 + 19 + 4.8 + 0.8 + 0.7 + ~1 ≈ **44 GB** (app-owned) plus 13 GB dev. The data disk (`/media/endlessblink/data`) is 83% full (177 GB free); /home 70%.
+Reclaimable at a glance: ≈ 18 + 19 + 4.8 + 0.8 + 0.7 + ~1 ≈ **44 GB** (app-owned) plus 13 GB dev. The data disk (`/opt/example/local-path`) is 83% full (177 GB free); /home 70%.
 
 ### 2.2 Design
 

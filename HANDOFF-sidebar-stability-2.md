@@ -5,7 +5,7 @@ Written 2026-10-01 by the 5th instance. Read HANDOFF-sidebar-stability.md FIRST 
 ## Noam's requests (words)
 1. Original: "when closing or operning a terminal the sidebar shouldnt change. the same positions shoud stay... icons are permanent... sub agents should have a signifier... the user can change the icons manually but not termfleet after an icon has been set."
 2. Close behaviour: "when existing a terminal the sidebar shouldnt jump and glitch it can just move to the next terminal in that project, if there isnt one - to the last terminal that was used maybe."
-3. Latest (with screenshot): "again not in the correct terminal" then "not correct group I mean". Screenshot: a card titled "termfleet" (Running, Claude, "Task not captured", cwd /media/endlessblink/...) is listed under the FREELANCE-DESK heading in the By-project sidebar. It belongs under TERMFLEET's project. Earlier screenshot: freelance-desk cards under BOTSON, a botson card under IN-CONTROL-KERNEL.
+3. Latest (with screenshot): "again not in the correct terminal" then "not correct group I mean". Screenshot: a card titled "termfleet" (Running, Claude, "Task not captured", cwd /opt/example/local-path) is listed under the FREELANCE-DESK heading in the By-project sidebar. It belongs under TERMFLEET's project. Earlier screenshot: freelance-desk cards under BOTSON, a botson card under IN-CONTROL-KERNEL.
 
 ## Done (committed in 4e04992, WIP) 
 Stable group order (store `canvasSidebarGroupOrder`, `reorderSidebarGroups`, `syncSidebarGroupOrder`), locked group emoji in `reconcileProjectGroups`, helper ↳ badge + indent, map/sidebar read same emoji + order. tsc passes.
@@ -33,4 +33,4 @@ Code: `reconcileProjectGroups` (workspace.ts ~937) assigns tab.groupId from LIVE
 Patch .ts/.tsx with node script files (Edit/Write reformat whole file and break source verifiers). Not mine, leave alone: docs/issue-registry.json, baseline PNGs, scripts/verify-clipboard-paste.sh, .kilo/, HANDOFF-feature-64.md, tests/scratch-eval.spec.ts. Use lean-ctx ctx_* tools (load via ToolSearch select:mcp__lean-ctx__ctx_shell,ctx_read,ctx_search). Declare a plain cockpit task. Final answer: 1-4 plain sentences + Next steps. Never tmux.
 
 ## First command
-`cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && git status --short && npm run doctor 2>&1 | tail -15`
+`cd /opt/example/local-path && git status --short && npm run doctor 2>&1 | tail -15`

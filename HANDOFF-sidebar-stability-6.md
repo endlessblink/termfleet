@@ -45,4 +45,4 @@ Patch .ts/.tsx SOURCE with python/node script files (Edit/Write reformat the who
 Nothing of mine is running (no dev server, no builds). The Playwright webServer on :5177 is started/stopped by the test run.
 
 ## First command
-`cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && git status --short && npm run issues -- list 2>&1 | grep -i TF-069 && npm run doctor 2>&1 | tail -20`
+`cd /opt/example/local-path && git status --short && npm run issues -- list 2>&1 | grep -i TF-069 && npm run doctor 2>&1 | tail -20`

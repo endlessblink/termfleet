@@ -23,7 +23,11 @@ const NAME = /^[a-z0-9][a-z0-9-]{1,48}$/;
 
 export function header(text) {
   const m = /^---\n([\s\S]*?)\n---/.exec(String(text || ''));
-  const get = (k) => (m ? (new RegExp(`^${k}:\\s*(.*)$`, 'm').exec(m[1])?.[1] || '').trim() : '');
+  const get = (k) => {
+    const value = m ? (new RegExp(`^${k}:[ \\t]*(.*)$`, 'm').exec(m[1])?.[1] || '').trim() : '';
+    if (/^[>|][-+]?$/.test(value)) return (new RegExp(`^${k}:[^\\n]*\\n((?:[ \\t]+[^\\n]*(?:\\n|$))+)`, 'm').exec(m[1])?.[1] || '').trim().replace(/\s+/g, ' ');
+    return value.replace(/^(['"])([\s\S]*)\1$/, '$2');
+  };
   return { name: get('name'), description: get('description') };
 }
 
@@ -36,7 +40,7 @@ function read(dir, status) {
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
     const h = header(text);
-    out.push({ name, description: h.description, status, by: (/^suggested-by:\s*(.*)$/m.exec(text)?.[1] || '').trim() || null, preview: text.replace(/^---[\s\S]*?---\n/, '').slice(0, 1200) });
+    out.push({ name, description: h.description, status, ...(name.includes('impeccable') || name === 'frontend-design' || /\b(?:teach-impeccable|Use the frontend-design skill)\b/.test(text) ? { family: 'Impeccable' } : {}), by: (/^suggested-by:\s*(.*)$/m.exec(text)?.[1] || '').trim() || null, preview: text.replace(/^---[\s\S]*?---\n/, '').slice(0, 1200) });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -44,7 +48,24 @@ function read(dir, status) {
 export function listSkills() {
   const library = read(PATHS.library(), 'approved');
   const builtIn = read(PATHS.builtin(), 'approved').filter((k) => !library.some((l) => l.name === k.name)).map((k) => ({ ...k, builtIn: true }));
-  return [...read(PATHS.suggested(), 'suggested'), ...[...library, ...builtIn].sort((a, b) => a.name.localeCompare(b.name))];
+  const available = new Map([...library, ...builtIn].map(k => [k.name, k]));
+  for (const dir of PATHS.providers()) {
+    for (const skill of read(dir, 'approved')) {
+      if (NAME.test(skill.name) && !available.has(skill.name)) available.set(skill.name, { ...skill, installed: true });
+    }
+  }
+  // Newer Impeccable installs describe their commands in the umbrella skill;
+  // older standalone skills identify themselves through their setup instructions.
+  for (const dir of [PATHS.library(), PATHS.builtin(), ...PATHS.providers()]) {
+    let umbrella;
+    try { umbrella = fs.readFileSync(path.join(dir, 'impeccable', 'SKILL.md'), 'utf8'); } catch { continue; }
+    for (const match of umbrella.matchAll(/^\| `([a-z0-9-]+)(?:[ `])/gm)) {
+      const skill = available.get(match[1]);
+      if (skill) skill.family = 'Impeccable';
+    }
+    break;
+  }
+  return [...read(PATHS.suggested(), 'suggested'), ...[...available.values()].sort((a, b) => a.name.localeCompare(b.name))];
 }
 
 /**
@@ -70,7 +91,16 @@ export function skillText(name) {
 export function skillPrompt(text) {
   const m = /^\s*\/([a-z0-9][a-z0-9-]{1,48})(?:\s+([\s\S]*))?$/i.exec(String(text || ''))
     || /^\s*Use the ([a-z0-9][a-z0-9-]{1,48}) skill:?(?:\s+([\s\S]*))?$/i.exec(String(text || ''));
-  if (!m) return mentionedSkill(text);
+  if (!m) {
+    // Explicit slash invocations need no extra "run" verb. A whitespace boundary
+    // and a complete token keep URLs and filesystem paths from starting skills.
+    const said = String(text || '');
+    for (const hit of said.matchAll(/(?:^|\s)\/([a-z0-9][a-z0-9-]{1,48})(?=$|\s|[.,!?;:)\]])/gi)) {
+      const name = hit[1].toLowerCase(), body = skillText(name);
+      if (body) return `Noam started the "${name}" skill in this chat. Follow these instructions from now until it is finished:\n\n${body}\n\n---\nNoam's message, as he typed it:\n${said.trim()}`;
+    }
+    return mentionedSkill(text);
+  }
   const name = m[1].toLowerCase();
   const body = skillText(name);
   if (!body) return null;

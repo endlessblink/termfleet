@@ -68,7 +68,8 @@ test('only his verified message closes a screen item: typed words are refused, o
   assert.equal(typed.ok, false);
   assert.match(typed.message, /only Noam's own recorded message closes it/);
   assert.equal(cli(['lock', 'R-1', '--owner-words', 'nope123'], env).ok, false);
-  recordOwnerWords({ id: 'abc123', at: Date.now(), botId: 'b', bot: 'Botty', text: 'עובד, תודה' }, { base: config });
+  const delivered = loadLedger({ dir }).items.get('R-1');
+  recordOwnerWords({ id: 'abc123', at: Math.max(delivered.statusAt, delivered.statusRecordedAt) + 1, botId: 'b', bot: 'Botty', text: 'R-1 עובד, תודה' }, { base: config });
   assert.equal(cli(['lock', 'R-1', '--owner-words', 'abc123'], env).ok, true);
   const it = loadLedger({ dir }).items.get('R-1');
   assert.equal(it.status, 'done');

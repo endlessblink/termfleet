@@ -11,8 +11,12 @@ const args = process.argv.slice(2);
 const flag = (k, d) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : d; };
 const sinceArg = flag('since', String(Date.now() - 24 * 3600_000));
 const since = /^\d+$/.test(sinceArg) ? Number(sinceArg) : Date.parse(sinceArg);
-const repo = flag('repo', '/media/endlessblink/data/my-projects/ai-development/game-dev/politic-fighter');
-const bot = flag('bot', 'd557f3283bc8');
+const repo = flag('repo', process.cwd());
+const bot = flag('bot', '');
+if (!bot) {
+  console.error('Usage: bot-scorecard --bot <id> [--repo <path>] [--since <ISO or ms>]');
+  process.exit(2);
+}
 const hours = (Date.now() - since) / 3600_000;
 
 // 1. Commits: real code vs proof/process.

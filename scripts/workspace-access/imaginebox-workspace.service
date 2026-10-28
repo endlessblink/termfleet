@@ -1,0 +1,11 @@
+[Unit]
+Description=ImagineBox local workspace
+
+[Service]
+EnvironmentFile=%h/.config/termfleet/workspace-access.env
+ExecStart=/usr/bin/python3 ${IMAGINEBOX_SOURCE}/film_server.py ${IMAGINEBOX_PROJECT} --port 8810
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

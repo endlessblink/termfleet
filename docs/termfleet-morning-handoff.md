@@ -82,7 +82,7 @@ proof of the exact rendered legacy map defect.
 ## Exact blocked attempts and categories
 
 All commands below used
-`/home/endlessblink/Documents/Codex/2026-10-03/task/termfleet-integration` as cwd.
+`/opt/example/local-path` as cwd.
 Raw retained command/exit/output receipts are exported as
 `termfleet-morning-handoff/blocked-command-receipts.json`; no retry was made here.
 

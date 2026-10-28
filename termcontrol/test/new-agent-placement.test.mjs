@@ -10,7 +10,7 @@ const CLI = path.resolve('scripts/termfleet-child.mjs');
 const project = { project: 'freelance-desk', cwd: '/synthetic/freelance-desk' };
 
 test('a new agent is requested for its own project folder, never as a loose card', () => {
-  const args = spawnArgs(project, 'claude', '/tmp/task.md');
+  const args = spawnArgs(project, 'codex', '/tmp/task.md');
   assert.equal(args[args.indexOf('--near') + 1], project.cwd);
   assert.equal(args[args.indexOf('--cwd') + 1], project.cwd);
   assert.ok(!args.includes('--separate'), 'must not ask to be separate');
@@ -25,7 +25,7 @@ test('the real launcher turns those arguments into a request that joins the proj
     fs.writeFileSync(path.join(dir, '.listener'), String(Date.now()));
     const task = path.join(dataHome, 'task.md');
     fs.writeFileSync(task, 'Draft the weekly summary for the freelance desk project.');
-    const child = spawn('node', [CLI, ...spawnArgs(project, 'claude', task), '--timeout', '15', '--no-start-app'], {
+    const child = spawn('node', [CLI, ...spawnArgs(project, 'codex', task), '--timeout', '15', '--no-start-app'], {
       env: { ...process.env, XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: '' }, stdio: 'ignore',
     });
     const exited = new Promise((resolve) => child.on('exit', resolve));

@@ -8,6 +8,7 @@ import { pickResponder, PASS, messageForAgent } from '../bridge/rooms.mjs';
 import { handoffLine, visibleFeed } from '../bridge/feed.mjs';
 import { run as memoryCommand } from '../../scripts/termfleet-memory.mjs';
 import { recordInBot, recordHelper } from '../../scripts/termfleet-team.mjs';
+import { issueBotCaller, BOT_CALLER_TOKEN_ENV } from '../../scripts/lib/bot-caller.mjs';
 
 // TF-096 part 6 + Noam 16.10 17:53: "Job and rules should be created when starting and
 // based on the chat … Location should be the same one with each agent next to the other".
@@ -68,15 +69,18 @@ test('handoffs show in the sender\'s chat too: a terminal agent\'s and a bot\'s'
   const root = tmp();
   const id = 'abcdefabcdef';
   fs.mkdirSync(path.join(root, 'bots', id), { recursive: true });
-  const env = { TERMFLEET_BOT_ID: id, TC_CONFIG_DIR: root };
-  assert.equal(recordInBot({ role: 'handoff', pane: 'terminal-x', to: 'botson', text: 'Run the checks' }, env), true);
-  assert.equal(recordHelper({ paneId: 'terminal-y', task: 'phone tests' }, env), true);
+  const callerOptions = { base: path.join(root, 'callers') };
+  const issued = issueBotCaller({ id, name: 'Test bot', provider: 'codex', botFolder: path.join(root, 'bots', id) }, callerOptions);
+  const env = { TERMFLEET_BOT_ID: id, TC_CONFIG_DIR: '/wrong', [BOT_CALLER_TOKEN_ENV]: issued.token };
+  assert.equal(recordInBot({ role: 'handoff', pane: 'terminal-x', to: 'botson', text: 'Run the checks' }, env, callerOptions), true);
+  assert.equal(recordHelper({ paneId: 'terminal-y', task: 'phone tests' }, env, callerOptions), true);
   const chat = fs.readFileSync(path.join(root, 'bots', id, 'chat.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(chat[0].role, 'handoff');
   const bots = new Bots({ dir: path.join(root, 'bots'), run: async () => ({ text: '' }) });
   assert.equal(recordInBot({ role: 'handoff' }, {}), false, 'outside a bot nothing is written');
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'bots', id, 'helpers.json'), 'utf8'))[0].paneId, 'terminal-y');
   assert.ok(bots);
+  issued.revoke();
 });
 
 test('pinned bots come first; hidden ones are kept, just out of the way; search finds words in any bot chat', () => {

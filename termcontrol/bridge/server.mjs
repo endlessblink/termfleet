@@ -9,19 +9,25 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
+import { createHash } from 'node:crypto';
+import { retrieveActionEvidence } from './action-evidence.mjs';
+import { issueBotCaller } from '../../scripts/lib/bot-caller.mjs';
+import { linkObservedHelper } from './helper-link.mjs';
 import { getTokenSummary } from './token-monitor.mjs';
 import { canvasSidebarView, listPanes, reconcileLivePanes, readWorkspace, inventoryVersion } from './inventory.mjs';
 import { rolloutForStart, promptToken } from './adapters/codex.mjs';
 import { claudeTranscript } from './paths.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth, isLocalRecoveryRequest } from './auth.mjs';
+import { checkStalledBots } from './stall-wake.mjs';
+import { checkCanary, readCanary, CANARY_EVERY_MS } from './canary.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice, answerMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
-import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
+import { cleanupPlan, cleanupScreenState, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
 import { appendAction, paneLogFile } from './action-log.mjs';
 import { parentsByPane, fleetPanes, stateOf } from './orchestrate.mjs';
-import { deliverHeld } from './held-messages.mjs';
+import { deliverHeld, sweepStranded, strandedText, recordHeldQuarantineStatus } from './held-messages.mjs';
 import { agentsByPane } from './inventory.mjs';
 import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
 import { adapterFor } from './feed.mjs';
@@ -34,6 +40,7 @@ import { ChoiceReceipts } from './choice-receipts.mjs';
 import { visibleScreenOf, liveScreenOf } from './screen.mjs';
 import { readSessionStatus, subscribeSessionEventHeads, applyVendorStatus, stalledFor, conversationMtime } from './session-status.mjs';
 import { readUsageLimits } from './usage-limits.mjs';
+import { assertProviderLaunch, providerLaunchStatus } from '../../scripts/lib/provider-launch-policy.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { visits } from './visits.mjs';
 import { listFolders } from './list-folders.mjs';
@@ -63,7 +70,8 @@ import { listSkills, approveSkill, rejectSkill, suggestSkill, checkSkill } from 
 import { BotBrowser, BROWSER_PORT } from './bot-browser.mjs';
 import { sweepWindows, setTakeover, clearTakeover, handBackText, readWindows } from './bot-windows.mjs';
 import { report as agentHealthReport } from '../../scripts/termfleet-agent-health.mjs';
-import { checkBotEvents, helperState } from './bot-events.mjs';
+import { checkBotEvents, helperState, retireTerminalPrompt, screenStillAsks, beginPromptObservation, isCurrentPromptObservation } from './bot-events.mjs';
+import { promptObservation } from './prompt-lifecycle.mjs';
 import { startWatchdog } from './watchdog.mjs';
 import { recoverBotHelpers } from './helper-recovery.mjs';
 import { Push } from './push.mjs';
@@ -72,12 +80,25 @@ import { collectWaiting, createWaitingNotifier } from './waiting.mjs';
 import { asksForFile, isRealRequest, askTitle, dismissAsk, itemsByAsk, statusFromItems } from '../../scripts/termfleet-asks.mjs';
 import { botAsksFromItems } from './bot-request-panel.mjs';
 import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
-import { itemsView, replyDetails } from './requirements.mjs';
+import { itemsView, replyDetails, record as recordRequirement, loadLedger as loadRequirementLedger } from './requirements.mjs';
+import { recordOwnerWords } from './owner-words.mjs';
 import { tryNowItems } from './bot-testing.mjs';
-import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity } from './events-db.mjs';
+import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity, recordActionEvidence, queryActionEvidence, pendingActionDeliveries } from './events-db.mjs';
+import { createAutomaticActionBarrier } from './automation-pause.mjs';
+import { createDeliveryReconciler } from './delivery-reconciliation.mjs';
 import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS } from './terminal-health.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const automaticConfig = process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config/termcontrol');
+const automatic = createAutomaticActionBarrier({file:path.join(automaticConfig,'automatic-actions.paused'),
+  operationsDir:path.join(automaticConfig,'automatic-operations')});
+const automaticInterval = (action, ms, label) => automatic.schedule(action, {ms,label,
+  onError:error=>console.error(`[automatic ${label}]`,error.message)});
+const automaticTimeout = (action, ms, label) => automatic.schedule(action, {ms,label,once:true,
+  set:setTimeout,clear:clearTimeout,onError:error=>console.error(`[automatic ${label}]`,error.message)});
+let maintenanceDrain = null;
+const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(), get automatic_actions(){return {...automatic.status(),maintenance:maintenanceDrain};},
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'compact-action-evidence.mjs', 'token-monitor.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'helper-completions.mjs', 'adapters/codex.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs', 'session-status.mjs', 'helper-recovery.mjs', 'idle-cleanup.mjs', 'automation-pause.mjs', 'rooms.mjs', 'routines.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
@@ -115,7 +136,7 @@ function speechTimingHeader(res, timings = {}) {
     .map(([name, key]) => `${name};dur=${Math.max(0, timings[key]).toFixed(1)}`).join(', '));
 }
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.webmanifest': 'application/manifest+json', '.png': 'image/png' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.webmanifest': 'application/manifest+json', '.png': 'image/png' };
 
 // Home-screen icon + manifest: the phone fetches these without the sign-in cookie.
 const PUBLIC_APP_FILES = new Set(['/app/manifest.webmanifest', '/app/icon-192.png', '/app/icon-512.png', '/app/icon-maskable-512.png', '/app/apple-touch-icon.png', '/app/favicon-32.png']);
@@ -199,6 +220,9 @@ async function buildCurrentPanes() {
         alive: true,
         lastActiveAt,
         lastWorkedAt,
+        // Record activity is an idle-age baseline, not proof of a crash or finished turn.
+        // Fresh output, pending tools, working turns and approvals protect against cleanup.
+        recordAt: conversationMtime(p) ? Math.max(Number(p.updatedAt) || 0, conversationMtime(p)) : 0,
         pid: life.pid ?? null,
         startedAt: startedAt(life.pid) || null,
         // "Working" with no output and no conversation change for a long time is
@@ -249,12 +273,13 @@ function withCodexRecord(p, table) {
   if (!hit.found) return p;
   let mtime = 0;
   try { mtime = fs.statSync(hit.found.file).mtimeMs; } catch { return p; }
-  return { ...p, sessionId: hit.found.sessionId, lastActiveAt: Math.max(Number(p.lastActiveAt) || 0, mtime), lastWorkedAt: Math.max(Number(p.lastWorkedAt) || 0, mtime) };
+  return { ...p, sessionId: hit.found.sessionId, recordAt: Math.max(Number(p.recordAt) || 0, mtime), lastActiveAt: Math.max(Number(p.lastActiveAt) || 0, mtime), lastWorkedAt: Math.max(Number(p.lastWorkedAt) || 0, mtime) };
 }
 
 /** What "Clean up idle terminals" offers, judged now; `starters` says who started each terminal. */
-async function idleCleanupPlan() {
-  const { panes: onMap } = await currentPanes();
+async function idleCleanupPlan({fresh=false}={}) {
+  const { panes: onMap,daemon } = await currentPanes({fresh});
+  if(!daemon)return {offer:[],keep:[],starters:new Map(),checkedAt:Date.now()};
   const table = processTable();
   // Every bot's full helpers list: the short one in its summary loses old start records (R-7214).
   const { starters: helperOf, followers } = helperRoles(bots.list().map((b) => {
@@ -281,8 +306,15 @@ async function idleCleanupPlan() {
   }
   const starters = rememberStarters(readStarters(), found, new Set(panes.map((p) => p.id)));
   writeStarters(starters);
+  const screens=new Map();
+  for(const p of panes){
+    if(!['codex','claude','opencode'].includes(p.provider))continue;
+    p.pendingTools=readSessionStatus(p).pendingTools;
+    let screen=null;try{screen=await screenOf(p.id);}catch{}
+    screens.set(p.id,cleanupScreenState(p,screen));
+  }
   const plan = cleanupPlan({
-    panes, isSleeping,
+    panes, isSleeping,screenState:p=>screens.get(p.id)??null,
     startedBy: (p) => starters.get(p.id)?.name || null,
     startedByBot: (p) => Boolean(starters.get(p.id)?.botId),
     processes: (p) => descendantsOf(p.pid, table),
@@ -298,8 +330,12 @@ async function idleCleanupPlan() {
 // safe; (Q3) each close is a quiet line in the starter's activity log, never a notification.
 // Only the real service sweeps: test bridges (their own config folder) never close anything.
 async function sweepFinishedHelpers() {
+  if(automatic.paused)return {closed:0,paused:true};
   const plan = await idleCleanupPlan();
-  return autoCloseFinished({ plan, requestClose, log: (text, item, ok) => {
+  return autoCloseFinished({ plan, requestClose:automatic.guard(requestClose), canClose:async(item)=>{
+    const fresh=await idleCleanupPlan({fresh:true});
+    return fresh.offer.some(p=>p.id===item.id&&!p.warning&&p.startedBy===item.startedBy&&p.provider===item.provider&&p.sessionId===item.sessionId&&p.pid===item.pid);
+  }, log: (text, item, ok) => {
     if (!ok) return;
     const who = plan.starters.get(item.id) || {};
     const entry = { at: Date.now(), actor: 'termfleet', kind: 'terminal', text, auto: true, paneId: item.id };
@@ -312,11 +348,11 @@ async function sweepFinishedHelpers() {
 }
 if (!process.env.TC_CONFIG_DIR && !process.env.TC_NO_AUTO_CLEANUP) {
   let sweeping = false;
-  setInterval(() => {
+  automaticInterval(() => {
     if (sweeping) return;
     sweeping = true;
-    sweepFinishedHelpers().catch((error) => console.error('[auto-cleanup]', error.message)).finally(() => { sweeping = false; });
-  }, 60_000).unref();   // every minute, so a bot's finished terminal closes soon after its 5 idle minutes
+    return sweepFinishedHelpers().catch((error) => console.error('[auto-cleanup]', error.message)).finally(() => { sweeping = false; });
+  }, 60_000, 'helper-cleanup');   // every minute, so a bot's finished terminal closes soon after its 5 idle minutes
 }
 
 // Sleep for idle agents (Noam 2026-10-22: 'שהם לא יגנבו הרבה זיכרון במצב idle'). Every minute,
@@ -328,13 +364,14 @@ function lastVisitAt(id) {
   try { const all = JSON.parse(fs.readFileSync(visits.file, 'utf8')); return Math.max(0, ...Object.values(all).map((v) => Number(v?.[id]) || 0)); } catch { return 0; }
 }
 export async function sweepIdleAgents() {
+  if(automatic.paused)return {slept:[],freedBytes:0,paused:true};
   const { panes, daemon } = await currentPanes();
   if (!daemon) return { slept: [], freedBytes: 0 };
   const table = processTable();
   return sweepSleep({
     panes, visitedAt: lastVisitAt,
     processes: (p) => workProcesses(p.pid, table),
-    sleep: (p) => sleepPane(p, { ask: daemonAsk, rssOf: (x) => treeRss(x.pid, table) }),
+    sleep: automatic.guard((p) => sleepPane(p, { ask: automatic.guard(daemonAsk), rssOf: (x) => treeRss(x.pid, table) })),
     log: (pane, r) => {
       const mb = Math.round((r.freedBytes || 0) / 1048576);
       try { appendAction(paneLogFile(pane.id), { at: Date.now(), actor: 'termfleet', kind: 'terminal', text: `Went to sleep while idle; freed about ${mb} MB. It wakes when opened or sent a message.`, auto: true, paneId: pane.id }); } catch { /* the sleep itself succeeded */ }
@@ -344,34 +381,39 @@ export async function sweepIdleAgents() {
 }
 if (!process.env.TC_CONFIG_DIR && !process.env.TC_NO_AUTO_SLEEP) {
   let sleeping = false;
-  setInterval(() => {
+  automaticInterval(() => {
     if (sleeping) return;
     sleeping = true;
-    sweepIdleAgents().catch((error) => console.error('[sleep]', error.message)).finally(() => { sleeping = false; });
-  }, 60_000).unref();
+    return sweepIdleAgents().catch((error) => console.error('[sleep]', error.message)).finally(() => { sleeping = false; });
+  }, 60_000, 'idle-sleep');
 }
 
-const sendOnce = createSendOnce();
+const sendOnce = createSendOnce({dir:path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'send-receipts')});
 
 // Bots (TF-096): managers that run outside the terminals and direct terminal agents.
 const push = new Push();
 const botBrowser = new BotBrowser();
 // Codex bots cannot open the browser from inside their safety box; they ask us.
-setInterval(() => { botBrowser.serveRequests().catch(() => {}); }, 1000).unref();
+automaticInterval(() => botBrowser.serveRequests(), 1000, 'browser-requests');
 // A bot's window closes when its task ends; this catches tasks that ended by a crash.
-setInterval(() => { sweepWindows({ port: BROWSER_PORT }).catch(() => {}); }, 15000).unref();
+automaticInterval(() => sweepWindows({ port: BROWSER_PORT }), 15000, 'browser-cleanup');
 // The daily agent counts are read from big conversation records, so they are updated
 // in a separate low-priority process: a few minutes the first time, seconds after.
 let healthRun = null;
 function refreshAgentHealth() {
-  if (healthRun || process.env.TC_NO_AGENT_HEALTH) return;
+  if (automatic.paused || healthRun || process.env.TC_NO_AGENT_HEALTH) return;
   healthRun = spawn('nice', ['-n', '15', process.execPath, fileURLToPath(new URL('../../scripts/termfleet-agent-health.mjs', import.meta.url))], { stdio: 'ignore' });
-  healthRun.on('exit', () => { healthRun = null; });
-  healthRun.on('error', () => { healthRun = null; });
+  const child = healthRun;
+  return new Promise(resolve=>{
+    child.once('exit',()=>{healthRun=null;resolve({ok:true});});
+    child.once('error',()=>{healthRun=null;resolve({ok:false,notSent:true,error:'Health subprocess did not start.'});});
+  });
 }
-setTimeout(refreshAgentHealth, 90_000).unref();
-setInterval(refreshAgentHealth, 60 * 60_000).unref();
-const bots = new Bots({ side: runSide, notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
+automaticTimeout(refreshAgentHealth, 90_000, 'agent-health-start');
+automaticInterval(refreshAgentHealth, 60 * 60_000, 'agent-health');
+const bots = new Bots({ callerIssuer: issueBotCaller, actionEvidence: { recordActionEvidence, queryActionEvidence }, side: runSide, notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
+// Bind original methods to preserve bot state; only automatic wake is guarded.
+const automaticBots = new Proxy(bots,{get(target,key){const value=Reflect.get(target,key,target);return typeof value!=='function'?value:key==='wake'?automatic.guard(value.bind(target)):value.bind(target);}});
 
 /** Bots join group chats like terminal agents do: as members with a chat to read. */
 function botMembers() {
@@ -379,52 +421,80 @@ function botMembers() {
 }
 async function roomPanes() { return [...(await currentPanes()).panes, ...botMembers()]; }
 // A turn cut off by a restart is picked up again.
-setTimeout(() => { try { bots.resumeInterrupted(); } catch (error) { console.error('[bots]', error.message); } }, 3000).unref?.();
+automaticTimeout(() => bots.resumeInterrupted(), 3000, 'bot-resume');
 // TF-096 part 7: events wake bots (helper finished, approval expired, new code).
 const helperSeen = new Map();
 let helperRecoveryRunning = false;
+const reconcileDeliveries = createDeliveryReconciler({ pending: pendingActionDeliveries, record: recordActionEvidence,
+  recordForPane: pane => ({ file: adapterFor(pane)?.transcriptPath(pane), provider: pane.provider, sessionId: pane.sessionId }) });
 async function botEvents() {
+  if(automatic.paused)return;
   if (!bots.list().length) return;
   const current = await currentPanes();
+  if(automatic.paused)return;
+  if (current.daemon) {
+    try { reconcileDeliveries(current.panes); }
+    catch { console.error('[action evidence] late receipt reconciliation unavailable'); }
+  }
   if (current.daemon && !process.env.TC_CONFIG_DIR && process.env.TC_NO_TERMINAL_HEALTH !== '1' && !helperRecoveryRunning) {
     helperRecoveryRunning = true;
     try {
       await recoverBotHelpers({
-        bots, panes: current.panes, items: itemsView().items,
+        bots:automaticBots, panes: current.panes, items: itemsView().items,
         readAsk: async (pane) => pendingAsk(pane),
         readScreen: async (pane) => visibleScreenOf(pane.id) ?? await screenOf(pane.id),
         recheck: async (pane, work) => {
           const fresh = await currentPanes({ fresh: true });
           const live = fresh.panes.find((p) => p.id === pane.id);
-          if (!fresh.daemon || !live?.alive || live.sleeping || live.attention || live.sessionId !== pane.sessionId || live.provider !== pane.provider || pendingAsk(live) || !['idle', 'stuck'].includes(stateOf(live))) return false;
+          if (automatic.paused || !fresh.daemon || !live?.alive || live.sleeping || live.attention || live.pendingTools===true || live.producing || live.turn!=='idle' || live.sessionId !== pane.sessionId || live.provider !== pane.provider || pendingAsk(live) || stateOf(live)!=='idle') return false;
           const latest = itemsView().items;
           return work.every((item) => latest.some((it) => it.id === item.id && it.status === item.status && it.assigned?.at(-1)?.pane === pane.id && it.assigned.at(-1).at === item.assigned.at(-1).at));
         },
         // Busy Codex messages ordinarily wait until its turn ends. A stuck turn
         // never ends, so this guarded continuation uses the normal agent queue.
-        nudge: (pane, text, bot) => sendToPane(pane, `[Automatic recovery from your owning bot ${bot.name}; not a new request from Noam]\n${text}`),
+        nudge: automatic.guard((pane, text, bot) => sendToPane(pane, `[Automatic recovery from your owning bot ${bot.name}; not a new request from Noam]\n${text}`)),
         log: (line) => console.error(line),
       });
     } finally { helperRecoveryRunning = false; }
   }
   await checkBotEvents({
-    bots, panes: current.panes, seen: helperSeen,
+    bots:automaticBots, panes: current.panes, available: current.daemon, seen: helperSeen,
+    readAnswerReceipt: (paneId, askId) => choiceReceipts.get(paneId, askId),
     recoveryHandled: (botId, pane) => (bots.messages(botId) || []).some((m) => m.role === 'helper-recovery' && m.pane === pane.id && m.sessionId === pane.sessionId),
     readAsk: async (pane) => { const screen = visibleScreenOf(pane.id) ?? await screenOf(pane.id); return pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen); },
     readScreen: async (pane) => visibleScreenOf(pane.id) ?? await screenOf(pane.id),
   });
+  // Open requests with nothing running get one nudge after 15 quiet minutes (stall-wake.mjs).
+  if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') automatic.run(()=>checkStalledBots({ bots:automaticBots, panes: current.panes }));
 }
-setInterval(() => { botEvents().catch((error) => console.error('[bot events]', error.message)); }, 30_000).unref?.();
+automaticInterval(() => botEvents(), 30_000, 'bot-events');
 // Messages held for a Codex agent that was mid-turn go in together once that turn ends (held-messages.mjs).
-setInterval(() => { currentPanes().then(({ panes }) => deliverHeld({ panes, send: sendToPane, log: (m) => console.error('[held]', m) })).catch((error) => console.error('[held]', error.message)); }, 15_000).unref?.();
+automaticInterval(() => { if(automatic.paused)return;return currentPanes().then(async ({ panes, daemon }) => {
+  if(automatic.paused)return;
+  await deliverHeld({ panes, send: sendToPane,
+    account:(reference,action)=>automatic.delivery(reference,action,{receipt:result=>result?.received ? 'held:'+reference.source_id : null}),
+    resolveTarget: async(id)=>(await fleetPanes()).find(p=>p.id===id), log: (m) => console.error('[held]', m), notify:(s)=>{
+    const text=strandedText(s);console.error('[held]',text);
+    if(!bots.read(s.sender))return;
+    bots.append(s.sender,{role:'stuck',pane:s.pane,text});automatic.run(()=>bots.wake(s.sender,text));
+  } });
+  // Messages whose terminal is gone or stuck are never left behind silently: the sender is told in words.
+  if (daemon && !automatic.paused) sweepStranded({ panes, status:(event)=>recordHeldQuarantineStatus(event,recordActionEvidence), notify: (s) => {
+    const text = strandedText(s);
+    console.error('[held]', text);
+    if (!bots.read(s.sender)) return;
+    bots.append(s.sender, { role: 'stuck', pane: s.pane, text });
+    automatic.run(()=>bots.wake(s.sender, text));
+  } });
+}); }, 15_000, 'held-delivery');
 // Work that went quiet (a silent "working" terminal, a handed-over request nobody finished) is
-// reported in the owning bot's chat every 15 minutes. Test copies (TC_CONFIG_DIR) stay quiet.
-if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') startWatchdog({ bots, panes: async () => {
+// found every 15 minutes and kept in the event log. Test copies (TC_CONFIG_DIR) stay quiet.
+if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') { const watchdog=startWatchdog({ bots, panes: async () => {
   const current = await currentPanes();
-  return current.daemon ? current.panes : [];
-} });
+  return !automatic.paused && current.daemon ? current.panes : [];
+}, record: (finding, owners) => logEvent(finding.pane || 'watchdog', owners[0] || null, 'termcontrol', `watchdog-${finding.kind}`, finding) });automatic.registerTimer(()=>watchdog.stop()); }
 // A message that waited for a plan to reset is answered once one does.
-setInterval(() => { try { bots.retryDue(); } catch (error) { console.error('[bots]', error.message); } }, 60_000).unref?.();
+automaticInterval(() => bots.retryDue(), 60_000, 'bot-retry');
 
 /**
  * TF-096 part 2: the operator's requests in one conversation, in his words, with
@@ -468,6 +538,22 @@ function asksForTranscript(file, source = file) {
 }
 
 // Shared rooms deliver through the same path as a typed phone message.
+function sendAutomaticDelivery(pane,text,reference) {
+  return automatic.delivery(reference,()=>{
+    if (!String(pane.id).startsWith('bot:') && (!reference.session_id || reference.pane_id!==pane.id
+      || reference.provider!==pane.provider || reference.session_id!==pane.sessionId)) {
+      return {error:'Automatic delivery target conversation is unverified.',notSent:true};
+    }
+    return String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4),text) : sendToPane(pane,text);
+  },{receipt:result=>{
+      // This proves acceptance into the exact bot chat, not that a model read it.
+      const id=result?.message?.id;
+      return String(pane.id).startsWith('bot:') && result?.ok && id
+        && bots.messages(pane.id.slice(4)).some(row=>row.id===id && row.role==='operator' && row.text===text)
+        ? 'bot-message:'+id : null;
+      // Terminal "delivered" is a typing heuristic, never a verified input receipt.
+    }});
+}
 const rooms = new Rooms({
   send: (pane, text) => (String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4), text) : sendToPane(pane, text)),
   readFeed: (pane) => (String(pane.id).startsWith('bot:')
@@ -475,20 +561,20 @@ const rooms = new Rooms({
     : readFeed(pane, { limit: 30 })),
 });
 let roomPolling = false;
-setInterval(async () => {
-  if (roomPolling || !rooms.data.rooms.some((room) => room.pending.length)) return;
+automaticInterval(async () => {
+  if (automatic.paused || roomPolling || !rooms.data.rooms.some((room) => room.pending.length)) return;
   roomPolling = true;
-  try { await rooms.poll(await roomPanes()); } catch (error) { console.error('[rooms]', error.message); } finally { roomPolling = false; }
-}, 3000).unref();
+  try { const panes=await roomPanes();if(!automatic.paused)await rooms.poll(panes,{send:sendAutomaticDelivery}); } catch (error) { console.error('[rooms]', error.message); } finally { roomPolling = false; }
+}, 3000, 'room-poll');
 
 // Scheduled messages go out through the same checked path as a typed one.
 const routines = new Routines({ send: (pane, text) => (String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4), text) : sendToPane(pane, text)) });
 let routineTicking = false;
-setInterval(async () => {
-  if (routineTicking || !routines.data.routines.some((r) => r.enabled && r.nextRunAt && r.nextRunAt <= Date.now())) return;
+automaticInterval(async () => {
+  if (automatic.paused || routineTicking || !routines.data.routines.some((r) => r.enabled && r.nextRunAt && r.nextRunAt <= Date.now())) return;
   routineTicking = true;
-  try { await routines.tick(await roomPanes()); } catch (error) { console.error('[routines]', error.message); } finally { routineTicking = false; }
-}, 30000).unref();
+  try { const panes=await roomPanes();if(!automatic.paused)await routines.tick(panes,{send:sendAutomaticDelivery}); } catch (error) { console.error('[routines]', error.message); } finally { routineTicking = false; }
+}, 30000, 'routine-poll');
 
 async function readJson(req, max = 64 * 1024) {
   let raw = '';
@@ -611,6 +697,17 @@ const handle = async (req, res) => {
     try { return json(res, 200, getTokenSummary()); }
     catch { return json(res, 503, { error: 'Token history is temporarily unavailable.' }); }
   }
+  // Owner-authenticated metadata only. Exact bot scope is mandatory and cannot be overridden.
+  if (req.method === 'GET' && url.pathname === '/api/action-evidence') {
+    const bot_id = url.searchParams.get('bot_id');
+    if (!bot_id || !/^[A-Za-z0-9_-]{1,100}$/.test(bot_id)) return json(res, 400, { error: 'A valid bot scope is required.' });
+    const filters = { bot_id, limit: 20 };
+    for (const key of ['request_id', 'message_id', 'terminal_id', 'session_id']) if (url.searchParams.has(key)) filters[key] = url.searchParams.get(key);
+    try {
+      return json(res, 200, { scope: { bot_id }, runtime: actionEvidenceRuntime, events: queryActionEvidence(filters),
+        evidence: retrieveActionEvidence({ bot_id, query: scoped => queryActionEvidence({ ...scoped, ...filters, limit: scoped.limit }), requests: filters.request_id ? [{ id: filters.request_id, status: 'evidence_only' }] : [] }) });
+    } catch { return json(res, 503, { error: 'Scoped action evidence is unavailable.' }); }
+  }
   if(req.method==='GET' && url.pathname==='/api/session-events') {
     res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});
     // retry: tells the browser to come back after 1 s if the stream drops (restart).
@@ -633,6 +730,18 @@ const handle = async (req, res) => {
       panes,
       groups: byProject(panes, { groupRoots: new Map((readWorkspace()?.groups || []).filter((g) => g?.id && g.projectRoot).map((g) => [g.id, g.projectRoot])) }),
     });
+  }
+
+  // Share the same snapshot as the existing chat; do not rebuild the fleet per panel.
+  if (url.pathname === '/api/work-terminals' && req.method === 'GET') {
+    const inventory = await currentPanes();
+    return json(res, 200, { daemon: inventory.daemon, panes: inventory.panes.map(p => ({
+      id:p.id, project:p.project, title:p.title, profile:p.profile, operatorGoal:p.operatorGoal,
+      goal:p.goal, statedTask:p.statedTask,
+      sessionAuthority:p.sessionAuthority, sessionViewV2:p.sessionViewV2,
+      task:p.task, alive:p.alive, sleeping:p.sleeping, stalledForMs:p.stalledForMs,
+      dashboardState:stateOf(p),
+    })) });
   }
 
   if (url.pathname === '/api/routines' && req.method === 'GET') {
@@ -770,7 +879,7 @@ const handle = async (req, res) => {
     return json(res, 200, { v: `${stamp('index.html')}.${stamp('sw.js')}` });
   }
   // How the agents are doing, day by day (TF-096 goal item 5).
-  if (url.pathname === '/api/terminals/health' && req.method === 'GET') return json(res, 200, await terminalHealth.sweep());
+  if (url.pathname === '/api/terminals/health' && req.method === 'GET') return json(res, 200, { ...(await terminalHealth.sweep()), canary: readCanary(canaryDir) });
   if (url.pathname === '/api/agent-health' && req.method === 'GET') return json(res, 200, agentHealthReport());
   if (url.pathname === '/api/skills' && req.method === 'GET') return json(res, 200, { skills: listSkills() });
   if ((url.pathname === '/api/skills/approve' || url.pathname === '/api/skills/reject') && req.method === 'POST') {
@@ -807,14 +916,30 @@ const handle = async (req, res) => {
     // read=1: the chat is on screen, so what it shows counts as read (unread badge in the list).
     try { if (url.searchParams.get('read') === '1') bots.markRead(url.searchParams.get('id')); view = bots.view(url.searchParams.get('id')); } catch { view = null; }
     if (view && (view.bot.helpers?.length || view.messages.some(m => m.role === 'terminal-ask'))) {
-      const { panes, daemon } = await currentPanes();
-      // An unavailable terminal service does not prove that a terminal closed.
-      if (daemon) {
-        const live = new Set(panes.map(p => p.id));
-        view.messages = view.messages.map(m => m.role === 'terminal-ask' && !live.has(m.pane) ? { ...m, settled: true, terminalClosed: true } : m);
-      }
+      const promptRound = beginPromptObservation(bots);
+      const { panes, daemon } = await currentPanes({ fresh: true });
+      // A chat refresh checks its open cards without waking bots or scheduling
+      // reminders. Only the live daemon screen can prove a prompt has gone.
+      view.messages = await Promise.all(view.messages.map(async (card) => {
+        if (card.role !== 'terminal-ask' || card.settled) return card;
+        const pane = panes.find((p) => p.id === card.pane);
+        const screen = daemon && pane ? await liveScreenOf(pane.id) : null;
+        if (!isCurrentPromptObservation(bots, promptRound)) return bots.messages(view.bot.id).find((m) => m.id === card.id) || { ...card, promptState: 'unknown' };
+        const ask = daemon && pane && screen !== null ? pendingAsk(pane, { screen }) || screenPermissionAsk(pane, screen) : null;
+        const state = promptObservation({ card, pane, available: daemon, ask, screen: screen ?? '', screenAsks: screenStillAsks(screen) });
+        if (['closed', 'replaced', 'absent'].includes(state) || (ask?.id && ask.id !== card.askId)) {
+          retireTerminalPrompt(bots, card.pane, card.askId);
+          return { ...card, settled: true, promptState: 'resolved' };
+        }
+        return { ...card, promptState: state === 'active' ? 'active' : 'unknown' };
+      }));
       view.bot.helpers ||= [];
-      view.bot.helpers = view.bot.helpers.map((h) => { const p = panes.find((x) => x.id === h.paneId); return { ...h, state: !p ? 'closed' : p.attention ? 'needs-you' : (p.turn === 'working' && p.stalledForMs > 0) ? 'stuck' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null }; });
+      view.bot.helpers = view.bot.helpers.map((h) => {
+        const p = panes.find((x) => x.id === h.paneId);
+        const card = view.messages.filter((m) => m.role === 'terminal-ask' && m.pane === h.paneId).at(-1);
+        const asking = card && !card.settled && card.promptState !== 'unknown';
+        return { ...h, state: !daemon || !isCurrentPromptObservation(bots, promptRound) ? 'unknown' : !p ? 'closed' : asking ? 'needs-you' : (p.turn === 'working' && p.stalledForMs > 0) ? 'stuck' : (p.producing || p.turn === 'working') ? 'working' : 'idle', title: p?.title || p?.project || null, live: (p?.sessionAuthority && p.sessionViewV2?.now && !p.sessionViewV2.now.stale ? String(p.sessionViewV2.now.label || '') : '') || null, task: p?.task || null };
+      });
     }
     // The item ledger owns bot requests; transcript turns include harness reminders and omit older items.
     if (view) { try { view.asks = botAsksFromItems(itemsView({ source: `bot:${view.bot.id}`, includeClosed: true }).items); } catch { view.asks = []; } }
@@ -851,11 +976,44 @@ const handle = async (req, res) => {
   // Noam removes a request from a bot's or terminal's list himself (2026-10-20). The agent then
   // sees it as dropped; the number stays, so its other marks still land right.
   // TF-102: Noam's items by project and topic (phone and desktop; read only).
+  if (url.pathname === '/api/bots/helper-observation' && req.method === 'POST') {
+    let body;
+    try { body = await readJson(req, 2048); } catch { return json(res, 400, { error: 'Invalid observation request.' }); }
+    const current = await currentPanes({ fresh: true });
+    if (!current.daemon) return json(res, 503, { error: 'The live terminal connection is unavailable; no linkage changed.' });
+    const result = linkObservedHelper(body, { items: loadRequirementLedger().items, panes: current.panes, bots });
+    return json(res, result.ok ? 200 : 409, result);
+  }
   if (url.pathname === '/api/requirements' && req.method === 'GET') {
     try {
-      const view = itemsView({ project: url.searchParams.get('project') || null, topic: url.searchParams.get('topic') || null, includeClosed: url.searchParams.get('closed') === '1' });
-      return json(res, 200, { items: view.items.slice(0, 300), escalations: view.escalations.slice(-20) });
+      const view = itemsView({ project: url.searchParams.get('project') || null, topic: url.searchParams.get('topic') || null, source: url.searchParams.get('source') || null, includeClosed: url.searchParams.get('closed') === '1' });
+      const items = url.searchParams.get('dashboard') === '1'
+        ? view.items
+        : view.items.slice(0, 300);
+      return json(res, 200, { items, escalations: view.escalations.slice(-20) });
     } catch (error) { return json(res, 500, { error: error.message || 'The list could not be read.' }); }
+  }
+  // Noam's own verdict on a request an agent marked ready: "works" closes it as his confirmation, "broken"
+  // reopens it so the owner sees it again (2026-10-27: ten "ready" items sat unchecked, "a disconnect between
+  // what I ask and what I get"). His tap in the signed-in app is his genuine word, recorded as such.
+  if (url.pathname === '/api/ask/verdict' && req.method === 'POST') {
+    let body = {};
+    try { body = await readJson(req, 2048); } catch { body = {}; }
+    const id = /^R-\d+$/.test(String(body.id || '')) ? String(body.id) : null;
+    const works = body.verdict === 'works';
+    if (!id || (!works && body.verdict !== 'broken')) return json(res, 400, { error: 'Which request, and does it work?' });
+    try {
+      const item = loadRequirementLedger().items.get(id);
+      if (!item) return json(res, 404, { error: 'That request is not in the list.' });
+      const msgId = `tap-${Date.now().toString(36)}-${id}`;
+      const at = Date.now();
+      recordOwnerWords({ id: msgId, at, botId: 'app', bot: 'TermControl', text: `[Noam tapped "${works ? 'Works for me' : 'Still not fixed'}" on ${id}]` });
+      const events = works
+        ? [{ e: 'status', id, status: 'done', by: 'noam', ownerMsg: msgId }, { e: 'lock', id, by: 'noam', ownerMsg: msgId }]
+        : [...(item.locked ? [{ e: 'unlock', id, by: 'noam' }] : []), { e: 'status', id, status: 'partial', note: 'Noam tapped "Still not fixed"', open: ['Noam says this is still not fixed on his screen'], by: 'noam', ownerMsg: msgId }];
+      recordRequirement(events);
+      return json(res, 200, { ok: true, status: works ? 'done' : 'partial' });
+    } catch (error) { return json(res, 500, { error: error.message || 'That did not save.' }); }
   }
   if (url.pathname === '/api/asks/dismiss' && req.method === 'POST') {
     let body = {};
@@ -869,7 +1027,7 @@ const handle = async (req, res) => {
     dismissAsk(file, n);
     return json(res, 200, { ok: true });
   }
-  if (['/api/bots', '/api/provider', '/api/bot/send', '/api/bot/update', '/api/bot/delete', '/api/bot/retract', '/api/bot/retry', '/api/bot/profile/accept', '/api/bot/profile/dismiss'].includes(url.pathname) && req.method === 'POST') {
+  if (['/api/bots', '/api/provider', '/api/bot/send', '/api/bot/question/resolve', '/api/bot/update', '/api/bot/delete', '/api/bot/retract', '/api/bot/retry', '/api/bot/profile/accept', '/api/bot/profile/dismiss'].includes(url.pathname) && req.method === 'POST') {
     let body;
     try { body = await readJson(req, 64 * 1024); } catch (error) { return json(res, error.code || 400, { error: error.message }); }
     let result;
@@ -877,6 +1035,7 @@ const handle = async (req, res) => {
       result = url.pathname === '/api/bots' ? bots.create(body)
         : url.pathname === '/api/provider' ? bots.changeProvider(body.botId, body.provider)
         : url.pathname === '/api/bot/send' ? bots.send(body.id, body.text, { images: body.images, files: body.files, owner: true, answerTo: body.answerTo, replyTo: body.replyTo, replyMedia: body.replyMedia, listTo: body.listTo, choices: body.choices, sendId: body.sendId })
+          : url.pathname === '/api/bot/question/resolve' ? bots.resolveQuestion(body.id, body.questionId)
           : url.pathname === '/api/bot/update' ? bots.update(body.id, body)
             : url.pathname === '/api/bot/retry' ? bots.retry(body.id)
             : url.pathname === '/api/bot/retract' ? bots.retract(body.id, body.msgId)
@@ -1003,6 +1162,8 @@ const handle = async (req, res) => {
     });
   }
 
+  if(url.pathname==='/api/provider-policy' && req.method==='GET')return json(res,200,providerLaunchStatus());
+
   if(url.pathname==='/api/projects' && req.method==='GET'){
     if(!projectLaunchReady(projectLaunchCapabilityPath()))return json(res,404,{error:'Open the updated TermFleet app to enable the global project picker.',capabilityVersion:1});
     return json(res,200,{projects:projectCatalog(readWorkspace()),providers:PROJECT_PROVIDERS,ready:true,capabilityVersion:2});
@@ -1017,6 +1178,7 @@ const handle = async (req, res) => {
     const task=typeof body.task==='string'?body.task.trim():'';
     if(!provider)return json(res,400,{error:'Choose an available agent provider.'});
     if(!task)return json(res,400,{error:'Say what the new agent should do.'});
+    try{assertProviderLaunch(provider,{surface:'web-spawn'});}catch(error){return json(res,403,{error:error.message,code:error.code,auditId:error.auditId});}
     let project,legacy;
     if(body.projectId===undefined && typeof body.project==='string'){
       if(!['claude','codex'].includes(provider))return json(res,400,{error:'Choose Claude or Codex for an existing project group.'});
@@ -1105,9 +1267,13 @@ const handle = async (req, res) => {
     req.on('end', async () => {
       let payload = {};
       try { payload = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'bad request' }); }
-      const { panes } = await currentPanes();
+      const { panes, daemon } = await currentPanes();
+      if (!daemon) return json(res, 503, { error: 'The terminal connection is unavailable. Your answer was not sent.', notSent: true });
       const pane = panes.find((p) => p.id === payload.pane);
-      if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
+      if (!pane) {
+        retireTerminalPrompt(bots, payload.pane, payload.askId);
+        return json(res, 404, { error: 'That terminal has been closed.', stale: true, notSent: true });
+      }
 
       if (payload.key) {
         const result = await sendKey(pane, payload.key);
@@ -1124,15 +1290,27 @@ const handle = async (req, res) => {
         }
         // Re-read immediately before injecting a key. A phone can keep an old
         // prompt visible after the terminal has moved on or asked a new one.
-        const fresh = (await currentPanes({ fresh: true })).panes.find((candidate) => candidate.id === payload.pane);
+        const current = await currentPanes({ fresh: true });
+        if (!current.daemon) return json(res, 503, { error: 'The terminal connection is unavailable. Your answer was not sent.', notSent: true });
+        const fresh = current.panes.find((candidate) => candidate.id === payload.pane);
         const visible = fresh ? visibleScreenOf(fresh.id) : null;
-        const freshScreen = fresh ? visible ?? await screenOf(fresh.id) : '';
+        const live = fresh ? await liveScreenOf(fresh.id) : null;
+        const freshScreen = fresh ? live ?? visible ?? '' : '';
         const freshAsk = fresh && (pendingAsk(fresh, { screen: freshScreen }) || screenPermissionAsk(fresh, freshScreen));
+        if (fresh && !String(live ?? '').trim()) return json(res, 503, { error: 'The current terminal question could not be verified. Your answer was not sent.', notSent: true });
+        // Vendor/status records can outlive their approval and leave the same
+        // card over a draft or shell. They never authorize a key by themselves.
+        // Require the same permission parsed from the daemon's current screen,
+        // including status fallbacks without a vendor timestamp or tool ID.
+        if (fresh?.provider === 'claude' && freshAsk?.kind === 'permission' && screenPermissionAsk(fresh, live)?.id !== freshAsk.id) {
+          return json(res, 409, { error: 'This permission is not verified on the current terminal screen. Your answer was not sent; check the terminal.', notSent: true });
+        }
+        if (!fresh || !freshAsk || freshAsk.id !== payload.askId) retireTerminalPrompt(bots, payload.pane, payload.askId);
         // A typed answer whose question is gone (answered at the PC, or withdrawn) still
         // reaches the agent, as a normal message. If another question is open instead, it
         // is refused and the page keeps the draft.
         if (fresh && !freshAsk && typeof payload.answer === 'string') {
-          const result = await sendOnce(`answer-${payload.askId}`, payload.answer, () => sendToPane(fresh, payload.answer));
+          const result = await sendOnce(`answer-${payload.pane}-${payload.askId}`, payload.answer, () => sendToPane(fresh, payload.answer), {scope:fresh.id});
           return json(res, result.error && !result.busy ? 400 : 200, { ...result, sentAsMessage: true });
         }
         if (fresh && freshAsk && freshAsk.id !== payload.askId && typeof payload.answer === 'string') {
@@ -1193,7 +1371,7 @@ const handle = async (req, res) => {
       const active = pendingAsk(pane, {screen}) || screenPermissionAsk(pane,screen);
       if (active) return json(res,409,{error:'A question is open. Use its choices or Write my answer so your reply reaches the right field.'});
 
-      const result = await sendOnce(payload.sendId, payload.text, () => sendToPane(pane, payload.text, { force: Boolean(payload.force) }));
+      const result = await sendOnce(payload.sendId, payload.text, () => sendToPane(pane, payload.text, { force: Boolean(payload.force) }), {scope:pane.id});
       return json(res, result.error && !result.busy ? 400 : 200, result);
     });
     return;
@@ -1384,6 +1562,13 @@ const server = http.createServer((req, res) => {
 // them continuously rather than only when the phone asks. Without this the
 // fleet shows nothing as live for the first few seconds after you open it.
 setInterval(() => { liveness().catch(() => {}); }, 3000).unref?.();
+// A throwaway terminal proves start, typing, reading and closing end to end (canary.mjs). Test copies skip it.
+const canaryDir = process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config/termcontrol');
+if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_CANARY !== '1') {
+  const runCanary = () => {if(automatic.paused)return;return checkCanary({ dir: canaryDir, notify: (note) => push.notify(note).catch((error) => console.error('[canary push]', error.message)) }).catch((error) => console.error('[canary]', error.message));};
+  automaticTimeout(runCanary, 2 * 60_000, 'canary-start');
+  automaticInterval(runCanary, CANARY_EVERY_MS, 'canary');
+}
 // Workspace membership includes dead cards deliberately omitted from the live list.
 // Test copies can inspect health, but must never change the operator's terminals.
 const terminalHealth = createTerminalHealth({
@@ -1403,12 +1588,12 @@ const terminalHealth = createTerminalHealth({
     return { reachable, byId, panes, agents: agentsByPane({ fresh: true }) };
   },
   activity: lastActivity,
-  recover: (pane) => recoverTerminal(pane, { ask: (request) => requestDaemon(request, defaultDaemonSocket()) }),
-  retire: (pane) => requestClose(pane.id, { by: 'terminal-health' }),
+  recover: automatic.guard((pane) => recoverTerminal(pane, { ask: automatic.guard((request) => requestDaemon(request, defaultDaemonSocket())) })),
+  retire: automatic.guard((pane) => requestClose(pane.id, { by: 'terminal-health' })),
   log: (pane, evidence) => logEvent(pane.id, pane.bot?.name || null, pane.provider, 'stall', { healthRecovery: evidence }),
 });
 if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_TERMINAL_HEALTH !== '1') {
-  setInterval(() => { terminalHealth.sweep({ repair: true }).catch((error) => console.error('[terminal health]', error.message)); }, HEALTH_INTERVAL_MS).unref?.();
+  automaticInterval(() => terminalHealth.sweep({ repair: true }), HEALTH_INTERVAL_MS, 'terminal-health');
 }
 // Requests per terminal for the desktop app's side panel (see asks-sidecar.mjs).
 const writeAsksSidecars = createAsksSidecarWriter({ asksOf: (pane) => asksForTranscript(adapterFor(pane)?.transcriptPath(pane)) });
@@ -1429,6 +1614,25 @@ setInterval(async () => {
 }, 4000).unref?.();
 liveness().catch(() => {});
 
+// Read back this capability and the exact loaded PID before using SIGUSR2.
+// The old process has no handler: sending that signal to it would terminate it.
+async function pauseAutomaticWork({timeoutMs=10000}={}) {
+  const marker=automatic.persistPause();
+  if(!marker.ok)return maintenanceDrain={registered_work_settled:false,restart_boundary_proven:false,error:marker.error};
+  automatic.beginDrain();
+  await bots.closeDown({maxMs:0}); // save original queues; never cancel/replay a running reply
+  const observed=await automatic.drain({timeoutMs});
+  const bot_sides=[...bots.sides.values()].filter(side=>side.busy).length;
+  return maintenanceDrain={registered_callbacks_finished:observed.settled,
+    registered_work_settled:false, // aggregate jobs can hide child outcomes; callback completion is not receipt settlement
+    delivery_receipts_settled:observed.settled,
+    outcome_coverage:'individual held/room/routine deliveries; other automatic effects partial',bot_replies:bots.running.size,bot_sides,
+    restart_boundary_proven:false, // registered work is not a claim about uninstrumented/external work
+    active:observed.active,retained:observed.retained};
+}
+process.on('SIGUSR2',()=>{pauseAutomaticWork().then(result=>console.log('[maintenance drain]',JSON.stringify(result)))
+  .catch(()=>console.error('[maintenance drain] did not settle; original work retained'));});
+
 /**
  * A restart (deploy, or the memory guard below) is invisible to the phone: stop
  * taking new connections, tell open event streams to reconnect in a second, let
@@ -1438,6 +1642,7 @@ liveness().catch(() => {});
 async function shutdownGracefully(reason, { exitCode = 0, graceMs = 10000 } = {}) {
   if (stopping) return;
   stopping = true;
+  automatic.beginDrain();
   console.log(`[bridge] stopping (${reason}); ${inFlight} request(s) in flight, ${streams.size} stream(s) open`);
   // Bot replies finish first (the phone keeps working meanwhile); new ones wait for the new bridge.
   if (bots.running.size) console.log(`[bridge] waiting for ${bots.running.size} bot repl${bots.running.size === 1 ? 'y' : 'ies'} to finish`);

@@ -146,6 +146,8 @@ test('real bridge protects statistics and returns stored counts after authentica
   const port = 18000 + Math.floor(Math.random() * 10000);
   const seed = createEventLog({ file: path.join(dir, 'data', 'agent_events.db') });
   seed.logEvent('seed', 'helper', 'codex', 'message', {});
+  seed.recordActionEvidence({ bot_id: 'diagnostic-a', source_id: 'sample-a', action_id: 'call-a', kind: 'tool', state: 'failed', request_ids: ['R-1'] });
+  seed.recordActionEvidence({ bot_id: 'diagnostic-b', source_id: 'sample-b', action_id: 'call-b', kind: 'tool', state: 'succeeded', request_ids: ['R-1'] });
   seed.close();
   const child = spawn(process.execPath, ['termcontrol/bridge/server.mjs'], {
     env: { ...process.env, TC_CONFIG_DIR: dir, TC_BOTS_HOME: path.join(dir, 'bots'),
@@ -165,6 +167,8 @@ test('real bridge protects statistics and returns stored counts after authentica
   // Loopback SQL reads are intentionally available to installed local hooks.
   assert.equal((await fetch(base + '/api/events/stats')).status, 200);
   assert.equal((await fetch(base + '/api/terminals/health')).status, 401);
+  assert.equal((await fetch(base + '/api/action-evidence?bot_id=diagnostic-a')).status, 401, 'action metadata is not an unauthenticated loopback route');
+  assert.equal((await fetch(base + '/api/bots/helper-observation', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 401, 'link correction requires the authenticated owner');
   const setup = await fetch(base + '/setup', { method: 'POST', redirect: 'manual',
     body: new URLSearchParams({ email: 'events@example.com', password: 'isolated-test-password' }) });
   assert.equal(setup.status, 302);
@@ -172,6 +176,15 @@ test('real bridge protects statistics and returns stored counts after authentica
   const response = await fetch(base + '/api/events/stats', { headers: { cookie } });
   assert.equal(response.status, 200);
   const stats = await response.json();
+  const evidenceResponse = await fetch(base + '/api/action-evidence?bot_id=diagnostic-a&request_id=R-1', { headers: { cookie } });
+  assert.equal(evidenceResponse.status, 200);
+  const evidence = await evidenceResponse.json();
+  assert.equal(evidence.events.length, 1);
+  assert.equal(evidence.events[0].state, 'failed');
+  assert.equal(evidence.evidence.items[0].request_id, 'R-1');
+  assert.doesNotMatch(JSON.stringify(evidence), /diagnostic-b|sample-b/);
+  assert.match(evidence.runtime.source_sha256, /^[a-f0-9]{64}$/);
+  assert.equal((await fetch(base + '/api/action-evidence', { headers: { cookie } })).status, 400);
   const health = await fetch(base + '/api/terminals/health', { headers: { cookie } });
   assert.equal(health.status, 200);
   assert.equal((await health.json()).intervalMs, 120_000);

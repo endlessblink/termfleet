@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   statedLines,
   briefFileGoal,
+  briefOpeningGoal,
   shortDeclaredGoal,
   briefPointerPath,
   opensAsRequest,
@@ -398,4 +399,12 @@ test("TF-091: the agent's newest Goal/Task lines are read from its replies", () 
   // The operator's complaint is never a Goal.
   const complaint = JSON.stringify({ type: "user", message: { content: "the app was killed and I dont see it now how I activate it" } });
   expect(parseClaudeTranscript(complaint).statedGoal).toBeUndefined();
+});
+
+test("a helper's own opening Goal line is its card goal even when the brief has no heading", () => {
+  const msg = "Goal: Bot chat dashboard mockups\nFull instructions: Read /home/u/.local/share/terminal-workspace/child-tasks/677c00be-c1b0-40dd-be54-22affdccc3c1.md and carry out the instructions in it.";
+  expect(briefOpeningGoal(msg)).toBe("Bot chat dashboard mockups");
+  expect(briefOpeningGoal(msg.replace("\n", " "))).toBe("Bot chat dashboard mockups");
+  expect(briefOpeningGoal("Goal: something typed by hand")).toBeUndefined();
+  expect(briefOpeningGoal(undefined)).toBeUndefined();
 });

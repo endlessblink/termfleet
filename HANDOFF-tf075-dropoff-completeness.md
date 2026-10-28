@@ -1,6 +1,6 @@
 # HANDOFF — TF-075 (SessionStart provider stamp, DONE) + NEW: dropoff completeness (OPEN, not started)
 
-Project: /media/endlessblink/data/my-projects/ai-development/devops/termfleet (branch main). Read CLAUDE.md and docs/runtime-truth.md first. House rules: run `npm run issues -- check` and `npm run issues -- list` before touching production code (show/create the matching issue first); `npm run doctor` for status-pipeline questions; before ANY command say plainly whether it kills terminals; final answer to Noam = 1-4 short plain sentences + "Next steps" list, no paths/code/headers; keep exactly one task in_progress with a plain-language activeForm; do not ask "go?" once a goal is approved.
+Project: /opt/example/local-path (branch main). Read CLAUDE.md and docs/runtime-truth.md first. House rules: run `npm run issues -- check` and `npm run issues -- list` before touching production code (show/create the matching issue first); `npm run doctor` for status-pipeline questions; before ANY command say plainly whether it kills terminals; final answer to Noam = 1-4 short plain sentences + "Next steps" list, no paths/code/headers; keep exactly one task in_progress with a plain-language activeForm; do not ask "go?" once a goal is approved.
 
 ## Noam's words (verbatim, chronological)
 1. Original (earlier instances): "dropoff in the same terminal fails with codex + [Image #1] this doesnt recognized that this is a claude code session + [Image #2] this claude code session rose to 80$ before dropoffing"
@@ -36,7 +36,7 @@ Mine: only this handoff file (untracked, being committed with the handoff). Othe
 - Do NOT restart the daemon (pid 1515447, ~32 live panes) or resume provider sessions. No cloud LLM calls for testing. No optimistic echo.
 - Editing existing .ts/.tsx with Edit/Write reformats whole files and breaks source verifiers (verify-map-terminals): use a surgical python replace SCRIPT FILE written to the scratchpad (inline `python3 -c`/`node -e` are blocked by lean-ctx). .mjs edits via Edit are fine.
 - Native Read/Grep may be denied; use ctx_* tools or Bash (Bash worked).
-- Scratchpad: /media/endlessblink/data/.dev-tmp/endlessblink/claude-1000/-media-endlessblink-data-my-projects-ai-development-devops-termfleet/2ee422d7-6c57-4afa-bfe7-538753eea54d/scratchpad
+- Scratchpad: /opt/example/local-path
 - Commit trailer: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
 ## Rejected
@@ -46,5 +46,5 @@ Mine: only this handoff file (untracked, being committed with the handoff). Othe
 No builds/servers/ports started by me. Daemon pid 1515447 live — don't touch.
 
 ## First command
-`cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && git status --short && git log --oneline -3 && npm run issues -- list | tail -15 && grep -rn "dropoff" scripts src-tauri/src --include=*.mjs --include=*.rs -l`
+`cd /opt/example/local-path && git status --short && git log --oneline -3 && npm run issues -- list | tail -15 && grep -rn "dropoff" scripts src-tauri/src --include=*.mjs --include=*.rs -l`
 Then reproduce the thin-dropoff / lost-user-words problem before fixing, and reply to Noam first with one plain sentence confirming you understood the NEW request.

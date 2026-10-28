@@ -106,7 +106,7 @@ export class Routines {
   }
 
   /** Send whatever is due. `panes` are the live panes. */
-  async tick(panes) {
+  async tick(panes, { send = this.send } = {}) {
     this.load();
     let changed = false;
     for (const routine of this.data.routines) {
@@ -123,7 +123,9 @@ export class Routines {
       if (busy && late < LATE_LIMIT_MS) continue;   // wait for it to be free
       if (busy) { advance({ at: this.now(), ok: false, reason: 'The agent stayed busy for two hours, so this one was skipped.' }); continue; }
       let result;
-      try { result = await this.send(pane, routine.text); } catch (error) { result = { error: error.message }; }
+      try { result = await send(pane, routine.text, {kind:'routine',source_id:`${routine.id}:${routine.nextRunAt}`,
+        pane_id:pane.id,provider:pane.provider,session_id:pane.sessionId || null}); } catch (error) { result = { error: error.message }; }
+      if (result?.paused && result?.notSent) continue; // keep the original due occurrence; never consume a maintenance refusal
       routine.lastRunAt = this.now();
       advance(result?.ok ? { at: this.now(), ok: true } : { at: this.now(), ok: false, reason: result?.error || 'Not sent.' });
     }

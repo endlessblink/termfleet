@@ -6,13 +6,22 @@ import { ownerTextOf } from '../bridge/requirements.mjs';
 
 const reminder = '[Your open requests from Noam: 1. You own every one.\n- R-17817 [partial] Find actual bugs]';
 test('bot panel includes every active ledger item once, including ready, independent of transcript/provider', () => {
-  const items = Array.from({ length: 80 }, (_, n) => ({ id: `R-${n + 1}`, n: n + 1, words: `Owner request ${n + 1}`, status: ['new', 'assigned', 'partial', 'ready'][n % 4] }));
+  const items = Array.from({ length: 80 }, (_, n) => ({ id: `R-${n + 1}`, n: n + 1, words: `Owner request ${n + 1}`, status: ['new', 'assigned', 'partial', 'ready'][n % 4], ...(n % 4 === 3 ? { testing: { link: 'https://x.test', tryText: 'open it' } } : {}) }));
   const rows = botAsksFromItems([...items, items[0], { id: 'R-90', status: 'done' }, { id: 'R-91', status: 'new', locked: true }]);
   assert.equal(rows.length, 80);
   assert.equal(new Set(rows.map(x => x.id)).size, 80);
   assert.equal(rows.filter(x => x.status === 'ready').length, 20);
   assert.equal(rows[0].text, 'Owner request 1');
   assert.match(rows[0].title, /^R-1 /);
+});
+test('a "ready" item that never told Noam what to try counts as open, not done (#16)', () => {
+  const rows = botAsksFromItems([
+    { id: 'R-1', status: 'ready', note: 'cleaned up' },
+    { id: 'R-2', status: 'ready', note: 'Try: open the chat https://x.test/chat' },
+    { id: 'R-3', status: 'ready', evidence: [{ what: 'Try: tap Send https://x.test' }] },
+  ]);
+  assert.deepEqual(rows.map(x => x.status), ['open', 'ready', 'ready']);
+  assert.equal(rows[0].note, 'Not checked yet: cleaned up');
 });
 test('open-request harness reminders cannot become numbered requests or ledger owner words', () => {
   const user = text => JSON.stringify({ type: 'user', message: { content: text } });
@@ -29,4 +38,23 @@ test('open-request harness reminders cannot become numbered requests or ledger o
   ]) assert.deepEqual(asksFrom([JSON.stringify(line)]), []);
   const env = { TERMFLEET_REQ_LEDGER: 'off' };
   assert.equal(hook({ hook_event_name: 'UserPromptSubmit', prompt: reminder }, { env }), null);
+});
+
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Bots } from '../bridge/bots.mjs';
+import { botTerminalLimit } from '../../scripts/lib/spawn-guards.mjs';
+
+test('a bot\'s terminal limit can be set (1 to 8), is kept, and is what the spawn guard reads (#8)', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-limit-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const bots = new Bots({ dir, checks: { home: os.homedir() }, fill: () => null });
+  const { bot } = bots.create({ name: 'Limit test', cwd: os.tmpdir() });
+  assert.equal(botTerminalLimit({ env: {}, bot: bots.read(bot.id) }), 3, 'default is 3');
+  assert.equal(bots.update(bot.id, { maxTerminals: 5 }).error, undefined);
+  assert.equal(botTerminalLimit({ env: {}, bot: bots.read(bot.id) }), 5);
+  assert.ok(bots.update(bot.id, { maxTerminals: 0 }).error);
+  assert.ok(bots.update(bot.id, { maxTerminals: 9 }).error);
+  assert.equal(bots.read(bot.id).maxTerminals, 5, 'a bad value changes nothing');
 });

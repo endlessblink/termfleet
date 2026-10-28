@@ -5,6 +5,13 @@
 // Noam left ticked and is still safe, through the app's own close (the card's X).
 import fs from 'node:fs';
 import path from 'node:path';
+import {screenPromptAsk} from './asks.mjs';
+import {screenStillAsks} from './bot-events.mjs';
+
+export function cleanupScreenState(pane,screen) {
+  if(typeof screen!=='string'||!screen.trim())return 'unknown';
+  return screenPromptAsk(pane,screen)||screenStillAsks(screen)?'waiting':'clear';
+}
 
 export const IDLE_MIN_MS = 15 * 60_000;
 // Noam 2026-10-24 (approved the Agent-Manager's ask): a terminal a BOT started closes after 5
@@ -12,6 +19,9 @@ export const IDLE_MIN_MS = 15 * 60_000;
 export const BOT_IDLE_MIN_MS = 5 * 60_000;
 // Noam 2026-10-22: his own terminals only 'לאחר הצגתם לי אם הם לא פעילים הרבה זמן', '2 hours'.
 export const OWN_IDLE_MIN_MS = 2 * 60 * 60_000;
+// This threshold selects an idle-age display baseline, never proof that a working turn ended.
+// Positive activity, a working turn, approval or an unreadable screen prevents automatic cleanup.
+export const STUCK_AGENT_MS = 2 * 60 * 60_000;
 const AGENTS_SERVICE = /termcontrol\/bridge\/server\.mjs/;
 const AGENT_PROVIDERS = new Set(['claude', 'codex', 'opencode']);
 
@@ -102,9 +112,16 @@ export function startedByCommand(command) {
  * (`lastWorkedAt`: its agent's record, its conversation, or output that kept moving), since an
  * idle agent repaints its screen now and then (R-7214). Noam's own count any screen change.
  */
-function lastUsedFor(pane, starter) {
+function lastUsedFor(pane, starter, now = Date.now()) {
+  if (frozenAgent(pane, now)) return Number(pane.recordAt);
   if (starter && pane.lastWorkedAt != null) return Number(pane.lastWorkedAt) || 0;
   return Number(pane.lastActiveAt) || 0;
+}
+
+/** An agent whose own conversation (`recordAt`) has not moved for STUCK_AGENT_MS, whatever its screen does. */
+function frozenAgent(pane, now) {
+  const recordAt = Number(pane.recordAt) || 0;
+  return AGENT_PROVIDERS.has(pane.provider) && recordAt > 0 && now - recordAt >= STUCK_AGENT_MS;
 }
 
 /**
@@ -112,10 +129,17 @@ function lastUsedFor(pane, starter) {
  * `processes(pane)` lists what runs under it; `unsaved(pane)` its own unsaved files;
  * `followedByBot(pane)` the name of a bot following it.
  */
-function reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter, byBot }) {
+function reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter, byBot, screenState }) {
   if (pane.turn === 'waiting' || pane.attention) return 'Waiting for you';
-  if (pane.turn === 'working' || pane.producing || pane.live === 'producing') return 'Working right now';
-  const lastActive = lastUsedFor(pane, starter);
+  if(pane.pendingTools===true||pane.producing||pane.live==='producing')return 'Working right now';
+  if (pane.turn === 'working') return 'Working right now';
+  if(AGENT_PROVIDERS.has(pane.provider)){
+    let screen;try{screen=screenState(pane);}catch{}
+    if(screen==='waiting')return 'Waiting for you';
+    if(screen!=='clear')return 'Cannot verify the current terminal prompt';
+    if(!['idle','completed','finished'].includes(pane.turn))return 'Cannot verify that the agent finished';
+  }
+  const lastActive = lastUsedFor(pane, starter, now);
   if (!lastActive && pane.cardless) return 'Cannot tell when it was last used';
   if (lastActive && now - lastActive < (byBot ? BOT_IDLE_MIN_MS : IDLE_MIN_MS)) return 'Used in the last few minutes';
   if (!starter && lastActive && now - lastActive < OWN_IDLE_MIN_MS) return 'Yours, used in the last 2 hours';
@@ -135,17 +159,17 @@ function unsavedWarning(pane, unsaved) {
   return files.length ? `Unsaved work: ${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}` : null;
 }
 
-export function cleanupPlan({ panes, now = Date.now(), unsaved = () => [], processes = () => [], followedByBot = () => null, startedBy = () => null, startedByBot = () => false, isSleeping = () => false }) {
+export function cleanupPlan({ panes, now = Date.now(), unsaved = () => [], processes = () => [], followedByBot = () => null, startedBy = () => null, startedByBot = () => false, isSleeping = () => false, screenState = () => null }) {
   const offer = [], keep = [];
   for (const pane of panes) {
     // A sleeping terminal (its programs ended, card kept to wake later) is never a candidate.
     if (pane.alive === false || isSleeping(pane.id)) continue;
     // Who started it: an agent (its parent on the map) or a bot; null when Noam opened it himself.
     const starter = startedBy(pane) || null;
-    const base = { id: pane.id, name: terminalName(pane), folder: pane.cwd ? path.basename(pane.cwd) : clip(pane.project || ''), provider: pane.provider || 'shell', startedBy: starter };
-    const reason = reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter, byBot: Boolean(starter && startedByBot(pane)) });
+    const base = { id: pane.id, name: terminalName(pane), folder: pane.cwd ? path.basename(pane.cwd) : clip(pane.project || ''), provider: pane.provider || 'shell', sessionId:pane.sessionId??null,pid:pane.pid??null, startedBy: starter };
+    const reason = reasonToKeep(pane, { now, unsaved, processes, followedByBot, starter, byBot: Boolean(starter && startedByBot(pane)),screenState });
     if (reason) { keep.push({ ...base, reason }); continue; }
-    const idleMs = Math.max(0, now - (lastUsedFor(pane, starter) || Number(pane.startedAt) || now));
+    const idleMs = Math.max(0, now - (lastUsedFor(pane, starter, now) || Number(pane.startedAt) || now));
     const warning = unsavedWarning(pane, unsaved);
     offer.push({ ...base, idleMs, idleText: idleText(idleMs), checked: !warning, ...(warning ? { warning } : {}) });
   }
@@ -178,10 +202,11 @@ export async function closeIdleTerminals({ ids, plan, requestClose, by = 'cleanu
  * Noam 2026-10-22: terminals an agent or bot started close by themselves once finished and
  * safe ('בוטים שהסוכן פתח בוודאות'). Only those: his own terminals wait for his tap.
  */
-export async function autoCloseFinished({ plan, requestClose, log = () => {} }) {
+export async function autoCloseFinished({ plan, requestClose, canClose = async()=>false, log = () => {} }) {
   let closed = 0;
   // Only finished helpers with nothing unsaved; one with unsaved work waits for Noam (Q4).
   for (const o of plan.offer.filter((x) => x.startedBy && !x.warning)) {
+    try{if(!await canClose(o))continue;}catch{continue;}
     let r;
     try { r = await requestClose(o.id, { by: 'auto-cleanup' }); } catch (error) { r = { ok: false, error: error.message }; }
     if (r.ok) closed++;
@@ -205,9 +230,10 @@ export function cardlessSessions({ liveById, ownedIds, agents = new Map(), now =
     const pane = {
       id, alive: true, cardless: true, provider: agent.provider || 'shell', sessionId: agent.sessionId || null, cwd,
       project: cwd ? path.basename(cwd) : 'unknown', pid: life.pid ?? null, producing: Boolean(life.producing),
-      turn: status === 'busy' ? 'working' : status === 'waiting' ? 'waiting' : 'idle',
+      turn: status === 'busy' ? 'working' : status === 'waiting' ? 'waiting' : status === 'idle' ? 'idle' : AGENT_PROVIDERS.has(agent.provider) ? 'unknown' : 'idle',
     };
     pane.title = `Hidden terminal in ${pane.project} (no card on the map)`;
+    pane.recordAt = Number(lastUsed(pane)) || 0;
     pane.lastActiveAt = Math.max(Number(lastUsed(pane)) || 0, life.quietForMs != null ? now - life.quietForMs : 0);
     pane.lastWorkedAt = Math.max(Number(lastUsed(pane)) || 0, life.busyQuietForMs != null ? now - life.busyQuietForMs : 0);
     // Started by an agent: termfleet-child gives every helper a task file to read.

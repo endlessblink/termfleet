@@ -8,6 +8,10 @@ const http = require('node:http');
 const s = http.createServer((req, res) => {
   if (req.url === '/ok') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<html><title>Board</title><body>It works</body></html>'); }
   if (req.url === '/go') { res.writeHead(302, { location: '/ok' }); return res.end(); }
+  if (req.url === '/large-image' || req.url === '/large-forbidden') {
+    res.writeHead(req.url === '/large-image' ? 200 : 403, { 'content-type': 'image/png' });
+    return res.end(Buffer.alloc(65536, 255));
+  }
   if (req.url === '/error-page') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<html><title>502 Bad Gateway</title></html>'); }
   if (req.url === '/slow') return setTimeout(() => { res.writeHead(200); res.end('late'); }, 3000);
   res.writeHead(404, { 'content-type': 'text/plain' }); res.end('Cannot GET ' + req.url);
