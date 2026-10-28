@@ -16511,7 +16511,7 @@
       "surface": "canvas",
       "matrixRefs": [],
       "symptom": "Bots can only be closed or removed individually; existing removal replans can include new activity after confirmation.",
-      "rootCause": "",
+      "rootCause": "The bot list exposes only individual actions and removal rebuilds plans after confirmation, without frozen bot/activity identities.",
       "guard": "Frozen bot and activity identities, busy and unsaved protection, named confirmation and per-bot results.",
       "evidence": [
         {
@@ -16531,7 +16531,7 @@
         }
       ],
       "owner": "bot-groups",
-      "nextAction": "Add focused selection and batch lifecycle regressions before UI and server changes.",
+      "nextAction": "Obtain explicit approval for bridge-only drain/restart preserving the existing automatic pause and exact durable queues; then verify installed desktop/mobile confirmation and cancel without executing real bots.",
       "history": [
         {
           "at": "2026-10-28T20:23:14.513Z",
