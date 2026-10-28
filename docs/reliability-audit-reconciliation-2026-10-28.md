@@ -47,6 +47,22 @@ build, start a model, submit a cloud task, or reproduce dangerous live writes.
 
 ## Classification and owners
 
+**F07 source freeze, after focused verification:** confirmation source/tests/report
+are saved in `ef93b54`, scoped task/regression documentation in `ffdd65b`, and
+source-only registry evidence in `d0b0104` (registry reference termcontrol).
+Final independent review found no remaining blocker within this narrow scope and
+read the actual50/50 TAP output; it did not rerun the tests. Fresh authenticated
+GET200 still returns PID1271056, loaded07:22:14.391UTC, fourteen-module digest
+`345f8862a730761d5fd8fb6b238dd49106224839d7f0b76ce0977d72d2f3ebe7`.
+Current frozen disk digest is
+`5dae9c577f55db50f71fa727c9d521a58170f39cf309b925ae1b37cb47d4ffe5`;
+requirements SHA is `2a175c7906bab5e114368f10fc2165aac5542c69364aff7969f2bf677c47afce`.
+The mismatch explicitly proves this patch is not loaded. Parent-coordinated
+bridge-only activation and repeat read-back are the next deployment gate; no
+restart or real owner verdict was attempted. All157 source fragments remain
+registered partial with their original wording; existing isolation approval
+and cloud/native-transfer gaps remain unchanged.
+
 **Later coordinated activation:** direct authenticated GET read-back now returns
 PID **1086383**, loaded **2026-10-28T06:59:41.541Z**, twelve-module digest
 **8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0**,
