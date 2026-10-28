@@ -89,8 +89,15 @@ import { createDeliveryReconciler } from './delivery-reconciliation.mjs';
 import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS } from './terminal-health.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const automatic = createAutomaticActionBarrier({file:path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config/termcontrol'),'automatic-actions.paused')});
-const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(), get automatic_actions(){return automatic.status();},
+const automaticConfig = process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config/termcontrol');
+const automatic = createAutomaticActionBarrier({file:path.join(automaticConfig,'automatic-actions.paused'),
+  operationsDir:path.join(automaticConfig,'automatic-operations')});
+const automaticInterval = (action, ms, label) => automatic.schedule(action, {ms,label,
+  onError:error=>console.error(`[automatic ${label}]`,error.message)});
+const automaticTimeout = (action, ms, label) => automatic.schedule(action, {ms,label,once:true,
+  set:setTimeout,clear:clearTimeout,onError:error=>console.error(`[automatic ${label}]`,error.message)});
+let maintenanceDrain = null;
+const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(), get automatic_actions(){return {...automatic.status(),maintenance:maintenanceDrain};},
   source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs', 'session-status.mjs', 'helper-recovery.mjs', 'idle-cleanup.mjs', 'automation-pause.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
@@ -341,11 +348,11 @@ async function sweepFinishedHelpers() {
 }
 if (!process.env.TC_CONFIG_DIR && !process.env.TC_NO_AUTO_CLEANUP) {
   let sweeping = false;
-  setInterval(() => {
+  automaticInterval(() => {
     if (sweeping) return;
     sweeping = true;
-    sweepFinishedHelpers().catch((error) => console.error('[auto-cleanup]', error.message)).finally(() => { sweeping = false; });
-  }, 60_000).unref();   // every minute, so a bot's finished terminal closes soon after its 5 idle minutes
+    return sweepFinishedHelpers().catch((error) => console.error('[auto-cleanup]', error.message)).finally(() => { sweeping = false; });
+  }, 60_000, 'helper-cleanup');   // every minute, so a bot's finished terminal closes soon after its 5 idle minutes
 }
 
 // Sleep for idle agents (Noam 2026-10-22: 'שהם לא יגנבו הרבה זיכרון במצב idle'). Every minute,
@@ -374,11 +381,11 @@ export async function sweepIdleAgents() {
 }
 if (!process.env.TC_CONFIG_DIR && !process.env.TC_NO_AUTO_SLEEP) {
   let sleeping = false;
-  setInterval(() => {
+  automaticInterval(() => {
     if (sleeping) return;
     sleeping = true;
-    sweepIdleAgents().catch((error) => console.error('[sleep]', error.message)).finally(() => { sleeping = false; });
-  }, 60_000).unref();
+    return sweepIdleAgents().catch((error) => console.error('[sleep]', error.message)).finally(() => { sleeping = false; });
+  }, 60_000, 'idle-sleep');
 }
 
 const sendOnce = createSendOnce({dir:path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'send-receipts')});
@@ -387,20 +394,23 @@ const sendOnce = createSendOnce({dir:path.join(process.env.TC_CONFIG_DIR || path
 const push = new Push();
 const botBrowser = new BotBrowser();
 // Codex bots cannot open the browser from inside their safety box; they ask us.
-setInterval(() => { botBrowser.serveRequests().catch(() => {}); }, 1000).unref();
+automaticInterval(() => botBrowser.serveRequests(), 1000, 'browser-requests');
 // A bot's window closes when its task ends; this catches tasks that ended by a crash.
-setInterval(() => { sweepWindows({ port: BROWSER_PORT }).catch(() => {}); }, 15000).unref();
+automaticInterval(() => sweepWindows({ port: BROWSER_PORT }), 15000, 'browser-cleanup');
 // The daily agent counts are read from big conversation records, so they are updated
 // in a separate low-priority process: a few minutes the first time, seconds after.
 let healthRun = null;
 function refreshAgentHealth() {
   if (automatic.paused || healthRun || process.env.TC_NO_AGENT_HEALTH) return;
   healthRun = spawn('nice', ['-n', '15', process.execPath, fileURLToPath(new URL('../../scripts/termfleet-agent-health.mjs', import.meta.url))], { stdio: 'ignore' });
-  healthRun.on('exit', () => { healthRun = null; });
-  healthRun.on('error', () => { healthRun = null; });
+  const child = healthRun;
+  return new Promise(resolve=>{
+    child.once('exit',()=>{healthRun=null;resolve({ok:true});});
+    child.once('error',()=>{healthRun=null;resolve({ok:false,notSent:true,error:'Health subprocess did not start.'});});
+  });
 }
-setTimeout(refreshAgentHealth, 90_000).unref();
-setInterval(refreshAgentHealth, 60 * 60_000).unref();
+automaticTimeout(refreshAgentHealth, 90_000, 'agent-health-start');
+automaticInterval(refreshAgentHealth, 60 * 60_000, 'agent-health');
 const bots = new Bots({ callerIssuer: issueBotCaller, actionEvidence: { recordActionEvidence, queryActionEvidence }, side: runSide, notify: (note) => { push.notify(note).catch((error) => console.error('[push]', error.message)); } });
 // Bind original methods to preserve bot state; only automatic wake is guarded.
 const automaticBots = new Proxy(bots,{get(target,key){const value=Reflect.get(target,key,target);return typeof value!=='function'?value:key==='wake'?automatic.guard(value.bind(target)):value.bind(target);}});
@@ -411,7 +421,7 @@ function botMembers() {
 }
 async function roomPanes() { return [...(await currentPanes()).panes, ...botMembers()]; }
 // A turn cut off by a restart is picked up again.
-setTimeout(() => { try { automatic.run(()=>bots.resumeInterrupted()); } catch (error) { console.error('[bots]', error.message); } }, 3000).unref?.();
+automaticTimeout(() => bots.resumeInterrupted(), 3000, 'bot-resume');
 // TF-096 part 7: events wake bots (helper finished, approval expired, new code).
 const helperSeen = new Map();
 let helperRecoveryRunning = false;
@@ -456,9 +466,9 @@ async function botEvents() {
   // Open requests with nothing running get one nudge after 15 quiet minutes (stall-wake.mjs).
   if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') automatic.run(()=>checkStalledBots({ bots:automaticBots, panes: current.panes }));
 }
-setInterval(() => { botEvents().catch((error) => console.error('[bot events]', error.message)); }, 30_000).unref?.();
+automaticInterval(() => botEvents(), 30_000, 'bot-events');
 // Messages held for a Codex agent that was mid-turn go in together once that turn ends (held-messages.mjs).
-setInterval(() => { if(automatic.paused)return;currentPanes().then(async ({ panes, daemon }) => {
+automaticInterval(() => { if(automatic.paused)return;return currentPanes().then(async ({ panes, daemon }) => {
   if(automatic.paused)return;
   await deliverHeld({ panes, send: sendToPane, resolveTarget: async(id)=>(await fleetPanes()).find(p=>p.id===id), log: (m) => console.error('[held]', m), notify:(s)=>{
     const text=strandedText(s);console.error('[held]',text);
@@ -473,15 +483,15 @@ setInterval(() => { if(automatic.paused)return;currentPanes().then(async ({ pane
     bots.append(s.sender, { role: 'stuck', pane: s.pane, text });
     automatic.run(()=>bots.wake(s.sender, text));
   } });
-}).catch((error) => console.error('[held]', error.message)); }, 15_000).unref?.();
+}); }, 15_000, 'held-delivery');
 // Work that went quiet (a silent "working" terminal, a handed-over request nobody finished) is
 // found every 15 minutes and kept in the event log. Test copies (TC_CONFIG_DIR) stay quiet.
-if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') startWatchdog({ bots, panes: async () => {
+if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_WATCHDOG !== '1') { const watchdog=startWatchdog({ bots, panes: async () => {
   const current = await currentPanes();
   return !automatic.paused && current.daemon ? current.panes : [];
-}, record: (finding, owners) => logEvent(finding.pane || 'watchdog', owners[0] || null, 'termcontrol', `watchdog-${finding.kind}`, finding) });
+}, record: (finding, owners) => logEvent(finding.pane || 'watchdog', owners[0] || null, 'termcontrol', `watchdog-${finding.kind}`, finding) });automatic.registerTimer(()=>watchdog.stop()); }
 // A message that waited for a plan to reset is answered once one does.
-setInterval(() => { try { automatic.run(()=>bots.retryDue()); } catch (error) { console.error('[bots]', error.message); } }, 60_000).unref?.();
+automaticInterval(() => bots.retryDue(), 60_000, 'bot-retry');
 
 /**
  * TF-096 part 2: the operator's requests in one conversation, in his words, with
@@ -532,20 +542,20 @@ const rooms = new Rooms({
     : readFeed(pane, { limit: 30 })),
 });
 let roomPolling = false;
-setInterval(async () => {
+automaticInterval(async () => {
   if (automatic.paused || roomPolling || !rooms.data.rooms.some((room) => room.pending.length)) return;
   roomPolling = true;
   try { const panes=await roomPanes();if(!automatic.paused)await rooms.poll(panes); } catch (error) { console.error('[rooms]', error.message); } finally { roomPolling = false; }
-}, 3000).unref();
+}, 3000, 'room-poll');
 
 // Scheduled messages go out through the same checked path as a typed one.
 const routines = new Routines({ send: (pane, text) => (String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4), text) : sendToPane(pane, text)) });
 let routineTicking = false;
-setInterval(async () => {
+automaticInterval(async () => {
   if (automatic.paused || routineTicking || !routines.data.routines.some((r) => r.enabled && r.nextRunAt && r.nextRunAt <= Date.now())) return;
   routineTicking = true;
   try { const panes=await roomPanes();if(!automatic.paused)await routines.tick(panes); } catch (error) { console.error('[routines]', error.message); } finally { routineTicking = false; }
-}, 30000).unref();
+}, 30000, 'routine-poll');
 
 async function readJson(req, max = 64 * 1024) {
   let raw = '';
@@ -1536,8 +1546,8 @@ setInterval(() => { liveness().catch(() => {}); }, 3000).unref?.();
 const canaryDir = process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config/termcontrol');
 if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_CANARY !== '1') {
   const runCanary = () => {if(automatic.paused)return;return checkCanary({ dir: canaryDir, notify: (note) => push.notify(note).catch((error) => console.error('[canary push]', error.message)) }).catch((error) => console.error('[canary]', error.message));};
-  setTimeout(runCanary, 2 * 60_000).unref?.();
-  setInterval(runCanary, CANARY_EVERY_MS).unref?.();
+  automaticTimeout(runCanary, 2 * 60_000, 'canary-start');
+  automaticInterval(runCanary, CANARY_EVERY_MS, 'canary');
 }
 // Workspace membership includes dead cards deliberately omitted from the live list.
 // Test copies can inspect health, but must never change the operator's terminals.
@@ -1563,7 +1573,7 @@ const terminalHealth = createTerminalHealth({
   log: (pane, evidence) => logEvent(pane.id, pane.bot?.name || null, pane.provider, 'stall', { healthRecovery: evidence }),
 });
 if (!process.env.TC_CONFIG_DIR && process.env.TC_NO_TERMINAL_HEALTH !== '1') {
-  setInterval(() => { if(automatic.paused)return;terminalHealth.sweep({ repair: true }).catch((error) => console.error('[terminal health]', error.message)); }, HEALTH_INTERVAL_MS).unref?.();
+  automaticInterval(() => terminalHealth.sweep({ repair: true }), HEALTH_INTERVAL_MS, 'terminal-health');
 }
 // Requests per terminal for the desktop app's side panel (see asks-sidecar.mjs).
 const writeAsksSidecars = createAsksSidecarWriter({ asksOf: (pane) => asksForTranscript(adapterFor(pane)?.transcriptPath(pane)) });
@@ -1583,6 +1593,24 @@ setInterval(async () => {
   } catch (error) { console.error('[asks sidecar / agent events]', error.message); }
 }, 4000).unref?.();
 liveness().catch(() => {});
+
+// Read back this capability and the exact loaded PID before using SIGUSR2.
+// The old process has no handler: sending that signal to it would terminate it.
+async function pauseAutomaticWork({timeoutMs=10000}={}) {
+  const marker=automatic.persistPause();
+  if(!marker.ok)return maintenanceDrain={registered_work_settled:false,restart_boundary_proven:false,error:marker.error};
+  automatic.beginDrain();
+  await bots.closeDown({maxMs:0}); // save original queues; never cancel/replay a running reply
+  const observed=await automatic.drain({timeoutMs});
+  const bot_sides=[...bots.sides.values()].filter(side=>side.busy).length;
+  return maintenanceDrain={registered_callbacks_finished:observed.settled,
+    registered_work_settled:false, // aggregate jobs can hide child outcomes; callback completion is not receipt settlement
+    outcome_coverage:'partial: held/room/routine child receipts are not aggregated',bot_replies:bots.running.size,bot_sides,
+    restart_boundary_proven:false, // registered work is not a claim about uninstrumented/external work
+    active:observed.active,retained:observed.retained};
+}
+process.on('SIGUSR2',()=>{pauseAutomaticWork().then(result=>console.log('[maintenance drain]',JSON.stringify(result)))
+  .catch(()=>console.error('[maintenance drain] did not settle; original work retained'));});
 
 /**
  * A restart (deploy, or the memory guard below) is invisible to the phone: stop

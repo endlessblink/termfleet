@@ -11,7 +11,7 @@ test('paused actual cleanup entry cannot call close or inspect real terminal scr
 test('paused actual bot-events entry cannot nudge, wake or read terminal prompts',async()=>{
  let inputs=0,reads=0;const bots={list:()=>[{}]};
  const context={automatic:paused,bots,automaticBots:bots,currentPanes:async()=>{reads++;return{daemon:true,panes:[]};},reconcileDeliveries(){},helperRecoveryRunning:false,process:{env:{}},recoverBotHelpers:async({nudge})=>nudge({},'fixture',{name:'fixture'}),itemsView:()=>({items:[]}),sendToPane:()=>{inputs++;return{};},checkBotEvents:async()=>{},checkStalledBots(){},console};
- await vm.runInNewContext(extract('async function botEvents()','setInterval(() => { botEvents()')+'\nbotEvents()',context);
+ await vm.runInNewContext(extract('async function botEvents()','automaticInterval(() => botEvents()')+'\nbotEvents()',context);
  assert.equal(inputs,0);assert.equal(reads,0);
 });
 

@@ -1975,13 +1975,18 @@ export class Bots {
 
   /** Messages that arrived during a restart wait in bot.json and are answered after it. */
   saveQueue(id) {
-    const waiting = (this.queues.get(id) || []).splice(0);
+    const queue = this.queues.get(id) || [];
+    const waiting = queue.slice();
     if (!waiting.length) return;
     const bot = this.read(id);
-    if (!bot) return;
-    // Repeated owner messages are distinct arrivals, including across a receipt/shutdown race.
-    bot.queued = [...(bot.queued || []), ...waiting];
-    this.write(bot);
+    if (!bot) throw new Error('Cannot persist queued messages for a missing bot.');
+    // Persist first. A read/write failure must retain the exact original memory queue.
+    // Copy bot state too: a failed write must not append twice through a cached object.
+    this.write({ ...bot, queued: [...(bot.queued || []), ...waiting] });
+    // Repeated owner messages are distinct arrivals; remove only the saved prefix.
+    if (this.queues.get(id) === queue && waiting.every((text, i) => queue[i] === text)) {
+      queue.splice(0, waiting.length);
+    }
   }
 
   /**

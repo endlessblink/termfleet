@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T10:42:21.413Z",
+  "updatedAt": "2026-10-28T11:11:44.588Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15592,22 +15592,22 @@
       "surface": "logic",
       "matrixRefs": [],
       "symptom": "Idle bot queues do not prove cleanup and recovery timers or outstanding daemon work are quiescent during reload",
-      "rootCause": "",
+      "rootCause": "Legacy shutdown tracks bot/HTTP only, not outstanding automatic effects; no legacy dynamic pause handler. Aggregate callback completion also hides child uncertainty. New cooperative source protocol is not loaded.",
       "guard": "node --test termcontrol/test/automation-pause.test.mjs",
       "evidence": [
         {
-          "kind": "focused-test",
-          "at": "2026-10-28T10:41:02.050Z",
-          "note": "Final narrow candidate actual7/7 PASS in /tmp/termfleet-automation-pause-narrow.tap, including actual cleanup async sink and positive control plus actual sleep entry. Previously broader draft was narrowed to avoid consuming scheduled work and blocking manual room delivery. Source-only; quiescence_verified:false, no activation."
+          "kind": "source",
+          "at": "2026-10-28T11:11:44.312Z",
+          "note": "Source-only follow-up: /tmp/termfleet-automation-drain-focused.tap22/22 includes actual isolated server, fake daemon, original old-question retention/jump390/1400 and queue read/write failure/repeated-handshake regressions. /tmp/termfleet-automation-queue-red.tap3 reproduced losses; now persist-first snapshot. Combined /tmp/termfleet-automation-drain-final.tap122pass1fail: full restart fixture fails before fake Codex starts with context-establishment error, not an acceptance pass. Current GET /tmp/termfleet-automation-drain-runtime.json11:10:10UTC2252271/8d3ea43c old vs disk4c49bcb7. New coordinator cancels registered timers and retains pending metadata, but aggregate child outcome coverage partial, restart_boundary_proven:false; no live signal/reload. Existing bot writer power-loss durability unproven. Doctor2 baseline failures."
         },
         {
-          "kind": "source",
-          "at": "2026-10-28T10:42:21.413Z",
-          "note": "Final read-only reviewer found no accidental manual-send wrapping; candidate is saveable only as unactivated checkpoint. Actual final94/94 /tmp/termfleet-automation-pause-final.tap. Authenticated existing embed-session GET10:41:50UTC in /tmp/termfleet-automation-pause-runtime.json still2252271/8d3ea43cbb73, disk22module7909ab20 mismatch. No marker mutation/restart; legacy job/outbound settlement remains missing. No human-owner claim."
+          "kind": "focused-test",
+          "at": "2026-10-28T11:11:44.588Z",
+          "note": "Source-only follow-up: /tmp/termfleet-automation-drain-focused.tap22/22 includes actual isolated server, fake daemon, original old-question retention/jump390/1400 and queue read/write failure/repeated-handshake regressions. /tmp/termfleet-automation-queue-red.tap3 reproduced losses; now persist-first snapshot. Combined /tmp/termfleet-automation-drain-final.tap122pass1fail: full restart fixture fails before fake Codex starts with context-establishment error, not an acceptance pass. Current GET /tmp/termfleet-automation-drain-runtime.json11:10:10UTC2252271/8d3ea43c old vs disk4c49bcb7. New coordinator cancels registered timers and retains pending metadata, but aggregate child outcome coverage partial, restart_boundary_proven:false; no live signal/reload. Existing bot writer power-loss durability unproven. Doctor2 baseline failures."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Prove legacy bootstrap and active automatic-job settlement before activating the paused bridge",
+      "nextAction": "Add exact automatic-effect receipt/target outcome propagation; establish a supported live legacy pause/settlement bootstrap before first reload. Never signal legacy PID with new SIGUSR2 protocol. Verify old-question retention/navigation after proven coordinated activation.",
       "history": [
         {
           "at": "2026-10-28T10:39:54.466Z",
@@ -15666,6 +15666,18 @@
           "type": "evidence",
           "kind": "source",
           "note": "Final read-only reviewer found no accidental manual-send wrapping; candidate is saveable only as unactivated checkpoint. Actual final94/94 /tmp/termfleet-automation-pause-final.tap. Authenticated existing embed-session GET10:41:50UTC in /tmp/termfleet-automation-pause-runtime.json still2252271/8d3ea43cbb73, disk22module7909ab20 mismatch. No marker mutation/restart; legacy job/outbound settlement remains missing. No human-owner claim."
+        },
+        {
+          "at": "2026-10-28T11:11:44.313Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Source-only follow-up: /tmp/termfleet-automation-drain-focused.tap22/22 includes actual isolated server, fake daemon, original old-question retention/jump390/1400 and queue read/write failure/repeated-handshake regressions. /tmp/termfleet-automation-queue-red.tap3 reproduced losses; now persist-first snapshot. Combined /tmp/termfleet-automation-drain-final.tap122pass1fail: full restart fixture fails before fake Codex starts with context-establishment error, not an acceptance pass. Current GET /tmp/termfleet-automation-drain-runtime.json11:10:10UTC2252271/8d3ea43c old vs disk4c49bcb7. New coordinator cancels registered timers and retains pending metadata, but aggregate child outcome coverage partial, restart_boundary_proven:false; no live signal/reload. Existing bot writer power-loss durability unproven. Doctor2 baseline failures."
+        },
+        {
+          "at": "2026-10-28T11:11:44.588Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Source-only follow-up: /tmp/termfleet-automation-drain-focused.tap22/22 includes actual isolated server, fake daemon, original old-question retention/jump390/1400 and queue read/write failure/repeated-handshake regressions. /tmp/termfleet-automation-queue-red.tap3 reproduced losses; now persist-first snapshot. Combined /tmp/termfleet-automation-drain-final.tap122pass1fail: full restart fixture fails before fake Codex starts with context-establishment error, not an acceptance pass. Current GET /tmp/termfleet-automation-drain-runtime.json11:10:10UTC2252271/8d3ea43c old vs disk4c49bcb7. New coordinator cancels registered timers and retains pending metadata, but aggregate child outcome coverage partial, restart_boundary_proven:false; no live signal/reload. Existing bot writer power-loss durability unproven. Doctor2 baseline failures."
         }
       ]
     }

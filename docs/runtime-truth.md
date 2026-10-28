@@ -178,3 +178,47 @@ or infer permission to accept that gap. After a coordinated bootstrap is proven,
 start with the marker already present, read authenticated pause status and the
 loaded digest, preserve every terminal/bot identity and queue, and verify older
 unanswered questions by read-only navigation before resuming automatic work.
+
+
+TF-143 registered-drain extension (source only): scheduled automatic roots now
+register synchronously before invocation and remain visible through their returned
+promise. The maintenance handshake persists the pause, cancels registered timers,
+closes admission to bot replies and saves original queued messages without ending
+an active reply or side responder. Queue read/write failures retain the original
+in-memory prefix; repeated successful saves preserve duplicates and arrival order.
+This existing atomic-rename writer does not establish power-loss durability.
+
+Pending operation metadata is fsynced before a registered callback starts; it
+contains a label/reference, never message words. Rejection, explicit uncertainty,
+or interrupted process exit retains the metadata and blocks automatic admission
+on reconstruction. No pending entry is reclaimed, retried or replayed. Metadata
+storage errors fail closed. Callback success retires its entry, but aggregate
+held/room/routine callbacks can hide child uncertainty: their completion is not
+receipt settlement. Selected direct guards do not yet carry all stable target and
+receipt references. Consequently status separates `registered_callbacks_finished`
+from `registered_work_settled: false`, reports partial outcome coverage and keeps
+`restart_boundary_proven: false` and `quiescence_verified: false`. The concrete
+remaining source step is to instrument each actual automatic effect with its
+existing receipt/target identity and propagate unknown child outcomes rather than
+using aggregate callback completion as settlement. Manual callbacks retain their
+original route and guards.
+
+The candidate has a cooperative SIGUSR2 maintenance handshake; ONLY a process whose
+exact loaded protocol and PID have been verified may receive it. **Never send
+SIGUSR2 to the current legacy bridge: it has no handler and would terminate.**
+The loaded service properties were read using the native user bus:
+`TimeoutStopUSec=5min 30s`, `KillMode=mixed`, `KillSignal=15`, `Restart=always`.
+This finite forced-stop window is not a drain proof; SIGTERM alone does not wait
+for all automatic work, nor cancel the legacy timers. No supported legacy
+cooperative pause/settlement hook was found. Changing the next process environment
+or observing idle queues cannot add it to the current process. First activation
+therefore still lacks an in-process legacy pause plus outstanding-effect
+settlement capability; it cannot be bootstrapped by signalling the new handler.
+No live signal, marker mutation or reload has been performed.
+
+Disposable bridge verification uses its own config, synthetic account and fake
+daemon. It persists a pause, observes timer cancellation and callback status,
+preserves queued duplicate words and chat bytes, retains an original open question
+past 310 later messages, and jumps to that exact question at 390/1400 widths with
+answer/send requests blocked. This is not production older-history or human-owner
+proof. Existing signed-in embed-session reads likewise are not human authentication.
