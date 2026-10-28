@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T07:17:26.456Z",
+  "updatedAt": "2026-10-28T07:24:08.385Z",
   "issues": [
     {
       "id": "TF-001",
@@ -14724,6 +14724,91 @@
           "from": "fixing",
           "to": "verifying",
           "note": null
+        }
+      ]
+    },
+    {
+      "id": "TF-133",
+      "title": "Late worker delivery marks remain queued after CLI timeout",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Durable target-worker input marker arrives after initial receipt window but evidence remains queued",
+      "rootCause": "Initial CLI records one receipt snapshot and no later reconciler revisits queued deliveries",
+      "guard": "Exact-session late user-input receipt and unchanged task-authority regressions",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T07:21:50.210Z",
+          "note": "node --test termcontrol/test/delivery-reconciliation.test.mjs termcontrol/test/action-evidence.test.mjs termcontrol/test/events-db.test.mjs termcontrol/test/bot-side-reply.test.mjs termcontrol/test/restart-safe-replies.test.mjs termcontrol/test/vendor-permission-http.test.mjs:46/46 PASS; actual output /tmp/termfleet-f04-focused.tap. Red pending-query before fix; actual initial timeout and later input fixtures; no real worker input."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T07:24:07.091Z",
+          "note": "Activated PID1271056 at07:22:14.391UTC; independent authenticated14-file SHA345f8862a730761d5fd8fb6b238dd49106224839d7f0b76ce0977d72d2f3ebe7 matchesdisk; daemon2068834 unchanged. Actual synthetic queued-to-received SQLite/API readback two items PASS; output /tmp/termfleet-f04-receipt-readback.log. Natural late-worker episode untrialled; task status unchanged."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Bounded late receipt reconciliation with synthetic fixtures and coordinated loaded readback",
+      "history": [
+        {
+          "at": "2026-10-28T07:12:04.940Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T07:19:45.310Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "CLI timeout ends receipt observation; no later reconciliation exists."
+        },
+        {
+          "at": "2026-10-28T07:19:54.040Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Red pending-query regression fails before fix; initial confirmReceipt busy timeout recreated with temporary files only."
+        },
+        {
+          "at": "2026-10-28T07:20:04.421Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regressions reject assistant/tool quotes, wrong sessions, dead targets and duplicate polls; exact user-input markers only."
+        },
+        {
+          "at": "2026-10-28T07:20:52.014Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Bounded exact-session scanner, pending SQL query and existing 30-second cadence integrated; preserves assignment/completion authority."
+        },
+        {
+          "at": "2026-10-28T07:21:31.103Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Combined46/46 and independent13/13 pass; final loaded-source and authenticated evidence readback pending. No real terminal input."
+        },
+        {
+          "at": "2026-10-28T07:21:49.243Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "delivery-reconciliation exact structured user records; internal bounded pending SQL with session/byte reference; existing botEvents cadence only. No assignment/completion writes. Independent review no blocker."
+        },
+        {
+          "at": "2026-10-28T07:21:50.210Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test termcontrol/test/delivery-reconciliation.test.mjs termcontrol/test/action-evidence.test.mjs termcontrol/test/events-db.test.mjs termcontrol/test/bot-side-reply.test.mjs termcontrol/test/restart-safe-replies.test.mjs termcontrol/test/vendor-permission-http.test.mjs:46/46 PASS; actual output /tmp/termfleet-f04-focused.tap. Red pending-query before fix; actual initial timeout and later input fixtures; no real worker input."
+        },
+        {
+          "at": "2026-10-28T07:24:07.091Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Activated PID1271056 at07:22:14.391UTC; independent authenticated14-file SHA345f8862a730761d5fd8fb6b238dd49106224839d7f0b76ce0977d72d2f3ebe7 matchesdisk; daemon2068834 unchanged. Actual synthetic queued-to-received SQLite/API readback two items PASS; output /tmp/termfleet-f04-receipt-readback.log. Natural late-worker episode untrialled; task status unchanged."
         }
       ]
     }

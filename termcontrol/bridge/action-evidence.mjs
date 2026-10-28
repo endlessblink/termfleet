@@ -21,10 +21,15 @@ export function createActionEvidence(db, { now = Date.now } = {}) {
     CREATE INDEX IF NOT EXISTS action_evidence_message ON action_evidence(bot_id,message_id,id);
     CREATE INDEX IF NOT EXISTS action_evidence_terminal ON action_evidence(bot_id,terminal_id,id);`);
   db.transaction(() => {
+    if (!db.prepare('PRAGMA table_info(action_evidence)').all().some(column => column.name === 'source_ref')) db.exec('ALTER TABLE action_evidence ADD COLUMN source_ref TEXT');
+  }).immediate();
+  db.exec(`CREATE INDEX IF NOT EXISTS action_evidence_pending ON action_evidence(kind,state,id);
+    CREATE INDEX IF NOT EXISTS action_evidence_receipt ON action_evidence(bot_id,action_id,state);`);
+  db.transaction(() => {
     db.prepare('DELETE FROM action_evidence WHERE created_at < ?').run(new Date(now() - 7 * 86_400_000).toISOString());
     db.exec('DELETE FROM action_evidence_requests WHERE evidence_id NOT IN (SELECT id FROM action_evidence)');
   })();
-  const columns = ['bot_id', 'source_id', 'action_id', 'kind', 'state', 'terminal_id', 'session_id', 'message_id', 'turn_id', 'tool', 'result_code'];
+  const columns = ['bot_id', 'source_id', 'action_id', 'kind', 'state', 'terminal_id', 'session_id', 'message_id', 'turn_id', 'tool', 'result_code', 'source_ref'];
   const insert = db.prepare(`INSERT OR IGNORE INTO action_evidence (${columns.join(',')},created_at) VALUES (${columns.map(() => '?').join(',')},?)`);
   const link = db.prepare('INSERT OR IGNORE INTO action_evidence_requests VALUES (?,?)');
   const recordActionEvidence = db.transaction(event => {
@@ -54,7 +59,21 @@ export function createActionEvidence(db, { now = Date.now } = {}) {
     return db.prepare(`SELECT e.* FROM action_evidence e WHERE ${clauses.join(' AND ')} ORDER BY e.id DESC LIMIT ?`).all(...values, limit)
       .map(row => ({ ...row, request_ids: links.all(row.id).map(r => r.request_id) }));
   }
-  return { recordActionEvidence, queryActionEvidence };
+  // Internal maintenance query. Public evidence retrieval still requires a bot scope.
+  function pendingActionDeliveries({ afterId = 0, limit = 20 } = {}) {
+    const cursor = Math.max(0, Math.trunc(Number(afterId) || 0));
+    const cap = Math.min(20, Math.max(1, Math.trunc(Number(limit) || 20)));
+    const rows = db.prepare(`SELECT e.* FROM action_evidence e
+      WHERE e.kind='delivery' AND e.state='queued' AND e.id>?
+        AND e.terminal_id IS NOT NULL AND e.session_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM action_evidence r WHERE r.bot_id=e.bot_id
+          AND r.action_id=e.action_id AND r.kind='delivery' AND r.state='received'
+          AND r.terminal_id=e.terminal_id AND r.session_id=e.session_id)
+      ORDER BY e.id LIMIT ?`).all(cursor, cap);
+    const links = db.prepare('SELECT request_id FROM action_evidence_requests WHERE evidence_id=? ORDER BY request_id');
+    return rows.map(row => ({ ...row, request_ids: links.all(row.id).map(r => r.request_id) }));
+  }
+  return { recordActionEvidence, queryActionEvidence, pendingActionDeliveries };
 }
 
 /** Bounded per-item retrieval prevents noisy recent tools from burying another request. */

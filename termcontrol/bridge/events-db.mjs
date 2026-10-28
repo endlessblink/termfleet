@@ -170,3 +170,4 @@ export const observeEvents = (panes) => defaultStore().observe(panes);
 export const lastActivity = (terminalId) => defaultStore().lastActivity(terminalId);
 export const recordActionEvidence = event => defaultStore().recordActionEvidence(event);
 export const queryActionEvidence = filters => defaultStore().queryActionEvidence(filters);
+export const pendingActionDeliveries = filters => defaultStore().pendingActionDeliveries(filters);

@@ -6,6 +6,27 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+test('late receipt selection is bounded, session scoped and retains queued history', () => {
+  const store = createEventLog({ file: ':memory:' });
+  try {
+    const queued = { bot_id: 'abcdef123456', terminal_id: 'pane-a', session_id: 'session-a', action_id: 'D-12345678', source_id: 'D-12345678:queued', kind: 'delivery', state: 'queued', request_ids: ['R-1', 'R-2'] };
+    const first = store.recordActionEvidence(queued);
+    store.recordActionEvidence({ ...queued, action_id: 'D-87654321', source_id: 'D-87654321:queued' });
+    assert.deepEqual(store.pendingActionDeliveries({ limit: 1 }).map(e => e.id), [first]);
+    assert.equal(store.pendingActionDeliveries({ afterId: first, limit: 1 }).length, 1);
+    store.recordActionEvidence({ ...queued, source_id: 'wrong-session', session_id: 'other', state: 'received' });
+    assert.equal(store.pendingActionDeliveries({}).length, 2);
+    const received = { ...queued, source_id: 'D-12345678:received', state: 'received', source_ref: 'session:session-a/byte:123' };
+    assert.ok(store.recordActionEvidence(received));
+    assert.equal(store.recordActionEvidence(received), null);
+    assert.equal(store.pendingActionDeliveries({}).length, 1);
+    const rows = store.queryActionEvidence({ bot_id: queued.bot_id, request_id: 'R-2', action_id: queued.action_id });
+    assert.equal(rows[0].source_ref, received.source_ref);
+    assert.equal(rows.filter(e => e.state === 'queued').length, 1);
+    assert.deepEqual(rows[0].request_ids, queued.request_ids);
+  } finally { store.close(); }
+});
+
 test('causal evidence persists in the existing database, scoped and indexed by request', () => {
   const store = createEventLog({ file: ':memory:' });
   try {

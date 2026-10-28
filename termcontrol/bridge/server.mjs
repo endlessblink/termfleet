@@ -83,12 +83,13 @@ import { createAsksSidecarWriter, defaultAsksDir } from './asks-sidecar.mjs';
 import { itemsView, replyDetails, record as recordRequirement, loadLedger as loadRequirementLedger } from './requirements.mjs';
 import { recordOwnerWords } from './owner-words.mjs';
 import { tryNowItems } from './bot-testing.mjs';
-import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity, recordActionEvidence, queryActionEvidence } from './events-db.mjs';
+import { getStats as agentEventStats, observeEvents, queryEvents, logEvent, lastActivity, recordActionEvidence, queryActionEvidence, pendingActionDeliveries } from './events-db.mjs';
+import { createDeliveryReconciler } from './delivery-reconciliation.mjs';
 import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS } from './terminal-health.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(),
-  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
@@ -398,9 +399,15 @@ setTimeout(() => { try { bots.resumeInterrupted(); } catch (error) { console.err
 // TF-096 part 7: events wake bots (helper finished, approval expired, new code).
 const helperSeen = new Map();
 let helperRecoveryRunning = false;
+const reconcileDeliveries = createDeliveryReconciler({ pending: pendingActionDeliveries, record: recordActionEvidence,
+  recordForPane: pane => ({ file: adapterFor(pane)?.transcriptPath(pane), provider: pane.provider, sessionId: pane.sessionId }) });
 async function botEvents() {
   if (!bots.list().length) return;
   const current = await currentPanes();
+  if (current.daemon) {
+    try { reconcileDeliveries(current.panes); }
+    catch { console.error('[action evidence] late receipt reconciliation unavailable'); }
+  }
   if (current.daemon && !process.env.TC_CONFIG_DIR && process.env.TC_NO_TERMINAL_HEALTH !== '1' && !helperRecoveryRunning) {
     helperRecoveryRunning = true;
     try {
