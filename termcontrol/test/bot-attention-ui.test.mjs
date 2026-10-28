@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import http from 'node:http';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {chromium} from 'playwright';
+const app=fileURLToPath(new URL('../app/',import.meta.url));
+for(const width of [390,1400])test(`attention explains current reason and opens original without writes at ${width}px`,{timeout:30000},async t=>{
+ const server=http.createServer((q,r)=>{const p=new URL(q.url,'http://fixture').pathname;const f=path.resolve(app,p==='/'?'index.html':p.replace(/^\/app\//,''));if(!f.startsWith(app)||!fs.existsSync(f)){r.writeHead(404);return r.end();}r.setHeader('content-type',f.endsWith('.html')?'text/html':'text/javascript');r.end(fs.readFileSync(f));});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>server.close());
+ const browser=await chromium.launch({headless:true});t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:860},serviceWorkers:'block'});
+ const base=`http://127.0.0.1:${server.address().port}`,writes=[],errors=[];
+ let bot={id:'attention-test',name:'Attention fixture',provider:'codex',state:'needs-you',helpers:[],helperDelivery:{unresolved:0,sources:['Codex lifecycle record exceeds the safe read bound.']}};
+ let messages=[];
+ await page.route('**/*',async route=>{const u=new URL(route.request().url());if(u.origin!==base)return route.abort();if(!u.pathname.startsWith('/api/'))return route.continue();if(route.request().method()!=='GET'){if(!u.pathname.includes('presence'))writes.push(u.pathname);return route.fulfill({json:{ok:true}});}let body={ok:true,bots:[bot],groups:[],panes:[],folders:[],skills:[],items:[],routines:[],asks:[]};if(u.pathname==='/api/bot')body={bot,messages,requirements:[{id:'ready',status:'ready',words:'Nonblocking ready task'}],asks:[],details:{},tryNow:[]};return route.fulfill({json:body});});
+ page.on('pageerror',e=>errors.push(String(e)));
+ await page.goto(base+'/#bot:attention-test');
+ const notice=page.locator('.bot-attention');await notice.waitFor({timeout:5000});
+ assert.match(await notice.innerText(),/Update not verified/);assert.match(await notice.innerText(),/No question for you is attached/);
+ await notice.locator('summary').click();assert.match(await notice.innerText(),/Codex lifecycle record exceeds the safe read bound/);
+ assert.equal(await page.locator('.bot-unanswered').isVisible(),false);
+ const at=Date.now()-10000;bot={...bot,helperDelivery:{unresolved:0,sources:[]}};messages=[{id:'original-current',role:'bot',at,text:'',question:{text:'Which exact scope should continue?',options:['A','B']}},...Array.from({length:30},(_,i)=>({id:'later-'+i,role:'bot',text:'Later unrelated progress '+i,at:at+i+1}))];
+ await page.reload();await notice.locator('[data-help-open]').waitFor();assert.match(await notice.innerText(),/Which exact scope/);await notice.locator('[data-help-open]').click();assert.equal(await page.locator('[data-qid="original-current"]').evaluate(e=>document.activeElement===e),true);
+ if(width===1400){await page.locator('.bot-row[data-bot="attention-test"]').click();await page.waitForFunction(()=>document.activeElement?.dataset.qid==='original-current',{},{timeout:3000});}
+ messages.push({id:'answer',role:'operator',text:'A',answerTo:'original-current',at:Date.now()});bot={...bot,state:'idle'};await page.reload();await page.waitForSelector('.bot-feed');assert.equal(await notice.isVisible(),false,'answered and ready rows do not imply owner help');
+ bot={...bot,state:'needs-you',blocked:{ask:'Check the exact folder',at}};messages=[{id:'block-original',role:'needs-you',text:'Check the exact folder',at}];await page.reload();await notice.locator('[data-help-open]').waitFor();await notice.locator('[data-help-open]').click();assert.equal(await page.locator('[data-help-block="block-original"]').evaluate(e=>document.activeElement===e),true);
+ bot={...bot,blocked:null};messages=[];await page.reload();await notice.waitFor();assert.match(await notice.innerText(),/no current question or request attached/);
+ bot={...bot,helperDelivery:{sources:['technical '.repeat(100)]}};await page.reload();await notice.waitFor();await notice.locator('summary').click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:`/tmp/termfleet-attention-fixture-${width}.png`});
+ assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
+});

@@ -1309,6 +1309,16 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .inbox-detail{margin:-4px 0 12px;color:var(--muted);font-size:14px;line-height:1.5}
 body.chat main .qform .q-opt{border:1px solid var(--line);border-radius:14px;min-height:56px;padding:12px 14px}
 .bot-composer .skill-picker:not(.mention-picker) span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+.bot-help-hint{display:block;white-space:normal;overflow-wrap:anywhere;font-size:12px;line-height:1.4;color:var(--muted);margin-top:4px}
+.bot-help-hint>span{color:var(--accent)}
+.bot-attention{padding:10px 14px;border-bottom:1px solid var(--line);max-height:30vh;overflow:auto;overflow-wrap:anywhere;font-size:13px}
+.bot-attention[hidden]{display:none}
+.bot-attention p{margin:4px 0;white-space:pre-wrap}
+.bot-attention button,.bot-attention summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
+.bot-attention button{border:0;background:transparent;color:var(--accent);font:inherit;padding:4px 0;text-align:start}
+.bot-attention details{font-size:12px;color:var(--muted)}
+.bot-attention:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 </style>
 </head>
 <body>
@@ -1447,6 +1457,7 @@ body:not(.chat):not(.bot-view) header{min-height:52px;padding-block:6px}
 <noscript><p style="padding:24px;text-align:center;color:#9a9993">TermControl needs JavaScript to show your terminals.</p></noscript>
 
 <script type="module">
+import { botAttention } from '/app/bot-attention.mjs';
 import { mountWorkDashboard } from '/app/work-dashboard.mjs';
 let releaseWorkDashboard=null;
 const main = document.getElementById('main');
@@ -2880,7 +2891,7 @@ async function fleet(background=false,{fromCache=false}={}) {
   const inboxButton=container.querySelector('.open-inbox');if(inboxButton)inboxButton.onclick=event=>{event.preventDefault();event.stopPropagation();history.pushState({inbox:true},'','#inbox');openInbox();};
   const cleanupButton=container.querySelector('.cleanup-idle');if(cleanupButton)cleanupButton.onclick=()=>openCleanup(cleanupButton);
   const newRoomButton=container.querySelector('.new-room:not(.new-bot)');if(newRoomButton)newRoomButton.onclick=()=>newRoom(roomsData?.agents || []);
-  container.querySelectorAll('[data-bot]').forEach(el=>{el.onclick=()=>{const fromList=el.matches('.bot-row') && main.contains(el);if(fromList)rememberFleetReturn(el,el.dataset.bot,'bot');history.pushState({bot:el.dataset.bot,openedFromAgents:fromList||undefined},'','#bot:'+el.dataset.bot);openBot(el.dataset.bot);};});
+  container.querySelectorAll('[data-bot]').forEach(el=>{el.onclick=()=>{const fromList=el.matches('.bot-row') && main.contains(el);if(fromList)rememberFleetReturn(el,el.dataset.bot,'bot');history.pushState({bot:el.dataset.bot,openedFromAgents:fromList||undefined},'','#bot:'+el.dataset.bot);openBot(el.dataset.bot,{attention:el.hasAttribute('data-bot-help')});};});
   wireBotSelection(container,botsData);
   const newBotButton=container.querySelector('.new-bot');if(newBotButton)newBotButton.onclick=()=>botDialog(null,botsData);
   // Bot-group rows only: a project group (details[data-group]) holds chats, and a tap on one of them
@@ -3389,7 +3400,8 @@ function botsHomeHtml(data){
   const bots=data?.bots || [];
   const row=b=>{
     const unread=Number(b.unread) || 0,n=Number(b.waitingOn) || 0,said=esc(b.last?.text || b.job || '');
-    const [kind,words,detail]=b.state==='working'?['working',ui('Working','עובד'),esc((b.activity || '')+stepFor(b.activitySince)).replace(/^ · /,'')]
+    const attention=botAttention(b);
+    const [kind,words,detail]=attention?[attention.kind==='status'?'pending':'needs-you',ui(...attention.label),'']:b.state==='working'?['working',ui('Working','עובד'),esc((b.activity || '')+stepFor(b.activitySince)).replace(/^ · /,'')]
       :b.state==='needs-you'?['needs-you',ui('Needs you','נדרש מענה'),esc(b.blocked?.ask || '')]
       :b.helpersAsking?['needs-you',ui('Needs you','נדרש מענה'),ui('a terminal agent is asking you','סוכן בטרמינל שואל אותך')]
       :b.state==='failed'?['needs-you',ui('Something went wrong','משהו השתבש'),ui('open to see','פתחו לפרטים')]
@@ -3400,7 +3412,7 @@ function botsHomeHtml(data){
       :['idle',ui('Idle','פנוי'),said];
     const line=stateChip(kind,words)+(detail?`<span class="rs-detail" dir="auto">${detail}</span>`:'');
     const at=Number(new Date(b.lastAt || 0));
-    return `<button type="button" class="room-row bot-row${unread?' unread':''}" data-state="${kind}" data-bot="${esc(b.id)}" data-key="bot:${esc(b.id)}"${botSelectionMode?` aria-pressed="${botSelection.has(b.id)}"`:''} aria-label="${esc(b.name)}, ${words}${unread?', '+ui(`${unread} unread`,`${unread} לא נקראו`):''}">${botSelectionMode?`<span class="bot-select-mark" aria-hidden="true">${botSelection.has(b.id)?'✓':''}</span>`:''}${botAvatar(b,48)}<span class="room-copy"><span class="bot-top"><span class="room-name" dir="auto">${b.pinned?'📌 ':''}${esc(b.name)}</span>${at?`<span class="bot-when">${shortWhen(at)}</span>`:''}</span><span class="room-last">${line}</span></span>${unread?`<span class="bot-unread" aria-hidden="true">${unread>99?'99+':unread}</span>`:''}</button>`;
+    return `<button type="button" class="room-row bot-row${unread?' unread':''}" data-state="${kind}" data-bot="${esc(b.id)}" data-key="bot:${esc(b.id)}"${attention?' data-bot-help="1"':''}${botSelectionMode?` aria-pressed="${botSelection.has(b.id)}"`:''} aria-label="${esc(b.name)}, ${words}${unread?', '+ui(`${unread} unread`,`${unread} לא נקראו`):''}">${botSelectionMode?`<span class="bot-select-mark" aria-hidden="true">${botSelection.has(b.id)?'✓':''}</span>`:''}${botAvatar(b,48)}<span class="room-copy"><span class="bot-top"><span class="room-name" dir="auto">${b.pinned?'📌 ':''}${esc(b.name)}</span>${at?`<span class="bot-when">${shortWhen(at)}</span>`:''}</span><span class="room-last">${line}</span>${attention?`<span class="bot-help-hint" dir="auto">${esc(ui(...attention.text))} <span>${esc(ui(...attention.action))} →</span></span>`:''}</span>${unread?`<span class="bot-unread" aria-hidden="true">${unread>99?'99+':unread}</span>`:''}</button>`;
   };
   const shown=bots.filter(b=>!b.hidden),hidden=bots.filter(b=>b.hidden);
   const actions=`<div class="bots-actions"><button type="button" class="new-room new-bot">${ui('+ New bot','+ בוט חדש')}</button>${bots.length?`<button type="button" class="new-group">${ui('+ New group','+ קבוצה חדשה')}</button>`:''}</div>`;
@@ -3741,7 +3753,7 @@ async function botMemoryDialog(id,name){
   await render();
 }
 
-async function openBot(id,{motion=null}={}){
+async function openBot(id,{motion=null,attention=false}={}){
   releaseWorkDashboard?.();
   loadBotModels();paintOpenBot();clearSideAsks();
   rememberCurrentChat();saveChatView=null;clearChatGesture(Boolean(motion && chatGesture===motion));
@@ -3768,7 +3780,7 @@ async function openBot(id,{motion=null}={}){
   // Opened from the list: step back to it, so the list returns to where the bot was.
   nav.querySelector('.back').onclick=()=>{if(history.state?.openedFromAgents){history.back();}else{history.pushState({},'',location.pathname);fleet();}};
   main.innerHTML='<div class="spin">loading…</div>';chatStatus.innerHTML='';routinesLine.innerHTML='';title.textContent=ui('Bot','בוט');sub.textContent='';
-  let following=true,signature='',current=null;
+  let following=true,signature='',current=null,attentionRequested=attention;
   const pendingSends=[];   // {text, state:'sending'|'failed'} until the server shows it
   const onScroll=()=>{following=main.scrollHeight-main.scrollTop-main.clientHeight<=80;};
   main.addEventListener('scroll',onScroll,{passive:true});
@@ -3782,6 +3794,24 @@ async function openBot(id,{motion=null}={}){
   bar.innerHTML=`<div class="skill-picker" role="listbox" hidden></div><div class="skill-picker mention-picker" role="listbox" hidden></div><div class="bot-pics" hidden></div><div class="stack"><button type="button" class="bot-attach" aria-label="${ui('Add pictures','הוספת תמונות')}">${icon('attach')}</button><input type="file" accept="image/*" multiple hidden class="bot-files"><button type="button" class="bot-paste" aria-label="${ui('Paste picture','הדבקת תמונה')}" title="${ui('Paste picture','הדבקת תמונה')}">${icon('paste')}</button><button type="button" class="bot-mic" aria-label="${ui('Dictate in Hebrew or English','הקלדה בקול בעברית או באנגלית')}">${icon('mic')}</button><textarea rows="1" dir="auto" enterkeyhint="send" aria-label="${ui('Message the bot','הודעה לבוט')}" placeholder="${ui('Message the bot… (/ for skills)','הודעה לבוט… (/ לסקילים)')}"></textarea><button type="button" class="send" aria-label="${ui('Send','שליחה')}">${icon('send')}</button></div>`;
   document.body.append(bar);
   const unanswered=document.createElement('details');unanswered.className='bot-unanswered';unanswered.hidden=true;bar.prepend(unanswered);
+  const help=document.createElement('section');help.className='bot-attention';help.hidden=true;help.tabIndex=-1;bar.prepend(help);
+  let currentAttention=null;
+  const openAttention=()=>{
+    const target=currentAttention?.target;
+    const selector=target?.kind==='terminal'?'[data-term-ask]':target?.kind==='blocked'?'[data-help-block]':'[data-qid]';
+    const key=target?.kind==='terminal'?'termAsk':target?.kind==='blocked'?'helpBlock':'qid';
+    const card=target && [...main.querySelectorAll(selector)].find(el=>el.dataset[key]===target.id && !el.matches('.answered,.ended,.withdrawn'));
+    following=false;
+    if(card){const pin=card.closest('.term-ask-pinned');if(pin)pin.open=true;card.tabIndex=-1;card.focus({preventScroll:true});card.scrollIntoView({block:'center',behavior:'instant'});const place=chatPlace(main,false);heldPlace=place.row?{...place,after:main.scrollTop}:null;}
+    else{const details=help.querySelector('details');if(details)details.open=true;help.focus({preventScroll:true});help.scrollIntoView({block:'nearest',behavior:'instant'});}
+  };
+  help.onclick=event=>{if(event.target.closest('[data-help-open]'))openAttention();};
+  const showAttention=(bot,messages)=>{
+    currentAttention=botAttention(bot,{questions:unansweredChatQuestions(messages),messages,full:true});
+    help.hidden=!currentAttention;if(!currentAttention){help.innerHTML='';help.dataset.signature='';return;}
+    const a=currentAttention,html=`<strong>${esc(ui(...a.label))}</strong><p dir="auto">${esc(ui(...a.text))}</p>${a.target?`<button type="button" data-help-open>${esc(ui(...a.action))}</button>`:''}${a.details.length?`<details><summary>${esc(ui('Status details','פרטי המצב'))}</summary>${a.details.map(detail=>`<p dir="auto">${esc(detail)}</p>`).join('')}</details>`:''}`;
+    if(help.dataset.signature!==html){help.dataset.signature=html;help.innerHTML=html;}
+  };
   let dismissingQuestions=false;
   const showUnanswered=(messages,canDismiss=false)=>{
     const open=unansweredChatQuestions(messages);
@@ -3980,7 +4010,7 @@ async function openBot(id,{motion=null}={}){
     const revision=++renderRevision;
     let data;
     try{const response=await fetch(`/api/bot?id=${encodeURIComponent(id)}${document.visibilityState==='visible'?'&read=1':''}`,{signal:AbortSignal.timeout(10000)});data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error),{gone:response.status===404});}
-    catch(e){if(mine!==view || revision!==renderRevision)return;unanswered.hidden=true;unanswered.open=false;if(signature && !e.gone){chatStatus.innerHTML=`<span class="connection-note" role="status">${ui('Reconnecting…','מתחבר מחדש…')}</span>`;return;}main.innerHTML=`<div class="empty">${esc(e.message || ui('Could not open the bot.','לא ניתן לפתוח את הבוט.'))}</div>`;bar.remove();return;}
+    catch(e){if(mine!==view || revision!==renderRevision)return;help.hidden=true;unanswered.hidden=true;unanswered.open=false;if(signature && !e.gone){chatStatus.innerHTML=`<span class="connection-note" role="status">${ui('Reconnecting…','מתחבר מחדש…')}</span>`;return;}main.innerHTML=`<div class="empty">${esc(e.message || ui('Could not open the bot.','לא ניתן לפתוח את הבוט.'))}</div>`;bar.remove();return;}
     if(mine!==view || revision!==renderRevision)return;
     for(const e of pendingSends.slice())if(e.sendId && !e.delivering && data.messages.some(m=>m.sendId===e.sendId)){pendingSends.splice(pendingSends.indexOf(e),1);if(e.listTo)forgetBotListDraft(e.listTo);}
     const bot=data.bot;current=bot;
@@ -4026,6 +4056,7 @@ async function openBot(id,{motion=null}={}){
     const asksMarkup=helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
     Object.assign(headState,{asks:visibleAsks(data.asks,schedules.map(r=>r.text)),helpers,schedules});
     showUnanswered(data.messages,data.questionDismissal===true);
+    showAttention(bot,data.messages);
     // The same hand-off sent to several terminals in a row is one line with a count (Noam 2026-10-24:
     // "הודעות סתם חוזרות על עצמן וממלאות את המסך": one message to 6 politic-fighter terminals showed 6 times).
     const handoffCount=new Map(),handoffSkip=new Set();
@@ -4048,7 +4079,7 @@ async function openBot(id,{motion=null}={}){
       if(m.role==='error')return `<div class="bot-error" role="alert" dir="auto">${esc(ui('The bot could not answer: ','הבוט לא הצליח לענות: ')+m.text)}</div>`;
       if(m.role==='terminal-ask')return liveTermAsk(m)?'':termAskHtml(m);
       if(m.role==='reminder' || m.role==='stuck'){const jumpCard=m.role==='reminder'&&m.card&&data.messages.some(c=>c.id===m.card&&liveTermAsk(c))?` <a href="#" class="reminder-jump" onclick="const pin=document.querySelector('.term-ask-pinned');if(pin)pin.open=true;this.closest('#main')?.querySelector('.term-ask-pinned [data-term-ask=&quot;${esc(m.card)}&quot;]')?.scrollIntoView({behavior:'smooth',block:'center'})||this.closest('#main')?.scrollTo({top:this.closest('#main').scrollHeight,behavior:'smooth'});return false">${ui('↓ Answer','↓ לענות')}</a>`:'';return `<div class="bot-note bot-event bot-${m.role}" role="${m.role==='stuck'?'alert':'note'}" dir="auto">${m.role==='stuck'?'⚠️':'⏰'} ${esc(m.text)}${jumpCard}${when?` · <bdi>${esc(when)}</bdi>`:''}</div>`;}
-      if(m.role==='needs-you')return `<div class="bot-needs" role="alert"><p dir="auto">${esc(m.text)}</p>${bot.blocked && m.at>=bot.blocked.at?`<button type="button" class="bot-retry">${ui('Retry','לנסות שוב')}</button>`:''}</div>`;
+      if(m.role==='needs-you')return `<div class="bot-needs" data-help-block="${esc(m.id)}" role="alert"><p dir="auto">${esc(m.text)}</p>${bot.blocked && m.at>=bot.blocked.at?`<button type="button" class="bot-retry">${ui('Retry','לנסות שוב')}</button>`:''}</div>`;
       return `<div class="bot-note" dir="auto">${esc(m.text)}</div>`;
     }).join('')+pinnedTermAsks(data.messages)+(bot.proposedProfile?`<div class="bot-suggest" role="status"><p>${esc(ui(`${bot.name} suggests its job and rules, from your chat:`,`${bot.name} מציע תפקיד וכללים, מתוך השיחה:`))}</p><p dir="auto"><b>${esc(ui('Job: ','תפקיד: '))}</b>${esc(bot.proposedProfile.job)}</p>${bot.proposedProfile.rules?`<p dir="auto" style="white-space:pre-line"><b>${esc(ui('Rules: ','כללים: '))}</b>${esc(bot.proposedProfile.rules)}</p>`:''}<span class="bot-actions"><button type="button" class="primary" data-profile="accept">${ui('Use these','להשתמש בהם')}</button><button type="button" data-profile="edit">${ui('Edit','עריכה')}</button><button type="button" data-profile="dismiss">${ui('Not now','לא עכשיו')}</button></span></div>`:'')+pendingSends.map((e,i)=>`<div class="${e.state==='failed'?'bot-failed-send':'bot-pending'}" data-pending="${i}">${messageHtml('user',e.text,ui('You','אתה'),'',' mine','','',{of:e.replyTo || null})}<div class="pending-delivery" role="status" dir="auto">${e.state==='failed'?`${esc(ui('Not sent','לא נשלח')+(e.error?` (${e.error})`:''))}<button type="button" data-resend>${ui('Resend','שליחה חוזרת')}</button>${e.images?.length || e.files?.length || e.answerTo || e.listTo?'':`<button type="button" data-edit>${ui('Edit','עריכה')}</button>`}<button type="button" data-discard>${ui('Discard','ביטול')}</button>`:esc(ui('Sending…','שולח…'))}</div></div>`).join('')+`<div class="busyline${bot.state==='working'?'':' idle'}" role="status"${bot.state==='working'?'':' aria-hidden="true"'}><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${bot.state==='working'?esc(bot.activity || ui('Thinking','חושב'))+stepFor(bot.activitySince):''}</span></div>`;
     // Never redraw under an open message menu: it would close it (Noam: "keeps closing by itself").
@@ -4090,6 +4121,7 @@ async function openBot(id,{motion=null}={}){
       const retry=main.querySelector('.bot-retry');
       if(retry)retry.onclick=async()=>{retry.disabled=true;try{const r=await fetch('/api/bot/retry',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id}),signal:AbortSignal.timeout(10000)});const d=await r.json();if(!r.ok)throw new Error(d.error);}catch(e){note(e.message || ui('Could not retry.','לא ניתן לנסות שוב.'),true);retry.disabled=false;}render();};
     }
+    if(attentionRequested && currentAttention){attentionRequested=false;openAttention();}
   };
   await render();
   requestAnimationFrame(()=>{chatHandoff?.remove();chatHandoff=null;});

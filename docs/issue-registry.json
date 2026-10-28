@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T20:33:08.577Z",
+  "updatedAt": "2026-10-28T20:56:15.054Z",
   "issues": [
     {
       "id": "TF-001",
@@ -16590,6 +16590,102 @@
           "type": "evidence",
           "kind": "browser-render",
           "note": "Independent visual PASS /tmp/termfleet-batch-fixture-confirm-390.png and -1280.png; isolated confirmation names/count/archive explanation/cancel. Installed GET-only probe at390/1280 proves unsupported controls hidden on PID85549; backend activation blocked after automatic approval rejects drain signal, no installed feature completion claimed."
+        }
+      ]
+    },
+    {
+      "id": "TF-153",
+      "title": "Bot needs-help badge omits actionable reason",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Fine-tuned shows Needs you with no question; helper verification error has no detail or navigation.",
+      "rootCause": "Technical helperDelivery.sources makes needs-you while blocked is null, and list renderer reads only blocked.ask.",
+      "guard": "Current question navigation, technical status detail, stale and missing detail fallback, resolved and ready exclusion, headless mobile checks.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T20:52:37.547Z",
+          "note": "bot-attention presenter and index integration do not mutate bot state or send, retry, close, or remove."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T20:52:37.580Z",
+          "note": "/tmp/termfleet-attention-green.tap:11/11. Red UI2fail before fix. Wider suite48/49 with one preexisting unrelated skills source-regex failure proven on HEAD in baseline.json."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-28T20:56:15.054Z",
+          "note": "Final readback after concurrent row-click fix: /tmp/termfleet-attention-live.json HTML ec9ba0660d39c7a8f8c207f6fccef80b84f3ccd435de09bb76c233700f29d469; new11/11, preserved13/13 and29/29; public remains login. Doctor daemon visibility and older packaged desktop release do not prove bridge UI failure; both remain named limitations."
+        }
+      ],
+      "owner": "bot-needs-help",
+      "nextAction": "Write failing attention classification and mobile navigation regressions; fix only cockpit UI.",
+      "history": [
+        {
+          "at": "2026-10-28T20:46:53.883Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T20:52:37.396Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Authenticated metadata confirms technical helper verification source with blocked null and zero current questions."
+        },
+        {
+          "at": "2026-10-28T20:52:37.426Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Original screenshot and metadata reproduce generic badge without reason."
+        },
+        {
+          "at": "2026-10-28T20:52:37.454Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "New UI regressions fail before integration; presenter red modulemissing then green."
+        },
+        {
+          "at": "2026-10-28T20:52:37.486Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "UI-only attention presenter, exact current question navigation, technical details and stale fallback."
+        },
+        {
+          "at": "2026-10-28T20:52:37.518Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "11 new focused tests pass and actual authenticated390/1400 live UI inspected; public HTTPS remains login."
+        },
+        {
+          "at": "2026-10-28T20:52:37.548Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "bot-attention presenter and index integration do not mutate bot state or send, retry, close, or remove."
+        },
+        {
+          "at": "2026-10-28T20:52:37.580Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "/tmp/termfleet-attention-green.tap:11/11. Red UI2fail before fix. Wider suite48/49 with one preexisting unrelated skills source-regex failure proven on HEAD in baseline.json."
+        },
+        {
+          "at": "2026-10-28T20:52:37.610Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "/tmp/termfleet-attention-live.json real authenticated localhost bridge390/1400; loaded HTML SHA9f583c612b1b01bec578bc083828b63e2c8567010697275367c6fb53f01d4c48, module37213e2b; actual reason visible,0pending0undefined0overflow, independent visual PASS. Public HTTPS authentication unverified (login)."
+        },
+        {
+          "at": "2026-10-28T20:56:15.054Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Final readback after concurrent row-click fix: /tmp/termfleet-attention-live.json HTML ec9ba0660d39c7a8f8c207f6fccef80b84f3ccd435de09bb76c233700f29d469; new11/11, preserved13/13 and29/29; public remains login. Doctor daemon visibility and older packaged desktop release do not prove bridge UI failure; both remain named limitations."
         }
       ]
     }
