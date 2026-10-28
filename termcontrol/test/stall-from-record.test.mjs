@@ -4,13 +4,14 @@ import { stalledFor, STALL_AFTER_MS } from '../bridge/session-status.mjs';
 
 // 2026-10-26: a Codex terminal lost its backend at 12:45. Its error screen's ticking clock kept the
 // output growing ("producing"), its hook still said "working", and the app showed "Working (1h 24m)".
-// Progress now comes from the agent's own conversation record, not from screen bytes.
+// Screen bytes do not prove progress, but silence alone cannot justify destructive recovery.
 const now = 10 * 3600_000;
 
-test('an agent whose record stopped long ago is stalled even while its screen keeps repainting', () => {
+test('fresh output suppresses a silence diagnosis without proving task progress', () => {
   const pane = { turn: 'working', updatedAt: now - 80 * 60_000 };
   const life = { producing: true };
-  assert.equal(stalledFor(pane, life, now, now, now - 80 * 60_000), 80 * 60_000);
+  assert.equal(stalledFor(pane, life, now, now, now - 80 * 60_000), 0);
+  assert.equal(stalledFor(pane, { producing: false }, now, now, now - 80 * 60_000), 80 * 60_000);
 });
 
 test('an agent still writing its record is not stalled', () => {

@@ -81,7 +81,7 @@ export async function fleetPanes({ workspace = readWorkspace() } = {}) {
   });
 }
 
-/** Plain state word for one pane: working, stuck (no progress, likely crashed), waiting (needs a person), idle, closed. */
+/** Stuck is a silence diagnostic, never a crash or completion verdict. */
 export function stateOf(pane) {
   if (!pane.alive) return 'closed';
   if (pane.turn === 'waiting') return 'waiting';
@@ -92,7 +92,7 @@ export function stateOf(pane) {
 
 /** What a stuck terminal means for the agent that owns it. */
 export function stuckNote(pane) {
-  return `No progress for ${Math.round((Number(pane.stalledForMs) || 0) / 60_000)} minutes: the agent has most likely crashed. Close it (termfleet-team close ${pane.id}) and start a fresh one for its task.`;
+  return `No recorded activity for ${Math.round((Number(pane.stalledForMs) || 0) / 60_000)} minutes. Its state is unconfirmed: inspect the current conversation, active tools and approval prompt. Silence alone does not authorize closing, replacing or typing into it.`;
 }
 
 /**

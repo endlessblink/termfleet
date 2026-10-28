@@ -24,7 +24,7 @@ import { checkCanary, readCanary, CANARY_EVERY_MS } from './canary.mjs';
 import { sendToPane, answerPrompt, answerScreenChoice, sendCustomAnswer, sendKey, liveSessionIds, toggleMultiChoice, submitMultiChoice, answerMultiChoice } from './send.mjs';
 import { requestClose } from '../../scripts/lib/close-request.mjs';
 import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
-import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
+import { cleanupPlan, cleanupScreenState, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
 import { appendAction, paneLogFile } from './action-log.mjs';
 import { parentsByPane, fleetPanes, stateOf } from './orchestrate.mjs';
 import { deliverHeld, sweepStranded, strandedText, recordHeldQuarantineStatus } from './held-messages.mjs';
@@ -89,7 +89,7 @@ import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS 
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(),
-  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs', 'session-status.mjs', 'helper-recovery.mjs', 'idle-cleanup.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
@@ -211,9 +211,8 @@ async function buildCurrentPanes() {
         alive: true,
         lastActiveAt,
         lastWorkedAt,
-        // When the agent itself last moved (its report or conversation), never the screen: the cleanup
-        // judges a frozen agent with a ticking clock by this (Noam 2026-10-26). 0 when its conversation
-        // is not found: a stale report alone must never make a working agent look frozen.
+        // Record activity is an idle-age baseline, not proof of a crash or finished turn.
+        // Fresh output, pending tools, working turns and approvals protect against cleanup.
         recordAt: conversationMtime(p) ? Math.max(Number(p.updatedAt) || 0, conversationMtime(p)) : 0,
         pid: life.pid ?? null,
         startedAt: startedAt(life.pid) || null,
@@ -269,8 +268,9 @@ function withCodexRecord(p, table) {
 }
 
 /** What "Clean up idle terminals" offers, judged now; `starters` says who started each terminal. */
-async function idleCleanupPlan() {
-  const { panes: onMap } = await currentPanes();
+async function idleCleanupPlan({fresh=false}={}) {
+  const { panes: onMap,daemon } = await currentPanes({fresh});
+  if(!daemon)return {offer:[],keep:[],starters:new Map(),checkedAt:Date.now()};
   const table = processTable();
   // Every bot's full helpers list: the short one in its summary loses old start records (R-7214).
   const { starters: helperOf, followers } = helperRoles(bots.list().map((b) => {
@@ -297,8 +297,15 @@ async function idleCleanupPlan() {
   }
   const starters = rememberStarters(readStarters(), found, new Set(panes.map((p) => p.id)));
   writeStarters(starters);
+  const screens=new Map();
+  for(const p of panes){
+    if(!['codex','claude','opencode'].includes(p.provider))continue;
+    p.pendingTools=readSessionStatus(p).pendingTools;
+    let screen=null;try{screen=await screenOf(p.id);}catch{}
+    screens.set(p.id,cleanupScreenState(p,screen));
+  }
   const plan = cleanupPlan({
-    panes, isSleeping,
+    panes, isSleeping,screenState:p=>screens.get(p.id)??null,
     startedBy: (p) => starters.get(p.id)?.name || null,
     startedByBot: (p) => Boolean(starters.get(p.id)?.botId),
     processes: (p) => descendantsOf(p.pid, table),
@@ -315,7 +322,10 @@ async function idleCleanupPlan() {
 // Only the real service sweeps: test bridges (their own config folder) never close anything.
 async function sweepFinishedHelpers() {
   const plan = await idleCleanupPlan();
-  return autoCloseFinished({ plan, requestClose, log: (text, item, ok) => {
+  return autoCloseFinished({ plan, requestClose, canClose:async(item)=>{
+    const fresh=await idleCleanupPlan({fresh:true});
+    return fresh.offer.some(p=>p.id===item.id&&!p.warning&&p.startedBy===item.startedBy&&p.provider===item.provider&&p.sessionId===item.sessionId&&p.pid===item.pid);
+  }, log: (text, item, ok) => {
     if (!ok) return;
     const who = plan.starters.get(item.id) || {};
     const entry = { at: Date.now(), actor: 'termfleet', kind: 'terminal', text, auto: true, paneId: item.id };
@@ -418,7 +428,7 @@ async function botEvents() {
         recheck: async (pane, work) => {
           const fresh = await currentPanes({ fresh: true });
           const live = fresh.panes.find((p) => p.id === pane.id);
-          if (!fresh.daemon || !live?.alive || live.sleeping || live.attention || live.sessionId !== pane.sessionId || live.provider !== pane.provider || pendingAsk(live) || !['idle', 'stuck'].includes(stateOf(live))) return false;
+          if (!fresh.daemon || !live?.alive || live.sleeping || live.attention || live.pendingTools===true || live.producing || live.turn!=='idle' || live.sessionId !== pane.sessionId || live.provider !== pane.provider || pendingAsk(live) || stateOf(live)!=='idle') return false;
           const latest = itemsView().items;
           return work.every((item) => latest.some((it) => it.id === item.id && it.status === item.status && it.assigned?.at(-1)?.pane === pane.id && it.assigned.at(-1).at === item.assigned.at(-1).at));
         },

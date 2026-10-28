@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T09:42:01.995Z",
+  "updatedAt": "2026-10-28T09:54:49.140Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15366,6 +15366,74 @@
           "type": "evidence",
           "kind": "source",
           "note": "Retention35c9acd loaded PID2252271 at09:41:08UTC;18module8d3ea43c authenticated200 matches,unauth401. /tmp/termfleet-f16-quarantine-activation.log and loaded-readback.json;3terminal10bot unchanged,queues0,daemon retained. No actual held mutation/replay or natural owner proof."
+        }
+      ]
+    },
+    {
+      "id": "TF-140",
+      "title": "Quiet or waiting helpers are treated as failed or disposable",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Record silence triggers crash advice and busy recovery; idle cleanup lacks fresh approval-screen protection",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/helper-liveness-safety.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T09:54:49.140Z",
+          "note": "Actual /tmp/termfleet-f15-red.tap and unknown-red.tap fail before guards. /tmp/termfleet-f15-green.tap77/77. No helper close, input or model trial."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reproduce and guard activity, pending tool, approval and unknown-screen decisions with isolated fixtures",
+      "history": [
+        {
+          "at": "2026-10-28T09:46:33.572Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T09:54:48.994Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Current F15 paths confirmed. Runtime remains F16 only."
+        },
+        {
+          "at": "2026-10-28T09:54:49.024Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Original red 0 pass5 fail. Unknown-turn red8 pass2 fail. Saved TAP under /tmp/termfleet-f15."
+        },
+        {
+          "at": "2026-10-28T09:54:49.052Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Fake-clock activity, tools, approval, unknown screen and turn regressions."
+        },
+        {
+          "at": "2026-10-28T09:54:49.082Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Explicit idle recovery and conservative cleanup with per-target fresh veto. No real helper actions."
+        },
+        {
+          "at": "2026-10-28T09:54:49.110Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "77/77 focused green. Source-only pending coordinated activation. Natural incidence and owner view unverified."
+        },
+        {
+          "at": "2026-10-28T09:54:49.140Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Actual /tmp/termfleet-f15-red.tap and unknown-red.tap fail before guards. /tmp/termfleet-f15-green.tap77/77. No helper close, input or model trial."
         }
       ]
     }

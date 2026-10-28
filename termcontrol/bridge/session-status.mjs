@@ -8,6 +8,35 @@ import { transcriptPath as codexTranscriptPath } from './adapters/codex.mjs';
 import { tailLines } from './tail.mjs';
 import { claudeTranscript } from './paths.mjs';
 
+/** Correlated tool calls are activity evidence, never evidence of successful progress. */
+export function pendingToolsFromRecords(records) {
+  const pending=new Set();
+  for(const row of records){
+    const p=row?.payload;
+    if(['function_call','custom_tool_call','local_shell_call'].includes(p?.type)&&p.call_id)pending.add(p.call_id);
+    if(['function_call_output','custom_tool_call_output'].includes(p?.type))pending.delete(p.call_id);
+    if(p?.type==='task_complete')pending.clear();
+    for(const b of Array.isArray(row?.message?.content)?row.message.content:[]){
+      if(b.type==='tool_use'&&b.id)pending.add(b.id);
+      if(b.type==='tool_result')pending.delete(b.tool_use_id);
+    }
+  }
+  return pending.size>0;
+}
+const toolActivityCache=new Map();
+function readPendingTools(pane) {
+  try{
+    const file=pane.provider==='codex'?codexTranscriptPath(pane):pane.provider==='claude'?claudeTranscript(pane.cwd,pane.sessionId):null;
+    if(!file)return null;
+    const stat=fs.statSync(file),stamp=stat.size+':'+stat.mtimeMs,cached=toolActivityCache.get(file);
+    if(cached?.stamp===stamp)return cached.pending;
+    const records=[];for(const line of tailLines(file,256*1024)){try{records.push(JSON.parse(line));}catch{}}
+    const pending=pendingToolsFromRecords(records);
+    if(toolActivityCache.size>=40)toolActivityCache.delete(toolActivityCache.keys().next().value);
+    toolActivityCache.set(file,{stamp,pending});return pending;
+  }catch{return null;}
+}
+
 /**
  * When a conversation file was last written is the plainest "last used" there
  * is, and it exists even for agents that never wrote a status record (a Codex
@@ -135,7 +164,7 @@ export function readSessionEventView(pane,{dir=statusDir(),now=performance.now()
  } catch{return null;}
 }
 export function readSessionStatus(pane,options={}) {
- const legacy=readLegacySessionStatus(pane),view=readSessionEventView(pane,options);
+ const legacy={...readLegacySessionStatus(pane),pendingTools:readPendingTools(pane)},view=readSessionEventView(pane,options);
  const authority=options.authority ?? process.env.TERMFLEET_STATUS_AUTHORITY==='on';
  if(!view) return authority ? {...legacy,workingSince:null,turn:'unknown',task:null,sessionAuthority:true}:legacy;
  return {...legacy,sessionViewV2:view,sessionAuthority:authority,
@@ -162,12 +191,12 @@ export function applyVendorStatus(pane) {
 // Owner deadline: intervene within ten minutes, leaving time for the 30-second poll.
 export const STALL_AFTER_MS = 9 * 60 * 1000;
 /** How long a "working" agent has shown no sign of life, or 0. Waiting on the operator is never a stall. */
-// An agent with a conversation record is measured by that record: screen output is no proof of
-// progress (2026-10-26: a Codex that lost its backend at 12:45 repainted a ticking error clock and
-// showed "Working (1h 24m)"). Normal silence inside a working turn is under 90 s at p99.9 for Codex
-// and 5 min for Claude (3 days of records). Recovery sends a reminder, never kills for silence.
+// Output or a correlated pending tool suppresses this silence diagnostic. Neither proves progress.
+// Without positive activity, the record is only an inspection signal: it cannot prove a crash,
+// completion, or permission to type, close or replace the agent.
 export function stalledFor(pane, life, lastActiveAt, now = Date.now(), recordAt = 0) {
   if (pane.turn !== 'working') return 0;
+  if(pane.pendingTools===true||life?.producing)return 0;
   if (recordAt > 0) {
     const quiet = now - Math.max(recordAt, Number(pane.updatedAt) || 0);
     return quiet >= STALL_AFTER_MS ? quiet : 0;

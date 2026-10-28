@@ -8,7 +8,7 @@ import { cleanupPlan, closeIdleTerminals, descendantsOf, IDLE_MIN_MS } from '../
 const NOW = Date.parse('2026-10-22T10:00:00Z');
 const H = 60 * 60_000;
 const pane = (id, extra = {}) => ({ id, provider: 'claude', project: 'demo', cwd: '/work/demo', alive: true, turn: 'idle', producing: false, lastActiveAt: NOW - 3 * H, startedAt: NOW - 5 * H, pid: 100, ...extra });
-const quiet = { unsaved: () => [], processes: () => [], followedByBot: () => null };
+const quiet = { unsaved: () => [], processes: () => [], followedByBot: () => null, screenState:()=> 'clear' };
 
 test('idle terminals are offered with name, folder and how long they have been idle', () => {
   const plan = cleanupPlan({ panes: [pane('terminal-a', { profile: { name: 'Quill' } }), pane('terminal-b', { statedTask: 'Render the intro', lastActiveAt: NOW - 2 * 24 * H })], now: NOW, ...quiet });
@@ -33,7 +33,7 @@ test('working, waiting, recently used, unsaved work, running something, bot-foll
     pane('terminal-ok'),
   ];
   const plan = cleanupPlan({
-    panes, now: NOW,
+    panes, now: NOW, screenState:()=> 'clear',
     unsaved: (p) => (p.id === 'terminal-dirty' ? ['src/app.ts', 'README.md'] : []),
     processes: (p) => (p.pid === 200 ? [{ pid: 201, comm: 'vite', cmd: 'node vite' }] : p.pid === 300 ? [{ pid: 301, comm: 'node', cmd: 'node termcontrol/bridge/server.mjs' }] : []),
     followedByBot: (p) => (p.id === 'terminal-followed' ? 'Agent-Manager' : null),
@@ -107,7 +107,7 @@ test('the automatic sweep closes only finished terminals an agent or bot started
   const { autoCloseFinished } = await import('../bridge/idle-cleanup.mjs');
   const closed = [], notes = [];
   const plan = { offer: [{ id: 'terminal-helper', name: 'Run tests', startedBy: 'Quill' }, { id: 'terminal-mine', name: 'My shell', startedBy: null }], keep: [{ id: 'terminal-busy', name: 'Build', startedBy: 'Quill', reason: 'Working right now' }] };
-  const r = await autoCloseFinished({ plan, requestClose: async (id, { by }) => { closed.push([id, by]); return { ok: true }; }, log: (t) => notes.push(t) });
+  const r = await autoCloseFinished({ plan, canClose:async()=>true, requestClose: async (id, { by }) => { closed.push([id, by]); return { ok: true }; }, log: (t) => notes.push(t) });
   assert.deepEqual(closed, [['terminal-helper', 'auto-cleanup']]);
   assert.equal(r.closed, 1);
   assert.match(notes[0], /Closed "Run tests" \(started by Quill\)/);
@@ -125,7 +125,7 @@ test('terminals running with no card on the map are found, with their state, and
     ['terminal-ended', { pid: 5, exited: true }],
   ]);
   const panes = cardlessSessions({ liveById: live, ownedIds: new Set(['terminal-card']), now: NOW,
-    agents: new Map([['terminal-hidden-busy', { provider: 'codex', vendorStatus: { status: 'busy' } }], ['terminal-hidden-helper', { provider: 'claude', sessionId: 's1' }]]),
+    agents: new Map([['terminal-hidden-busy', { provider: 'codex', vendorStatus: { status: 'busy' } }], ['terminal-hidden-helper', { provider: 'claude', sessionId: 's1', vendorStatus:{status:'idle'} }]]),
     lastUsed: (p) => (p.id === 'terminal-hidden-helper' ? NOW - 20 * H : 0),
     commandOf: (pid) => (pid === 2 ? "bash -lc claude 'Read /home/x/.local/share/terminal-workspace/child-tasks/abc.md and carry out'" : 'bash') });
   assert.deepEqual(panes.map((p) => [p.id, p.provider, p.turn, p.cardless]), [
@@ -185,7 +185,7 @@ test('a finished bot terminal is offered after 5 idle minutes, an agent one stil
   assert.equal(BOT_IDLE_MIN_MS, 5 * 60_000);
   const now = 10 * 60 * 60_000;
   const pane = (id) => ({ id, provider: 'claude', turn: 'idle', alive: true, lastWorkedAt: now - 6 * 60_000, lastActiveAt: now - 6 * 60_000 });
-  const p = plan({ panes: [pane('bot1'), pane('agent1'), pane('mine')], now,
+  const p = plan({ panes: [pane('bot1'), pane('agent1'), pane('mine')], now,screenState:()=> 'clear',
     startedBy: (x) => (x.id === 'mine' ? null : x.id === 'bot1' ? 'Agent-Manager' : 'an agent'),
     startedByBot: (x) => x.id === 'bot1' });
   assert.deepEqual(p.offer.map((o) => o.id), ['bot1']);
@@ -195,7 +195,7 @@ test('a finished bot terminal is offered after 5 idle minutes, an agent one stil
 // Noam 2026-10-26: "it still opens terminals willy nilly and doest kill them when not used". A Codex
 // an agent started at 00:08 froze at 11:30 (its conversation stopped) while its screen clock kept
 // ticking every second, so it read as "Working right now" for 9 hours and was never closed.
-test('a frozen agent whose screen keeps ticking is judged by its own conversation, not the screen', async () => {
+test('fresh output prevents destructive frozen-agent cleanup; it does not prove task progress', async () => {
   const { cleanupPlan: plan, cardlessSessions, STUCK_AGENT_MS } = await import('../bridge/idle-cleanup.mjs');
   assert.equal(STUCK_AGENT_MS, 2 * H);
   const ticking = { turn: 'working', producing: true, live: 'producing', lastActiveAt: NOW - 1000, lastWorkedAt: NOW - 1000 };
@@ -206,13 +206,14 @@ test('a frozen agent whose screen keeps ticking is judged by its own conversatio
     pane('terminal-frozen-mine', { ...ticking, recordAt: NOW - 9 * H }),
     pane('terminal-shell-clock', { ...ticking, provider: 'shell', recordAt: NOW - 9 * H }),
   ], now: NOW, ...quiet, startedBy: (x) => (x.id === 'terminal-frozen-mine' ? null : 'an agent') });
-  assert.deepEqual(p.offer.map((o) => [o.id, o.idleText]), [['terminal-frozen', 'idle 9 hours'], ['terminal-frozen-mine', 'idle 9 hours']]);
+  assert.deepEqual(p.offer, []);
   assert.deepEqual(Object.fromEntries(p.keep.map((k) => [k.id, k.reason])), {
+    'terminal-frozen':'Working right now','terminal-frozen-mine':'Working right now',
     'terminal-long-step': 'Working right now', 'terminal-frozen-asks': 'Waiting for you', 'terminal-shell-clock': 'Working right now' });
   // The same Codex with no card: its conversation time travels with the hidden pane.
   const [hidden] = cardlessSessions({ liveById: new Map([['terminal-eec5', { pid: 9, producing: true, quietForMs: 0, busyQuietForMs: 0, initialCwd: '/w/politic' }]]),
     ownedIds: new Set(['terminal-card']), now: NOW, agents: new Map([['terminal-eec5', { provider: 'codex', sessionId: 's9' }]]),
     lastUsed: () => NOW - 9 * H, commandOf: () => "bash -lc codex 'Read /h/.local/share/terminal-workspace/child-tasks/x.md and carry out'" });
   assert.equal(hidden.recordAt, NOW - 9 * H);
-  assert.deepEqual(plan({ panes: [hidden], now: NOW, ...quiet, startedBy: (x) => x.startedBy || null }).offer.map((o) => [o.id, o.startedBy]), [['terminal-eec5', 'an agent']]);
+  assert.deepEqual(plan({ panes: [hidden], now: NOW, ...quiet, startedBy: (x) => x.startedBy || null }).offer, []);
 });
