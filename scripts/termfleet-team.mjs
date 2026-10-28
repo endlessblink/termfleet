@@ -53,6 +53,7 @@ import { appendFileSync, existsSync, writeFileSync as writeFile } from 'node:fs'
 import { randomBytes } from 'node:crypto';
 import os from 'node:os';
 import { resolveBotCaller } from './lib/bot-caller.mjs';
+import { paneSidecarPath } from './lib/agent-status-paths.mjs';
 
 /** Inside a bot (TF-096 part 6): its chat shows what it handed over and to whom. */
 function botFolder(env = process.env, callerOptions = {}) {
@@ -81,7 +82,6 @@ import { confirmReceipt, confirmStarted, trustDecision } from '../termcontrol/br
 import { recordActionEvidence } from '../termcontrol/bridge/events-db.mjs';
 import { recordTeamDelivery } from '../termcontrol/bridge/action-evidence.mjs';
 import { adapterFor } from '../termcontrol/bridge/feed.mjs';
-import { PATHS } from '../termcontrol/bridge/paths.mjs';
 import { mkdirSync } from 'node:fs';
 import { botTerminalLimit, liveBotTerminals, startFolderProblem } from './lib/spawn-guards.mjs';
 
@@ -100,7 +100,7 @@ export function untakenItems({ env = process.env, selfId = null } = {}) {
   if (/^[0-9a-f]{12}$/.test(String(env.TERMFLEET_BOT_ID || ''))) return items.filter((it) => it.source === `bot:${env.TERMFLEET_BOT_ID}` && it.status === 'new');
   if (!selfId) return [];
   let session = '';
-  try { session = String(JSON.parse(readFileSync(join(PATHS.agentStatus, `pane-${selfId}.json`), 'utf8'))?.sessionId || ''); } catch { session = ''; }
+  try { session = String(JSON.parse(readFileSync(paneSidecarPath(selfId), 'utf8'))?.sessionId || ''); } catch { session = ''; }
   return session ? items.filter((it) => it.status === 'new' && String(it.source).includes(session)) : [];
 }
 

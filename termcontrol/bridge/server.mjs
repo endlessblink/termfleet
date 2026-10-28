@@ -89,7 +89,7 @@ import { createTerminalHealth, healthPanes, recoverTerminal, HEALTH_INTERVAL_MS 
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(),
-  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.

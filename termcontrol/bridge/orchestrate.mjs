@@ -9,9 +9,9 @@ import { pendingAsk } from './asks.mjs';
 import { shouldHold, holdMessage, takeHeld, bundle } from './held-messages.mjs';
 import { readFeed } from './feed.mjs';
 import { sendToPane } from './send.mjs';
-import { PATHS } from './paths.mjs';
 import { profiles } from './profiles.mjs';
 import { ownerWordsBlock } from './owner-words.mjs';
+import { paneSidecarPath } from '../../scripts/lib/agent-status-paths.mjs';
 
 /**
  * Teammates (TF-096, following Grok Bot's architecture): any agent sees every
@@ -27,7 +27,7 @@ const dataHome = process.env.XDG_DATA_HOME || path.join(home, '.local', 'share')
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
 
 function sidecarOf(id) {
-  return readJson(path.join(PATHS.agentStatus, `pane-${id}.json`)) || {};
+  return readJson(paneSidecarPath(id)) || {};
 }
 
 /** Which card started which: helper terminals record their parent pane. */
