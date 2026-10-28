@@ -78,6 +78,7 @@ export function createTokenMonitor({ env = process.env, Client = Langfuse, write
     details ||= {};
     const cachedInputTokens = count(details?.cachedInputTokens) && details.cachedInputTokens <= inputTokens ? details.cachedInputTokens : null;
     const payload = { model: model || 'unknown', inputTokens, outputTokens, cost: cost ?? null, cachedInputTokens };
+    if (details.surface === 'bot-side-reply') payload.surface = details.surface;
     if (provider === 'codex') {
       payload.usageScope = CODEX_SCOPE;
       payload.sessionId = session(details.sessionId) ? details.sessionId : null;

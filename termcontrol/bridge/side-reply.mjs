@@ -19,6 +19,7 @@ import { gentleCommand } from '../../scripts/lib/cpu-priority.mjs';
 import { assertProviderLaunch } from '../../scripts/lib/provider-launch-policy.mjs';
 import { isAck } from './requirements.mjs';
 import { followUp } from '../../scripts/termfleet-asks.mjs';
+import { brainTokenUsage, traceTokenUsage } from './token-monitor.mjs';
 
 /** Clear short corrections need exact transport, not a model's paraphrase.
  * This recognizes a routing shape; it never resolves or guesses a folder. */
@@ -156,13 +157,33 @@ export function sideOutput(provider, stdout) {
   } catch { return { error: 'no answer' }; }
 }
 
+/** Observe reported usage even when the side process fails; missing usage stays unknown. */
+export function recordSideUsage(bot, stdout, onUsage, invocationStartedAt) {
+  let sessionId = null;
+  let model = bot.provider === 'codex' ? bot.model || SIDE_MODEL.codex || 'unknown' : SIDE_MODEL.claude;
+  for (const line of String(stdout).split('\n')) {
+    try {
+      const event = JSON.parse(line);
+      if (event.type === 'thread.started' && typeof event.thread_id === 'string') sessionId = event.thread_id || null;
+      if (event.type === 'system' && event.subtype === 'init' && event.model) model = event.model;
+      for (const usage of brainTokenUsage(bot.provider, event, model)) {
+        onUsage(bot.name, bot.provider, usage.model, usage.inputTokens, usage.outputTokens, usage.cost,
+          { ...usage, surface: 'bot-side-reply', ...(bot.provider === 'codex' ? {
+            sessionId, baselineKnownZero: Boolean(sessionId), invocationStartedAt,
+          } : {}) });
+      }
+    } catch { /* malformed output or monitoring failure must not change the answer */ }
+  }
+}
+
 /** Runs one side answer as a child process. Never throws; resolves with { text } or { error }. */
-export function runSide(bot, prompt, { bins = {}, env = process.env, timeoutMs = SIDE_TIMEOUT_MS, cwd = os.tmpdir(), session = null, addDirs = [], images = [] } = {}) {
+export function runSide(bot, prompt, { bins = {}, env = process.env, timeoutMs = SIDE_TIMEOUT_MS, cwd = os.tmpdir(), session = null, addDirs = [], images = [], onUsage = traceTokenUsage } = {}) {
   try { assertProviderLaunch(bot.provider === 'codex' ? 'codex' : 'claude', { surface: 'bot-side-reply' }); }
   catch (error) { return Promise.resolve({ error: String(error.message || error) }); }
   // A forked copy must run in the bot's own folder: that is where its conversation is filed.
   if (session && bot.cwd) cwd = bot.cwd;
   const command = sideCommand(bot, prompt, { bins, cwd, session, addDirs, images });
+  const invocationStartedAt = new Date().toISOString();
   const { bin, args } = env.TERMFLEET_GENTLE_BRAINS === '0' ? command
     : gentleCommand(command.bin, command.args, { unit: `termfleet-side-${String(bot.id).replace(/[^A-Za-z0-9]/g, '')}-${Date.now()}` });
   return new Promise((resolve) => {
@@ -177,6 +198,7 @@ export function runSide(bot, prompt, { bins = {}, env = process.env, timeoutMs =
     child.on('error', (e) => { err = String(e.message || e); });
     child.on('close', (code) => {
       clearTimeout(timer);
+      recordSideUsage(bot, out, onUsage, invocationStartedAt);
       const got = sideOutput(bot.provider, out);
       if (got.text) resolve({ text: got.text });
       else resolve({ error: (got.error !== 'no answer' && got.error) || (err.trim().split('\n').pop() || `exit ${code}`).slice(0, 300) });
