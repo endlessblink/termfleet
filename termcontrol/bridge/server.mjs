@@ -27,7 +27,7 @@ import { botClosePlan, closeBotItems, removeBot } from './bot-close.mjs';
 import { cleanupPlan, closeIdleTerminals, descendantsOf, processTable, cardlessSessions, autoCloseFinished, helperRoles, startedByCommand, rememberStarters } from './idle-cleanup.mjs';
 import { appendAction, paneLogFile } from './action-log.mjs';
 import { parentsByPane, fleetPanes, stateOf } from './orchestrate.mjs';
-import { deliverHeld, sweepStranded, strandedText } from './held-messages.mjs';
+import { deliverHeld, sweepStranded, strandedText, recordHeldQuarantineStatus } from './held-messages.mjs';
 import { agentsByPane } from './inventory.mjs';
 import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
 import { adapterFor } from './feed.mjs';
@@ -447,7 +447,7 @@ setInterval(() => { currentPanes().then(async ({ panes, daemon }) => {
     bots.append(s.sender,{role:'stuck',pane:s.pane,text});bots.wake(s.sender,text);
   } });
   // Messages whose terminal is gone or stuck are never left behind silently: the sender is told in words.
-  if (daemon) sweepStranded({ panes, notify: (s) => {
+  if (daemon) sweepStranded({ panes, status:(event)=>recordHeldQuarantineStatus(event,recordActionEvidence), notify: (s) => {
     const text = strandedText(s);
     console.error('[held]', text);
     if (!bots.read(s.sender)) return;

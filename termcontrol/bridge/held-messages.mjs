@@ -40,13 +40,17 @@ export function holdMessage(paneId, text, { dir = heldDir(), now = Date.now(), t
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const row={id:randomUUID(),at:now,pane:paneId,text,
     ...(target?.id===paneId?{sessionId:target.sessionId||null,provider:target.provider||null}:{})};
-  const file=fileOf(dir,paneId);withQueueLock(file,()=>appendRows(file,[row]));
+  const file=fileOf(dir,paneId);withQueueLock(file,()=>{
+    if(fs.existsSync(file+'.quarantine'))throw Error('Held target is quarantined; explicit recovery is required. New message was not queued.');
+    appendRows(file,[row]);
+  });
   return row;
 }
 
 /** Take every held message for a terminal (the file is moved away first, so a new one is never lost). */
 export function takeHeld(paneId, { dir = heldDir() } = {}) {
   const file = fileOf(dir, paneId);
+  if(fs.existsSync(file+'.quarantine'))return [];
   const taking = `${file}.${process.pid}.${Date.now()}.taking`;
   try { fs.renameSync(file, taking); } catch { return []; }
   let rows = [];
@@ -57,7 +61,10 @@ export function takeHeld(paneId, { dir = heldDir() } = {}) {
 /** Put messages back (a delivery failed). */
 export function putBack(paneId, rows, { dir = heldDir() } = {}) {
   fs.mkdirSync(dir,{recursive:true,mode:0o700});
-  const file=fileOf(dir,paneId);if(rows.length)withQueueLock(file,()=>appendRows(file,rows));
+  const file=fileOf(dir,paneId);if(rows.length)withQueueLock(file,()=>{
+    if(fs.existsSync(file+'.quarantine'))throw Error('Held target is quarantined; explicit recovery is required.');
+    appendRows(file,rows);
+  });
 }
 
 export function heldPanes({ dir = heldDir() } = {}) {
@@ -65,7 +72,7 @@ export function heldPanes({ dir = heldDir() } = {}) {
 }
 
 export function hasHeld(paneId,{dir=heldDir()}={}) {
-  return fs.existsSync(fileOf(dir,paneId))||fs.existsSync(fileOf(dir,paneId)+'.inflight');
+  return fs.existsSync(fileOf(dir,paneId))||fs.existsSync(fileOf(dir,paneId)+'.inflight')||fs.existsSync(fileOf(dir,paneId)+'.quarantine');
 }
 
 function sameTarget(pane,rows) {
@@ -102,6 +109,7 @@ export async function deliverHeldTo(pane,{send,dir=heldDir(),resolveTarget=async
   try{dispatchFD=fs.openSync(dispatch,'wx',0o600);fs.fsyncSync(dispatchFD);syncDir(dir);}
   catch{return {held:true,notSent:true,blocked:true,error:'Held dispatch is reserved or storage unavailable; no automatic recovery.'};}
   try {
+  if(fs.existsSync(file+'.quarantine'))return {held:true,notSent:true,blocked:true,error:'Held target is quarantined; explicit recovery required.'};
   let rows=readRows(fs.existsSync(claim)?claim:file);
   let fresh;try{fresh=await resolveTarget(pane.id);}catch{fresh=null;}
   if(!sameTarget(fresh,rows)) {
@@ -200,6 +208,7 @@ export async function deliverHeld({ panes, send, dir = heldDir(), log = () => {}
 export const STRAND_GRACE_MS = 15_000;      // a terminal gone this long: its held messages cannot go in
 export const STRAND_STUCK_MS = 5 * 60_000;  // a terminal waiting on a person this long: tell the sender once
 export const STRAND_STALE_MS = 30 * 60_000; // legacy export; age never authorizes expiry or deletion
+export const QUARANTINE_AFTER_MS = 60 * 60_000; // old AND authoritatively absent; never expiry
 
 const told = new Set();
 
@@ -216,25 +225,110 @@ function readRows(file) {
   }catch{return [];}
 }
 
+function writeExclusive(file,data) {
+  const fd=fs.openSync(file,'wx',0o600);
+  try{fs.writeFileSync(fd,JSON.stringify(data)+'\n');fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+  syncDir(path.dirname(file));
+}
+
+// Caller has an authoritative dead-pane inventory. Cooperates with enqueue and dispatch.
+// Reservation is durable BEFORE any move: interrupted quarantine always blocks replay.
+function quarantineBatch(file,now) {
+  const dir=path.dirname(file),marker=file+'.quarantine';
+  if(fs.existsSync(marker))return marker;
+  let guard;try{guard=fs.openSync(file+'.dispatch','wx',0o600);fs.fsyncSync(guard);syncDir(dir);}catch{return null;}
+  try{return withQueueLock(file,()=>{
+    if(fs.existsSync(marker))return marker;
+    const entries=[];let rows=[];
+    for(const [source,saved] of [[file,'queued.jsonl'],[file+'.inflight','inflight.jsonl'],[file+'.inflight.retryable','retryable.json']]){
+      if(!fs.existsSync(source))continue;
+      const bytes=fs.readFileSync(source);
+      if(saved!=='retryable.json'){
+        const parsed=readRows(source);if(!parsed.length)throw Error('Unreadable held rows retained in place.');rows.push(...parsed);
+      }
+      entries.push({source:path.basename(source),saved,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
+    }
+    if(!rows.length||now-Math.max(...rows.map(r=>Number(r.at)||now))<QUARANTINE_AFTER_MS)return null;
+    const id=randomUUID(),parent=path.join(dir,'quarantine'),root=path.join(parent,id);
+    fs.mkdirSync(parent,{recursive:true,mode:0o700});syncDir(dir);
+    fs.mkdirSync(root,{mode:0o700});syncDir(parent);
+    const data={version:1,id,pane:rows[0].pane,quarantinedAt:now,reason:'old-dead-target',
+      receiptState:entries.some(e=>e.saved==='inflight.jsonl')?'unconfirmed':'not-attempted',
+      targets:rows.map(r=>({rowId:r.id||null,at:r.at,pane:r.pane,provider:r.provider||null,sessionId:r.sessionId||null,
+        sender:senderOf(r.text),delivery:/\[delivery (D-[0-9a-f]{8})\]\s*$/.exec(r.text)?.[1]||null})),
+      files:entries,recovery:'Explicit maintenance only: quiesce senders, verify hashes and exact target/receipt. Never automatic replay, expiry or deletion.'};
+    writeExclusive(path.join(root,'manifest.json'),data);
+    writeExclusive(marker,{version:1,id,pane:data.pane});
+    for(const entry of entries)fs.renameSync(path.join(dir,entry.source),path.join(root,entry.saved));
+    syncDir(root);syncDir(dir);return marker;
+  });}catch{return fs.existsSync(marker)?marker:null;}
+  finally{fs.closeSync(guard);fs.unlinkSync(file+'.dispatch');syncDir(dir);}
+}
+
+function reportQuarantine(marker,status,out) {
+  if(!status)return;
+  try{
+    const reservation=JSON.parse(fs.readFileSync(marker,'utf8'));
+    if(!/^[0-9a-f-]{36}$/.test(reservation.id))return;
+    const root=path.join(path.dirname(marker),'quarantine',reservation.id);
+    const data=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));
+    // Interrupted moves preserve bytes at their original location; status never calls it received.
+    for(const entry of data.files){
+      if(!['queued.jsonl','inflight.jsonl','retryable.json'].includes(entry.saved)||path.basename(entry.source)!==entry.source)return;
+      const archived=path.join(root,entry.saved),original=path.join(path.dirname(marker),entry.source);
+      const bytes=fs.readFileSync(fs.existsSync(archived)?archived:original);
+      if(createHash('sha256').update(bytes).digest('hex')!==entry.sha256)return;
+    }
+    for(const sender of new Set(data.targets.map(r=>r.sender).filter(Boolean))){
+      const ack=path.join(root,'status-'+sender+'.json');
+      const id='held-quarantine:'+data.id+':'+sender;
+      try{const saved=JSON.parse(fs.readFileSync(ack,'utf8'));if(saved.id===id&&saved.recorded===true)continue;}catch{}
+      const event={id,sender,pane:data.pane,receiptState:data.receiptState,
+        quarantineId:data.id,targets:data.targets.filter(r=>r.sender===sender)};
+      try{
+        status(event);
+        const temp=ack+'.'+randomUUID();writeExclusive(temp,{id:event.id,recorded:true});
+        fs.renameSync(temp,ack);syncDir(root);
+        out.push({pane:data.pane,sender,reason:'quarantined',id:event.id});
+      }catch{/* Stable event ID makes storage retries idempotent. */}
+    }
+  }catch{/* Unknown manifest/bytes remain reserved; explicit maintenance only. */}
+}
+
+/** Internal delivery evidence only; no message, bot wake, task completion or receipt claim. */
+export function recordHeldQuarantineStatus(event,record) {
+  record({bot_id:event.sender,source_id:event.id,action_id:event.id,kind:'delivery',state:'interrupted',
+    terminal_id:event.pane,session_id:event.targets.every(t=>t.sessionId===event.targets[0]?.sessionId)?event.targets[0]?.sessionId:null,
+    result_code:event.receiptState==='unconfirmed'?'held_quarantined_unconfirmed':'held_quarantined_not_attempted',
+    source_ref:'held-quarantine/'+event.quarantineId});
+}
+
 /**
  * One pass over the hold queue. Dead or old rows remain recoverable in place and each sender is told.
  * No automatic expiry, replay or destructive archival. A terminal waiting on a person for a long time:
  * the sender is told once and the messages stay held.
  * `notify({ sender, pane, rows, reason })` does the telling. Returns what it did, for tests and the log.
  */
-export function sweepStranded({ panes, notify, dir = heldDir(), now = Date.now() }) {
+export function sweepStranded({ panes, notify=()=>{}, status, dir = heldDir(), now = Date.now() }) {
   const out = [];
   let names = [];
   try { names = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')||f.endsWith('.jsonl.inflight')); } catch { return out; }
+  for(const name of fs.readdirSync(dir).filter(n=>n.endsWith('.jsonl.quarantine')))reportQuarantine(path.join(dir,name),status,out);
   for (const name of names) {
     const file = path.join(dir, name);
+    const queue=file.endsWith('.inflight')?file.slice(0,-'.inflight'.length):file;
+    if(fs.existsSync(queue+'.quarantine'))continue;
     const rows = readRows(file);
     if (!rows.length) continue;
     const paneId = rows[0].pane;
     const pane = panes.find((p) => p.id === paneId);
     const newest = Math.max(...rows.map((r) => Number(r.at) || 0));
     const oldest = Math.min(...rows.map((r) => Number(r.at) || now));
-    const gone = !pane || !pane.alive;
+    const gone = !pane || (!pane.alive&&!pane.sleeping);
+    if(gone&&now-newest>=QUARANTINE_AFTER_MS){
+      const marker=quarantineBatch(queue,now);if(marker)reportQuarantine(marker,status,out);
+      continue;
+    }
     const waiting = !gone && (pane.turn === 'waiting' || pane.attention) && now - oldest >= STRAND_STUCK_MS;
     const reason=gone&&now-newest>=STRAND_GRACE_MS
       ?(name.endsWith('.inflight')?'unconfirmed':'closed')

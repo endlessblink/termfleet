@@ -121,11 +121,14 @@ test('putBack preserves target binding and row identity',()=>{
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
-test('dead old rows stay recoverable with a sender report, never silently expire',()=>{
+test('dead old rows stay recoverable with internal sender status, never silently expire',()=>{
  const dir=fixture();try{
   hold(dir,'[Message from the bot "fixture" (bot:0123456789ab), sent through TermFleet.] old work');
-  const reports=[];sweepStranded({panes:[],dir,now:1000+4*60*60*1000,notify:r=>reports.push(r)});
-  assert.equal(reports.length,1);assert.equal(stored(dir).length,1);
+  const reports=[];sweepStranded({panes:[],dir,now:1000+4*60*60*1000,status:r=>reports.push(r),notify:()=>assert.fail('no new bot message')});
+  assert.equal(reports.length,1);
+  const marker=JSON.parse(fs.readFileSync(path.join(dir,pane.id+'.jsonl.quarantine'),'utf8'));
+  const rows=fs.readFileSync(path.join(dir,'quarantine',marker.id,'queued.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(rows.length,1);assert(rows[0].text.endsWith('old work'));
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 

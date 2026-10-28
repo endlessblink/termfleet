@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T09:29:25.457Z",
+  "updatedAt": "2026-10-28T09:40:21.833Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15287,21 +15287,21 @@
       "matrixRefs": [],
       "symptom": "Held rows disappear or can reach a different conversation and sleeping terminal",
       "rootCause": "Held rows were destructively removed before dispatch, had no exact target binding and inferred receipt from transport success; sender reporting could suppress failed recipients.",
-      "guard": "node --test termcontrol/test/held-integrity.test.mjs",
+      "guard": "node --test termcontrol/test/held-integrity.test.mjs termcontrol/test/held-quarantine.test.mjs",
       "evidence": [
-        {
-          "kind": "focused-test",
-          "at": "2026-10-28T09:27:30.020Z",
-          "note": "Actual /tmp/termfleet-f16-combined.tap 55/55 PASS. Initial baseline red7/7; review isolated sender/uncertainty failures and nested-marker red verified. Synthetic process death/restart and exact structured input receipts; no live held replay."
-        },
         {
           "kind": "source",
           "at": "2026-10-28T09:29:25.457Z",
           "note": "b8ce057 loaded PID2163220 at09:28:41UTC,18module5c02b70d matches authenticated GET200/unauth401;2terminal10bot unchanged; real held queues0. Actual /tmp/termfleet-f16-activation.log and loaded-readback.json. Natural owner receipt not claimed."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T09:40:21.832Z",
+          "note": "Retention extension /tmp/termfleet-f16-quarantine-red.tap 1pass3fail before production; /tmp/termfleet-f16-quarantine-combined.tap63/63 PASS. Exact bytes, age/dead/sleep, returned target, process death and SQL-before-ack restart; no real held trial. Prior live5c02b70d remains historical until activation."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Observe natural exact-session receipt and owner-facing retained/unconfirmed reports without forced replay; design recoverable quarantine and explicit maintenance for legacy/unbound or crash-reserved batches. Preserve six pending quota/cloud gates.",
+      "nextAction": "Freeze and activate reviewed quarantine only over an empty real held queue; verify loaded source and unchanged conversations. Observe natural internal delivery status/owner proof; quarantined targets require explicit authorized maintenance, never replay or expiry.",
       "history": [
         {
           "at": "2026-10-28T09:16:01.724Z",
@@ -15354,6 +15354,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "b8ce057 loaded PID2163220 at09:28:41UTC,18module5c02b70d matches authenticated GET200/unauth401;2terminal10bot unchanged; real held queues0. Actual /tmp/termfleet-f16-activation.log and loaded-readback.json. Natural owner receipt not claimed."
+        },
+        {
+          "at": "2026-10-28T09:40:21.833Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Retention extension /tmp/termfleet-f16-quarantine-red.tap 1pass3fail before production; /tmp/termfleet-f16-quarantine-combined.tap63/63 PASS. Exact bytes, age/dead/sleep, returned target, process death and SQL-before-ack restart; no real held trial. Prior live5c02b70d remains historical until activation."
         }
       ]
     }
