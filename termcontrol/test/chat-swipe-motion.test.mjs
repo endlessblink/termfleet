@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -11,6 +12,7 @@ async function fixture(browser,{rtl=false,width=390,light=false,reduced=false}={
  page.on('pageerror',e=>state.errors.push(e.message));
  await page.addInitScript(light=>localStorage.setItem('termcontrol-theme',light?'light':'dark'),light);
  await page.route('**/*',async route=>{
+  if(await serveAppModule(route))return;
   const url=new URL(route.request().url());
   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
   if(url.pathname==='/api/panes'){state.reads++;if(state.hold)await state.hold;return route.fulfill({json:{daemon:true,panes:state.panes,view:'manual'}});}

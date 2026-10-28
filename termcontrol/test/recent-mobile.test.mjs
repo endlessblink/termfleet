@@ -1,10 +1,12 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import {chromium} from 'playwright';
 const html=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
 test('Last used follows explicit A B A visits, never background output, and survives another phone',async()=>{
  const browser=await chromium.launch();let rows=['A','B','C'].map(id=>({id,project:'project',provider:'claude',turn:'idle',task:'Read /synthetic/HANDOFF_REVIEW.md.',updatedAt:Date.now(),lastActiveAt:Date.now()})),history={},counter=1000,visits=0;
  try{for(let phone=0;phone<2;phone++){
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();await page.addInitScript(()=>localStorage.setItem('termcontrol-sort','recent'));
-  await page.route('http://recent.synthetic/**',async route=>{const url=new URL(route.request().url());if(url.pathname==='/')return route.fulfill({body:html,contentType:'text/html'});let data={};
+  await page.route('http://recent.synthetic/**',async route=>{
+  if(await serveAppModule(route))return;const url=new URL(route.request().url());if(url.pathname==='/')return route.fulfill({body:html,contentType:'text/html'});let data={};
    if(url.pathname==='/api/panes'){const panes=rows.map(p=>({...p,lastUsedAt:history[p.id] || null}));data={panes,groups:[{project:'project',panes}],daemon:true};}
    if(url.pathname==='/api/visit'){visits++;const id=route.request().postDataJSON().pane;history[id]=++counter;data={ok:true,lastUsedAt:counter};}
    if(url.pathname==='/api/feed')data={pane:rows.find(p=>p.id===url.searchParams.get('pane')),events:[{kind:'assistant',text:'הנה תשובה אמיתית עם קוד:\n```xml\n<system-reminder>example</system-reminder>\n```'},{kind:'notice',text:'Technical context',technical:true,details:'Base directory for this skill: /synthetic/.agents/skills/demo'}],reachedStart:true};return route.fulfill({json:data});

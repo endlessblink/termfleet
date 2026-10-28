@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import { Bots } from '../bridge/bots.mjs';
 import { beginPromptObservation, isCurrentPromptObservation, checkBotEvents, helperState, retireTerminalPrompt, screenStillAsks, REMIND_AFTER_MS } from '../bridge/bot-events.mjs';
 import { promptObservation } from '../bridge/prompt-lifecycle.mjs';
+import { matchesAsk } from '../bridge/asks.mjs';
 
 const ask = { id: 'quota-1', kind: 'permission', title: 'What do you want to do?', options: [{ key: '1', label: 'Stop and wait' }, { key: '2', label: 'Switch to usage credits' }] };
 function fixture(t) {
@@ -114,15 +115,16 @@ test('a stale answer retires its exact ID durably and cannot retire a replacemen
 // daemon/provider transport. These guards must precede any key injection.
 const server = fs.readFileSync(new URL('../bridge/server.mjs', import.meta.url), 'utf8');
 const start = server.indexOf('const current = await currentPanes({ fresh: true });', server.indexOf('const existing = choiceReceipts.get(pane.id, payload.askId)'));
-const end = server.indexOf('// A typed answer whose question is gone', start);
+const end = server.indexOf('const adapter = adapterFor(fresh);', start);
 assert.ok(start >= 0 && end > start, 'the send route has a fresh authority check');
-async function routeAuthority({ bots, pane, daemon = true, currentAsk = ask, screen = 'Live synthetic menu', cachedScreen = null, choice = '1' }) {
+async function routeAuthority({ bots, pane, daemon = true, currentAsk = ask, screen = 'Live synthetic menu', screenAsk = null, cachedScreen = null, choice = '1' }) {
   return vm.runInNewContext(`(async () => { ${server.slice(start, end)} return {verified:true}; })()`, {
     bots, payload: { pane: pane.id, askId: ask.id, choice },
     currentPanes: async () => ({ daemon, panes: [pane] }),
     visibleScreenOf: () => cachedScreen, liveScreenOf: async () => screen,
-    pendingAsk: () => currentAsk, screenPermissionAsk: () => null,
-    retireTerminalPrompt, res: {}, json: (_res, status, body) => ({ status, ...body }),
+    pendingAsk: () => currentAsk,
+    screenPermissionAsk: (_pane, observed) => observed === screen && String(observed || '').trim() ? screenAsk : null,
+    matchesAsk, retireTerminalPrompt, res: {}, json: (_res, status, body) => ({ status, ...body }),
   });
 }
 
@@ -148,10 +150,35 @@ test('matching cached old prompt cannot authorize input when the live screen is 
 
 test('send route changed prompt retires exactly the old ID while invalid choice on same ID preserves it', async t => {
   const f = fixture(t); await f.look();
-  await routeAuthority({ bots: f.bots, pane: f.pane, choice: 'not-an-option' });
+  const screen = 'What do you want to do?\n1. Stop and wait\n2. Switch to usage credits\nEsc to cancel';
+  const invalidChoice = await routeAuthority({ bots: f.bots, pane: f.pane, screen, screenAsk: ask, choice: 'not-an-option' });
+  assert.equal(invalidChoice.status, 409);
+  assert.equal(invalidChoice.stale, true);
+  assert.equal(invalidChoice.current.id, ask.id);
+  assert.equal(invalidChoice.verified, undefined, 'an invalid choice cannot reach key injection');
   assert.equal(f.cards()[0].settled, undefined, 'invalid choice is not proof that a live prompt ended');
-  await routeAuthority({ bots: f.bots, pane: f.pane, currentAsk: { ...ask, id: 'replacement' } });
+  const replacement = { ...ask, id: 'replacement', title: 'Allow a different command?' };
+  const replacementScreen = 'Allow a different command?\n1. Stop and wait\n2. Switch to usage credits\nEsc to cancel';
+  const changedPrompt = await routeAuthority({ bots: f.bots, pane: f.pane, currentAsk: replacement, screen: replacementScreen, screenAsk: replacement });
+  assert.equal(changedPrompt.status, 409);
+  assert.equal(changedPrompt.stale, true);
+  assert.equal(changedPrompt.current.id, replacement.id);
+  assert.equal(changedPrompt.verified, undefined, 'an old question cannot reach key injection');
   assert.equal(f.cards()[0].settled, true);
+});
+
+test('send route refuses permission absent from or different on the live screen without retiring history', async t => {
+  const f = fixture(t); await f.look();
+  for (const observation of [
+    { screen: 'Finished checking. Ready for the next message.' },
+    { screen: 'A different permission is open.', screenAsk: { ...ask, id: 'different-screen-permission' } },
+  ]) {
+    const result = await routeAuthority({ bots: f.bots, pane: f.pane, ...observation });
+    assert.equal(result.status, 409);
+    assert.equal(result.notSent, true);
+    assert.equal(result.verified, undefined, 'an unverified permission cannot pass the authority gate');
+    assert.equal(f.cards()[0].settled, undefined, 'a screen mismatch does not authorize retiring retained history');
+  }
 });
 
 const refreshStart = server.indexOf('view.messages = await Promise.all(view.messages.map(async (card) => {', server.indexOf('// A chat refresh checks its open cards'));

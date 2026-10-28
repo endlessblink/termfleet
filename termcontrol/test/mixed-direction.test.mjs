@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -41,7 +42,8 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['deskto
     try {
       const page = await browser.newPage({ viewport });
       await page.addInitScript(() => { try { sessionStorage.setItem('termcontrol-asks-open', 'open'); } catch {} });
-      await page.route('**/*', (route) => {
+      await page.route('**/*', async (route) => {
+  if(await serveAppModule(route))return;
         const u = new URL(route.request().url());
         if (u.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
         if (u.pathname === '/api/panes') return route.fulfill({ json: { panes: [pane], groups: [{ id: 'demo', project: 'demo', panes: [pane] }], daemon: true } });

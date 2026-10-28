@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 // Noam 2026-10-22: "אם אני חוזר אחורה מסוכן בפלאפון זה צריך לחזור לאזור שבו היה הסוכן במסך".
 // Terminal chats: Back puts the list where the tapped card was, or on the agent a swipe ended on.
 import test from 'node:test';
@@ -14,6 +15,7 @@ async function fixture(browser){
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>localStorage.setItem('termcontrol-fleet-tab','terminals'));
  await page.route('**/*',async route=>{
+  if(await serveAppModule(route))return;
   const url=new URL(route.request().url());
   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
   if(url.pathname==='/api/panes')return route.fulfill({json:{daemon:true,panes:ids.map(pane),view:'manual'}});

@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -25,6 +26,7 @@ test('coherent agent navigation, inline requests and recorded day in Hebrew and 
    const context=await browser.newContext({viewport:{width,height:900},locale:width===1280?'en-GB':'he-IL',isMobile:width<600,hasTouch:width<600});const page=await context.newPage();let supported=true,sends=0,feedReads=0,feedEvents=events;
    await page.addInitScript(now=>{Date.now=()=>now;window.__copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copied=text;}}});},fixedNow);
    await page.route('http://termcontrol.design/**',async route=>{
+  if(await serveAppModule(route))return;
     const url=new URL(route.request().url());let data;
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:html.replace('<body>',`<body><div style="flex:none;padding:4px;text-align:center;font:12px/1.4 system-ui;background:#232320;color:#9a9993">${width===1280?'Demonstration · synthetic data':'הדגמה · נתונים סינתטיים'}</div>`)});
     if(url.pathname==='/api/panes')data={panes,groups:[{project:'freelance-desk',panes:[pane,other]},{project:'studio-notes',panes:[notes]}],daemon:true,view:'projects'};

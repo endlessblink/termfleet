@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 // Pictures, GIFs and videos inside terminal-agent chats too, and a markdown image line becomes
 // the picture (Noam 2026-10-24: "show the animation directly in termcontrol / termfleet chat";
 // the politic bot's "![Pillow](https://…/anim-sleep-2x.gif)" showed as raw text above the GIF).
@@ -31,6 +32,7 @@ test('a terminal agent chat shows its pictures, GIFs and videos inside the messa
       const errors = []; page.on('pageerror', (e) => errors.push(e.message));
       const pane = { id: 'T1', project: 'politic-fighter', provider: 'codex', alive: true, turn: 'idle', lastActiveAt: Date.now() };
       await page.route('http://media.synthetic/**', async (route) => {
+  if(await serveAppModule(route))return;
         const url = new URL(route.request().url());
         if (url.pathname === '/') return route.fulfill({ body: html, contentType: 'text/html' });
         if (url.pathname.startsWith('/media/')) return route.fulfill({ body: png, contentType: 'image/png' });

@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -21,6 +22,7 @@ test('mobile fixture: native day, readable conversation, copy and safe choices',
    const page = await context.newPage(); let sends=0; let question=ask; let failure=false; let deskResponse=desk;
    await page.addInitScript(() => { window.__copied=''; Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copied=text;}}}); });
    await page.route('http://termcontrol.test/**', async route => {
+  if(await serveAppModule(route))return;
     const u = new URL(route.request().url()); let data;
     if (u.pathname==='/') return route.fulfill({contentType:'text/html',body:app});
     if(u.pathname==='/api/feed') data={pane,desk:true,ask:question,events:[{kind:'user',text:userText,at:'2026-10-04T09:00:00Z'},{kind:'assistant',text:'הצעה להמשך\n\n'+table,at:'2026-10-04T09:01:00Z'}],reachedStart:true};
@@ -96,6 +98,7 @@ test('custom answer editor preserves bilingual drafts, local back and real ackno
   const q={...ask,sourceId:'two-question-call',questionIndex:0,questionCount:2};
   let sends=0,fail=true,receipt=null,results=[],question=q,received=null;
   await page.route('http://termcontrol.test/**',async route=>{
+  if(await serveAppModule(route))return;
    const u=new URL(route.request().url());let data;
    if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:app});
    if(u.pathname==='/api/feed')data={pane,desk:true,ask:question,answerReceipt:receipt,questionResults:results,events:[{kind:'assistant',text:'נבחן את ההצעה של Studio North ב־09:30.\n\n`src/brief.ts`\nhttps://example.test/brief',at:'2026-10-04T09:00:00Z'}],reachedStart:true};

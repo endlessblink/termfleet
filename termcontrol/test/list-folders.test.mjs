@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 // Sidebar folders, the Archive and New messages on top (Noam 2026-10-24: R-7369, R-7385, R-7386,
 // R-7387, R-7399). The store is the bridge's own; the page is the real app with a faked bridge.
 import test from 'node:test';
@@ -71,6 +72,7 @@ async function openApp(browser, { phone = false, store, owner = 'noam', tab = 't
   await page.addInitScript((tab) => { localStorage.setItem('termcontrol-fleet-tab', tab); localStorage.setItem('termcontrol-window', 'all'); }, tab);
   const panes = fixture();
   await page.route('http://folders.synthetic/**', async (route) => {
+  if(await serveAppModule(route))return;
     const url = new URL(route.request().url());
     if (url.pathname === '/') return route.fulfill({ body: html, contentType: 'text/html' });
     let data = {};

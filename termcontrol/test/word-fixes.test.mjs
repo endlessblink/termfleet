@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -89,6 +90,7 @@ test('after dictating, select the wrong word, write the right one, and it is fix
       const pane = { id: 'p1', project: 'demo', provider: 'claude', cwd: '/x', task: 'Demo', turn: 'idle', updatedAt: Date.now() };
       let fixes = [{ heard: 'codecs', correct: 'Codex' }], posted = null;
       await page.route('https://termcontrol.design/**', async (route) => {
+  if(await serveAppModule(route))return;
         const req = route.request(), url = new URL(req.url());
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
         if (url.pathname === '/api/panes') return route.fulfill({ json: { panes: [pane], groups: [{ project: 'demo', panes: [pane] }], daemon: true, view: 'projects' } });

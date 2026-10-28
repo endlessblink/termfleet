@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 // Noam 2026-10-19: "still cant ctrl+v" after a fix. A page held open in the desktop app or on
 // a phone never reloaded by itself, so fixes never reached it. It now asks the bridge which
 // version is current and reloads when idle (or offers a Reload button when he is typing).
@@ -13,6 +14,7 @@ async function page(browser, versions) {
   const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const state = { loads: 0, checks: 0 };
   await p.route('**/*', async (route) => {
+  if(await serveAppModule(route))return;
     const url = new URL(route.request().url());
     if (url.pathname === '/') { state.loads++; return route.fulfill({ contentType: 'text/html', body: html }); }
     if (url.pathname === '/api/app-version') return route.fulfill({ json: { v: versions[Math.min(state.checks++, versions.length - 1)] } });

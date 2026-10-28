@@ -50,9 +50,14 @@ change.
 The broader Node run produced 1,089 passes, 79 failures and four skips. Its
 isolated harness overrode per-test request directories and treated this temporary
 checkout as disposable scratch; two failures pass after correcting those
-conditions. Other browser fixtures return JSON for a newly imported JavaScript
-asset, preventing their app from loading. These results require fixture and
-contract reconciliation, not an unqualified product-failure or success claim.
+conditions. Browser fixtures returned JSON for a newly imported JavaScript
+asset, preventing their app from loading. A shared helper now serves only that
+exact real asset with its JavaScript content type; API fixtures and behavioral
+assertions remain intact. The affected 57-test coverage has 54 unique passes,
+including three screenshot cases repeated with corrected isolated output mounts.
+Three failures remain: a dictation menu interaction and two touch-target size
+contracts. These results require further reconciliation, not an unqualified
+product-failure or success claim.
 
 This PR is a draft, not a release. It does not establish installed-runtime,
 phone-behavior or measured-token-savings acceptance. Merge remains pending

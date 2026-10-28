@@ -190,9 +190,12 @@ test('once the prompt was answered (the terminal moved on), the same question as
   const { bots, bot } = setup();
   const ask = { id: 'a', kind: 'question', title: 'Push it?', options: [{ key: '1', label: 'Yes' }, { key: '2', label: 'No' }] };
   const seen = new Map();
-  const at = (turn, id = 'a') => checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn }], readAsk: async () => ({ ...ask, id }) });
+  const at = (turn, id = 'a', screen = '') => checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn }], readAsk: async () => ({ ...ask, id }), readScreen: async () => screen });
   await at('waiting');
-  await at('working'); await at('working');                     // answered: the terminal worked on
+  // A readable screen without a menu proves the terminal moved on; an empty
+  // screen would only make the prompt unknown, not prove it was answered.
+  await at('working', 'a', 'Finished checking. Ready for the next message.');
+  await at('working', 'a', 'Finished checking. Ready for the next message.');
   await at('waiting', 'b');
   assert.equal(bots.messages(bot.id).filter((m) => m.role === 'terminal-ask').length, 2);
 });

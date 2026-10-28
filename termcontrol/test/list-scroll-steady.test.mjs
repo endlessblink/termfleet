@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 // Noam 2026-10-24: "התצוגה קופצת למעלה, אפילו שהתצוגה היא על חלק תחתון יותר". On the phone's Bots
 // list, a refresh whose bots request failed (a slow bridge) drew the list empty for a moment, the
 // scroll snapped to the top and stayed there (reproduced: 900 -> 0, 30 rows -> 0). The list now
@@ -17,6 +18,7 @@ test('the Bots list on a phone stays where it was scrolled when a refresh cannot
     const page = await ctx.newPage();
     let botsCalls = 0, failBots = false;
     await page.route('http://scroll.synthetic/**', async (route) => {
+  if(await serveAppModule(route))return;
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ body: html, contentType: 'text/html' });
       if (url.pathname === '/api/bots') { botsCalls++; return failBots ? route.fulfill({ status: 503, json: { error: 'busy' } }) : route.fulfill({ json: { bots } }); }
