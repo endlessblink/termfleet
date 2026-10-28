@@ -369,3 +369,51 @@ exception, terminal experiment or restart has been performed. Under the current
 constraints the exact external gate is delivery of the legacy checkpoint plus
 consumer-fence capability and reconciliation of its unknowns, rather than
 another ordinary restart approval.
+
+#### UI-only older-question alternative (TF-141, bounded readback)
+
+At2026-10-28T12:11:24Z the existing authenticated GET surface still reported
+PID2252271/digest8d3ea43cbb73. `/api/bot/history` and `/api/bot/messages` both
+returned404 `not found`; there is no corresponding route in that exact loaded
+server. `/api/bot` ignores `before`, `offset` and `limit`: it calls `bots.view(id)`
+without a history parameter. That method retains300 newest rows plus older
+unsettled terminal-ask rows, but not older bot question cards. Its exact extracted
+method, run only on disposable synthetic messages, omits an original question
+that demonstrably remains stored and returns the old terminal prompt.
+
+`/api/search` is not a substitute: the route accepts only a200-character query;
+search is capped at4 hits per bot/12 overall and returns timestamp, speaker and a
+400-character text snippet. It has no original message ID, question/options,
+answer link, withdrawal state, stable cursor or exhaustive enumeration. Structured
+questions without searchable text need not appear at all. `/api/requirements`
+enumerates owner requests, not bot question cards. Activity/inbox/group routes
+likewise do not expose complete bot question history. `/api/local-file` is a
+PC-only attachment import route, not phone-accessible chat pagination; no raw
+transcript download, local-recovery impersonation or alternate file distribution
+was attempted.
+
+Read-only persisted metadata projection found35 older structured question rows
+in the owning bot's4025 retained rows:26 have explicit answer links and9 do not.
+This does **not** label those9 as open: full-history withdrawal/repetition checks
+are still necessary. No original was found missing and then reconstructed; no
+claim is made that deleted originals can be recovered. Metadata output contains
+counts/identities only, not question words or private transcript content.
+
+Evidence: `/tmp/termfleet-history-route-readback.json` (headless existing-session
+GETs, root replaced with an inert document, all mutation/unrelated requests
+blocked) and `/tmp/termfleet-history-capability.json` (exact old-method synthetic
+diagnosis plus persisted metadata projection). These establish the route limit,
+not completed owner-facing navigation or human-owner authentication.
+
+The smallest delivery gate is **loading the already-saved TF141 `Bots.view`
+change**: classify full retained history before truncating, prepend only original
+still-open question rows, preserve their IDs/options and original answer routes.
+It needs no new endpoint, service, task storage or scheduling change. The static
+UI already derives its list and exact-message jump from those rows; it cannot
+discover originals the loaded endpoint omits. Backend modules are imported once,
+so refreshing already-served HTML cannot load that method. Under the present
+no-restart/no-injection boundary, no supported UI-only route can finish the
+all-retained-questions requirement. After the separately established bridge
+cutover capability is available, verify the loaded retention method and exact
+original-message navigation headlessly with all answers/mutations blocked before
+marking R19768 ready. The broader audit is not an additional feature gate.

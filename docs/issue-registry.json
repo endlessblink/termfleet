@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T12:07:21.151Z",
+  "updatedAt": "2026-10-28T12:12:45.086Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15449,14 +15449,14 @@
       "guard": "node --test termcontrol/test/bot-unanswered-navigation.test.mjs",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-10-28T10:15:26.686Z",
-          "note": "Actual /tmp/termfleet-unanswered-final.tap3/3. Synthetic phone/desktop; failures before fix in history-red, delete-red and race-red. Visual child reviewed four captures. Headless real Agent-Manager chat GET has zero open cards; no natural jump proof. Backend retention source not loaded, F15 activation gate remains."
-        },
-        {
           "kind": "focused-test",
           "at": "2026-10-28T10:18:53.906Z",
           "note": "Actual /tmp/termfleet-unanswered-final-focused.tap10/10 and served-final.tap5/5 pass. History/operator barriers, repeated questions and allocation regression; phone/desktop exact jumps, drafts, deleted answers, send failures, refresh/switch and delayed-response refusal. Natural headless existing-bot jump readback passed without answers; backend not loaded."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T12:12:45.086Z",
+          "note": "Bounded UI-only alternative: actual authenticated GET12:11:24Z PID2252271/8d3ea43c; history/messages routes404. Exact legacy view ignores pagination and omits retained old bot questions, synthetic-only diagnostic confirms. Search capped snippets omit IDs/authority and cannot enumerate. Metadata owning bot35 older question rows26 explicit answers9 without, not9 proven open. /tmp/termfleet-history-route-readback.json and /tmp/termfleet-history-capability.json. Narrow delivery gate is loading saved Bots.view retention method, no new service/answer authority. UI cannot retrieve omitted originals; no restart or raw transcript download."
         }
       ],
       "owner": "termfleet",
@@ -15513,6 +15513,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Actual /tmp/termfleet-unanswered-final-focused.tap10/10 and served-final.tap5/5 pass. History/operator barriers, repeated questions and allocation regression; phone/desktop exact jumps, drafts, deleted answers, send failures, refresh/switch and delayed-response refusal. Natural headless existing-bot jump readback passed without answers; backend not loaded."
+        },
+        {
+          "at": "2026-10-28T12:12:45.086Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Bounded UI-only alternative: actual authenticated GET12:11:24Z PID2252271/8d3ea43c; history/messages routes404. Exact legacy view ignores pagination and omits retained old bot questions, synthetic-only diagnostic confirms. Search capped snippets omit IDs/authority and cannot enumerate. Metadata owning bot35 older question rows26 explicit answers9 without, not9 proven open. /tmp/termfleet-history-route-readback.json and /tmp/termfleet-history-capability.json. Narrow delivery gate is loading saved Bots.view retention method, no new service/answer authority. UI cannot retrieve omitted originals; no restart or raw transcript download."
         }
       ]
     },
