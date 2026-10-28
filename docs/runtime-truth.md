@@ -1,5 +1,13 @@
 # Runtime truth — read this before diagnosing anything
 
+## Private ImagineBox workspace routing (2026-10-28)
+
+Owner access: https://endlessblink.tail07658e.ts.net:8810/ requires an authenticated device on the existing Tailscale network. Keep the home computer awake; live camera controls also require Blender and its linked project. TermControl separately uses its existing password-protected https://control.in-theflow.com/ and needs no VPN.
+
+Three linked/enabled user units are maintained in `scripts/workspace-access/`: `imaginebox-workspace.service` serves the existing project on loopback8810; `imaginebox-private-proxy.service` adapts private HTTPS8810 through loopback8811; `imaginebox-studio-private-proxy.service` adapts private HTTPS8812 through loopback8813. Studio discovery follows the app's currently linked local Blender port, restricted to8765–8784. Check `systemctl --user status` for those units and `tailscale serve status`;8810 and8812 must remain tailnet-only. Never put these adapters behind a public proxy or Funnel. They require Tailscale's user header, exact Host and same-origin writes and retain the app's action tokens.
+
+Rollback only this routing with `tailscale serve --https=8810 off` and `tailscale serve --https=8812 off`, then `systemctl --user disable --now imaginebox-private-proxy.service imaginebox-studio-private-proxy.service imaginebox-workspace.service`. Do not change other Serve routes or stop TermControl/the terminal daemon. Login-start configuration is enabled; a real reboot and school-network access have not been trialled.
+
 Where the app's real state lives, and which sources lie. Every entry exists
 because an agent reported something false by reading the wrong one.
 

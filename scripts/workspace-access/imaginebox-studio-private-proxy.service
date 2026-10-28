@@ -1,0 +1,12 @@
+[Unit]
+Description=Private Tailscale adapter for linked Blender studio
+Wants=imaginebox-workspace.service
+After=imaginebox-workspace.service
+
+[Service]
+ExecStart=/home/endlessblink/.local/share/node-v22.19.0/bin/node /media/endlessblink/data/my-projects/ai-development/devops/termfleet/scripts/private-workspace-proxy.mjs 8813 8810 https://endlessblink.tail07658e.ts.net:8812 --studio
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

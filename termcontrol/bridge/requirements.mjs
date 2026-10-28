@@ -51,6 +51,21 @@ export function ownerConfirmation(msgId, { base } = {}) {
   if (!msgId) return null;
   try { return findOwnerWords(String(msgId), base ? { base } : {}) || null; } catch { return null; }
 }
+// Authenticity alone does not establish what the owner confirmed. Keep topic metadata's
+// signature check separate from this deliberately narrow, request-bound confirmation.
+export function itemOwnerConfirmation(it, msgId, { base } = {}) {
+  const ow = ownerConfirmation(msgId, { base });
+  const deliveredAt = Math.max(it.statusAt || 0, it.statusRecordedAt || 0);
+  if (!ow || !['ready', 'done'].includes(it.status) || !Number.isFinite(it.statusAt)
+    || !Number.isFinite(ow.at) || ow.at <= deliveredAt || ow.id === it.msgId) return null;
+  const text = String(ow.text || '').trim();
+  if (ow.botId === 'app') return text === `[Noam tapped "Works for me" on ${it.id}]` ? ow : null;
+  if (it.source?.startsWith('bot:') && ow.botId !== it.source.slice(4)) return null;
+  // No substring matching: quotes, questions, mixed targets and negative clauses remain
+  // unconfirmed. Generic "works" has no signed request binding; the targeted app button does.
+  const match = /^(R-\d+)\s*[:—-]?\s+(?:(?:it )?works(?: for me)?|fixed|verified|עובד|עובד אצלי|תקין)(?:[,.!]?\s*(?:thanks|thank you|תודה))?[.!]?$/i.exec(text);
+  return match && match[1].toUpperCase() === it.id ? ow : null;
+}
 const visualDoneProblem = (it) => `${it.id} is on a screen topic (${it.visualTopics.join(', ')}): an agent can mark it ready, never done. Only Noam seeing it work closes it: termfleet-asks ready ${it.id} --evidence "<screenshot>", then after his own message says it works, termfleet-asks lock ${it.id} --owner-words <his message id>.`;
 
 // ---------------------------------------------------------------------------------------
@@ -236,7 +251,7 @@ function foldLedger(dir) {
     it.updatedAt = e.at;
     if (e.e === 'topic') { it.topics = [...new Set([...(e.replace ? [] : it.topics), ...(e.topics || [])])]; for (const t of e.topics || []) if (!topics.has(t)) topics.set(t, new Set()); }
     else if (e.e === 'assign') { it.assigned.push({ pane: e.pane, delivery: e.delivery || null, at: e.at, by: e.by || null }); if (!['ready', 'done', 'dropped'].includes(it.status)) it.status = 'assigned'; }
-    else if (e.e === 'status') { delete it.testing; if(e.testing)it.testing=e.testing; it.statusAt = e.at; it.status = e.status; it.confirmedBy = e.status === 'done' ? e.ownerMsg || null : null; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
+    else if (e.e === 'status') { delete it.testing; if(e.testing)it.testing=e.testing; it.statusAt = e.at; it.statusRecordedAt = e.recordedAt ?? e.at; it.status = e.status; it.confirmedBy = e.status === 'done' ? e.ownerMsg || null : null; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
     else if (e.e === 'testing-handoff') { it.testing = { link: e.link, tryText: e.tryText, ...(e.expected?{expected:e.expected}:{}), ...(e.artifact?{artifact:e.artifact}:{}) }; }
     else if (e.e === 'lock') { it.locked = true; it.lockedAt = e.at; it.lockedBy = e.by || null; if (e.ownerMsg) it.confirmedBy = e.ownerMsg; }
     else if (e.e === 'unlock') { it.locked = false; }
@@ -309,16 +324,28 @@ export function record(events, { dir = ledgerDir(), ownerBase = undefined } = {}
   return withLock(dir, () => {
     const { items } = loadLedger({ dir });
     for (const e of events) if (e.id && !items.has(e.id)) throw new Error(`${e.id} is not in Noam's list. termfleet-asks items shows the ids.`);
-    // Every writer goes through here, so the screen guard holds for bots and scripts too.
+    // Every writer goes through here, including app verdicts and CLI batches. Validate
+    // against the pre-transaction delivery state, never readiness manufactured in this batch.
     for (const e of events) {
       const it = e.id && items.get(e.id);
-      if (!it?.visual) continue;
-      if ((e.e === 'status' && e.status === 'done') || (e.e === 'lock' && !it.locked)) {
-        if (!ownerConfirmation(e.ownerMsg, { base: ownerBase })) throw new Error(visualDoneProblem(it));
+      const confirms = e.e === 'lock' || (e.e === 'status' && e.status === 'done' && (it?.visual || e.ownerMsg));
+      if (!confirms) continue;
+      if (events.some(other => other.id === e.id && !(
+        other.ownerMsg === e.ownerMsg && (other.e === 'lock' || (other.e === 'status' && other.status === 'done'))
+      ))) throw new Error(`${it.id} confirmation cannot be combined with a delivery revision or another request mutation.`);
+      if (it.locked && e.ownerMsg && e.ownerMsg === it.confirmedBy) continue;
+      if (!itemOwnerConfirmation(it, e.ownerMsg, { base: ownerBase })) {
+        throw new Error(it.visual ? visualDoneProblem(it) : `${it.id} needs Noam's own recorded confirmation of this request, from its chat, after it was delivered. Agent-written --noam-said text is not confirmation.`);
       }
     }
     const at = Date.now();
-    append(dir, events.map((e) => ({ v: STORE_VERSION, at, ...e })));
+    const fresh = events.filter(e => {
+      const it = items.get(e.id);
+      return !(it?.locked && (e.e === 'lock' || (e.e === 'status' && e.status === 'done' && e.ownerMsg)));
+    });
+    // Caller-supplied historical at values cannot backdate when a new revision reached
+    // this writer. This is chronology validation, not protection against direct file edits.
+    if (fresh.length) append(dir, fresh.map((e) => ({ v: STORE_VERSION, at, ...e, recordedAt: at })));
     return true;
   });
 }

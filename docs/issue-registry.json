@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T07:25:50.493Z",
+  "updatedAt": "2026-10-28T07:47:35.611Z",
   "issues": [
     {
       "id": "TF-001",
@@ -14905,6 +14905,85 @@
           "type": "evidence",
           "kind": "live-desktop",
           "note": "2026-10-28T07:24:34Z actual authenticated bot87343f93b7f1, no request interception: message1808c04fc240 image decodes1536x1024 at1440/390 widths inline and full overlay; image HTTP2002976502bytes SHA11858d5fd282ab911982d94e40cf6d4fcd2bf1eae2c2d26d48155784cadd1b31; public private-signed preview sameSHA. Disposable visual review PASS four /tmp/tc-readable-work/book-media-{live,full}-{1440,390}.png artifacts; no clipping/overlap. Physical phone, zoom and art approval untested."
+        }
+      ]
+    },
+    {
+      "id": "TF-136",
+      "title": "Owner confirmation accepts agent text or unrelated signed messages",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "A delivered request can be locked by agent prose or an old unrelated signed owner receipt",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/owner-confirmation-guard.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-28T07:45:39.683Z",
+          "note": "requirements.mjs request-bound validator, authoritative recordedAt and atomic asks lock transaction; scoped F07 confirmation only"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T07:45:39.712Z",
+          "note": "50/50 PASS /tmp/termfleet-f07-focused.tap; original red17/18, review red18/20 and retry20/21. Includes synthetic signed app HTTP doubleWorks/broken/401. No real owner confirmation. Bridge activation pending."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Validate targeted signed confirmation and preserve genuine app verdicts with isolated red green regressions",
+      "history": [
+        {
+          "at": "2026-10-28T07:38:07.603Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T07:39:56.021Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Central lock path accepts agent prose and signature-only unrelated receipts"
+        },
+        {
+          "at": "2026-10-28T07:39:56.049Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Isolated fixture corrected before baseline: 17 failures, agent lock returned true"
+        },
+        {
+          "at": "2026-10-28T07:39:56.080Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "18 focused cases; red baseline preserved at /tmp/termfleet-f07-red.tap"
+        },
+        {
+          "at": "2026-10-28T07:39:56.121Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Central request-bound validator and atomic CLI batch; targeted app verdict preserved"
+        },
+        {
+          "at": "2026-10-28T07:45:39.683Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "requirements.mjs request-bound validator, authoritative recordedAt and atomic asks lock transaction; scoped F07 confirmation only"
+        },
+        {
+          "at": "2026-10-28T07:45:39.712Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "50/50 PASS /tmp/termfleet-f07-focused.tap; original red17/18, review red18/20 and retry20/21. Includes synthetic signed app HTTP doubleWorks/broken/401. No real owner confirmation. Bridge activation pending."
+        },
+        {
+          "at": "2026-10-28T07:45:39.745Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source checks pass; coordinated bridge activation/readback pending. Whole F07 and sameUID isolation remain open."
         }
       ]
     }

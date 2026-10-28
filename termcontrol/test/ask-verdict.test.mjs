@@ -37,6 +37,11 @@ test('request verdict API preserves explicit owner feedback without a bot panel'
       return r.status;
     }, { id, verdict });
     assert.equal(await verdict(items[0].id, 'works'), 200);
+    const firstConfirmation = loadLedger({ dir }).items.get(items[0].id);
+    assert.equal(await verdict(items[0].id, 'works'), 200, 'retry of a genuine targeted verdict stays successful');
+    const retried = loadLedger({ dir }).items.get(items[0].id);
+    assert.equal(retried.confirmedBy, firstConfirmation.confirmedBy);
+    assert.equal(retried.lockedAt, firstConfirmation.lockedAt);
     assert.equal(await verdict(items[1].id, 'broken'), 200);
 
     const ledger = loadLedger({ dir }).items;
