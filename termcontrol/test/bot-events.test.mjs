@@ -47,13 +47,15 @@ test('a bot is told once when its terminal agent stops making progress, and agai
 });
 
 // 2026-10-26: 162 of 206 dropped bot requests were left 'partial' on a terminal nobody looked at again.
-test("a finished terminal's unfinished requests are named in its bot's wake", async () => {
+test("a finished terminal's unfinished requests are a historical snapshot requiring a fresh assignment check", async () => {
   const { bots, woke } = setup();
   bots.openWork = () => [{ id: 'R-9', status: 'partial', words: 'fix the title menu', where: 'terminal-h' }, { id: 'R-10', status: 'new', words: 'other', where: 'terminal-x' }];
   const seen = new Map();
   await checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn: 'working' }], readAsk: async () => null, notify: () => {} });
   await checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn: 'idle' }], readAsk: async () => null, notify: () => {} });
-  assert.match(woke[0], /has finished[\s\S]*still holds 1 of Noam's requests that are not finished: R-9 \(partial\): "fix the title menu"/);
+  assert.match(woke[0], /has finished[\s\S]*Historical snapshot recorded .*: 1 unfinished request was assigned to this terminal: R-9 \(partial\): "fix the title menu"/);
+  assert.match(woke[0], /check its current assignments with termfleet-asks items/);
+  assert.doesNotMatch(woke[0], /still holds/);
   assert.doesNotMatch(woke[0], /R-10/);
 });
 

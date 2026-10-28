@@ -1791,17 +1791,17 @@ export class Bots {
           ? (/[֐-׿]/.test(batch.map(e => e.text).join(' ')) ? 'צריך לבדוק את תוצאות הפעולות ואת המסירה של כל נקודה.' : 'The action outcomes and delivery of each point need checking.')
           : parsed.reply;
         // Persist delivery BEFORE publishing a claim. Inbox receipt is not worker acknowledgement.
-        const receipts = forward ? batch.map(e => this.handOn(id, diagnosis ? { ...e, brain: `${e.brain || e.text}\n\n[Bounded diagnosis required: inspect the recorded actions and each request's delivery/result evidence. Answer the actual why question using observed facts. If no scheduling reason was recorded, inspect dependencies, ownership and the existing resource policy; never invent why one worker was selected. Independent work may use existing parallel routing; shared-file/dependent work stays serialized. Do not repeat an empty forwarded note. Report the exact missing evidence if it cannot be recovered.]` } : e, baseReply)) : [];
-        const delivered = forward && receipts.every(r => r && r.state !== 'failed');
-        const reply = forward && !delivered
+        const review = !forward && batch.some(e => e.items?.length);
+        const receipts = forward || review ? batch.map(e => this.handOn(id, diagnosis ? { ...e, brain: `${e.brain || e.text}\n\n[Bounded diagnosis required: inspect the recorded actions and each request's delivery/result evidence. Answer the actual why question using observed facts. If no scheduling reason was recorded, inspect dependencies, ownership and the existing resource policy; never invent why one worker was selected. Independent work may use existing parallel routing; shared-file/dependent work stays serialized. Do not repeat an empty forwarded note. Report the exact missing evidence if it cannot be recovered.]` } : review ? { ...e, brain: `${e.brain || e.text}\n\n[The quick reply is provisional and does not resolve any request. Review every original item against this reply and actual evidence. Carry out instructions/corrections and answer uncovered questions; avoid repeating an adequate answer. Only the authoritative worker may record item-specific resolution.]` } : e, baseReply)) : [];
+        const delivered = (forward || review) && receipts.every(r => r && r.state !== 'failed');
+        const reply = (forward || review) && !delivered
           ? (/[֐-׿]/.test(batch.map(e => e.text).join(' ')) ? 'מסירת השאלה לבדיקה נכשלה; עדיין אין אישור שהיא הגיעה לעבודה.' : 'Delivery for investigation failed; receipt by the running work is unconfirmed.')
-          : withPassedOn(baseReply, delivered, batch.map((e) => e.text));
+          : withPassedOn(baseReply, forward && delivered, batch.map((e) => e.text));
         if (heldReport) continue;
-        this.append(id, { role: 'bot', text: reply, side: { ms, forward, receipts, evidenceAvailable: evidence?.available ?? false, diagnosis, to: batch.map((e) => e.msgId) } });
+        this.append(id, { role: 'bot', text: reply, side: { ms, forward, review, receipts, evidenceAvailable: evidence?.available ?? false, diagnosis, to: batch.map((e) => e.msgId) } });
         if (bot.notify !== false) { try { this.notify({ title: bot.name, body: reply.replace(/\s+/g, ' ').slice(0, 200), url: `/#bot:${id}` }); } catch { /* never block on a notification */ } }
         if (forward) continue;
-        // Only questions: answered. The bot hears about it at the start of its next turn.
-        for (const e of batch) this.markAnswered(e.items, reply);
+        // The side model can answer immediately, but cannot resolve tracked work.
         const fresh = this.read(id);
         if (fresh) {
           fresh.sideNotes = [...(fresh.sideNotes || []), ...batch.map((e) => ({ at: e.at, text: String(e.text).slice(0, 1500), reply: reply.slice(0, 800) }))].slice(-6);
@@ -1862,16 +1862,7 @@ export class Bots {
     const notes = bot.sideNotes;
     delete bot.sideNotes;
     this.write(bot);
-    return `[While you were busy, Noam asked and your quick side responder answered in the chat. Already answered: do not repeat these answers.\n${notes.map((n) => `- Noam: "${n.text}"\n  Answered: "${n.reply}"`).join('\n')}]\n\n${text}`;
-  }
-
-  /** His items the side answer took care of (a question answered), so the bot is not held to them again. */
-  markAnswered(ids = [], reply) {
-    if (!ids.length) return;
-    const dir = this.reqDir();
-    for (const rid of ids) {
-      try { const r = markRequirement({ status: 'answered', id: rid, note: `Answered right away while busy: ${reply.slice(0, 400)}`, by: 'side-reply' }, { dir }); if (r?.events) recordRequirements(r.events, { dir }); } catch { /* the answer itself is in the chat */ }
-    }
+    return `[While you were busy, Noam received these quick replies. A quick reply does not resolve any request: review each original item against actual evidence, carry out instructions and answer uncovered questions. Avoid repeating an adequate answer.\n${notes.map((n) => `- Noam: "${n.text}"\n  Quick reply: "${n.reply}"`).join('\n')}]\n\n${text}`;
   }
 
   /** Answers messages that waited for a plan to reset; the bridge calls this every minute. */

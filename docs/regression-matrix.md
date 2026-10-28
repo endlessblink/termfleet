@@ -612,7 +612,7 @@ Validation: `node --test --test-concurrency=1 termcontrol/test/bot-ledger-panel-
 
 ### TF-126 — Evidence before quick answers — VERIFYING
 
-Current activation: PID733856 at06:31:23UTC, authenticated ten-module digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006 matches disk. Actual scoped SQLite200/unauth401/missing scope400 and cross-bot isolation pass. Existing daemon unchanged. Generic legacy events/log authentication and model-only PASS_ONno batch answering are separate unresolved audit findings; do not infer whole-platform security or perfect request classification.
+Current activation: PID1086383 at06:59:41UTC, authenticated twelve-module digest8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0 matches disk, independently verified. Actual scoped SQLite200/unauth401/missing scope400 and cross-bot isolation pass. Existing daemon unchanged. PASS_ONno batch resolution is removed: tracked full messages reach authoritative review, exact per-item queued receipt remains distinct from consumption. Final focused55/55 includes red/green lost-payload protection and actual isolated restart. Generic legacy events/log authentication remains separate; do not infer whole-platform security or perfect semantic classification. New completion counts are timestamped snapshots with a fresh assignment check, not a current ownership guarantee.
 
 | Issue | Concrete regression | Current evidence | Remaining limit |
 | --- | --- | --- | --- |

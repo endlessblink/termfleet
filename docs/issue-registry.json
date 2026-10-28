@@ -14139,13 +14139,13 @@
       "evidence": [
         {
           "kind": "focused-test",
-          "at": "2026-10-28T06:07:31.322Z",
-          "note": "node --test action-evidence,bot-side-reply,events-db,restart-safe-replies:30/30 PASS; action-log12/12 PASS includes actual fake Codex tool succeeded/failed/unfinished outcomes. Broader team-close external global instruction wording baseline failure remains; no production policy change."
+          "at": "2026-10-28T06:55:58.126Z",
+          "note": "Post-audit F06 regression red: PASS_ONno dropped tracked message inbox0vs1; green after removing side resolution authority and retaining full original payload/real per-item queued receipt. Multi-action message remains unresolved with exact coverage. Final side/evidence/context/readability/restart/helper-close55/55 PASS, including actual isolated service restart. Fake formatter worker now consumes/asserts its review inbox rather than hanging on valid recovery turn."
         },
         {
           "kind": "source",
-          "at": "2026-10-28T06:34:53.934Z",
-          "note": "Current authenticated actual SQL readbackPID733856 loaded06:31:23UTC exact10file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006 matches disk. Auth200,unauth401,missing bot scope400; one scoped synthetic failed row/fresh per-request item; other bot excluded. No universal shell/hook or live-model semantic claim."
+          "at": "2026-10-28T07:00:20.002Z",
+          "note": "Final coordinated activationPID1086383 loaded06:59:41.541UTC exact12module digest8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0 matches disk including side resolution fix, completion snapshot and ready F03send source. AuthSQL200/unauth401/scope400/crossbot isolation PASS. Actual focused55/55 output/tmp/termfleet-final-focused.tap; sandbox-only attempt failed normal runtime receipt directory, authorized normal-runtime rerun passes. Daemon2068834 unchanged. Side classifier no longer marks captured items answered; authoritative per-item review retains full original payload."
         }
       ],
       "owner": "termfleet",
@@ -14202,6 +14202,24 @@
           "type": "evidence",
           "kind": "source",
           "note": "Current authenticated actual SQL readbackPID733856 loaded06:31:23UTC exact10file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006 matches disk. Auth200,unauth401,missing bot scope400; one scoped synthetic failed row/fresh per-request item; other bot excluded. No universal shell/hook or live-model semantic claim."
+        },
+        {
+          "at": "2026-10-28T06:42:08.604Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "New confirmed residual before candidate: sideLoop PASS_ONno bulk markAnswered closes captured message items without per-item evidence. Candidate preserves quick answer but delivers full tracked payload for authoritative review and removes side classifier resolution authority. Existing generic events/log preauth route outside this scoped fix."
+        },
+        {
+          "at": "2026-10-28T06:55:58.127Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Post-audit F06 regression red: PASS_ONno dropped tracked message inbox0vs1; green after removing side resolution authority and retaining full original payload/real per-item queued receipt. Multi-action message remains unresolved with exact coverage. Final side/evidence/context/readability/restart/helper-close55/55 PASS, including actual isolated service restart. Fake formatter worker now consumes/asserts its review inbox rather than hanging on valid recovery turn."
+        },
+        {
+          "at": "2026-10-28T07:00:20.002Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Final coordinated activationPID1086383 loaded06:59:41.541UTC exact12module digest8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0 matches disk including side resolution fix, completion snapshot and ready F03send source. AuthSQL200/unauth401/scope400/crossbot isolation PASS. Actual focused55/55 output/tmp/termfleet-final-focused.tap; sandbox-only attempt failed normal runtime receipt directory, authorized normal-runtime rerun passes. Daemon2068834 unchanged. Side classifier no longer marks captured items answered; authoritative per-item review retains full original payload."
         }
       ]
     },
@@ -14309,13 +14327,13 @@
       "evidence": [
         {
           "kind": "focused-test",
-          "at": "2026-10-28T06:31:37.787Z",
-          "note": "Caller guard/context/provider boundary68/68 PASS; helper-link5/5 plus combined integration71/71 PASS. Forged bot environment and foreign pane/session rejected; real terminal caller retained, observer never gets close ownership."
+          "at": "2026-10-28T06:55:58.911Z",
+          "note": "Legacy close follow-up: actual owner315a has historical non-followed quota73bd2cec record266ms after live start; later observer does not grant close rights. Five latest request assignments transferredD-297f2720 to context. New regressions3/3 prove transfer removes current old-owner count, completion labels historical snapshot/fresh check, and validated real owner survives later observer while unrelated/forged callers fail. Actual close was not attempted by root terminal, which lacks bot authority; no force kill or ownership mutation."
         },
         {
           "kind": "source",
-          "at": "2026-10-28T06:34:46.222Z",
-          "note": "ActivatedPID733856 at06:31:23UTC exact10file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006; authenticated constrained observer200 adds followed:true only for actualR19376 latest deliveryD-a85c2fc2/session01a18112-b24a-75d3-8321-fdb4fedefb8e. Actual headless sidebar06:33:17 shows Waiting on1agent and matching helpers; daemon2068834 unchanged. No worker input or reassign."
+          "at": "2026-10-28T07:00:20.549Z",
+          "note": "Timestamped completion snapshot source bound to finalPID1086383 twelve-module digest8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0. Existing queued notices/history not rewritten; current folded five transfer assignments verifiedD-297f2720. Root did not close quota worker or forge bot authority. Original bot-card observer proof remains time-specific exact session and actual headless visual evidence."
         }
       ],
       "owner": "termfleet",
@@ -14372,6 +14390,18 @@
           "type": "evidence",
           "kind": "source",
           "note": "ActivatedPID733856 at06:31:23UTC exact10file digest3728977ec34d6d6c7660bb0462266c7d9f93ced1f17da1f0f9f0a6148f385006; authenticated constrained observer200 adds followed:true only for actualR19376 latest deliveryD-a85c2fc2/session01a18112-b24a-75d3-8321-fdb4fedefb8e. Actual headless sidebar06:33:17 shows Waiting on1agent and matching helpers; daemon2068834 unchanged. No worker input or reassign."
+        },
+        {
+          "at": "2026-10-28T06:55:58.912Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Legacy close follow-up: actual owner315a has historical non-followed quota73bd2cec record266ms after live start; later observer does not grant close rights. Five latest request assignments transferredD-297f2720 to context. New regressions3/3 prove transfer removes current old-owner count, completion labels historical snapshot/fresh check, and validated real owner survives later observer while unrelated/forged callers fail. Actual close was not attempted by root terminal, which lacks bot authority; no force kill or ownership mutation."
+        },
+        {
+          "at": "2026-10-28T07:00:20.549Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Timestamped completion snapshot source bound to finalPID1086383 twelve-module digest8057029ea258d2902895e9e13a2e5f8d7f26e9559a6e0bf90f5674080cf422b0. Existing queued notices/history not rewritten; current folded five transfer assignments verifiedD-297f2720. Root did not close quota worker or forge bot authority. Original bot-card observer proof remains time-specific exact session and actual headless visual evidence."
         }
       ]
     },

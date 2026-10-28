@@ -30,16 +30,17 @@ export function gitHead(dir) {
 }
 
 /**
- * Noam's requests that terminal still holds unfinished, as a closing sentence for its bot's wake.
+ * Historical request snapshot for a queued wake, never a current ownership claim.
  * 162 of 206 dropped bot requests in a week were 'partial' on a terminal that then got new work or
  * was closed, and nobody looked at them again (2026-10-26).
  */
-export function leftOpen(bots, botId, paneId) {
+export function leftOpen(bots, botId, paneId, recordedAt = Date.now()) {
   let items = [];
   try { items = (bots.openWork?.(botId) || []).filter((w) => w.where === paneId); } catch { items = []; }
-  if (!items.length) return '';
+  const freshCheck = ' Before closing it, check its current assignments with termfleet-asks items; assignments may have changed since this event was recorded. Hand off or finish any unfinished requests it currently holds.';
+  if (!items.length) return freshCheck;
   const list = items.slice(0, 8).map((w) => `${w.id} (${w.status}): "${String(w.words || '').replace(/\s+/g, ' ').slice(0, 100)}"`).join('; ');
-  return ` It still holds ${items.length} of Noam's requests that are not finished: ${list}${items.length > 8 ? `; and ${items.length - 8} more` : ''}. Before closing it, send them back to it or to another terminal (termfleet-team send --req <ids>), or mark each one honestly.`;
+  return ` Historical snapshot recorded ${new Date(recordedAt).toISOString()}: ${items.length} unfinished request${items.length === 1 ? ' was' : 's were'} assigned to this terminal: ${list}${items.length > 8 ? `; and ${items.length - 8} more` : ''}. This snapshot does not establish the current assignment.${freshCheck}`;
 }
 
 // "stuck": its status still says working, but its own conversation record has not moved for 20

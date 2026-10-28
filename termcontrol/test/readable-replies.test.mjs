@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { Bots } from '../bridge/bots.mjs';
 import { structureProblem } from '../bridge/requirements.mjs';
-import { withPassedOn } from '../bridge/side-reply.mjs';
+import { withPassedOn, takeSteer } from '../bridge/side-reply.mjs';
 
 // Exact user-provided screenshot text, not a private transcript.
 export const audit = 'Audit TermFleet end to end with a strict, evidence-based review: trace user messages through request tracking, assignment, worker acknowledgement, execution, verification, status updates, and replies. Investigate missing or stale updates, workers linked to the wrong chat, misleading running/completed states, unanswered requests, user checks that cannot actually be performed, lost context during provider switches, and whether Claude cloud can be connected for real task submission and result retrieval. For each failure, identify the root cause with code and runtime evidence, distinguish confirmed facts from hypotheses, and propose a concrete fix with a regression test; explicitly inspect missing evidence instead of guessing or treating queued delivery, assignment, or tool success as completion. Prioritize by user impact, explain any sequential or parallel scheduling decisions from recorded evidence, and return an actionable repair plan with clear acceptance criteria and remaining unknowns—do not spend money, publish, delete, or claim fixes without verification.';
@@ -99,6 +99,11 @@ test('real main-turn and side-loop answers reach the same pre-publication guard'
   assert.equal(words(side.text), audit);
   assert.ok(side.text.includes('\n\n'));
   assert.equal(structureProblem(side.text), null);
+  // The fake running worker consumes the provisional answer review just as the
+  // real inbox hook does; otherwise restart recovery schedules it again.
+  const review = takeSteer(bots.folder(bot.id));
+  assert.equal(review.length, 1);
+  assert.equal(review[0].text, 'What is the review scope?');
   release({ text: audit });
   await until(() => !bots.running.has(bot.id));
   const main = bots.messages(bot.id).filter(m => m.role === 'bot' && !m.side).at(-1);

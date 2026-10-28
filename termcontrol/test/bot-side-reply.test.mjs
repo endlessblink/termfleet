@@ -48,7 +48,7 @@ function busyBot({ sideText = 'REPLY: I am halfway through.\nPASS_ON: no', sideF
   return { bots, id: bot.id, turns, sides, release: (o) => release(o) };
 }
 
-test('a question sent while the bot works is answered at once, without stopping or repeating the turn', async () => {
+test('a quick answer stays immediate while tracked questions await authoritative review', async () => {
   const b = busyBot();
   b.bots.send(b.id, 'Build the game page', { owner: true });
   await until(() => b.turns.length === 1);
@@ -68,16 +68,47 @@ test('a question sent while the bot works is answered at once, without stopping 
   assert.match(b.sides[0].prompt, /can we get it ready by Monday\?/);
   // A plain question is not queued as another turn; the next turn just knows it was answered.
   assert.equal((b.bots.queues.get(b.id) || []).length, 0);
-  assert.deepEqual(takeSteer(b.bots.folder(b.id)), []);
+  const review = takeSteer(b.bots.folder(b.id));
+  assert.equal(review.length, 1, 'tracked owner payload reaches the worker despite PASS_ON no');
+  assert.match(review[0].brain, /quick reply is provisional/i);
   b.release();
   await until(() => !b.bots.running.has(b.id));
   assert.equal(b.turns.length, 1, 'no extra turn for an answered question');
   const items = [...loadLedger({ dir: b.bots.reqDir() }).items.values()].filter((it) => /Monday/.test(it.words));
-  assert.ok(items.length && items.every((it) => it.status === 'answered'), 'his question is marked answered');
+  assert.ok(items.length && items.every((it) => it.status !== 'answered'), 'side classification cannot resolve tracked items');
   b.bots.send(b.id, 'thanks', { owner: true });
   await until(() => b.turns.length === 2 && !b.bots.running.has(b.id));
-  assert.match(b.turns[1].text, /Already answered: do not repeat/);
+  assert.match(b.turns[1].text, /does not resolve any request/i);
   assert.match(b.turns[1].text, /can we get it ready by Monday/);
+});
+
+test('PASS_ON no cannot resolve or discard multiple actionable points', async () => {
+  const store = createEventLog({ file: ':memory:' });
+  const b = busyBot({ actionEvidence: store, sideText: 'REPLY: Those points are handled.\nPASS_ON: no' });
+  try {
+    b.bots.send(b.id, 'Build the game page', { owner: true });
+    await until(() => b.turns.length === 1);
+    const text = 'Add the missing scene button.\nKeep the current camera controls.\nExplain the actual failed check.';
+    const sent = b.bots.send(b.id, text, { owner: true });
+    await until(() => b.bots.messages(b.id).some(m => m.side));
+    const items = [...loadLedger({ dir: b.bots.reqDir() }).items.values()].filter(it => it.msgId === sent.message.id);
+    assert.ok(items.length > 1, 'fixture captures distinct original items');
+    assert.ok(items.every(it => !['answered', 'done', 'ready'].includes(it.status)));
+    const queued = takeSteer(b.bots.folder(b.id));
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].text, text, 'complete owner words delivered unchanged');
+    const evidence = store.queryActionEvidence({ bot_id: b.id, message_id: sent.message.id });
+    assert.deepEqual([...evidence[0].request_ids].sort(), items.map(it => it.id).sort());
+    assert.equal(evidence[0].state, 'queued', 'payload persistence is not consumption');
+    const reply = b.bots.messages(b.id).find(m => m.side);
+    assert.equal(reply.side.review, true);
+    assert.equal(reply.side.receipts.length, 1);
+    assert.doesNotMatch(reply.text, /Saved in the queue|נשמרה בתור/, 'adequate quick answers do not gain a generic forwarding suffix');
+  } finally {
+    b.release();
+    await until(() => !b.bots.running.has(b.id));
+    store.close();
+  }
 });
 
 test('an instruction sent mid-turn is handed to the running turn after its next step, with the side answer so it is not repeated', async () => {
