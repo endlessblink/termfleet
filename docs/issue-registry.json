@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T07:47:35.611Z",
+  "updatedAt": "2026-10-28T08:08:16.107Z",
   "issues": [
     {
       "id": "TF-001",
@@ -14914,24 +14914,26 @@
       "state": "verifying",
       "severity": "medium",
       "surface": "logic",
-      "matrixRefs": [],
+      "matrixRefs": [
+        "TF-136"
+      ],
       "symptom": "A delivered request can be locked by agent prose or an old unrelated signed owner receipt",
-      "rootCause": "",
+      "rootCause": "New locks trusted agent-authored prose or any signed receipt without target, chat or post-delivery binding; separate writes could partially lock a batch.",
       "guard": "node --test termcontrol/test/owner-confirmation-guard.test.mjs",
       "evidence": [
-        {
-          "kind": "source",
-          "at": "2026-10-28T07:45:39.683Z",
-          "note": "requirements.mjs request-bound validator, authoritative recordedAt and atomic asks lock transaction; scoped F07 confirmation only"
-        },
         {
           "kind": "focused-test",
           "at": "2026-10-28T07:45:39.712Z",
           "note": "50/50 PASS /tmp/termfleet-f07-focused.tap; original red17/18, review red18/20 and retry20/21. Includes synthetic signed app HTTP doubleWorks/broken/401. No real owner confirmation. Bridge activation pending."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T08:08:16.107Z",
+          "note": "Deployed-source verified: parent-authorized graceful bridge-only activation1537005 at07:55:19.756UTC. AuthGET200 loaded14digest5dae9c577f55db50f71fa727c9d521a58170f39cf309b925ae1b37cb47d4ffe5 equals frozen69d725e source; unauth401.4terminal triples and10bot session hashes unchanged, queues0/0, daemon2068834 unchanged. /tmp/termfleet-f07-activation.log and /tmp/termfleet-f07-loaded-readback.json. No live owner verdict/model request; physical owner trial remains separate."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Validate targeted signed confirmation and preserve genuine app verdicts with isolated red green regressions",
+      "nextAction": "Retain loaded confirmation guard and owner-button regression; owner physical interaction remains unverified. Remaining F07 evidence/display and F02 authority isolation are separate open audit paths.",
       "history": [
         {
           "at": "2026-10-28T07:38:07.603Z",
@@ -14984,6 +14986,12 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Source checks pass; coordinated bridge activation/readback pending. Whole F07 and sameUID isolation remain open."
+        },
+        {
+          "at": "2026-10-28T08:08:16.107Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Deployed-source verified: parent-authorized graceful bridge-only activation1537005 at07:55:19.756UTC. AuthGET200 loaded14digest5dae9c577f55db50f71fa727c9d521a58170f39cf309b925ae1b37cb47d4ffe5 equals frozen69d725e source; unauth401.4terminal triples and10bot session hashes unchanged, queues0/0, daemon2068834 unchanged. /tmp/termfleet-f07-activation.log and /tmp/termfleet-f07-loaded-readback.json. No live owner verdict/model request; physical owner trial remains separate."
         }
       ]
     }
