@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T07:24:08.385Z",
+  "updatedAt": "2026-10-28T07:25:50.493Z",
   "issues": [
     {
       "id": "TF-001",
@@ -14660,14 +14660,14 @@
       "guard": "Isolated HTTP daemon regression asserts zero writes and valid screen choices",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-10-28T07:17:25.612Z",
-          "note": "Seven-line Claude permission guard compares fresh parsed daemon-screen ID before any new receipt/input; independent review no blocker. MCP-masked screens conservatively refuse; atomic compare-write remains open."
-        },
-        {
           "kind": "focused-test",
           "at": "2026-10-28T07:17:25.987Z",
           "note": "Isolated HTTP dated/undated vendor draft/shell wrote Enter before fix. After fix29/29 across vendorHTTP/vendorAsk/screen/receipt/sendOnce/typedAnswer, including native question flow; no real inputs or models."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-28T07:25:07.250Z",
+          "note": "Savedb9b44bc guard loaded atPID1271056 2026-10-28T07:22:14.391Z. Independent authenticated GET200 fourteen-module SHA345f8862a730761d5fd8fb6b238dd49106224839d7f0b76ce0977d72d2f3ebe7 equals disk incl server76670f44. Daemon2068834 unchanged.29/29 isolated checks, no real prompt experiment; atomic dispatch and MCP unsupported layouts remain open."
         }
       ],
       "owner": "termfleet",
@@ -14724,6 +14724,12 @@
           "from": "fixing",
           "to": "verifying",
           "note": null
+        },
+        {
+          "at": "2026-10-28T07:25:07.250Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Savedb9b44bc guard loaded atPID1271056 2026-10-28T07:22:14.391Z. Independent authenticated GET200 fourteen-module SHA345f8862a730761d5fd8fb6b238dd49106224839d7f0b76ce0977d72d2f3ebe7 equals disk incl server76670f44. Daemon2068834 unchanged.29/29 isolated checks, no real prompt experiment; atomic dispatch and MCP unsupported layouts remain open."
         }
       ]
     },
