@@ -478,7 +478,7 @@ const one = async (url) => {
     return { url, status: res.status, body: body.slice(0, 65536) };
   } catch (e) { return { url, error: e?.name === 'TimeoutError' ? 'timeout' : (e?.cause?.code || e?.cause?.errors?.[0]?.code || e?.message || String(e)) }; }
 };
-Promise.all(urls.map(one)).then((r) => { process.stdout.write(JSON.stringify(r)); process.exit(0); });
+Promise.all(urls.map(one)).then((r) => { process.stdout.write(JSON.stringify(r), () => process.exit(0)); });
 `;
 
 /** Opens each URL (5 s each, redirects followed). Returns [{ url, status, body } | { url, error }]. */

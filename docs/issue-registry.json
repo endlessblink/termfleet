@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T11:34:54.932Z",
+  "updatedAt": "2026-10-28T11:42:55.762Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15684,6 +15684,74 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Source-only individual delivery receipts:136/136 /tmp/termfleet-delivery-accounting-final.tap; focused35/35 /tmp/termfleet-delivery-accounting-focused.tap. Real issuer private fixture store validates exact bot caller before fake runner start; corrected restart5/5. Child process pending/uncertain and receipt write/rename failures retain original pending references; no replay. Actual GET11:34:06UTC /tmp/termfleet-delivery-accounting-runtime.json remains old2252271/8d3ea43c vs24module disk03134943ffbe. No live activation or audit model/input. Old process lacks timer admission stop and already-issued effect settlement; new protocol not retroactive. Other effects partial; production older-question retention/navigation and human-owner proof missing."
+        }
+      ]
+    },
+    {
+      "id": "TF-144",
+      "title": "Valid image links falsely fail readiness after truncated probe output",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Large binary HTTP200 probe exits before complete JSON reaches parent and is misreported as five-second timeout",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/link-check.test.mjs",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T11:42:55.762Z",
+          "note": "/tmp/termfleet-link-pipe-red.tap1/1fails before fix; /tmp/termfleet-link-pipe-focused.tap36/36passes. /tmp/termfleet-link-pipe-green.tap broader41/42: bot-testing real Stop early null.decision failure, before probe. Actual host readyR19873 succeeds with exact private URL after one-line stdout flush callback; preserves403,404,timeout/error-body/auth checks, no receipt fabrication or proxy changes."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Wait for child stdout completion; retain status, auth and timeout checks, then retry exact candidate through normal ready CLI",
+      "history": [
+        {
+          "at": "2026-10-28T11:41:34.969Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T11:41:35.269Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Direct source probe122488-byte truncated JSON versus flush-callback154804-byte status200"
+        },
+        {
+          "at": "2026-10-28T11:41:35.552Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Actual isolated large-binary200 test fails before production change: /tmp/termfleet-link-pipe-red.tap"
+        },
+        {
+          "at": "2026-10-28T11:41:35.831Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Fixture also requires large403 auth denial to remain rejected"
+        },
+        {
+          "at": "2026-10-28T11:41:36.108Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "One-line child stdout callback; no auth, routing, timeout or receipt exemption"
+        },
+        {
+          "at": "2026-10-28T11:42:55.482Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Isolated link/auth/ledger36/36 pass and actual unchanged ready command accepts exact v03 URL. Broader41/42 has early publication hook null failure before link check; not concealed. Loaded bridge still old, no activation."
+        },
+        {
+          "at": "2026-10-28T11:42:55.762Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "/tmp/termfleet-link-pipe-red.tap1/1fails before fix; /tmp/termfleet-link-pipe-focused.tap36/36passes. /tmp/termfleet-link-pipe-green.tap broader41/42: bot-testing real Stop early null.decision failure, before probe. Actual host readyR19873 succeeds with exact private URL after one-line stdout flush callback; preserves403,404,timeout/error-body/auth checks, no receipt fabrication or proxy changes."
         }
       ]
     }
