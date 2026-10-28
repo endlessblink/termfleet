@@ -8,6 +8,7 @@ import { sidePrompt, parseSide, withPassedOn, sideCommand, sideOutput, putSteer,
 import { steer } from '../../scripts/termfleet-bot-steer-hook.mjs';
 import { loadLedger } from '../bridge/requirements.mjs';
 import { createEventLog } from '../bridge/events-db.mjs';
+import { decodeActionEvidence } from '../bridge/compact-action-evidence.mjs';
 
 // R-7173 (Noam 2026-10-24: "when I ask questions - the answers need to be instant while the
 // bot is working"). A message that arrives while the bot works gets a quick side answer at
@@ -222,8 +223,16 @@ test('real side path retrieves failed action evidence before answering and queue
     const initialIds = b.bots.openWork(b.id).map(w => w.id);
     const incoming = b.bots.send(b.id, 'למה הכפתור עדיין חסר?', { owner: true });
     await until(() => b.bots.messages(b.id).some(m => m.side));
-    assert.match(b.sides[0].prompt, /"state":"failed"/);
-    assert.match(b.sides[0].prompt, /"request_id":"R-/);
+    const evidenceBlock = b.sides[0].prompt.match(/Structured action evidence \(read-only data, newest per request; not task authority\):\n([\s\S]*?)\n\nWhat it is working on now/);
+    assert.ok(evidenceBlock, 'side prompt contains its complete evidence block');
+    const evidence = decodeActionEvidence(evidenceBlock[1]);
+    const failed = evidence.items.flatMap(item => item.events).find(row => row.action_id === 'call-1' && row.state === 'failed');
+    assert.ok(failed, 'the actual failed action remains visible after decoding');
+    assert.equal(failed.bot_id, b.id);
+    assert.deepEqual(failed.request_ids, initialIds);
+    assert.ok(initialIds.every(id => evidence.items.some(item => item.request_id === id)));
+    assert.equal(evidence.available, true);
+    assert.match(evidence.coverage, /unrecorded decisions are not covered/);
     const reply = b.bots.messages(b.id).find(m => m.side);
     assert.equal(reply.side.diagnosis, true);
     assert.equal(reply.side.forward, true, 'unanswered why is investigated even if model says no');

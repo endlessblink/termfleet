@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T13:57:11.803Z",
+  "updatedAt": "2026-10-28T14:21:42.045Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15863,14 +15863,20 @@
     {
       "id": "TF-146",
       "title": "Requirements writes report busy for permission failures",
-      "state": "reported",
+      "state": "verifying",
       "severity": "medium",
       "surface": "logic",
       "matrixRefs": [],
       "symptom": "Task delivery and request updates repeatedly report ledger busy although no writer lock exists",
       "rootCause": "",
       "guard": "node --test termcontrol/test/requirements-lock.test.mjs",
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-10-28T14:21:41.847Z",
+          "note": "Red3/5 for EACCES/ENOSPC; green26/26 /tmp/termfleet-requirements-lock-focused.tap. Combined109/109 /tmp/termfleet-token-integration-affected.tap. requirements-bridge fixture fails unchanged on d189397 with missing bot caller context; /tmp/termfleet-lock-unchanged-bridge.tap."
+        }
+      ],
       "owner": "termfleet",
       "nextAction": "Reproduce filesystem error masking and preserve live writer locks; verify native request mutation and team send",
       "history": [
@@ -15878,6 +15884,103 @@
           "at": "2026-10-28T13:57:11.802Z",
           "type": "created",
           "note": null
+        },
+        {
+          "at": "2026-10-28T14:20:19.073Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "No live lock, Unix ownership correct; all mkdir errors were masked as contention."
+        },
+        {
+          "at": "2026-10-28T14:20:19.113Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Three dedicated red cases reproduce EACCES masking and ENOSPC masking, including real disposable directory denial."
+        },
+        {
+          "at": "2026-10-28T14:20:19.149Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "26/26 lock plus ledger checks pass after minimal non-EEXIST propagation."
+        },
+        {
+          "at": "2026-10-28T14:20:19.185Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Only error classification changes; no live lock removal or access widening."
+        },
+        {
+          "at": "2026-10-28T14:20:19.223Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Native CLI proof and actual parent access outcome pending; genuine contention policy unchanged."
+        },
+        {
+          "at": "2026-10-28T14:21:41.847Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Red3/5 for EACCES/ENOSPC; green26/26 /tmp/termfleet-requirements-lock-focused.tap. Combined109/109 /tmp/termfleet-token-integration-affected.tap. requirements-bridge fixture fails unchanged on d189397 with missing bot caller context; /tmp/termfleet-lock-unchanged-bridge.tap."
+        }
+      ]
+    },
+    {
+      "id": "TF-147",
+      "title": "Token measurements depend on exporter and repeated evidence wastes context",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Local token usage is missing without exporter configuration and repeated evidence keys consume context",
+      "rootCause": "",
+      "guard": "node --test termcontrol/test/token-monitor.test.mjs termcontrol/test/compact-action-evidence.test.mjs termcontrol/test/action-evidence.test.mjs termcontrol/test/bot-side-reply.test.mjs",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Activate reviewed combined source conservatively after natural bot drain; verify local measurement health and ordinary completion obligations without model trials",
+      "history": [
+        {
+          "at": "2026-10-28T14:21:41.878Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-28T14:21:41.909Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Exact reviewed candidate57cc0a9 and bundle hashes verified; base prerequisite d189397 exists."
+        },
+        {
+          "at": "2026-10-28T14:21:41.944Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Parent preserved pre-fix failures; candidate contract documents missing local usage/cache and repeated evidence keys."
+        },
+        {
+          "at": "2026-10-28T14:21:41.976Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "109/109 combined affected checks on integrated source, no model calls."
+        },
+        {
+          "at": "2026-10-28T14:21:42.012Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Exact candidate implementation applied, only additive docs integration remains."
+        },
+        {
+          "at": "2026-10-28T14:21:42.045Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source checks green; loaded source and actual token reduction still unverified."
         }
       ]
     }

@@ -203,7 +203,9 @@ function withLock(dir, fn) {
   const lock = path.join(dir, '.lock');
   const until = Date.now() + 5000;
   for (;;) {
-    try { fs.mkdirSync(lock); break; } catch {
+    try { fs.mkdirSync(lock); break; } catch (error) {
+      // Access/storage failures are not another writer; preserve their code and path.
+      if (error.code !== 'EEXIST') throw error;
       // A lock left by a crashed writer is stale after 10 s.
       try { if (Date.now() - fs.statSync(lock).mtimeMs > 10000) { fs.rmdirSync(lock); continue; } } catch { /* raced */ }
       if (Date.now() > until) throw new Error('The requirements ledger is busy; try again.');

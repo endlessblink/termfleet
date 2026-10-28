@@ -24,13 +24,13 @@ function fixture(t, options = {}) {
   return { db, monitor, generations, clients };
 }
 
-test('missing public or secret key silently does nothing, including no client construction', t => {
+test('missing exporter keys preserve local measurements without client construction', t => {
   for (const env of [{}, { LANGFUSE_PUBLIC_KEY: 'test' }, { LANGFUSE_SECRET_KEY: 'test' }]) {
     const { db, monitor, clients } = fixture(t, { env });
-    assert.equal(monitor.traceTokenUsage('Quill', 'claude', 'test-model', 10, 5, 0.02), false);
-    assert.equal(db.queryEvents({}).length, 0);
+    assert.equal(monitor.traceTokenUsage('Quill', 'claude', 'test-model', 10, 5, 0.02), true);
+    assert.equal(db.queryEvents({}).length, 1);
     assert.equal(clients.length, 0);
-    assert.equal(monitor.getTokenSummary().total.generations, 0);
+    assert.equal(monitor.getTokenSummary().total.generations, 1);
   }
 });
 
@@ -48,7 +48,7 @@ test('mocked Langfuse gets metadata and usage only; SQLite supplies cached per-b
   assert.equal('input' in generations[0], false);
   assert.equal('output' in generations[0], false);
   const summary = monitor.getTokenSummary();
-  assert.deepEqual(summary.total, { generations: 3, inputTokens: 30, outputTokens: 10, cost: 0.02, unknownCostGenerations: 1 });
+  assert.deepEqual(summary.total, { generations: 3, inputTokens: 30, outputTokens: 10, cost: 0.02, unknownCostGenerations: 1, cachedInputTokens: 0, uncachedInputTokens: 0, unknownCacheGenerations: 3 });
   assert.equal(summary.byBot.find(b => b.botName === 'Quill').generations, 2);
   assert.equal(summary.byProvider.find(p => p.provider === 'claude').inputTokens, 20);
   summary.total.inputTokens = -1;
@@ -80,7 +80,7 @@ test('summary pages beyond 1000 events and never queries the remote client', t =
 
 test('completed totals include Claude cache tokens once and preserve Codex input totals', () => {
   assert.deepEqual(brainTokenUsage('codex', { type: 'turn.completed', usage: { input_tokens: 30, cached_input_tokens: 20, output_tokens: 4 } }, 'gpt-test'),
-    [{ model: 'gpt-test', inputTokens: 30, outputTokens: 4, cost: null }]);
+    [{ model: 'gpt-test', inputTokens: 30, outputTokens: 4, cost: null, cachedInputTokens: 20 }]);
   const result = { type: 'result', modelUsage: { 'claude-test': { inputTokens: 2, cacheReadInputTokens: 20, cacheCreationInputTokens: 3, outputTokens: 4, costUSD: 0.01 } }, usage: { input_tokens: 999, output_tokens: 999 } };
   assert.deepEqual(brainTokenUsage('claude', result), [{ model: 'claude-test', inputTokens: 25, outputTokens: 4, cost: 0.01 }]);
   assert.deepEqual(brainTokenUsage('claude', { type: 'assistant', message: { usage: { input_tokens: 10, output_tokens: 3 } } }), []);
@@ -99,7 +99,7 @@ test('Claude totals parse without a launch, and the Codex response stream reache
   for (const provider of ['claude', 'codex']) {
     const events = provider === 'codex' ? [
       { type: 'item.completed', item: { type: 'agent_message', text: 'Ready' } },
-      { type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } },
+      { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 6, output_tokens: 2 } },
     ] : [
       { type: 'system', subtype: 'init', model: 'claude-test' },
       { type: 'assistant', message: { content: [{ type: 'text', text: 'Ready' }], usage: { input_tokens: 3, output_tokens: 1 } } },
@@ -122,6 +122,9 @@ test('Claude totals parse without a launch, and the Codex response stream reache
   assert.equal(generations[0].model, 'claude-test');
   assert.equal(generations[1].model, 'unknown');
   assert.equal(monitor.getTokenSummary().total.inputTokens, 22);
+  assert.equal(monitor.getTokenSummary().total.cachedInputTokens, 6);
+  assert.equal(monitor.getTokenSummary().total.uncachedInputTokens, 4);
+  assert.equal(monitor.getTokenSummary().total.unknownCacheGenerations, 1);
 });
 
 test('summary route requires authentication and reads persisted usage without Langfuse keys', async t => {
@@ -157,4 +160,56 @@ test('summary route requires authentication and reads persisted usage without La
   assert.equal(summary.total.outputTokens, 3);
   assert.equal(summary.byBot[0].botName, 'Quill');
   assert.equal(summary.byProvider[0].provider, 'codex');
+});
+
+// Missing and invalid cache counters must not become fabricated zero-cache usage.
+test('cache breakdown covers only valid reported subsets and retains historical unknowns', t => {
+  const { monitor, db, generations } = fixture(t);
+  monitor.traceTokenUsage('A', 'codex', 'm', 30, 4, null, { cachedInputTokens: 20 });
+  monitor.traceTokenUsage('A', 'codex', 'm', 10, 2, null, { cachedInputTokens: 0 });
+  for (const value of [undefined, null, -1, 11, NaN, '5']) {
+    monitor.traceTokenUsage('A', 'codex', 'm', 10, 1, null, { cachedInputTokens: value });
+  }
+  db.logEvent('legacy', 'A', 'codex', 'token_usage', { inputTokens: 7, outputTokens: 1 });
+  const total = monitor.getTokenSummary().total;
+  assert.equal(total.inputTokens, 107);
+  assert.equal(total.cachedInputTokens, 20);
+  assert.equal(total.uncachedInputTokens, 20);
+  assert.equal(total.unknownCacheGenerations, 7);
+  assert.deepEqual(generations[0].usageDetails, { input: 30, output: 4 });
+  assert.equal(generations[0].metadata.cachedInputTokens, 20);
+  assert.equal(generations[0].metadata.uncachedInputTokens, 10);
+});
+
+test('local persistence failure is reported without throwing or constructing an exporter', () => {
+  const monitor = createTokenMonitor({ env: {}, write() { throw Error('disk'); } });
+  assert.equal(monitor.traceTokenUsage('A', 'codex', 'm', 10, 2), false);
+});
+
+
+test('fake Codex stream keeps replying while exposing failed measurement writes', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-token-failure-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bin = path.join(root, 'codex');
+  fs.writeFileSync(bin, `#!/bin/sh
+cat <<'TOKEN_FIXTURE'
+${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Ready' } })}
+${JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 6, output_tokens: 2 } })}
+TOKEN_FIXTURE
+`, { mode: 0o700 });
+  for (const write of [() => { throw Error('disk private detail'); }, () => null, () => false]) {
+    const { monitor, clients } = fixture(t, { env: {}, write });
+    // Cache a clean summary first; a failure must invalidate it immediately.
+    assert.equal(monitor.getTokenSummary().measurementHealth.writeFailures, 0);
+    const result = await runBrain({ id: 'token-test', name: 'Quill', cwd: root, provider: 'codex', sessions: {} }, 'test', {
+      bins: { codex: bin }, env: { PATH: '/usr/bin:/bin', TERMFLEET_GENTLE_BRAINS: '0' }, onUsage: monitor.traceTokenUsage,
+    });
+    assert.equal(result.text, 'Ready');
+    const summary = monitor.getTokenSummary();
+    assert.equal(summary.total.generations, 0);
+    assert.equal(summary.measurementHealth.writeFailures, 1);
+    assert.ok(summary.measurementHealth.lastWriteFailureAt);
+    assert.equal(JSON.stringify(summary).includes('private detail'), false);
+    assert.equal(clients.length, 0);
+  }
 });
