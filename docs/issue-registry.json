@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T11:11:44.588Z",
+  "updatedAt": "2026-10-28T11:34:54.932Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15602,12 +15602,12 @@
         },
         {
           "kind": "focused-test",
-          "at": "2026-10-28T11:11:44.588Z",
-          "note": "Source-only follow-up: /tmp/termfleet-automation-drain-focused.tap22/22 includes actual isolated server, fake daemon, original old-question retention/jump390/1400 and queue read/write failure/repeated-handshake regressions. /tmp/termfleet-automation-queue-red.tap3 reproduced losses; now persist-first snapshot. Combined /tmp/termfleet-automation-drain-final.tap122pass1fail: full restart fixture fails before fake Codex starts with context-establishment error, not an acceptance pass. Current GET /tmp/termfleet-automation-drain-runtime.json11:10:10UTC2252271/8d3ea43c old vs disk4c49bcb7. New coordinator cancels registered timers and retains pending metadata, but aggregate child outcome coverage partial, restart_boundary_proven:false; no live signal/reload. Existing bot writer power-loss durability unproven. Doctor2 baseline failures."
+          "at": "2026-10-28T11:34:54.932Z",
+          "note": "Source-only individual delivery receipts:136/136 /tmp/termfleet-delivery-accounting-final.tap; focused35/35 /tmp/termfleet-delivery-accounting-focused.tap. Real issuer private fixture store validates exact bot caller before fake runner start; corrected restart5/5. Child process pending/uncertain and receipt write/rename failures retain original pending references; no replay. Actual GET11:34:06UTC /tmp/termfleet-delivery-accounting-runtime.json remains old2252271/8d3ea43c vs24module disk03134943ffbe. No live activation or audit model/input. Old process lacks timer admission stop and already-issued effect settlement; new protocol not retroactive. Other effects partial; production older-question retention/navigation and human-owner proof missing."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Add exact automatic-effect receipt/target outcome propagation; establish a supported live legacy pause/settlement bootstrap before first reload. Never signal legacy PID with new SIGUSR2 protocol. Verify old-question retention/navigation after proven coordinated activation.",
+      "nextAction": "Establish platform-authorized legacy admission/timer stop and explicit settlement/reconciliation of already-issued effects before first activation; no supported live old hook exists. New receipts cover held/room/routine only and are not retroactive. Then verify loaded older-question retention/navigation without input. Keep six existing gates unchanged.",
       "history": [
         {
           "at": "2026-10-28T10:39:54.466Z",
@@ -15678,6 +15678,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Source-only follow-up: /tmp/termfleet-automation-drain-focused.tap22/22 includes actual isolated server, fake daemon, original old-question retention/jump390/1400 and queue read/write failure/repeated-handshake regressions. /tmp/termfleet-automation-queue-red.tap3 reproduced losses; now persist-first snapshot. Combined /tmp/termfleet-automation-drain-final.tap122pass1fail: full restart fixture fails before fake Codex starts with context-establishment error, not an acceptance pass. Current GET /tmp/termfleet-automation-drain-runtime.json11:10:10UTC2252271/8d3ea43c old vs disk4c49bcb7. New coordinator cancels registered timers and retains pending metadata, but aggregate child outcome coverage partial, restart_boundary_proven:false; no live signal/reload. Existing bot writer power-loss durability unproven. Doctor2 baseline failures."
+        },
+        {
+          "at": "2026-10-28T11:34:54.932Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Source-only individual delivery receipts:136/136 /tmp/termfleet-delivery-accounting-final.tap; focused35/35 /tmp/termfleet-delivery-accounting-focused.tap. Real issuer private fixture store validates exact bot caller before fake runner start; corrected restart5/5. Child process pending/uncertain and receipt write/rename failures retain original pending references; no replay. Actual GET11:34:06UTC /tmp/termfleet-delivery-accounting-runtime.json remains old2252271/8d3ea43c vs24module disk03134943ffbe. No live activation or audit model/input. Old process lacks timer admission stop and already-issued effect settlement; new protocol not retroactive. Other effects partial; production older-question retention/navigation and human-owner proof missing."
         }
       ]
     }

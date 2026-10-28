@@ -189,19 +189,27 @@ in-memory prefix; repeated successful saves preserve duplicates and arrival orde
 This existing atomic-rename writer does not establish power-loss durability.
 
 Pending operation metadata is fsynced before a registered callback starts; it
-contains a label/reference, never message words. Rejection, explicit uncertainty,
-or interrupted process exit retains the metadata and blocks automatic admission
-on reconstruction. No pending entry is reclaimed, retried or replayed. Metadata
-storage errors fail closed. Callback success retires its entry, but aggregate
-held/room/routine callbacks can hide child uncertainty: their completion is not
-receipt settlement. Selected direct guards do not yet carry all stable target and
-receipt references. Consequently status separates `registered_callbacks_finished`
-from `registered_work_settled: false`, reports partial outcome coverage and keeps
-`restart_boundary_proven: false` and `quiescence_verified: false`. The concrete
-remaining source step is to instrument each actual automatic effect with its
-existing receipt/target identity and propagate unknown child outcomes rather than
-using aggregate callback completion as settlement. Manual callbacks retain their
-original route and guards.
+contains a label/reference, never message words. Individual automatic held, room
+and routine deliveries now register stable source/target references before their
+child effect starts. A completed parent callback does not retire its child.
+Verified receipt means settled; explicit not-sent means failed-before-effect;
+unknown, thrown, interrupted or unverified terminal typing means uncertain.
+Uncertain records block admission and drain certification across reconstruction,
+without reclaim, retry or replay. A receipt persistence failure retains the
+original pending record: temporary-file creation and rename failures are covered.
+
+For bots, settlement proves the exact original text was accepted as an operator
+chat row, not that a model read or understood it. Held settlement uses its existing
+validated receipt. Terminal `ok`/`delivered` alone is not receipt proof. Only the
+automatic poll/tick routes use the new room/routine adapter; manual callbacks keep
+their original behavior. Completed metadata is capped at 100 in memory/status,
+with an explicit omitted count; all pending records and disk receipts are retained.
+Disk receipt retention is not bounded by this candidate.
+
+Status separates callback completion, individual delivery settlement and global
+work settlement. Other automatic effects remain partially instrumented, so
+`registered_work_settled`, `restart_boundary_proven` and `quiescence_verified`
+remain false. This is source-only coverage, not a universal drain guarantee.
 
 The candidate has a cooperative SIGUSR2 maintenance handshake; ONLY a process whose
 exact loaded protocol and PID have been verified may receive it. **Never send
@@ -222,3 +230,27 @@ preserves queued duplicate words and chat bytes, retains an original open questi
 past 310 later messages, and jumps to that exact question at 390/1400 widths with
 answer/send requests blocked. This is not production older-history or human-owner
 proof. Existing signed-in embed-session reads likewise are not human authentication.
+
+TF-143 individual-receipt follow-up: actual 136/136 checks passed in
+`/tmp/termfleet-delivery-accounting-final.tap`; focused 35/35 in
+`/tmp/termfleet-delivery-accounting-focused.tap`. Separate processes prove a parent
+callback can finish before its delivery settles or becomes uncertain. The broader
+restart fixture now establishes the fake runner first, using the real caller
+issuer/validator with its existing private test-store option. The original fixture
+failed before runner start; it had used the host caller store. The corrected five
+restart checks retain the actual drain/queue assertions and use no real provider.
+
+Read-only GET at 2026-10-28T11:34:06Z in
+`/tmp/termfleet-delivery-accounting-runtime.json` still observes PID2252271 loaded
+18-module8d3ea43cbb73, exactly reconstructible from commit35c9acd; frozen disk is
+24-module03134943ffbee709bb946beed7e7715c47a0a2afd6c42e4fcfc17ee07ad43107.
+The old source waits bot shutdown but neither cancels automatic timers nor exposes
+outstanding-effect settlement. Host signal inspection confirmed TERM/INT handlers
+and no USR2 handler. No live signal or reload was attempted. The exact minimum
+first-deployment gate is a platform-authorized legacy bootstrap that stops old
+admission/timers and accounts for every already-issued effect before TERM; no
+existing service, HTTP or signal surface supplies it. A new process's receipt
+protocol is not retroactive. A separately authorized controlled legacy migration
+and explicit reconciliation boundary are required before first activation; this
+is separate from the unanswered isolation approval. Production older-question
+retention/navigation and human-owner UI remain unverified.

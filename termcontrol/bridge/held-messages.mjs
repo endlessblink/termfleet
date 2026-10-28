@@ -103,7 +103,7 @@ function reportRows(pane,rows,reason,notify,log) {
 /** A durable inflight file is also the per-pane process exclusion. Never reclaim by age/PID.
  * An attempted batch stays intact until exact structured user-input receipts prove every row.
  */
-export async function deliverHeldTo(pane,{send,dir=heldDir(),resolveTarget=async()=>null,receipt=receiptOf,notify=()=>{},log=()=>{}}={}) {
+export async function deliverHeldTo(pane,{send,dir=heldDir(),resolveTarget=async()=>null,receipt=receiptOf,notify=()=>{},log=()=>{},account=(_reference,action)=>action()}={}) {
   const file=fileOf(dir,pane.id),claim=file+'.inflight';
   const dispatch=file+'.dispatch';let dispatchFD;
   try{dispatchFD=fs.openSync(dispatch,'wx',0o600);fs.fsyncSync(dispatchFD);syncDir(dir);}
@@ -143,6 +143,8 @@ export async function deliverHeldTo(pane,{send,dir=heldDir(),resolveTarget=async
     reportRows(pane.id,rows,'target-unverified',notify,log);
     return {held:true,notSent:true,blocked:true,error:'Target changed before held dispatch; batch retained.'};
   }
+  return await account({kind:'held',source_id:rows.map(r=>r.id).join(':'),row_ids:rows.map(r=>r.id),
+    pane_id:fresh.id,provider:fresh.provider,session_id:fresh.sessionId},async()=>{
   let outcome;
   try{outcome=await send(fresh,bundle(rows.map(r=>r.text)));}
   catch(error){outcome={uncertain:true,error:String(error?.message||error)};}
@@ -161,6 +163,7 @@ export async function deliverHeldTo(pane,{send,dir=heldDir(),resolveTarget=async
   }
   reportRows(pane.id,rows,'unconfirmed',notify,log);
   return {held:true,uncertain:true,error:'Held text attempted but receipt is unconfirmed; batch retained without replay.'};
+  });
   } catch(error) {
     return {held:true,uncertain:true,error:'Held storage/dispatch could not be verified; retained for reconciliation.'};
   } finally {
@@ -186,7 +189,7 @@ export function bundle(texts) {
  * One pass: every held terminal that is now idle gets its messages as one. Never typed into a
  * question or approval (waiting), a stuck or a closed terminal: those keep waiting.
  */
-export async function deliverHeld({ panes, send, dir = heldDir(), log = () => {}, now = Date.now(), windowMs = HOLD_WINDOW_MS, resolveTarget, receipt, notify }) {
+export async function deliverHeld({ panes, send, dir = heldDir(), log = () => {}, now = Date.now(), windowMs = HOLD_WINDOW_MS, resolveTarget, receipt, notify, account }) {
   const out = [];
   for (const id of heldPanes({ dir })) {
     const pane = panes.find((p) => p.id === id);
@@ -195,7 +198,7 @@ export async function deliverHeld({ panes, send, dir = heldDir(), log = () => {}
     if (!pane || !pane.alive || pane.sleeping || pane.turn === 'waiting' || pane.attention) continue;
     // A working agent gets them together once the first has waited the window; an idle one at once.
     if (pane.turn === 'working' && !oldestDue(id, { dir, now, windowMs })) continue;
-    const res=await deliverHeldTo(pane,{send,dir,log,resolveTarget,receipt,notify});
+    const res=await deliverHeldTo(pane,{send,dir,log,resolveTarget,receipt,notify,account});
     if(res.received)out.push(res);
   }
   return out;

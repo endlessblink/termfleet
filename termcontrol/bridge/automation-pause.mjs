@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 /** Admission and registered-work drain, not authorization or universal quiescence.
  * Records contain operation references only, never queue words or terminal input.
@@ -9,7 +10,16 @@ import { randomUUID } from 'node:crypto';
 export function createAutomaticActionBarrier({ file, env = process.env, stat = fs.lstatSync,
   operationsDir, now = Date.now } = {}) {
   let draining = false, storageBlocked = false;
-  const active = new Map(), retained = new Map(), timers = new Set();
+  const active = new Map(), retained = new Map(), timers = new Set(), deliveries = new Map();
+  const context = new AsyncLocalStorage();
+  let omittedCompleted = 0;
+  const trimCompleted = () => {
+    const completed=[...deliveries.values()].filter(row=>['settled','failed-before-effect'].includes(row.state))
+      .sort((a,b)=>a.at-b.at || a.id.localeCompare(b.id));
+    for(const row of completed.slice(0,Math.max(0,completed.length-100))) {
+      deliveries.delete(row.id);omittedCompleted++;
+    }
+  };
   const syncDirectory = () => {
     const fd = fs.openSync(operationsDir, 'r');
     try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
@@ -17,11 +27,19 @@ export function createAutomaticActionBarrier({ file, env = process.env, stat = f
   if (operationsDir) {
     try {
       for (const name of fs.readdirSync(operationsDir)) {
-        if (!name.endsWith('.pending.json')) { storageBlocked = true; continue; }
+        const complete = name.endsWith('.receipt.json');
+        if (!complete && !name.endsWith('.pending.json')) { storageBlocked = true; continue; }
         const pending = path.join(operationsDir, name);
         try {
           const row = JSON.parse(fs.readFileSync(pending, 'utf8'));
-          if (row.version !== 1 || typeof row.id !== 'string' || name !== row.id + '.pending.json') throw Error('invalid operation');
+          if (row.version !== 1 || typeof row.id !== 'string' || name !== row.id + (complete ? '.receipt.json' : '.pending.json')) throw Error('invalid operation');
+          if (complete) {
+            if (row.kind !== 'delivery' || !['settled','failed-before-effect'].includes(row.state)) throw Error('invalid receipt');
+            if (!deliveries.has(row.id)) deliveries.set(row.id, row);
+            trimCompleted();
+            continue;
+          }
+          if (row.kind === 'delivery') deliveries.set(row.id, {...row, state:'uncertain'});
           retained.set(row.id, { id: row.id, label: String(row.label || 'automatic operation'), reference: row.reference ?? null, reason: 'interrupted operation' });
         } catch { storageBlocked = true; }
       }
@@ -40,7 +58,8 @@ export function createAutomaticActionBarrier({ file, env = process.env, stat = f
     const why = reason();
     return { protocol: 'registered-automatic-drain-v1', paused: Boolean(why), reason: why, quiescence_verified: false,
       active: [...active.values()].map(({ id, label, reference }) => ({ id, label, reference })),
-      retained: [...retained.values()], timers: timers.size };
+      retained: [...retained.values()], deliveries:[...deliveries.values()],
+      delivery_history:{completed_limit:100,completed_omitted:omittedCompleted,pending_retained_in_full:true},timers: timers.size };
   };
   const refused = () => ({ error: 'Automatic actions are paused for maintenance.', paused: true, notSent: true, ok: false });
   const beginDrain = () => {
@@ -49,9 +68,12 @@ export function createAutomaticActionBarrier({ file, env = process.env, stat = f
       try { cancel(); timers.delete(cancel); } catch { storageBlocked = true; }
     }
   };
-  const execute = (action, { label = 'automatic operation', reference = null } = {}) => {
-    if (reason()) return refused();
-    const row = { version: 1, id: randomUUID(), label, reference, at: now() };
+  const execute = (action, { label = 'automatic operation', reference = null, kind, receipt } = {}) => {
+    // An already admitted callback may finish its own delivery during drain.
+    // A detached callback cannot acquire this exception after its parent returns.
+    const admitted = kind === 'delivery' && active.has(context.getStore());
+    if (reason() && !(admitted && !storageBlocked && !retained.size)) return refused();
+    const row = { version: 1, id: randomUUID(), label, reference, at: now(), ...(kind ? {kind,state:'pending'} : {}) };
     const pending = operationsDir && path.join(operationsDir, row.id + '.pending.json');
     if (pending) {
       try {
@@ -65,18 +87,42 @@ export function createAutomaticActionBarrier({ file, env = process.env, stat = f
       }
     }
     active.set(row.id, row); // register synchronously, before invoking any callback
+    if (kind === 'delivery') deliveries.set(row.id, row);
     const finish = (value, rejected = false) => {
-      const unknown = rejected || value?.uncertain === true || (Boolean(value?.error) && value?.notSent !== true);
+      let proof = null;
+      let settlementPersisted = kind !== 'delivery' || !pending;
+      if (kind === 'delivery' && !rejected && !value?.uncertain) {
+        try { proof = receipt(value); } catch { /* unverified receipt remains uncertain */ }
+        if (typeof proof !== 'string' || !proof) proof=null;
+      }
+      const beforeEffect = !rejected && value?.notSent === true && !value?.uncertain;
+      const unknown = kind === 'delivery' ? !proof && !beforeEffect
+        : rejected || value?.uncertain === true || (Boolean(value?.error) && value?.notSent !== true);
+      if (kind === 'delivery') {
+        Object.assign(row, {state:unknown?'uncertain':beforeEffect?'failed-before-effect':'settled', receipt:proof || null});
+        if (pending) {
+          try {
+            const tmp=pending+'.settling', fd=fs.openSync(tmp,'wx',0o600);
+            try { fs.writeFileSync(fd,JSON.stringify(row));fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+            fs.renameSync(tmp,unknown?pending:path.join(operationsDir,row.id+'.receipt.json'));syncDirectory();
+            settlementPersisted=true;
+          } catch {
+            row.state='uncertain';row.receipt=null;storageBlocked=true;
+            retained.set(row.id,{id:row.id,label,reference,reason:'delivery receipt persistence failed'});
+          }
+        }
+      }
       if (unknown) retained.set(row.id, { id: row.id, label, reference, reason: 'operation outcome unknown' });
-      else if (pending) {
+      else if (pending && settlementPersisted) {
         try { fs.unlinkSync(pending); syncDirectory(); }
         catch { storageBlocked = true; retained.set(row.id, { id: row.id, label, reference, reason: 'operation settlement could not be persisted' }); }
       }
       active.delete(row.id);
+      trimCompleted(); // metadata on disk is retained; never trim pending/uncertain work
       return value;
     };
     try {
-      const value = action();
+      const value = context.run(row.id, action);
       if (value && typeof value.then === 'function') return Promise.resolve(value).then(
         result => finish(result), error => { finish(null, true); throw error; });
       return finish(value);
@@ -85,6 +131,10 @@ export function createAutomaticActionBarrier({ file, env = process.env, stat = f
   return {
     get paused() { return Boolean(reason()); }, status, beginDrain,
     run: execute,
+    delivery(reference, action, {receipt = value => value?.received === true && typeof value.receipt === 'string' ? value.receipt : null} = {}) {
+      if (!reference || typeof reference.source_id !== 'string' || !reference.source_id || typeof reference.pane_id !== 'string') return refused();
+      return execute(action,{kind:'delivery',label:'automatic delivery',reference,receipt});
+    },
     guard(action, options) { return (...args) => execute(() => action(...args), options); },
     registerTimer(cancel) {
       if (draining) { cancel(); return () => {}; }

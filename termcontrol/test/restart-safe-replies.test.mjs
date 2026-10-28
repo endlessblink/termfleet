@@ -95,8 +95,19 @@ test('real service restart with a throwaway bot mid-reply', { timeout: 120000 },
   for (const d of [cfg, home]) fs.mkdirSync(d);
   const fake = path.join(root, 'fake-codex.mjs'), count = path.join(root, 'count');
   const services = [];
+  // Keep the genuine issuer/validation, but use its explicit private test store.
+  // Never borrow or mutate the real user's caller receipts for a throwaway bridge.
+  const entry = path.resolve('termcontrol/bridge/.restart-fixture-' + path.basename(root) + '.mjs');
+  const source = fs.readFileSync(path.resolve('termcontrol/bridge/server.mjs'), 'utf8');
+  assert.equal(source.split('callerIssuer: issueBotCaller').length, 2);
+  fs.writeFileSync(entry, source.replace('callerIssuer: issueBotCaller',
+    'callerIssuer: identity => issueBotCaller(identity, {base:' + JSON.stringify(path.join(root, 'callers')) + '})'));
+
   fs.writeFileSync(fake, `#!/usr/bin/env node
 import fs from 'node:fs';
+import {resolveBotCaller} from '${new URL('../../scripts/lib/bot-caller.mjs',import.meta.url).href}';
+const caller=resolveBotCaller(process.env,{base:'${path.join(root,'callers')}'});
+if(caller.botFolder!=='${path.join(cfg,'bots')}/'+caller.id)throw Error('Wrong fixture caller');
 const n = (Number(fs.existsSync('${count}') ? fs.readFileSync('${count}', 'utf8') : 0) || 0) + 1;
 fs.writeFileSync('${count}', String(n));
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
@@ -108,7 +119,7 @@ setTimeout(() => {
 `, { mode: 0o755 });
   const start = (extra = {}) => {
     const port = 7300 + Math.floor(Math.random() * 200);
-    const child = spawn(process.execPath, [path.resolve('termcontrol/bridge/server.mjs')], { env: { ...process.env, TC_PORT: String(port), TC_CONFIG_DIR: cfg, TC_HOST: '127.0.0.1', TC_BOTS_HOME: home, TC_NO_AGENT_HEALTH: '1', TC_CODEX_BIN: fake, TC_DESK_STT: '0', TERMFLEET_GENTLE_BRAINS: '0', ...extra }, stdio: 'ignore' });
+    const child = spawn(process.execPath, [entry], { env: { ...process.env, TC_PORT: String(port), TC_CONFIG_DIR: cfg, TC_HOST: '127.0.0.1', TC_BOTS_HOME: home, TC_NO_AGENT_HEALTH: '1', TC_CODEX_BIN: fake, TC_DESK_STT: '0', TERMFLEET_GENTLE_BRAINS: '0', ...extra }, stdio: 'ignore' });
     services.push(child);
     child.exited = new Promise((r) => child.on('exit', () => r(Date.now())));
     return { port, child };
@@ -131,6 +142,8 @@ setTimeout(() => {
     const id = await p.evaluate(async () => (await (await fetch('/api/bots', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Restart throwaway', provider: 'codex' }) })).json()).bot.id);
     await say(p, id, 'first question');
     await wait(800);
+    assert.equal(fs.existsSync(count), true, 'fake runner must be established before testing shutdown');
+    assert.equal(chat(id).some(m => m.role === 'error'), false, 'fixture setup must not hide a failed bot turn');
     const signalled = Date.now();
     s.child.kill('SIGTERM');
     await wait(300);
@@ -160,6 +173,7 @@ setTimeout(() => {
     for (const child of services) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await Promise.all(services.map((child) => child.exited));
     try { execFileSync('pkill', ['-KILL', '-f', fake]); } catch { /* none */ }
+    fs.rmSync(entry, { force: true });
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

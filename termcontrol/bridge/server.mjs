@@ -98,7 +98,7 @@ const automaticTimeout = (action, ms, label) => automatic.schedule(action, {ms,l
   set:setTimeout,clear:clearTimeout,onError:error=>console.error(`[automatic ${label}]`,error.message)});
 let maintenanceDrain = null;
 const actionEvidenceRuntime = { pid: process.pid, loaded_at: new Date().toISOString(), get automatic_actions(){return {...automatic.status(),maintenance:maintenanceDrain};},
-  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs', 'session-status.mjs', 'helper-recovery.mjs', 'idle-cleanup.mjs', 'automation-pause.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
+  source_sha256: createHash('sha256').update(['server.mjs', 'bots.mjs', 'side-reply.mjs', 'events-db.mjs', 'action-evidence.mjs', 'provider-context.mjs', 'readable-replies.mjs', 'requirements.mjs', 'helper-link.mjs', '../../scripts/lib/bot-caller.mjs', 'bot-events.mjs', 'send.mjs', 'delivery-reconciliation.mjs', 'bot-questions.mjs', 'send-once.mjs', 'orchestrate.mjs', '../../scripts/lib/agent-status-paths.mjs', 'held-messages.mjs', 'session-status.mjs', 'helper-recovery.mjs', 'idle-cleanup.mjs', 'automation-pause.mjs', 'rooms.mjs', 'routines.mjs'].map(name => fs.readFileSync(path.join(here, name), 'utf8')).join('\n')).digest('hex') };
 const appDir = process.env.TC_APP_DIR || path.join(here, '..', 'app');
 const choiceReceipts = new ChoiceReceipts(path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'choice-receipts.json'));
 // The deployed provider form needs consented acceptance before this path opens.
@@ -470,7 +470,9 @@ automaticInterval(() => botEvents(), 30_000, 'bot-events');
 // Messages held for a Codex agent that was mid-turn go in together once that turn ends (held-messages.mjs).
 automaticInterval(() => { if(automatic.paused)return;return currentPanes().then(async ({ panes, daemon }) => {
   if(automatic.paused)return;
-  await deliverHeld({ panes, send: sendToPane, resolveTarget: async(id)=>(await fleetPanes()).find(p=>p.id===id), log: (m) => console.error('[held]', m), notify:(s)=>{
+  await deliverHeld({ panes, send: sendToPane,
+    account:(reference,action)=>automatic.delivery(reference,action,{receipt:result=>result?.received ? 'held:'+reference.source_id : null}),
+    resolveTarget: async(id)=>(await fleetPanes()).find(p=>p.id===id), log: (m) => console.error('[held]', m), notify:(s)=>{
     const text=strandedText(s);console.error('[held]',text);
     if(!bots.read(s.sender))return;
     bots.append(s.sender,{role:'stuck',pane:s.pane,text});automatic.run(()=>bots.wake(s.sender,text));
@@ -535,6 +537,22 @@ function asksForTranscript(file, source = file) {
 }
 
 // Shared rooms deliver through the same path as a typed phone message.
+function sendAutomaticDelivery(pane,text,reference) {
+  return automatic.delivery(reference,()=>{
+    if (!String(pane.id).startsWith('bot:') && (!reference.session_id || reference.pane_id!==pane.id
+      || reference.provider!==pane.provider || reference.session_id!==pane.sessionId)) {
+      return {error:'Automatic delivery target conversation is unverified.',notSent:true};
+    }
+    return String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4),text) : sendToPane(pane,text);
+  },{receipt:result=>{
+      // This proves acceptance into the exact bot chat, not that a model read it.
+      const id=result?.message?.id;
+      return String(pane.id).startsWith('bot:') && result?.ok && id
+        && bots.messages(pane.id.slice(4)).some(row=>row.id===id && row.role==='operator' && row.text===text)
+        ? 'bot-message:'+id : null;
+      // Terminal "delivered" is a typing heuristic, never a verified input receipt.
+    }});
+}
 const rooms = new Rooms({
   send: (pane, text) => (String(pane.id).startsWith('bot:') ? bots.send(pane.id.slice(4), text) : sendToPane(pane, text)),
   readFeed: (pane) => (String(pane.id).startsWith('bot:')
@@ -545,7 +563,7 @@ let roomPolling = false;
 automaticInterval(async () => {
   if (automatic.paused || roomPolling || !rooms.data.rooms.some((room) => room.pending.length)) return;
   roomPolling = true;
-  try { const panes=await roomPanes();if(!automatic.paused)await rooms.poll(panes); } catch (error) { console.error('[rooms]', error.message); } finally { roomPolling = false; }
+  try { const panes=await roomPanes();if(!automatic.paused)await rooms.poll(panes,{send:sendAutomaticDelivery}); } catch (error) { console.error('[rooms]', error.message); } finally { roomPolling = false; }
 }, 3000, 'room-poll');
 
 // Scheduled messages go out through the same checked path as a typed one.
@@ -554,7 +572,7 @@ let routineTicking = false;
 automaticInterval(async () => {
   if (automatic.paused || routineTicking || !routines.data.routines.some((r) => r.enabled && r.nextRunAt && r.nextRunAt <= Date.now())) return;
   routineTicking = true;
-  try { const panes=await roomPanes();if(!automatic.paused)await routines.tick(panes); } catch (error) { console.error('[routines]', error.message); } finally { routineTicking = false; }
+  try { const panes=await roomPanes();if(!automatic.paused)await routines.tick(panes,{send:sendAutomaticDelivery}); } catch (error) { console.error('[routines]', error.message); } finally { routineTicking = false; }
 }, 30000, 'routine-poll');
 
 async function readJson(req, max = 64 * 1024) {
@@ -1605,7 +1623,8 @@ async function pauseAutomaticWork({timeoutMs=10000}={}) {
   const bot_sides=[...bots.sides.values()].filter(side=>side.busy).length;
   return maintenanceDrain={registered_callbacks_finished:observed.settled,
     registered_work_settled:false, // aggregate jobs can hide child outcomes; callback completion is not receipt settlement
-    outcome_coverage:'partial: held/room/routine child receipts are not aggregated',bot_replies:bots.running.size,bot_sides,
+    delivery_receipts_settled:observed.settled,
+    outcome_coverage:'individual held/room/routine deliveries; other automatic effects partial',bot_replies:bots.running.size,bot_sides,
     restart_boundary_proven:false, // registered work is not a claim about uninstrumented/external work
     active:observed.active,retained:observed.retained};
 }
