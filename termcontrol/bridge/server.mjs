@@ -1035,7 +1035,7 @@ const handle = async (req, res) => {
       result = url.pathname === '/api/bots' ? bots.create(body)
         : url.pathname === '/api/provider' ? bots.changeProvider(body.botId, body.provider)
         : url.pathname === '/api/bot/send' ? bots.send(body.id, body.text, { images: body.images, files: body.files, owner: true, answerTo: body.answerTo, replyTo: body.replyTo, replyMedia: body.replyMedia, listTo: body.listTo, choices: body.choices, sendId: body.sendId })
-          : url.pathname === '/api/bot/question/resolve' ? bots.resolveQuestion(body.id, body.questionId)
+          : url.pathname === '/api/bot/question/resolve' ? bots.resolveQuestion(body.id, body.questionId, body.resolution)
           : url.pathname === '/api/bot/update' ? bots.update(body.id, body)
             : url.pathname === '/api/bot/retry' ? bots.retry(body.id)
             : url.pathname === '/api/bot/retract' ? bots.retract(body.id, body.msgId)

@@ -37,14 +37,14 @@ for(const width of [390,1400])test(`buried unanswered questions keep exact jump 
   {id:'terminal-unknown',role:'terminal-ask',pane:'synthetic-unknown',askId:'unknown',promptState:'unknown',text:'Unknown old prompt',at},
   {id:'terminal-ended',role:'terminal-ask',settled:true,text:'Resolved old prompt',at},
   ...Array.from({length:45},(_,i)=>({id:'later-'+i,role:'bot',text:'Later unrelated update '+i+' with enough words to move the original question far above the composer.',at:at+100+i}))];
- const sent=[],errors=[];let disconnected=false,failAnswer=false,holdNext=false,staleStarted,releaseStale;
+ const sent=[],errors=[];let canDismiss=false,disconnected=false,failAnswer=false,holdNext=false,staleStarted,releaseStale;
  await ctx.route('**/*',async route=>{
   const u=new URL(route.request().url());if(u.origin!==base)return route.abort();
   if(!u.pathname.startsWith('/api/'))return route.continue();
   if(u.pathname==='/api/bot'&&disconnected)return route.fulfill({status:503,json:{error:'Synthetic unavailable'}});
-  if(u.pathname==='/api/bot'&&holdNext){holdNext=false;const snapshot=structuredClone(messages);staleStarted();await new Promise(resolve=>{releaseStale=resolve;});return route.fulfill({json:{bot:bots[0],messages:snapshot,requirements:[],asks:[],tryNow:[],details:{}}});}
+  if(u.pathname==='/api/bot'&&holdNext){holdNext=false;const snapshot=structuredClone(messages);staleStarted();await new Promise(resolve=>{releaseStale=resolve;});return route.fulfill({json:{questionDismissal:canDismiss,bot:bots[0],messages:snapshot,requirements:[],asks:[],tryNow:[],details:{}}});}
   let body={ok:true,bots,panes:[],groups:[],folders:[],routines:[],skills:[],items:[],asks:[],v:'isolated-unanswered'};
-  if(u.pathname==='/api/bot')body={bot:bots.find(b=>b.id===u.searchParams.get('id'))||bots[0],messages:u.searchParams.get('id')==='navigation-two'?[]:messages,requirements:[{id:'ready-test',status:'ready',words:'Ready to try task'}],asks:[],tryNow:[],details:{}};
+  if(u.pathname==='/api/bot')body={questionDismissal:canDismiss,bot:bots.find(b=>b.id===u.searchParams.get('id'))||bots[0],messages:u.searchParams.get('id')==='navigation-two'?[]:messages,requirements:[{id:'ready-test',status:'ready',words:'Ready to try task'}],asks:[],tryNow:[],details:{}};
   if(u.pathname==='/api/bot/send'){
    const post=JSON.parse(route.request().postData());if(failAnswer)return route.fulfill({status:503,json:{error:'Synthetic send failed'}});sent.push(post);
    messages.push({id:'answer-a',role:'operator',text:post.text,answerTo:post.answerTo,at:Date.now()});
@@ -58,11 +58,17 @@ for(const width of [390,1400])test(`buried unanswered questions keep exact jump 
  assert.deepEqual(errors,[],'the real chat renderer loaded before checking navigation');
  await nav.waitFor({timeout:5000});
  assert.equal(await nav.locator('[data-question-jump]').count(),3);
+  assert.equal(await nav.locator('[data-question-remove],[data-questions-clear]').count(),0,'legacy backend must never receive unsupported dismissal requests');
+  canDismiss=true;
+  await page.reload();
+  await page.waitForSelector('[data-question-remove]',{state:'attached'});
  assert.doesNotMatch(await nav.textContent(),/Ready to try|Withdrawn|Unknown old|Resolved old/);
  const before=await nav.boundingBox();assert.ok(before.y>=0&&before.y+before.height<=860,'indicator visible while original question is buried');
  if(process.env.TC_UNANSWERED_SHOT)await page.screenshot({path:`${process.env.TC_UNANSWERED_SHOT}-${width}-closed.png`});
  await page.locator('.bot-composer textarea').fill('Unsent draft remains here');
  await nav.locator('summary').click();
+ assert.equal(await nav.locator('[data-question-remove]').count(),2,'only bot questions offer removal');
+ assert.equal(await nav.locator('[data-question-remove="terminal-live"]').count(),0,'terminal approval cannot be dismissed');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'no horizontal overflow');
  if(process.env.TC_UNANSWERED_SHOT)await page.screenshot({path:`${process.env.TC_UNANSWERED_SHOT}-${width}-list.png`});
  await nav.locator('[data-question-jump="terminal-live"]').click();

@@ -142,8 +142,8 @@ export function markQuestionResolutions(messages) {
   for (const m of messages) {
     if (m.role !== 'operator') latest = null;
     if (m.role === 'bot' && m.question) latest = m;
-    if (m.role === 'question-resolution' && m.resolution === 'answered')
-      resolutions.set(m.questionId, { state: 'answered', source: 'owner', id: m.id, text: '' });
+    if (m.role === 'question-resolution' && ['answered', 'dismissed'].includes(m.resolution))
+      resolutions.set(m.questionId, { state: m.resolution, source: 'owner', id: m.id, text: '' });
     if (m.role !== 'operator') continue;
     if (m.deleted?.cancelled !== true) {
       if (m.answerTo) resolutions.set(m.answerTo, { state: 'answered', source: 'answerTo', id: m.id, text: m.text });

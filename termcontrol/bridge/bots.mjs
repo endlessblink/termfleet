@@ -1367,18 +1367,22 @@ export class Bots {
       !m.repeated && ((m.role === 'terminal-ask' && !m.settled) ||
       (m.role === 'bot' && m.question && !m.withdrawn && !m.duplicate && !m.questionResolution && !answered.has(m.id)))));
     const busy = this.running.has(id) || (this.queues.get(id) || []).length > 0 || Boolean(bot.retry);
-    return { bot: { ...this.summary(id), rules: bot.rules }, messages: markReceipts(markRepeatedTerminalAsks(chat), { busy }) };
+    return { questionDismissal: true, bot: { ...this.summary(id), rules: bot.rules }, messages: markReceipts(markRepeatedTerminalAsks(chat), { busy }) };
   }
 
-  /** Owner marks a historical card already answered, without sending work or
+  /** Owner resolves a historical card, without sending work or
    * answering/approving anything in a terminal. Keep the original and audit event.
    */
-  resolveQuestion(id, questionId) {
+  resolveQuestion(id, questionId, resolution = 'answered') {
+    if (!['answered', 'dismissed'].includes(resolution)) return { error: 'Choose answered or dismissed.' };
     if (!this.read(id)) return { error: 'That bot no longer exists.' };
     const messages = this.messages(id);
     if (!messages.some(m => m.id === questionId && m.role === 'bot' && m.question)) return { error: 'That question no longer exists.' };
-    if (!messages.some(m => m.role === 'question-resolution' && m.questionId === questionId && m.resolution === 'answered'))
-      this.append(id, { role: 'question-resolution', questionId, resolution: 'answered' });
+    // A stale Remove/Clear request cannot replace an answer received since the UI snapshot.
+    if (resolution === 'dismissed' && markQuestionResolutions(messages).find(m => m.id === questionId)?.questionResolution)
+      return { ok: true };
+    if (!messages.some(m => m.role === 'question-resolution' && m.questionId === questionId && m.resolution === resolution))
+      this.append(id, { role: 'question-resolution', questionId, resolution });
     return { ok: true };
   }
 

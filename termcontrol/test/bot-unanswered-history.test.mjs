@@ -44,6 +44,15 @@ test('explicit owner question resolution survives the history window without dis
  assert.equal(result.some(m=>m.id==='resolved'),false);
  assert.ok(result.some(m=>m.id==='pending'));
 });
+test('dismissed questions stay out of the pending history window without becoming answered',()=>{
+ const rows=[q('dismissed','Should this old choice remain?'),q('pending','Which new scope?'),
+ {id:'dismissal',role:'question-resolution',questionId:'dismissed',resolution:'dismissed'}];
+ assert.equal(view(rows).find(m=>m.id==='dismissed').questionResolution.state,'dismissed');
+ const result=view([...rows,...tail()]);
+ assert.equal(result.some(m=>m.id==='dismissed'),false);
+ assert.ok(result.some(m=>m.id==='pending'));
+ assert.ok(rows.some(m=>m.id==='dismissed'&&m.question),'original history remains intact');
+});
 test('a reply to an intervening terminal question cannot resolve an older bot question',()=>{
  const rows=[q('pending','Which scope?'),{id:'terminal',role:'terminal-ask',text:'Continue?',pane:'p'},
  {id:'answer',role:'operator',text:'Yes'},...tail()];
