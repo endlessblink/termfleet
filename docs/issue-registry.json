@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T08:38:21.005Z",
+  "updatedAt": "2026-10-28T08:58:13.105Z",
   "issues": [
     {
       "id": "TF-001",
@@ -15090,22 +15090,22 @@
       "surface": "logic",
       "matrixRefs": [],
       "symptom": "Text write succeeds but Enter fails and retry or restart types the same draft again",
-      "rootCause": "",
-      "guard": "node --test termcontrol/test/send-idempotency.test.mjs",
+      "rootCause": "Per-draft receipts exclude only the same ID; the pane in-flight set was process-local, allowing two different IDs to interleave text and Enter across bridge processes.",
+      "guard": "node --test termcontrol/test/send-pane-exclusion.test.mjs termcontrol/test/send-idempotency.test.mjs termcontrol/test/send-idempotency-http.test.mjs",
       "evidence": [
         {
           "kind": "focused-test",
-          "at": "2026-10-28T08:35:12.356Z",
-          "note": "/tmp/termfleet-f18-focused.tap24/24 PASS. /tmp/termfleet-f18-red.tap baseline1pass5fail before repair"
+          "at": "2026-10-28T08:56:19.017Z",
+          "note": "/tmp/termfleet-f18-pane-final.tap 34/34 PASS; actual baseline2pass3fail /tmp/termfleet-f18-pane-red.tap. Shared pane exclusion, actual2HTTPbridges, restart, nonce/faults, no live input"
         },
         {
           "kind": "source",
-          "at": "2026-10-28T08:38:21.005Z",
-          "note": "Saved15bc23f source is loaded bridge1800297 at08:37:06.320UTC; authGET20015module47bcc49e match.2terminal and10bot identities unchanged, queues0/0, daemon2068834 retained. Actual /tmp/termfleet-f18-activation.log and /tmp/termfleet-f18-loaded-readback.json. Whole audit remains verifying"
+          "at": "2026-10-28T08:58:13.105Z",
+          "note": "Per-pane wx durable lock and matching nonce release; uncertainty overrides success. Read-only inspector and owner-authorized manual reconciliation contract. Blocked response avoids Send anyway and force cannot bypass. Current library not loaded; existing15module47bcc49e historical"
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Preserve durable scoped uncertain receipts and explicit prewrite retries with isolated regressions",
+      "nextAction": "Freeze reviewed per-pane candidate, verify idle/no legacy uncertain receipt gate, activate bridge gracefully and prove loaded hash; preserve manual unknown-send recovery and noncooperating route gaps.",
       "history": [
         {
           "at": "2026-10-28T08:17:04.110Z",
@@ -15164,6 +15164,32 @@
           "type": "evidence",
           "kind": "source",
           "note": "Saved15bc23f source is loaded bridge1800297 at08:37:06.320UTC; authGET20015module47bcc49e match.2terminal and10bot identities unchanged, queues0/0, daemon2068834 retained. Actual /tmp/termfleet-f18-activation.log and /tmp/termfleet-f18-loaded-readback.json. Whole audit remains verifying"
+        },
+        {
+          "at": "2026-10-28T08:45:52.189Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Existing F18 extension: actual different-ID process fixture proves harmful text/Enter interleave; baseline2pass3fail in /tmp/termfleet-f18-pane-red.tap. Per-pane reservation before dispatch, no stale-lock auto-release."
+        },
+        {
+          "at": "2026-10-28T08:56:18.724Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Per-pane different-ID exclusion source34/34 PASS incl two real authenticated HTTP bridges, restart and faults. Library not yet loaded; manual recovery contract and read-only inspector documented"
+        },
+        {
+          "at": "2026-10-28T08:56:19.017Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "/tmp/termfleet-f18-pane-final.tap 34/34 PASS; actual baseline2pass3fail /tmp/termfleet-f18-pane-red.tap. Shared pane exclusion, actual2HTTPbridges, restart, nonce/faults, no live input"
+        },
+        {
+          "at": "2026-10-28T08:58:13.105Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Per-pane wx durable lock and matching nonce release; uncertainty overrides success. Read-only inspector and owner-authorized manual reconciliation contract. Blocked response avoids Send anyway and force cannot bypass. Current library not loaded; existing15module47bcc49e historical"
         }
       ]
     }

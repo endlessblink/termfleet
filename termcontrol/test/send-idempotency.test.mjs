@@ -68,21 +68,21 @@ test('uncertain and successful receipts survive new bridge instances and cache e
  await send('draft','private payload',run,{scope:'pane-a'});clock=1000;
  const retry=await createSendOnce({dir,now:()=>clock})('draft','private payload',run,{scope:'pane-a'});
  assert.equal(retry.repeated,true);assert.equal(retry.uncertain,true);assert.equal(calls,1);
- await send('success','other payload',async()=>{calls++;return{ok:true,sentAt:500};},{scope:'pane-a'});
- const success=await createSendOnce({dir})('success','other payload',async()=>{calls++;return{ok:true};},{scope:'pane-a'});
+ await send('success','other payload',async()=>{calls++;return{ok:true,sentAt:500};},{scope:'pane-b'});
+ const success=await createSendOnce({dir})('success','other payload',async()=>{calls++;return{ok:true};},{scope:'pane-b'});
  assert.equal(success.repeated,true);assert.equal(calls,2);
  assert.ok(fs.readdirSync(dir).every(name=>!fs.readFileSync(path.join(dir,name),'utf8').includes('private payload')),'receipt stores a hash rather than owner text');
 });
 
 test('known prewrite refusal remains retryable and a draft cannot change terminal',async t=>{
  const dir=fixture(t);let calls=0;const send=createSendOnce({dir});
- assert.equal((await send('draft','text',async()=>({error:'busy',notSent:true}))).notSent,true);
- assert.equal((await createSendOnce({dir})('draft','text',async()=>{calls++;return{ok:true};})).ok,true);
+ assert.equal((await send('draft','text',async()=>({error:'busy',notSent:true} ),{scope:'pane'})).notSent,true);
+ assert.equal((await createSendOnce({dir})('draft','text',async()=>{calls++;return{ok:true};},{scope:'pane'})).ok,true);
  assert.equal((await send('draft','text',async()=>{calls++;return{ok:true};},{scope:'other-pane'})).notSent,true);
  assert.equal(calls,1);
  assert.equal((await send('other-draft','text',async()=>{calls++;return{ok:true};},{scope:'other-pane'})).ok,true);
  assert.equal(calls,2);
- assert.match((await send('draft','changed',async()=>({ok:true}))).error,/changed/);
+ assert.match((await send('draft','changed',async()=>({ok:true}),{scope:'pane'})).error,/changed/);
 });
 
 const worker=String.raw`
@@ -119,7 +119,7 @@ test('process exit after text cannot release its durable reservation',async t=>{
 
 test('unwritable receipt storage refuses before invoking the sender',async t=>{
  const dir=fixture(t),file=path.join(dir,'not-a-directory');fs.writeFileSync(file,'fixture');let called=false;
- const result=await createSendOnce({dir:file})('draft','text',async()=>{called=true;return{ok:true};});
+ const result=await createSendOnce({dir:file})('draft','text',async()=>{called=true;return{ok:true};},{scope:'pane'});
  assert.equal(called,false);assert.equal(result.notSent,true);
 });
 
@@ -132,7 +132,7 @@ test('unknown throws, incomplete receipts, body conflicts and missing IDs never 
  assert.equal((await createSendOnce({dir})('draft','changed',run,{scope:'pane'})).notSent,true);
  assert.equal((await createSendOnce({dir})(null,'text',run)).notSent,true);
  assert.equal(calls,1);
- const receipt=path.join(dir,fs.readdirSync(dir)[0]);fs.writeFileSync(receipt,'{"v":');
+ const receipt=path.join(dir,fs.readdirSync(dir).find(x=>x.endsWith('.json')));fs.writeFileSync(receipt,'{"v":');
  assert.equal((await createSendOnce({dir})('draft','text',run,{scope:'pane'})).uncertain,true);
  assert.equal(calls,1);
 });
@@ -146,4 +146,6 @@ test('completion persistence failure keeps the pending reservation across reload
  }finally{fs.renameSync=rename;}
  const result=await createSendOnce({dir})('draft','text',async()=>{calls++;return{ok:true};},{scope:'pane'});
  assert.equal(result.uncertain,true);assert.equal(result.repeated,true);assert.equal(calls,1);
+ const blocked=await createSendOnce({dir})('other','different text',async()=>{calls++;return{ok:true};},{scope:'pane'});
+ assert.equal(blocked.notSent,true);assert.equal(blocked.blocked,true);assert.equal(calls,1);
 });
