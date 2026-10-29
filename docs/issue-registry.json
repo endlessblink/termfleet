@@ -1429,24 +1429,24 @@
       "guard": "Doctor must reject an older embedded release and pass after rebuild, promotion, installed checksum verification, and relaunch.",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-09-01T07:42:44.582Z",
-          "note": "Installer and provenance guards inspected; the release path rebuilds frontend before the direct Cargo bundle embeds it."
-        },
-        {
-          "kind": "focused-test",
-          "at": "2026-09-03T17:00:23.505Z",
-          "note": "Release-provenance regression tests and the focused gamification browser suite pass with the checksum-driven embed trigger."
-        },
-        {
-          "kind": "installed-release",
-          "at": "2026-09-06T06:10:17.648Z",
-          "note": "2026-09-06 release installer and installed checksum verifier pass. Dock launcher replaced stale window at 09:09:20; doctor returns DOCTOR_OK. Daemon PID 19103 and seven live sessions unchanged across relaunch. Visual read-back pending."
-        },
-        {
           "kind": "live-desktop",
           "at": "2026-09-06T06:11:13.548Z",
           "note": "2026-09-06 read-only visual child captured dock window 0x03600003 PID 788850: map, sidebar and terminal buffers render. Screenshot /tmp/termfleet-dock-visual-20260906.png SHA256 661440fa8062673e1807b1c07897a0e7bcf3563682f6530aed8126f9ee2e251c. Static capture does not prove input responsiveness; UI separately shows sync attention and 6 reconnected / 1 exited."
+        },
+        {
+          "kind": "source",
+          "at": "2026-10-29T08:48:41.297Z",
+          "note": "2026-10-29 first installer promotion382a629 cleared15h doctor failure, but standalone frontend checksum mismatched unchanged dist under different execution environments. Producer/verifier use locale-sensitive sort -z. Candidate normalizes LC_ALL=C byte ordering in both, with cross-locale regression and unchanged tamper protection. First promotion is not final proof; app1506185 and keeper2068834 unchanged."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-29T08:57:11.138Z",
+          "note": "2026-10-29 obsolete packaging fixtures repaired; real cross-locale checksum defect reproduced red under en_US.UTF-8 and en_US.utf8. After LC_ALL=C sort -z in producer/verifier,34/34 installed-release/doctor checks pass, including modified-resource and modified-frontend rejection plus post-promotion rollback. Shell syntax, Python compilation, frontend build and private locked-runtime WebKit boot pass."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-10-29T08:57:11.684Z",
+          "note": "2026-10-29 reviewed9a8a3a4 installed as9a8a3a4acc01-5388a973b7a3-3702182862a4-7b45e62702f5; binary5388a973b7a35f3562f4679356d0e6295a9fdf6c989e2779d326eed4ea79ebce. Standalone installed checksum verifier passes; doctor current and installed release checks pass. Main app1506185/keeper2068834 preserved. Private installed restart smoke opens actual window but fails legacy external restore helper unsupported --termfleet-startup; full restore acceptance remains unverified. Required button question for real-window reopen is pending."
         }
       ],
       "owner": "termfleet",
@@ -1725,6 +1725,30 @@
           "type": "evidence",
           "kind": "live-desktop",
           "note": "2026-09-06 read-only visual child captured dock window 0x03600003 PID 788850: map, sidebar and terminal buffers render. Screenshot /tmp/termfleet-dock-visual-20260906.png SHA256 661440fa8062673e1807b1c07897a0e7bcf3563682f6530aed8126f9ee2e251c. Static capture does not prove input responsiveness; UI separately shows sync attention and 6 reconnected / 1 exited."
+        },
+        {
+          "at": "2026-10-29T08:37:50.002Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-10-29 baseline before any edits or promotion: doctor reproduces desktop build15h behind frontend, installed dock checksum still passes, compatible keeper preserved. Existing installed-release/doctor suite31 tests:7 failures4 errors. Failures include legacy launcher substring assertions and fixture resource metadata gaps. No source/test edits, installation, app launch or keeper restart performed; release gate remains open."
+        },
+        {
+          "at": "2026-10-29T08:48:41.297Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-10-29 first installer promotion382a629 cleared15h doctor failure, but standalone frontend checksum mismatched unchanged dist under different execution environments. Producer/verifier use locale-sensitive sort -z. Candidate normalizes LC_ALL=C byte ordering in both, with cross-locale regression and unchanged tamper protection. First promotion is not final proof; app1506185 and keeper2068834 unchanged."
+        },
+        {
+          "at": "2026-10-29T08:57:11.138Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-10-29 obsolete packaging fixtures repaired; real cross-locale checksum defect reproduced red under en_US.UTF-8 and en_US.utf8. After LC_ALL=C sort -z in producer/verifier,34/34 installed-release/doctor checks pass, including modified-resource and modified-frontend rejection plus post-promotion rollback. Shell syntax, Python compilation, frontend build and private locked-runtime WebKit boot pass."
+        },
+        {
+          "at": "2026-10-29T08:57:11.685Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-10-29 reviewed9a8a3a4 installed as9a8a3a4acc01-5388a973b7a3-3702182862a4-7b45e62702f5; binary5388a973b7a35f3562f4679356d0e6295a9fdf6c989e2779d326eed4ea79ebce. Standalone installed checksum verifier passes; doctor current and installed release checks pass. Main app1506185/keeper2068834 preserved. Private installed restart smoke opens actual window but fails legacy external restore helper unsupported --termfleet-startup; full restore acceptance remains unverified. Required button question for real-window reopen is pending."
         }
       ]
     },

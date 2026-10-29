@@ -858,3 +858,8 @@ Root: helper verification errors set needs-you with blocked=null while the UI di
 ### TF-154/155 local chat view controls
 
 Root: context selector excluded actual data-group rows; technical status refreshed without dismissal. Guard: chat-view-state7 and chat-view-ui2; all relevant62/62. Exact group, another-group boundary, context/cancel/keyboard/mobile, reload/reopen, no writes/member changes; exact status dismissal, changed result/reset recurrence, real questions never dismissible. Installed authenticated390/1400 /tmp/termfleet-chat-view-live.json independent visual PASS, menu only no real group close, local status preference only. Local-device scope explicit; no backend result identity for identical repeated errors, public authenticated/physical acceptance still open.
+
+
+### 5.10 / TF-012 follow-up — 2026-10-29
+
+Frontend checksums depended on locale-sensitive filename sorting, so identical files could fail standalone verification after successful promotion. Both producer and verifier now use LC_ALL=C byte ordering. Mixed-case/non-ASCII fixture fails before the fix under en_US.UTF-8/en_US.utf8, passes after it, and still rejects modified assets. Guard: python3 -m unittest tests.test_installed_release tests.test_doctor_ownership (34/34). Actual installed checksums and current-build doctor checks pass for9a8a3a4; screen reopen approval pending. Full legacy restore smoke remains unverified, not waived.
