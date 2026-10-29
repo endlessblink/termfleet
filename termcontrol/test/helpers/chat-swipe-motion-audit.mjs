@@ -1,3 +1,4 @@
+import { serveAppModule } from './app-module-route.mjs';
 import {chromium} from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +10,7 @@ const browser=await chromium.launch();const summaries=[];
 try{for(const [name,dx,duration,latency] of [['commit',-152,240,180],['short',-64,240,180],['flick',-74,65,180],['recycled',-152,240,180]]){
  const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,recordVideo:{dir:out,size:{width:390,height:844}}});const page=await context.newPage();let reads=0,feeds=0;
  await page.route('**/*',async route=>{
+  if(await serveAppModule(route))return;
   const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
   if(u.pathname==='/api/panes'){if(reads++>0)await new Promise(r=>setTimeout(r,latency));return route.fulfill({json:{panes,daemon:true,view:'manual'}});}
   if(u.pathname==='/api/feed'){const id=u.searchParams.get('pane'),limit=Number(u.searchParams.get('limit')||60);feeds++;await new Promise(r=>setTimeout(r,id==='b'?(limit<10?75:330):15));const target=panes.find(p=>p.id===id);return route.fulfill({json:{pane:name==='recycled'&&id==='b'?{...target,sessionId:'recycled'}:target,events:events(id).slice(-limit),reachedStart:true}});}

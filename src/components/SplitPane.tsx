@@ -1864,9 +1864,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 {!isPreviewPane ? (
                   <>
                     <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,minWidth:0}}>
-                      {!paneTopic.inferred && paneTopic.source!=='missing' && <span data-testid="split-terminal-topic" data-topic-source={paneTopic.source} title={terminalTopicDetails(paneTopic)} dir="auto" style={{fontSize:18,fontWeight:500,color:"var(--text-primary)",overflowWrap:"anywhere",flex:"1 1 160px",minWidth:0}}>{paneTopic.text}</span>}
+                      {!paneTopic.inferred && paneTopic.source!=='missing' && <span data-testid="split-terminal-topic" data-topic-source={paneTopic.source} title={terminalTopicDetails(paneTopic)} dir="auto" style={{fontSize:"var(--font-size-ui-heading)",fontWeight:500,color:"var(--text-primary)",overflowWrap:"anywhere",flex:"1 1 160px",minWidth:0}}>{paneTopic.text}</span>}
                       <TerminalSignifier provider={paneTerminal?.agentProvider ?? agentStatusSummary?.provider ?? "shell"} />
-                      <span data-testid="split-attention" data-attention-state={splitAttentionState} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:15,fontWeight:500,minHeight:28,color:splitAttention.color}}>
+                      <span data-testid="split-attention" data-attention-state={splitAttentionState} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:"var(--font-size-ui-body-emphasis)",fontWeight:500,minHeight:28,color:splitAttention.color}}>
                         <StatusDot state={attentionToAgentState(splitAttentionState)} />{splitAttention.label}
                       </span>
                       {budgetSignal && <TokenBudgetIndicator signal={budgetSignal} detailsAlign="left" onOpenModelPicker={()=>openCodexModelPicker(`terminal-${tab.id}-${paneId}`,paneTerminal?.id)} />}
@@ -2141,6 +2141,34 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       {tab.workstream.providerAvailabilityMessage ??
                         "Provider command was not found."}
                     </span>
+                  </div>
+                ) : tab.unstarted ? (
+                  <div
+                    style={{
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "var(--terminal-bg)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      data-testid="split-start-terminal"
+                      onClick={() => useWorkspaceStore.getState().startTab(tab.id)}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: "var(--surface-2)",
+                        color: "var(--text-primary)",
+                        fontFamily: "var(--font-ui)",
+                        fontSize: 13,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Start terminal
+                    </button>
                   </div>
                 ) : (
                   <TerminalComponent

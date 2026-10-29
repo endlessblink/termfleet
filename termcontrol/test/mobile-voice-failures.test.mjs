@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import {chromium} from 'playwright';
 const html=fs.readFileSync(new URL('../app/index.html',import.meta.url),'utf8');
 async function pageFor(browser,{kind='ok',url='https://termcontrol.test/'}={}){
@@ -7,7 +8,8 @@ async function pageFor(browser,{kind='ok',url='https://termcontrol.test/'}={}){
   window.MediaRecorder=class{static isTypeSupported(t){return t==='audio/mp4';}constructor(stream,options){if(kind==='constructor')throw new DOMException('Codec','NotSupportedError');this.state='inactive';this.mimeType='audio/mp4';window.fakeRecorder=this;window.selectedMime=options?.mimeType;}start(){if(kind==='start')throw new DOMException('No capture','NotSupportedError');this.state='recording';}stop(){this.state='inactive';this.ondataavailable?.({data:new Blob([new Uint8Array(16)],{type:'audio/mp4'})});this.onstop?.();}};
  },{kind});
  const pane={id:'one',project:'demo',mapGroupId:'demo',provider:'claude',task:'Demo',turn:'idle',updatedAt:Date.now()};
- await page.route('**/*',async route=>{const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:html});if(u.pathname==='/api/panes')return route.fulfill({json:{panes:[pane],groups:[{id:'map:demo',project:'demo',panes:[pane]}],daemon:true}});if(u.pathname==='/api/feed')return route.fulfill({json:{pane,events:[],reachedStart:true}});if(u.pathname==='/api/transcribe'){await page.evaluate(()=>window.voiceProbe.uploads++);if(kind==='busy'){await new Promise(r=>setTimeout(r,300));}return route.fulfill({json:{text:'test words',language:'en'}});}return route.fulfill({json:{}});});
+ await page.route('**/*',async route=>{
+  if(await serveAppModule(route))return;const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:html});if(u.pathname==='/api/panes')return route.fulfill({json:{panes:[pane],groups:[{id:'map:demo',project:'demo',panes:[pane]}],daemon:true}});if(u.pathname==='/api/feed')return route.fulfill({json:{pane,events:[],reachedStart:true}});if(u.pathname==='/api/transcribe'){await page.evaluate(()=>window.voiceProbe.uploads++);if(kind==='busy'){await new Promise(r=>setTimeout(r,300));}return route.fulfill({json:{text:'test words',language:'en'}});}return route.fulfill({json:{}});});
  await page.goto(url);await page.locator('.pane').first().click();await page.waitForSelector('.composer .mic',{state:'attached'});await page.evaluate(()=>{const m=document.querySelector('.composer-menu');if(m)m.open=true;});return page;
 }
 test('mobile capture failures, codec choice and cancellation are handled without leaking a microphone',async()=>{

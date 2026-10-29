@@ -113,7 +113,7 @@ No source files changed by either instance. Only this HANDOFF file is mine and u
 
 ## First command to run
 
-`cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && npm run issues -- check && npm run issues -- list` (project rule), then read SessionsPanel render body in `src/components/WorkbenchSidebar.tsx` around lines 4900-5200 to find the ordering code, then ask Noam the next question.
+`cd /opt/example/local-path && npm run issues -- check && npm run issues -- list` (project rule), then read SessionsPanel render body in `src/components/WorkbenchSidebar.tsx` around lines 4900-5200 to find the ordering code, then ask Noam the next question.
 
 ## UPDATE 3 (third instance) — DESIGN APPROVED. BUILD IT.
 
@@ -132,7 +132,7 @@ No source files changed by either instance. Only this HANDOFF file is mine and u
 5. `npm run build`, regression test, `npm run release:install`, `npm run verify:installed-release`, check `npm run doctor` launch mode; verify in the real app with a screenshot; update issue evidence + MASTER_PLAN.md.
 
 ### State
-No source changes yet. Only HANDOFF-sidebar-stability.md is mine (commit it alone). First command: `cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && npm run issues -- check && npm run issues -- list`
+No source changes yet. Only HANDOFF-sidebar-stability.md is mine (commit it alone). First command: `cd /opt/example/local-path && npm run issues -- check && npm run issues -- list`
 
 ## UPDATE 4 (fourth instance) — IMPLEMENTATION STARTED, handed over at context limit
 
@@ -164,4 +164,4 @@ Meaning: when the user EXITS/closes a terminal, the selection must move to the n
 6. Rules: patch .ts/.tsx via node script files (Edit/Write reformat whole file and break source verifiers); stage only own files; main branch; commands that restart the app/daemon kill live terminal processes — say so up front; docs/issue-registry.json, baseline PNGs, verify-clipboard-paste.sh, .kilo/, HANDOFF-feature-64.md, tests/scratch-eval.spec.ts are NOT mine.
 
 ### First command
-`cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && git log -1 --stat && npx tsc --noEmit`
+`cd /opt/example/local-path && git log -1 --stat && npx tsc --noEmit`

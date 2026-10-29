@@ -47,13 +47,15 @@ test('a bot is told once when its terminal agent stops making progress, and agai
 });
 
 // 2026-10-26: 162 of 206 dropped bot requests were left 'partial' on a terminal nobody looked at again.
-test("a finished terminal's unfinished requests are named in its bot's wake", async () => {
+test("a finished terminal's unfinished requests are a historical snapshot requiring a fresh assignment check", async () => {
   const { bots, woke } = setup();
   bots.openWork = () => [{ id: 'R-9', status: 'partial', words: 'fix the title menu', where: 'terminal-h' }, { id: 'R-10', status: 'new', words: 'other', where: 'terminal-x' }];
   const seen = new Map();
   await checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn: 'working' }], readAsk: async () => null, notify: () => {} });
   await checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn: 'idle' }], readAsk: async () => null, notify: () => {} });
-  assert.match(woke[0], /has finished[\s\S]*still holds 1 of Noam's requests that are not finished: R-9 \(partial\): "fix the title menu"/);
+  assert.match(woke[0], /has finished[\s\S]*Historical snapshot recorded .*: 1 unfinished request was assigned to this terminal: R-9 \(partial\): "fix the title menu"/);
+  assert.match(woke[0], /check its current assignments with termfleet-asks items/);
+  assert.doesNotMatch(woke[0], /still holds/);
   assert.doesNotMatch(woke[0], /R-10/);
 });
 
@@ -152,13 +154,13 @@ test('a bot row counts its busy terminal agents, once each, and only recent hand
     { paneId: 'gone', at: now - 10 },
   ] };
   const panes = [
-    { id: 'a', turn: 'working' }, { id: 'b', turn: 'idle', producing: true },
+    { id: 'a', turn: 'working', task: 'Fixing the login page' }, { id: 'b', turn: 'idle', producing: true },
     { id: 'c', turn: 'waiting' }, { id: 'old', turn: 'working' },
   ];
-  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 2, helpersAsking: 0 });
+  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 2, helpersAsking: 0, helperNow: 'Fixing the login page' }, 'says what the busy agent is doing (#24)');
   panes[0].turn = 'idle'; panes[1].producing = false;
-  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 0, helpersAsking: 0 }, 'drops as they finish; waiting alone is not a card');
-  assert.deepEqual(helperState({}, panes, now), { waitingOn: 0, helpersAsking: 0 });
+  assert.deepEqual(helperState(bot, panes, now), { waitingOn: 0, helpersAsking: 0, helperNow: '' }, 'drops as they finish; waiting alone is not a card');
+  assert.deepEqual(helperState({}, panes, now), { waitingOn: 0, helpersAsking: 0, helperNow: '' });
 });
 
 // Noam 2026-10-22: "אין צורך בהודעות כפולות עם שאלות כפולות. פשוט להשאיר את אותה אחת עד שאני אענה".
@@ -188,9 +190,12 @@ test('once the prompt was answered (the terminal moved on), the same question as
   const { bots, bot } = setup();
   const ask = { id: 'a', kind: 'question', title: 'Push it?', options: [{ key: '1', label: 'Yes' }, { key: '2', label: 'No' }] };
   const seen = new Map();
-  const at = (turn, id = 'a') => checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn }], readAsk: async () => ({ ...ask, id }) });
+  const at = (turn, id = 'a', screen = '') => checkBotEvents({ bots, seen, panes: [{ id: 'terminal-h', turn }], readAsk: async () => ({ ...ask, id }), readScreen: async () => screen });
   await at('waiting');
-  await at('working'); await at('working');                     // answered: the terminal worked on
+  // A readable screen without a menu proves the terminal moved on; an empty
+  // screen would only make the prompt unknown, not prove it was answered.
+  await at('working', 'a', 'Finished checking. Ready for the next message.');
+  await at('working', 'a', 'Finished checking. Ready for the next message.');
   await at('waiting', 'b');
   assert.equal(bots.messages(bot.id).filter((m) => m.role === 'terminal-ask').length, 2);
 });

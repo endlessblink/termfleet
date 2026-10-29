@@ -1026,6 +1026,13 @@ impl PtyManager {
             }
         }
 
+        // After restore resolution but before opening a PTY. Existing live
+        // sessions returned above are reattached without disrupting their process.
+        crate::provider_launch_policy::check_command(
+            command.as_deref(),
+            &dirs::home_dir().ok_or("provider policy home unavailable")?
+                .join(".local/share/terminal-workspace"),
+        )?;
         let pty_system = native_pty_system();
         // Open the PTY at the caller's measured size when known so a freshly
         // spawned shell prints its first prompt at the real terminal width. The

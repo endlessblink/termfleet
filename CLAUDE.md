@@ -54,6 +54,14 @@ a–f done, g done except a live latency/TUI confirmation pass; the canvas rende
 is now the desktop default. TC-018 (BiDi/Hebrew nikud) and TC-015/TC-016 are
 TODO backlog.
 
+## Never take over Noam's screen (2026-10-27)
+
+Never run a headed browser/test, drive his real Chrome, run a dev launcher window, or use `xdotool`/`DISPLAY=:0`
+unless Noam approves it with a button question in the app. Headless runs and private virtual screens (`xvfb-run`,
+as every `verify:*` script already uses) are fine. `scripts/termfleet-screen-gate.mjs` (a PreToolUse hook for
+Claude Code and Codex, rules in `scripts/lib/screen-rules.mjs`) makes Claude Code show its Allow/Deny prompt, which
+the app draws as buttons, and blocks Codex with an instruction to ask first. Off switch: `TERMFLEET_SCREEN_GATE=off`.
+
 ## Starting another agent instance — use TermFleet, never tmux (FEATURE-64)
 
 Any instance or helper terminal an agent starts for the operator must be a real,
@@ -87,7 +95,7 @@ termfleet-child status        # app running + listening?
 
 TermFleet's repository-local `MASTER_PLAN.md` is the implementation/release backlog for this codebase only. It is not the canonical list rendered by the cross-agent board.
 
-- **TermFleet Agent Board / canonical agent list / shared queue:** `/media/endlessblink/data/my-projects/ai-development/devops/agent-ops/MASTER_PLAN.md`, mutated through `agent_ops.py`.
+- **TermFleet Agent Board / canonical agent list / shared queue:** `/opt/example/local-path`, mutated through `agent_ops.py`.
 - **Noam's personal tasks:** authenticated FlowState inventory; separate from agent work.
 - **TermFleet implementation/release tasks:** this repository's `MASTER_PLAN.md`.
 - **Obsidian:** durable context, requirements, decisions, and evidence; not canonical task status.

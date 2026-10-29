@@ -76,7 +76,7 @@ Grok Bot is built and run by Cursor (Anysphere) on Cursor accounts and cloud.
 ## 2. Architecture
 - **Thin clients over a cloud brain.** Desktop and mobile only show chats and approvals. Chat history and bot state are stored on Cursor's servers ("chat history is stored on our side", forum 171840). A full-account rollback synced to every device at once (171008).
 - **One persistent Firecracker microVM ("sand") per user,** 16 GB RAM and 8 cores (174573, 174170).
-  - Folders: `/workspace` and `/home/box`; skills and memory live in `~/sand-data/workflows` (173700).
+  - Folders: `/workspace` and the `box` user's home directory; skills and memory live in `~/sand-data/workflows` (173700).
   - Processes: `sand-host/host-main.cjs`, with one `exec-daemon serve` per agent.
   - Each bot gets its own Xvfb + xfwm4 + x11vnc + Chrome desktop (174574).
   - Network: hosts are `<computer>.<cluster>.cursorvm.com` over streaming connections; chat runs as SSE through api2.cursor.sh.

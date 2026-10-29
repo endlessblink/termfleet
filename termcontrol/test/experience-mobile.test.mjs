@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,12 +20,36 @@ const desk={available:true,source:'Live Timeline',generated:'2026-10-04T09:10:00
 function noOverflow(page){return page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1 && document.querySelector('main').scrollWidth<=document.querySelector('main').clientWidth+1);}
 async function targets(page){const small=await page.evaluate(()=>[...document.querySelectorAll('button,summary')].filter(el=>el.checkVisibility() && !el.closest('[hidden]')).filter(el=>{const r=el.getBoundingClientRect();return r.width<43.9 || r.height<43.9;}).map(el=>({text:el.textContent.trim(),w:el.getBoundingClientRect().width,h:el.getBoundingClientRect().height})));assert.deepEqual(small,[],'visible controls have 44 px touch targets');}
 
+test('fleet controls retain touch targets when search opens and collapses the folder action', async()=>{
+ const browser=await chromium.launch();try{
+  for(const width of [320,390,430,1280]){
+   const context=await browser.newContext({viewport:{width,height:900},isMobile:width<600,hasTouch:width<600});
+   const page=await context.newPage();
+   await page.route('http://termcontrol.design/**',async route=>{
+    if(await serveAppModule(route))return;
+    const url=new URL(route.request().url());
+    if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
+    return route.fulfill({json:url.pathname==='/api/panes'?{panes,groups:[{project:'freelance-desk',panes:[pane,other]},{project:'studio-notes',panes:[notes]}],daemon:true,view:'projects'}:{}});
+   });
+   await page.goto('http://termcontrol.design/');await page.waitForSelector('.pane');
+   await targets(page);
+   await page.locator('.fleet-search-open').click();
+   const search=page.locator('.fleet-tools .fleet-search');
+   await search.fill('demo');
+   const box=await search.boundingBox();assert.ok(box.height>=44,'the opened search field retains a touch target');
+   await targets(page);assert.ok(await noOverflow(page));
+   await context.close();
+  }
+ }finally{await browser.close();}
+});
+
 test('coherent agent navigation, inline requests and recorded day in Hebrew and English',async()=>{
  const browser=await chromium.launch();try{
   for(const width of [320,390,430,1280]){
    const context=await browser.newContext({viewport:{width,height:900},locale:width===1280?'en-GB':'he-IL',isMobile:width<600,hasTouch:width<600});const page=await context.newPage();let supported=true,sends=0,feedReads=0,feedEvents=events;
    await page.addInitScript(now=>{Date.now=()=>now;window.__copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copied=text;}}});},fixedNow);
    await page.route('http://termcontrol.design/**',async route=>{
+  if(await serveAppModule(route))return;
     const url=new URL(route.request().url());let data;
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:html.replace('<body>',`<body><div style="flex:none;padding:4px;text-align:center;font:12px/1.4 system-ui;background:#232320;color:#9a9993">${width===1280?'Demonstration · synthetic data':'הדגמה · נתונים סינתטיים'}</div>`)});
     if(url.pathname==='/api/panes')data={panes,groups:[{project:'freelance-desk',panes:[pane,other]},{project:'studio-notes',panes:[notes]}],daemon:true,view:'projects'};
@@ -38,6 +63,13 @@ test('coherent agent navigation, inline requests and recorded day in Hebrew and 
    await page.screenshot({path:path.join(out,`agents-${width}.png`),fullPage:true});
    assert.equal(await page.locator('.agent-search,.brand-mark,.view-tabs,.session-meta').count(),0,'no extra navigation chrome');assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(20, 19, 18)');
    await page.locator('.pane[data-id=demo-day]').click();await page.waitForSelector('main > .askbox');
+   const headerGeometry=await page.evaluate(()=>{
+    const header=document.querySelector('header').getBoundingClientRect(),sub=document.querySelector('header .sub').getBoundingClientRect(),close=document.querySelector('.close-terminal-head').getBoundingClientRect(),main=document.querySelector('main').getBoundingClientRect();
+    return {close:close.toJSON(),sub:sub.toJSON(),header:header.toJSON(),main:main.toJSON()};
+   });
+   assert.ok(headerGeometry.close.width>=44 && headerGeometry.close.height>=44,'Close remains a touch target');
+   assert.ok(headerGeometry.close.left>=headerGeometry.sub.left && headerGeometry.close.right<=headerGeometry.sub.right,'Close stays inside the visible subtitle');
+   assert.ok(headerGeometry.main.top>=headerGeometry.header.bottom-1,'the conversation starts below the entire header');
    assert.equal(await page.locator('body > .askbox').count(),0);assert.equal(await page.locator('.terminal-tools').isVisible(),false);assert.ok(await noOverflow(page));await targets(page);
    await page.locator('main').evaluate(el=>el.scrollTop=el.scrollHeight);
    await page.screenshot({path:path.join(out,`conversation-${width}.png`),fullPage:true});

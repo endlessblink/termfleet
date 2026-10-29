@@ -91,7 +91,7 @@ export function BotsSidebarSection() {
               <span style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 1, lineHeight: 1.35 }}>
                 <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.who}</span>
                 <span dir="auto" style={{ color: "var(--text-tertiary)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.what}</span>
-                <span dir="auto" style={{ color: "var(--text-secondary)", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.kind === "try" ? `Try: ${item.todo}` : item.todo}</span>
+                <span dir="auto" style={{ color: "var(--text-secondary)", fontSize: "var(--font-size-ui-detail)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.kind === "try" ? `Try: ${item.todo}` : item.todo}</span>
               </span>
             </button>
           ))}

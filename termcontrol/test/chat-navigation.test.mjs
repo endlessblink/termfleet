@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,6 +14,7 @@ async function fixture(browser,{rtl=false,width=390}={}) {
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url());
   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
+  if(await serveAppModule(route))return;
   if(url.pathname==='/api/panes'){state.reads++;if(state.hold)await state.hold;if(state.offline)return route.fulfill({status:503,json:{error:'offline'}});return route.fulfill({json:{daemon:true,panes:state.panes,view:'manual'}});}
   if(url.pathname==='/api/feed'){const id=url.searchParams.get('pane'),held=state.feedHold.get(id);if(held){held.started();await held.promise;return route.fulfill({status:503,json:{error:'old request'}});}return route.fulfill({json:{pane:state.panes.find(p=>p.id===id)||pane(id),events,reachedStart:true,producing:false}});}
   if(url.pathname==='/api/visit'){state.visits.push(request.postDataJSON().pane);return route.fulfill({json:{ok:true}});}

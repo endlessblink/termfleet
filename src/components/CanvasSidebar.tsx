@@ -30,7 +30,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "12px 16px",
     borderBottom: "1px solid var(--border-subtle)",
     color: "var(--text-primary)",
-    fontSize: 15,
+    fontSize: "var(--font-size-ui-body-emphasis)",
     fontWeight: 500,
   },
   headerTitle: {

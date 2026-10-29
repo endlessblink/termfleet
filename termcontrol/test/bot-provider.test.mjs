@@ -6,6 +6,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { chromium, devices } from 'playwright';
 import { Bots } from '../bridge/bots.mjs';
+import { contextReceipt } from '../bridge/provider-context.mjs';
+import crypto from 'node:crypto';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -18,7 +20,24 @@ function computer(t, run = async () => ({ text: 'Ready' })) {
   fs.writeFileSync(path.join(home, '.codex', 'auth.json'), '{}');
   const socket = path.join(root, 'daemon.sock');
   fs.writeFileSync(socket, '');
-  const options = { dir: path.join(root, 'bots'), checks: { home, socket }, bins: { claude: '/bin/false', codex: '/bin/false' }, run };
+  const options = { dir: path.join(root, 'bots'), checks: { home, socket }, bins: { claude: '/bin/false', codex: '/bin/false' },
+    providerGate: () => {}, // Isolated fake adapters only; production authorization is tested separately.
+    contextOptions: { resolveTranscript: bot => {
+      const file = path.join(root, `${bot.active || bot.provider}.jsonl`);
+      if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify((bot.active || bot.provider) === 'codex'
+        ? { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Retained test conversation.' }] } }
+        : { type: 'user', message: { content: 'Retained test conversation.' } }) + '\n');
+      return file;
+    } },
+    run: async (bot, text, options) => {
+      if (options.extras?.validateHandoff) {
+        const json = text.split(/<portable-context[^>]*>\n/)[1].split('\n</portable-context>')[0];
+        const expected = contextReceipt(JSON.parse(json), crypto.createHash('sha256').update(json).digest('hex'));
+        options.onEvent({ session: `${bot.provider}-test-session` });
+        return { text: JSON.stringify(expected) };
+      }
+      return run(bot, text, options);
+    } };
   return { bots: new Bots(options), options, root };
 }
 
@@ -65,7 +84,7 @@ test('provider changes during a fallback turn restart the task and preserve unco
   assert.ok(!bots.messages(bot.id).some(message => /Stopped by Noam/.test(message.text)));
 });
 
-test('idle provider changes preserve memory and chat while resetting target sessions and persisting', t => {
+test('idle provider changes preserve memory and chat while resetting target sessions and persisting', async t => {
   const { bots, options, root } = computer(t);
   const { bot } = bots.create({ name: 'Provider persistence', cwd: root });
   bots.append(bot.id, { role: 'operator', text: 'Remember the blue logo.' });
@@ -84,9 +103,10 @@ test('idle provider changes preserve memory and chat while resetting target sess
   assert.ok(!changed.model);
   assert.ok(!changed.retry);
   assert.equal(changed.sessions.codex, null);
-  assert.match(changed.handover, /blue logo/);
+  assert.match(fs.readFileSync(path.join(reloaded.folder(bot.id), changed.providerSwitch.file), 'utf8'), /blue logo/);
   assert.deepEqual(reloaded.memory(bot.id).card(), memory);
   assert.ok(reloaded.messages(bot.id).some(message => message.text === 'Remember the blue logo.'));
+  assert.equal((await reloaded.turn(bot.id, 'Continue.')).error, undefined);
   assert.equal(reloaded.changeProvider(bot.id, 'claude').ok, true);
   assert.equal(reloaded.read(bot.id).active, 'claude');
   assert.equal(reloaded.read(bot.id).sessions.claude.started, false);
@@ -236,6 +256,8 @@ test('bot slash provider command survives unavailable skills and retries safely 
     assert.equal(await page.locator('header .bot-avatar.head').evaluate(element => getComputedStyle(element).animationName), 'none');
     assert.deepEqual(errors, []);
   } finally {
+    // Let polling route handlers finish before disposing their request context.
+    for (const context of browser?.contexts() || []) for (const page of context.pages()) await page.unrouteAll({ behavior: 'wait' });
     await browser?.close();
     server.kill('SIGKILL');
     fs.rmSync(root, { recursive: true, force: true });

@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 // Noam 2026-10-19: "Cant paste an image on mobile in agent conversation".
 // Phone keyboards often never send a paste event for a picture, so the menu has a
 // "Paste picture" button that reads the picture from the clipboard when tapped.
@@ -19,6 +20,7 @@ async function fixture(browser, clipboard) {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read, writeText: async () => {} } });
   }, clipboard);
   await page.route('**/*', async (route) => {
+  if(await serveAppModule(route))return;
     const url = new URL(route.request().url());
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
     if (url.pathname === '/api/panes') return route.fulfill({ json: { daemon: true, panes: [pane('a')], view: 'manual' } });
@@ -76,6 +78,7 @@ test('bot chats: the Paste picture button adds the copied picture as a tile, and
       }, mode);
       const bot = { id: 'abcdef012345', name: 'Quill', job: '', provider: 'claude', fallback: 'codex', active: 'claude', state: 'idle', health: { level: 'ok', text: 'Ready' }, messages: [], helpers: [], memoryPending: 0, notify: true, pinned: false, hidden: false };
       await page.route('**/*', async (route) => {
+  if(await serveAppModule(route))return;
         const url = new URL(route.request().url());
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
         if (url.pathname === '/api/panes') return route.fulfill({ json: { daemon: true, panes: [], view: 'manual' } });
@@ -115,6 +118,7 @@ async function botFixture(browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
   const bot = { id: 'abcdef012345', name: 'Quill', job: '', provider: 'claude', fallback: 'codex', active: 'claude', state: 'idle', health: { level: 'ok', text: 'Ready' }, messages: [], helpers: [], memoryPending: 0, notify: true, pinned: false, hidden: false };
   await page.route('**/*', async (route) => {
+  if(await serveAppModule(route))return;
     const url = new URL(route.request().url());
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
     if (url.pathname === '/api/panes') return route.fulfill({ json: { daemon: true, panes: [], view: 'manual' } });
@@ -184,6 +188,7 @@ async function engineFixture(browser, { chat, clipboardTypes }) {
   }, clipboardTypes);
   const bot = { id: 'abcdef012345', name: 'Quill', job: '', provider: 'claude', fallback: 'codex', active: 'claude', state: 'idle', health: { level: 'ok', text: 'Ready' }, messages: [], helpers: [], memoryPending: 0, notify: true, pinned: false, hidden: false };
   await page.route('**/*', async (route) => {
+  if(await serveAppModule(route))return;
     const url = new URL(route.request().url());
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
     if (url.pathname === '/api/panes') return route.fulfill({ json: { daemon: true, panes: [pane('a')], view: 'manual' } });
@@ -347,6 +352,7 @@ test('bot and terminal chats: a saved screenshot (picture + its address, picture
       const bot = { id: 'abcdef012345', name: 'Quill', job: '', provider: 'claude', fallback: 'codex', active: 'claude', state: 'idle', health: { level: 'ok', text: 'Ready' }, messages: [], helpers: [], memoryPending: 0, notify: true, pinned: false, hidden: false };
       const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6lLQAAAAASUVORK5CYII=', 'base64');
       await page.route('**/*', async (route) => {
+  if(await serveAppModule(route))return;
         const url = new URL(route.request().url());
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
         if (url.pathname === '/api/local-image') { asked.push(url.searchParams.get('path')); return route.fulfill({ contentType: 'image/png', body: png }); }

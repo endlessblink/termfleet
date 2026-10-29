@@ -47,9 +47,9 @@ test('unfinished bot requests show pending work without pretending a brain is ru
   bots.running.set(bot.id, { activity: 'Checking the fix' });
   assert.equal(bots.summary(bot.id).state, 'working');
   bots.running.delete(bot.id);
-  const marked = markItem({ id: items[0].id, status: 'ready', evidence: `Isolated test proof: ${new URL(import.meta.url).pathname}` }, { dir: bots.reqDir() });
-  assert.equal(marked.error, undefined);
-  record(marked.events, { dir: bots.reqDir() });
+  // A bot's "ready" must tell Noam what to try (a working link is checked over the network), so the
+  // fixture writes the ready mark and its Try line straight to the ledger.
+  record([{ e: 'status', id: items[0].id, status: 'ready' }, { e: 'testing-handoff', id: items[0].id, link: 'https://example.test/try', tryText: 'open the bot list and read its row' }], { dir: bots.reqDir() });
   assert.equal(bots.summary(bot.id).openTasks, 0);
   assert.equal(bots.summary(bot.id).state, 'idle');
 });

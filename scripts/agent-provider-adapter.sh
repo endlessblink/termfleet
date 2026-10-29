@@ -22,6 +22,14 @@ case "$provider" in
     ;;
 esac
 
+# This check precedes provider-ready events and process creation. Missing gate or
+# Node fails closed. It is cooperative launch protection, not credential isolation.
+adapter_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if ! node "$adapter_dir/termfleet-provider-gate.mjs" check "$provider"; then
+  emit '[[TERMFLEET_AGENT_EVENT {"status":"failed","phase":"blocked","activity":"Provider launch denied by policy","activityKind":"blocked","summary":"Provider launch denied by policy","nextAction":"Review the owner launch policy","label":"Provider blocked"}]]'
+  exit 4
+fi
+
 if ! command -v "$provider" >/dev/null 2>&1; then
   emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"failed\",\"phase\":\"blocked\",\"readiness\":\"unknown\",\"activity\":\"$provider is not on PATH\",\"activityKind\":\"blocked\",\"summary\":\"$provider is not on PATH\",\"nextAction\":\"Install or configure the provider CLI\",\"label\":\"Provider unavailable\"}]]"
   exit 127

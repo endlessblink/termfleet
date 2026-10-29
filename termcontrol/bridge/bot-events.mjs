@@ -4,6 +4,9 @@ import { followActive } from './follows.mjs';
 import { unsavedWork, filesTheAgentChanged } from '../../scripts/lib/team-close.mjs';
 import { readFeed } from './feed.mjs';
 import { screenPromptAsk } from './asks.mjs';
+import { promptObservation } from './prompt-lifecycle.mjs';
+import { completionLifecycle } from './adapters/codex.mjs';
+import { observeCodexCompletion } from './helper-completions.mjs';
 
 /**
  * TF-096 part 7: things that wake a bot without Noam writing (Grok Bot's event
@@ -29,16 +32,17 @@ export function gitHead(dir) {
 }
 
 /**
- * Noam's requests that terminal still holds unfinished, as a closing sentence for its bot's wake.
+ * Historical request snapshot for a queued wake, never a current ownership claim.
  * 162 of 206 dropped bot requests in a week were 'partial' on a terminal that then got new work or
  * was closed, and nobody looked at them again (2026-10-26).
  */
-export function leftOpen(bots, botId, paneId) {
+export function leftOpen(bots, botId, paneId, recordedAt = Date.now()) {
   let items = [];
   try { items = (bots.openWork?.(botId) || []).filter((w) => w.where === paneId); } catch { items = []; }
-  if (!items.length) return '';
+  const freshCheck = ' Before closing it, check its current assignments with termfleet-asks items; assignments may have changed since this event was recorded. Hand off or finish any unfinished requests it currently holds.';
+  if (!items.length) return freshCheck;
   const list = items.slice(0, 8).map((w) => `${w.id} (${w.status}): "${String(w.words || '').replace(/\s+/g, ' ').slice(0, 100)}"`).join('; ');
-  return ` It still holds ${items.length} of Noam's requests that are not finished: ${list}${items.length > 8 ? `; and ${items.length - 8} more` : ''}. Before closing it, send them back to it or to another terminal (termfleet-team send --req <ids>), or mark each one honestly.`;
+  return ` Historical snapshot recorded ${new Date(recordedAt).toISOString()}: ${items.length} unfinished request${items.length === 1 ? ' was' : 's were'} assigned to this terminal: ${list}${items.length > 8 ? `; and ${items.length - 8} more` : ''}. This snapshot does not establish the current assignment.${freshCheck}`;
 }
 
 // "stuck": its status still says working, but its own conversation record has not moved for 20
@@ -56,13 +60,20 @@ const stateOf = (pane) => (!pane ? 'closed' : pane.turn === 'waiting' ? 'waiting
  */
 export function helperState(bot, panes, now = Date.now(), { bots } = {}) {
   const ids = new Set((bot.helpers || []).filter((h) => h?.paneId && followActive(h) && now - Number(h.at || 0) < 12 * 3600_000).map((h) => h.paneId));
-  let waitingOn = 0, helpersAsking = 0;
+  let waitingOn = 0, helpersAsking = 0, helperNow = '';
   for (const id of ids) {
-    const state = stateOf(panes.find((p) => p.id === id));
-    if (state !== 'closed' && bots && openTerminalAsk(bots, bot.id, id)) helpersAsking++;
-    else if (state === 'working') waitingOn++;
+    const pane = panes.find((p) => p.id === id);
+    const state = stateOf(pane);
+    const card = bots && openTerminalAsk(bots, bot.id, id);
+    if (state !== 'closed' && card && card.promptState !== 'unknown') helpersAsking++;
+    else if (state === 'working') {
+      waitingOn++;
+      // What that agent is doing, so "Waiting on 1 agent" is not the whole story (#24).
+      const now = pane.sessionAuthority && pane.sessionViewV2?.now && !pane.sessionViewV2.now.stale ? String(pane.sessionViewV2.now.label || '') : '';
+      if (!helperNow) helperNow = String(now || pane.task || pane.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    }
   }
-  return { waitingOn, helpersAsking };
+  return { waitingOn, helpersAsking, helperNow };
 }
 
 /**
@@ -75,6 +86,7 @@ export function screenStillAsks(screen) {
   const tail = String(screen || '').split('\n').map((l) => l.trimEnd()).filter((l) => l.trim()).slice(-14).join('\n');
   if (!tail) return false;
   return /Esc to cancel/i.test(tail) && /(^|\n)\s*(❯\s*)?1\.\s+\S/.test(tail)
+    || /\besc skip\b/i.test(tail) && /(^|\n)\s*(›|❯|>)?\s*1\.\s+\S/.test(tail)
     || /Do you want to (proceed|make this edit|create|allow|run|overwrite|delete)\b[^\n]*\?/i.test(tail)
     || /Allow (command|this|the \S+ server)[^\n]*\?/i.test(tail) && /(^|\n)\s*(›|❯|>)?\s*1\.\s+\S/.test(tail);
 }
@@ -143,6 +155,18 @@ function settleTerminalAsk(bots, botId, cardId, patch, settled = true) {
   } catch { /* best effort: at worst the card stays as it was */ }
 }
 
+/** A rejected old button settles only its exact prompt, never its replacement. */
+export function retireTerminalPrompt(bots, paneId, askId, patch = {}) {
+  if (!paneId || !askId) return;
+  for (const bot of bots.list()) {
+    for (const card of bots.messages(bot.id)) {
+      if (card.role === 'terminal-ask' && card.pane === paneId && card.askId === askId && !card.settled) {
+        settleTerminalAsk(bots, bot.id, card.id, { promptState: 'resolved', ...patch });
+      }
+    }
+  }
+}
+
 /** The terminal's own unsaved files (what blocks `termfleet-team close`), [] when it can be closed. */
 export function unsavedFor(pane, helper) {
   try { return unsavedWork(pane.cwd, Number(helper.at) || 0, undefined, filesTheAgentChanged(pane)); } catch { return []; }
@@ -153,14 +177,30 @@ export function newPromptSince(pane, since) {
   try { return (readFeed(pane, { limit: 20 }).events || []).some((e) => e.kind === 'user' && Date.parse(e.at) > since); } catch { return false; }
 }
 
-export async function checkBotEvents({ bots, panes, now = Date.now(), seen, readAsk, readScreen = async () => '', head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, recoveryHandled = () => false, notify = (note) => bots.notify?.(note) }) {
+const promptRounds = new WeakMap();
+export function beginPromptObservation(bots) {
+  const round = (promptRounds.get(bots) || 0) + 1;
+  promptRounds.set(bots, round);
+  return round;
+}
+export function isCurrentPromptObservation(bots, round) {
+  return promptRounds.get(bots) === round;
+}
+export async function checkBotEvents({ bots, panes, available = true, now = Date.now(), seen, readAsk, readScreen = async () => '', readAnswerReceipt = () => null, head = gitHead, closeCheck = unsavedFor, prompted = newPromptSince, readCompletion = completionLifecycle, recoveryHandled = () => false, notify = (note) => bots.notify?.(note) }) {
+  const round = beginPromptObservation(bots);
   const alert = (note) => { try { notify(note); } catch { /* a notification never blocks the events */ } };
   for (const b of bots.list()) {
+    bots.reconcileHelperEvents?.(b.id);
     // One entry per terminal: a bot that followed the same agent twice is woken once.
     const live = new Map();
     for (const h of b.helpers || []) if (h?.paneId && followActive(h)) live.set(h.paneId, h);
     for (const key of [...seen.keys()]) if (key.startsWith(`${b.id}|`) && !live.has(key.slice(b.id.length + 1))) seen.delete(key);
     for (const h of live.values()) {
+      if (!available) {
+        const open = openTerminalAsk(bots, b.id, h.paneId);
+        if (open) settleTerminalAsk(bots, b.id, open.id, { promptState: 'unknown' }, false);
+        continue;
+      }
       const pane = panes.find((p) => p.id === h.paneId);
       const key = `${b.id}|${h.paneId}`;
       const before = seen.get(key) || {};
@@ -172,8 +212,8 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
       // row, a new message in its own record, or the bot handing it more work; a flicker is none.
       let { finishedAt = 0, blocked = false } = before;
       const workRun = pane?.turn === 'working' ? (before.workRun || 0) + 1 : 0;
-      if (finishedAt && state !== 'idle' && (workRun >= 2 || (bots.messages?.(b.id) || []).some((m) => m.role === 'handoff' && m.pane === h.paneId && Number(m.at) > finishedAt) || (pane && prompted(pane, finishedAt)))) { finishedAt = 0; blocked = false; }
-      if (before.state === 'working' && state === 'idle') {
+      if (pane?.provider !== 'codex' && finishedAt && state !== 'idle' && (workRun >= 2 || (bots.messages?.(b.id) || []).some((m) => m.role === 'handoff' && m.pane === h.paneId && Number(m.at) > finishedAt) || (pane && prompted(pane, finishedAt)))) { finishedAt = 0; blocked = false; }
+      if (pane?.provider !== 'codex' && before.state === 'working' && state === 'idle') {
         // A follow is for one job: this finished turn ends it, so later turns of that agent stay quiet.
         if (h.followed) {
           bots.endFollow?.(b.id, h.paneId);
@@ -186,7 +226,7 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
             ? `It cannot be closed yet: it has unsaved work (${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}). Have it commit, or leave it; you will be told once, when it can be closed. Do not try to close it before that.`
             : `Then close it (termfleet-team close ${h.paneId}) unless you are sending it more work now.`) + leftOpen(bots, b.id, h.paneId));
         }
-      } else if (finishedAt && blocked && state === 'idle' && !closeCheck(pane, h).length) {
+      } else if (pane?.provider !== 'codex' && finishedAt && blocked && state === 'idle' && !closeCheck(pane, h).length) {
         // The one reminder after that: closing has become possible.
         blocked = false;
         bots.wake(b.id, `The finished terminal agent for "${label}" has no unsaved work any more, so it can be closed now: termfleet-team close ${h.paneId} (unless you are sending it more work).`);
@@ -198,11 +238,34 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
       const screen = pane && (state !== 'idle' || open || before.state !== 'idle') ? String(await readScreen(pane) || '') : '';
       // The status says it moved on, but the menu is still on screen: the prompt is still open.
       const onScreen = state !== 'waiting' && pane ? (screenPromptAsk(pane, screen) || (open && screenStillAsks(screen) ? true : null)) : null;
-      const asking = state === 'waiting' || Boolean(onScreen);
-      const away = asking ? 0 : (before.away || 0) + 1;
-      if (open && away >= 2) { settleTerminalAsk(bots, b.id, open.id, {}); open = null; }
+      const ask = state === 'waiting' ? await readAsk(pane) : (onScreen === true ? null : onScreen);
+      if (pane?.provider === 'codex' && isCurrentPromptObservation(bots, round)) {
+        observeCodexCompletion({ bots, bot: b, helper: h, pane, lifecycle: readCompletion, now, closeCheck,
+          safeToClose: state === 'idle' && !pane.attention && !ask && !onScreen && !open,
+          snapshot: () => leftOpen(bots, b.id, h.paneId, now) });
+      }
+      // A slow screen/transcript read from an earlier poll must never overwrite
+      // a newer observation (including a disconnect, cancellation or replacement).
+      if (!isCurrentPromptObservation(bots, round)) return;
+      const observation = promptObservation({ card: open, pane, available, ask, screen, screenAsks: onScreen === true });
+      const asking = observation === 'active' || (observation === 'replaced' && Boolean(ask?.id));
+      const away = observation === 'absent' ? (before.away || 0) + 1 : 0;
+      if (open && (away >= 2 || observation === 'closed' || observation === 'replaced')) {
+        settleTerminalAsk(bots, b.id, open.id, { promptState: 'resolved', ...(observation === 'closed' ? { terminalClosed: true } : {}) }); open = null;
+      } else if (open && !asking) {
+        settleTerminalAsk(bots, b.id, open.id, { promptState: 'unknown' }, false);
+      }
       if (asking) {
-        const ask = state === 'waiting' ? await readAsk(pane) : (onScreen === true ? null : onScreen);
+        // Successful durable answers are authoritative for this exact prompt.
+        // A stale provider/status snapshot must not create another model turn.
+        // ChoiceReceipts deliberately returns null for a newly repeated screen
+        // prompt, preserving that existing explicit reask/new-prompt behavior.
+        if (ask?.id && readAnswerReceipt(h.paneId, ask.id)?.state === 'sent') {
+          if (open?.askId === ask.id) settleTerminalAsk(bots, b.id, open.id, { promptState: 'resolved', answered: true });
+          continue;
+        }
+        // Restore an approval after reconnect only from a newly verified prompt.
+        if (open) settleTerminalAsk(bots, b.id, open.id, { promptState: 'active' }, false);
         if (ask?.id && open && samePrompt(open, ask)) {
           if (open.askId !== ask.id) settleTerminalAsk(bots, b.id, open.id, { askId: ask.id }, false);
         } else if (ask?.id && open && open.kind === 'permission' && ask.kind === 'permission' && menuForm(open) !== menuForm(ask)) {
@@ -213,13 +276,13 @@ export async function checkBotEvents({ bots, panes, now = Date.now(), seen, read
           settleTerminalAsk(bots, b.id, open.id, { askId: fresh.askId, text: fresh.text, options: fresh.options, detail: fresh.detail }, false);
         } else if (ask?.id) {
           if (open) settleTerminalAsk(bots, b.id, open.id, {});
-          open = bots.append(b.id, terminalAskMessage(h.paneId, label, ask));
-          bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are pinned at the bottom of his chat with you until he answers, his phone was notified, and he is reminded after 5 minutes; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
+          open = bots.append(b.id, { ...terminalAskMessage(h.paneId, label, ask), promptState: 'active', provider: pane.provider, sessionId: pane.sessionId });
+          bots.wake(b.id, `Your terminal agent for "${label}" is waiting for Noam: "${String(ask.title || '').slice(0, 160)}". The prompt and its buttons are pinned at the bottom of his chat with you until he answers, his phone was notified${ask.kind === 'question' ? '' : ', and he is reminded after 5 minutes'}; his tap goes straight to that terminal. Tell him in one or two plain sentences what it is about and what you recommend. Never answer it yourself, and send nothing to that terminal while it waits.`);
           alert({ title: `${b.name}: a terminal is waiting for you`, body: `"${label}" asks: ${String(ask.title || '').slice(0, 160)}`, url: `/#bot:${b.id}` });
         }
         // Unanswered: remind him after 5 minutes, then every 15, up to MAX_REMINDERS times.
         // After that, stop — hours of buzzing is noise, not signal.
-        if (open?.at) {
+        if (open?.at && open.kind !== 'question') {
           const count = Number(open.reminderCount || 0);
           if (count < MAX_REMINDERS) {
             const last = Number(open.remindedAt || open.at);

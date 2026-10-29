@@ -797,7 +797,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "2px 10px",
     borderRadius: "var(--radius-sm)",
     border: "1px solid transparent",
-    fontSize: 15,
+    fontSize: "var(--font-size-ui-body-emphasis)",
     fontWeight: 500,
     letterSpacing: 0,
     whiteSpace: "normal",
@@ -939,7 +939,7 @@ const styles: Record<string, CSSProperties> = {
     background: "var(--surface-rail)",
     color: "var(--text-primary)",
     fontFamily: "var(--font-ui)",
-    fontSize: 15,
+    fontSize: "var(--font-size-ui-body-emphasis)",
     fontWeight: 500,
     padding: "0 8px",
   },
@@ -2804,9 +2804,17 @@ function CanvasNodeViewImpl({
     node.type === "terminal" &&
     zoom < READABLE_TERMINAL_ZOOM &&
     !connectionActive;
+  // A blank placeholder card must not start a shell just because it is selected
+  // (Noam 2026-10-27, "this terminal was opened for no reason"): it waits for Start terminal.
+  const tabUnstarted = useWorkspaceStore((state) =>
+    node.terminalTabId
+      ? state.tabs.find((tab) => tab.id === node.terminalTabId)?.unstarted === true
+      : false,
+  );
   const shouldMountTerminal =
     node.type === "terminal" &&
     (live || connectionActive) &&
+    !tabUnstarted &&
     !showTerminalPreview;
   const shouldOverlayTerminal =
     shouldMountTerminal && selected && terminalOverlayRoot !== null;
@@ -4096,6 +4104,14 @@ function CanvasNodeViewImpl({
   const connectLinkedTerminal = useCallback(() => {
     if (!linkedTab) return;
     setCanvasNotice(null);
+    // A blank placeholder card: this click is the operator asking for its shell.
+    if (useWorkspaceStore.getState().tabs.find((tab) => tab.id === linkedTab.id)?.unstarted) {
+      useWorkspaceStore.getState().startTab(linkedTab.id);
+      selectCanvasNode(node.id);
+      setActiveTab(linkedTab.id);
+      setConnectionGeneration((generation) => generation + 1);
+      return;
+    }
     const currentState = useWorkspaceStore.getState();
     const currentTab =
       currentState.tabs.find((tab) => tab.id === linkedTab.id) ?? linkedTab;
@@ -4869,7 +4885,7 @@ function CanvasNodeViewImpl({
                   flexWrap: "wrap",
                 }}
               >
-                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:18,color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
+                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:"var(--font-size-ui-heading)",color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
                 <span
                   style={styles.workspacePill}
                   data-testid="canvas-agent-node-workspace"
@@ -4912,7 +4928,7 @@ function CanvasNodeViewImpl({
                   }}
                 >
                   <TerminalSquare size={13} strokeWidth={1.8} />
-                  <span>Connect terminal</span>
+                  <span>{tabUnstarted ? "Start terminal" : "Connect terminal"}</span>
                 </button>
               )}
               {canvasNotice && (
@@ -4975,7 +4991,7 @@ function CanvasNodeViewImpl({
                   flexWrap: "wrap",
                 }}
               >
-                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:18,color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
+                {!topic.inferred && topic.source!=='missing' && <span data-testid="canvas-terminal-topic" data-topic-source={topic.source} title={terminalTopicDetails(topic)} style={{fontSize:"var(--font-size-ui-heading)",color:'var(--text-primary)',fontWeight:500}} dir="auto">{topic.text}</span>}
                 <span
                   style={styles.workspacePill}
                   data-testid="canvas-terminal-node-workspace"
@@ -5054,7 +5070,7 @@ function CanvasNodeViewImpl({
                     }}
                   >
                     <TerminalSquare size={13} strokeWidth={1.8} />
-                    <span>Connect terminal</span>
+                    <span>{tabUnstarted ? "Start terminal" : "Connect terminal"}</span>
                   </button>
                 )}
                 {/* The outcome of Connect terminal. It was only rendered on agent cards, so

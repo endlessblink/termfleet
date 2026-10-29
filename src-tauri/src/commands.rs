@@ -4147,10 +4147,10 @@ mod project_folder_scan_tests {
     #[test]
     fn shared_parent_of_map_projects_is_the_scan_root() {
         let hints = vec![
-            "/media/user/data/my-projects/ai-development/devops/termfleet".to_string(),
-            "/media/user/data/my-projects/productivity/flow-state/android".to_string(),
+            "/workspace/data/my-projects/ai-development/devops/termfleet".to_string(),
+            "/workspace/data/my-projects/productivity/flow-state/android".to_string(),
         ];
-        assert_eq!(shared_project_parent(&hints), Some(PathBuf::from("/media/user/data/my-projects")));
+        assert_eq!(shared_project_parent(&hints), Some(PathBuf::from("/workspace/data/my-projects")));
         assert_eq!(shared_project_parent(&["/a/b".to_string(), "/c/d".to_string()]), None, "never scans the whole disk");
         assert_eq!(shared_project_parent(&[]), None);
     }

@@ -68,6 +68,7 @@ impl Catalog {
     // This locator is not a journal or authority factory. Enrollment must come
     // from the existing trusted source host with already signed exact arguments.
     // No daemon/Tauri request, env value or file can call this private method.
+    #[cfg_attr(not(test), expect(dead_code, reason = "Reserved for trusted source enrollment; the production catalog remains empty until that integration exists"))]
     pub(crate) fn enroll(&self, method: Method, selector: &[u8], job: Job) -> Result<(), String> {
         if job.method != method || job.id.is_empty() || job.id.contains('\0') ||
             !job.broker_directory.is_absolute() || job.args.len() != if method == Method::Input { 2 } else { 1 } {
@@ -484,4 +485,25 @@ pub(crate) fn snapshot_observed_source(pane: &str, provider: &str) -> Result<Val
     }
     pipe.exit()?;
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_catalog_denies_every_method_before_helper_or_effect() {
+        let bridge = Bridge {
+            catalog: Arc::new(Catalog::default()),
+            script: Some(PathBuf::from("/definitely-missing-termfleet-test-helper.mjs")),
+            timeout: Duration::from_secs(1),
+        };
+        for method in [Method::Handoff, Method::Input, Method::Register, Method::Activate, Method::Recover] {
+            let error = bridge.run(method, b"untrusted-selector", |_, _| {
+                panic!("unenrolled method {method:?} reached a native effect")
+            }).unwrap_err();
+            assert_eq!(error, "private signed job not enrolled; zero effects", "{method:?}");
+        }
+        assert!(bridge.catalog.entries.lock().unwrap().is_empty());
+    }
 }

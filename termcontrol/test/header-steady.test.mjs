@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 // Noam 2026-10-24: "הכיתוב termcontrol למעלה קופץ". Every list refresh (every 15 s, and on live
 // events) emptied the count line under "TermControl" until the bridge answered, so the title
 // moved 9 px up and down while agents worked. The line now keeps its text and one fixed height.
@@ -16,6 +17,7 @@ test('the TermControl title does not move while the list refreshes', async () =>
     let calls = 0;
     const panes = [{ id: 'A', project: 'p', provider: 'claude', alive: true, turn: 'working', producing: true, lastActiveAt: Date.now() }];
     await page.route('http://header.synthetic/**', async (route) => {
+  if(await serveAppModule(route))return;
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ body: html, contentType: 'text/html' });
       if (url.pathname === '/api/panes') { if (calls++) await new Promise((r) => setTimeout(r, 1500)); return route.fulfill({ json: { panes, groups: [{ project: 'p', panes }], daemon: true } }); }

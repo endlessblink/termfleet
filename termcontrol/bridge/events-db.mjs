@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { adapterFor } from './feed.mjs';
+import { createActionEvidence } from './action-evidence.mjs';
 
 const DAY = 86_400_000;
 const IDLE_MS = 60_000;
@@ -17,6 +18,7 @@ export function createEventLog({ file = defaultFile, now = Date.now } = {}) {
   if (file !== ':memory:') fs.chmodSync(file, 0o600);
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 3000');
+  const actions = createActionEvidence(db, { now });
   const previous = db.prepare("SELECT sql FROM sqlite_master WHERE name='agent_events'").get();
   // SQLite cannot alter a CHECK constraint; rebuild atomically while preserving IDs.
   if (previous && !previous.sql.includes("'token_usage'")) db.transaction(() => {
@@ -156,7 +158,7 @@ export function createEventLog({ file = defaultFile, now = Date.now } = {}) {
       stamps.delete(id);
     }
   }
-  return { logEvent, queryEvents, lastActivity, getStats, observe, close: () => { if (db.open) db.close(); } };
+  return { ...actions, logEvent, queryEvents, lastActivity, getStats, observe, close: () => { if (db.open) db.close(); } };
 }
 
 let store;
@@ -166,3 +168,6 @@ export const queryEvents = (filters) => defaultStore().queryEvents(filters);
 export const getStats = () => defaultStore().getStats();
 export const observeEvents = (panes) => defaultStore().observe(panes);
 export const lastActivity = (terminalId) => defaultStore().lastActivity(terminalId);
+export const recordActionEvidence = event => defaultStore().recordActionEvidence(event);
+export const queryActionEvidence = filters => defaultStore().queryActionEvidence(filters);
+export const pendingActionDeliveries = filters => defaultStore().pendingActionDeliveries(filters);

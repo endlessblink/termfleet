@@ -2,7 +2,7 @@
 
 ## UPDATE 20:25 — Section 0 below is RESOLVED; read this first
 
-The 19:45 "layout reset" was NOT caused by a handover. It was proven by an investigator (scripts in `/media/endlessblink/data/.dev-tmp/endlessblink/claude-1000/inv5/`):
+The 19:45 "layout reset" was NOT caused by a handover. It was proven by an investigator (scripts in `/opt/example/local-path`):
 - 17 user-level closes happened between 19:45:01 and 19:45:23. Both handover attempts had failed before writing any request.
 - 6 bot-started agent cards had `terminals: []`, so closing them left their agents running with no card. That was the real bug behind Noam's complaint #43 (R-18206): "keeps terminals open instead of killing".
 - When the last tab is removed, `removeTab` creates a default tab plus a fresh shell. That explains the 4 empty shells.
@@ -19,7 +19,7 @@ The 19:45 "layout reset" was NOT caused by a handover. It was proven by an inves
 - **Fix — commit 74dbcb8, release 74dbcb84… promoted, app relaunched on it at 20:20:**
   - `closeTerminalSession` (`src/stores/workspace.ts`) now also tombstones and kills each terminal pane of the card's layout that has no registered terminal (`terminal-<tabId>-<paneId>`, via the new `terminalPaneIdsOf`).
   - A test was added in `tests/closed-session-authority.spec.ts` (6/6 pass), and `verify:map-terminals` passes.
-  - `verify:installed-release` says the checksum doesn't match the current build. That is expected, because the release was built from the clean worktree `/media/endlessblink/data/.dev-tmp/endlessblink/tf-release-2017`.
+  - `verify:installed-release` says the checksum doesn't match the current build. That is expected, because the release was built from the clean worktree `/opt/example/local-path`.
 - **Noam's items:**
   - R-18206 is marked ready.
   - #44 is /dropoff (this handoff).
@@ -36,7 +36,7 @@ The 19:45 "layout reset" was NOT caused by a handover. It was proven by an inves
 
 # (Original 19:53 handoff follows)
 
-You are continuing work in **termfleet** (`/media/endlessblink/data/my-projects/ai-development/devops/termfleet`) on branch **main**. You are a Claude Code instance. The owner is **Noam** (Hebrew name נועם, never נוח). He reads on a phone and wants answers of 1-3 plain sentences: no jargon, paths or code. Never ask him to run commands. Before any command, say plainly whether it kills terminals.
+You are continuing work in **termfleet** (`/opt/example/local-path`) on branch **main**. You are a Claude Code instance. The owner is **Noam** (Hebrew name נועם, never נוח). He reads on a phone and wants answers of 1-3 plain sentences: no jargon, paths or code. Never ask him to run commands. Before any command, say plainly whether it kills terminals.
 
 ---
 
@@ -53,14 +53,14 @@ What the evidence shows:
 - The app process is pid 3902917 (`~/.local/bin/termfleet`), running since 25 Oct 19:36. It was NOT relaunched.
 
 **Probable trigger (correlation, not proven):**
-- At 19:44:45 and 19:44:57, a politic-fighter Codex agent (rollout thread `01a1793b-0743-7a31-b79a-850aeae66ab6`, file `...T19-21-14-01a1793b...jsonl` in `~/.codex/sessions/2026/10/26/`) ran `termfleet-child spawn --provider codex --cwd .../politic-fighter --dropoff /media/endlessblink/data/.dev-tmp/endlessblink/POLITICAL-HIT-RELEASE...`. That is a HANDOVER that replaces the caller's card.
+- At 19:44:45 and 19:44:57, a politic-fighter Codex agent (rollout thread `01a1793b-0743-7a31-b79a-850aeae66ab6`, file `...T19-21-14-01a1793b...jsonl` in `~/.codex/sessions/2026/10/26/`) ran `termfleet-child spawn --provider codex --cwd .../politic-fighter --dropoff /opt/example/local-path`. That is a HANDOVER that replaces the caller's card.
 - The app's handover handling lives in `src/lib/childRequestLoop.ts` (lines ~86-280; predecessor/replaces logic, "handoff-workspace-changed"). It may have reset the store.
 - Another candidate is localStorage over quota: the storage file is 5.3 MB, and WebKit's quota is 5 MB (see memory note TF-048 "full localStorage").
 - The root cause is NOT yet proven. Do not claim it.
 
 **The good layout still exists on disk, with 51 tabs and 51 canvas nodes:**
 - Live file: `~/.local/share/io.github.endlessblink.termfleet/localstorage/tauri_localhost_0.localstorage` (sqlite ItemTable, key `terminal-workspace.v1`, UTF-16LE JSON). It is dated 25 Oct 19:36, the last WebKit flush.
-- Backups made: `.backups/app-storage-51tabs-1953.localstorage` and `/media/endlessblink/data/.dev-tmp/endlessblink/ls-copy.sqlite`. The 1-tab state is saved at `.backups/workspace-1tab-after-reset.json`.
+- Backups made: `.backups/app-storage-51tabs-1953.localstorage` and `/opt/example/local-path`. The 1-tab state is saved at `.backups/workspace-1tab-after-reset.json`.
 - Danger: closing the app will probably make WebKit flush its in-memory 1-tab state over the good file. Keep the backup and restore it after the app is closed, before the relaunch.
 - Tabs created after 25 Oct 19:36 (today's helpers) are not in that copy. Their live sessions need tabs added; see `scripts/recover-sessions.py` (it targets the old dev storage path; adapt it to the release path above).
 
@@ -114,7 +114,7 @@ Later, in his words:
 4. All 27 complaints are done one by one: trace, prove the root cause, /sure HIGH, fix, verify live, check the full suite shows no new failures, mark with evidence.
 5. Nothing is called done without proof. Answers are 1-3 sentences, and work doesn't stop until done or blocked on him.
 
-The complaints tracker is in Obsidian: `/home/endlessblink/home-data/app-data/sync/Dropbox/OBSIDIAN_SYNCED/MAIN VULT/🚀 My Projects/🤖 AI Development/🛠️ DevOps/termfleet/Complaints Tracker.md`. It was updated today for #1, 4, 9, 10, 12, 13, 14, 15, 17, 19, 20, 21, 22, 23, 24, 26, 27, plus new #28 (trust prompt) and #29 (crash investigation).
+The complaints tracker is in Obsidian: `/opt/example/local-path VULT/🚀 My Projects/🤖 AI Development/🛠️ DevOps/termfleet/Complaints Tracker.md`. It was updated today for #1, 4, 9, 10, 12, 13, 14, 15, 17, 19, 20, 21, 22, 23, 24, 26, 27, plus new #28 (trust prompt) and #29 (crash investigation).
 
 The plan doc, with all evidence, the baseline and a verifiable plan, is `docs/bot-reliability-plan-2026-10-26.md`.
 
@@ -134,7 +134,7 @@ The plan doc, with all evidence, the baseline and a verifiable plan, is `docs/bo
 - **Bridge restarts do NOT touch terminals:** `systemctl --user restart termcontrol.service`.
 - **TermFleet app frontend changes** need a release build from a clean worktree. Set `CARGO_TARGET_DIR` and symlink `src-tauri/target`, then run `bash scripts/install-release.sh`. Noam relaunches from the dock; terminals survive a relaunch (the daemon is reused).
 - **Run tests from the repo root:** `node --test termcontrol/test/*.test.mjs`. It takes over 30 minutes; run it in the background with `timeout 3600`. Some tests spawn `termcontrol/bridge/server.mjs` from cwd and fail when run from `termcontrol/`.
-  - The old-commit worktree for comparison is `/media/endlessblink/data/.dev-tmp/endlessblink/tf-head-1526` (commit a5773e7).
+  - The old-commit worktree for comparison is `/opt/example/local-path` (commit a5773e7).
   - A pgrep-based wait loop matched itself and never ran; don't use `pgrep -f` on your own command text.
 - **Do not hand over or spawn successors** unless Noam asks. He asked for this one with /dropoff.
 
@@ -173,7 +173,7 @@ The plan doc, with all evidence, the baseline and a verifiable plan, is `docs/bo
 - Noam's words are under 2% of what workers read.
 - politic-fighter has 54 git worktrees.
 - Codex sub-agent threads (24 h, politic): 129 subagent and 199 guardian_review.
-- Investigator scripts live under `/media/endlessblink/data/.dev-tmp/endlessblink/claude-1000/inv*/`.
+- Investigator scripts live under `/opt/example/local-path`.
 
 ---
 
@@ -196,4 +196,4 @@ The plan doc, with all evidence, the baseline and a verifiable plan, is `docs/bo
 - The other agents' terminals: healthcheck f69edd4c, the politic-fighter Codex/Claude helpers, and Noam's Konsole Claude in politic-fighter.
 - No test run of mine is running (stopped at 19:50).
 
-**Start by:** running `termfleet-say` to tell Noam you're picking up the TermFleet layout recovery. Then run `python3 /media/endlessblink/data/.dev-tmp/endlessblink/claude-1000/-media-endlessblink-data-my-projects-ai-development-devops-termfleet/18c594ef-b0cd-429e-bd2c-3d87d8654248/scratchpad/ls_peek.py` to re-confirm the 51-tab copy. Then ask Noam for his go to close and reopen TermFleet with the restored layout, saying plainly that his running terminals survive it.
+**Start by:** running `termfleet-say` to tell Noam you're picking up the TermFleet layout recovery. Then run `python3 /opt/example/local-path` to re-confirm the 51-tab copy. Then ask Noam for his go to close and reopen TermFleet with the restored layout, saying plainly that his running terminals survive it.

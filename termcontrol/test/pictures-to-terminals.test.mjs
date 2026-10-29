@@ -38,3 +38,21 @@ test('bots are told to pass the picture itself with --image', () => {
   assert.match(brief, /add `--image <full path>` \(once per picture\) to `termfleet-team send`, `ask` or `start`/);
   assert.equal(typeof brainBrief, 'function');
 });
+
+import { brainCommand as _bc } from '../bridge/bots.mjs';
+import fs2 from 'node:fs';
+import os2 from 'node:os';
+import path2 from 'node:path';
+test('Claude bots get attached pictures as image blocks on stdin', () => {
+  const pic = path2.join(fs2.mkdtempSync(path2.join(os2.tmpdir(), 'pic-')), 'a.png');
+  fs2.writeFileSync(pic, Buffer.from([137, 80, 78, 71]));
+  const bot = { id: 'b', name: 'Q', provider: 'claude', cwd: '/tmp' };
+  const withPic = _bc(bot, `hi\n\n[Noam attached 1 picture. Look at it: ${pic}]`);
+  assert.ok(withPic.args.includes('--input-format'));
+  const msg = JSON.parse(withPic.stdin);
+  assert.equal(msg.message.content[0].type, 'image');
+  assert.equal(msg.message.content[0].source.media_type, 'image/png');
+  const plain = _bc(bot, 'hello');
+  assert.equal(plain.stdin, undefined);
+  assert.ok(plain.args.includes('hello'));
+});

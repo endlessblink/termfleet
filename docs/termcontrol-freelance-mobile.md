@@ -15,7 +15,7 @@ TalentDesk is a separate product. Its jobrunner/rejection work and other active
 RoughCut, ImagineBox and agentkit work were untouched.
 
 Implementation used the isolated clone
-`/home/endlessblink/Documents/Codex/2026-10-04/task-17/termcontrol-mobile`, branch
+`/opt/example/local-path`, branch
 `codex/termcontrol-mobile-freelance`, base
 `73377910e817d8323396a545f7b8bb7b953a1b0d`. The owner rejected the first visual
 candidate and explicitly approved deployment when ready to try it live.
@@ -63,7 +63,7 @@ the tested source. Daemon PID **18932** and all **35** exact session IDs/PTY PID
 were preserved. Login200/API401 and the disabled custom-answer flag were checked.
 The owner's exact pane observation now passes read-only; the same original
 question remains visible. Installed proof, baseline failures and backups are in
-`/home/endlessblink/Documents/Codex/2026-10-04/task-17/deployment-choice-oct05/`.
+`/opt/example/local-path`.
 Rollback must preserve receipt/audit history and concurrent work, restore only
 these five guarded files, and restart only the TermControl bridge if needed.
 
@@ -219,7 +219,7 @@ flag is off and receipts/audits are retained. No real answer or planning mutatio
 credential/network change, desktop/daemon restart, push or new exposure occurred.
 
 Proof and the prior light-file rollback backup are in
-`/home/endlessblink/Documents/Codex/2026-10-04/task-17/deployment-dark/`.
+`/opt/example/local-path`.
 The original pre-first-deployment dark source remains in `deployment-v2/backup/`.
 Rollback must compare current hashes and preserve later WIP/receipt history;
 restore only scoped app/bridge files and restart only TermControl if required.

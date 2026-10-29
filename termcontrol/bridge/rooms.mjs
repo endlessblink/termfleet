@@ -156,7 +156,7 @@ export class Rooms {
     return { ok: true, message, delivered };
   }
 
-  async deliver(room, message, targets, livePanes, hops) {
+  async deliver(room, message, targets, livePanes, hops, { send = this.send } = {}) {
     const results = [];
     for (const paneId of targets) {
       const member = room.members.find((m) => m.pane === paneId);
@@ -171,7 +171,8 @@ export class Rooms {
       // next finished answer covers both.
       const since = this.now();
       let result;
-      try { result = await this.send(pane, messageForAgent(room, member, message)); } catch (error) { result = { error: error.message }; }
+      try { result = await send(pane, messageForAgent(room, member, message), {kind:'room',source_id:`${room.id}:${message.seq}`,
+        pane_id:pane.id,provider:pane.provider,session_id:pane.sessionId || null}); } catch (error) { result = { error: error.message }; }
       if (result?.error) {
         this.addMessage(room, { author: 'Room', from: 'system', text: `Could not reach @${member.handle}: ${result.error}` });
         results.push({ pane: paneId, ok: false });
@@ -189,7 +190,7 @@ export class Rooms {
    * working, its newest reply came after the room message, and nothing has
    * changed for a few seconds.
    */
-  async poll(livePanes) {
+  async poll(livePanes, { send = this.send } = {}) {
     let changed = false;
     for (const room of this.data.rooms) {
       for (const wait of [...room.pending]) {
@@ -220,7 +221,7 @@ export class Rooms {
         const answer = this.addMessage(room, { author: `@${member.handle}`, from: member.pane, text: latest.text });
         const next = mentionedMembers(room, latest.text).filter((id) => id !== member.pane);
         answer.tagged = next;
-        if (next.length && wait.hops + 1 < MAX_HOPS) await this.deliver(room, answer, next, livePanes, wait.hops + 1);
+        if (next.length && wait.hops + 1 < MAX_HOPS) await this.deliver(room, answer, next, livePanes, wait.hops + 1, {send});
         else if (next.length) this.addMessage(room, { author: 'Room', from: 'system', text: 'The agents have passed this back and forth enough. Reply to continue.' });
       }
     }

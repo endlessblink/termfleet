@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -14,6 +15,7 @@ test('recording starts preparation without awaiting it and preserves auto langua
   const requests=[];
   const pane={id:'fixture',project:'demo',provider:'claude',task:'Demo',turn:'idle',updatedAt:Date.now()};
   await page.route('**/*',async(route)=>{
+  if(await serveAppModule(route))return;
    const u=new URL(route.request().url());
    if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:html});
    if(u.pathname==='/api/panes')return route.fulfill({json:{panes:[pane],groups:[{id:'demo',project:'demo',panes:[pane]}],daemon:true}});

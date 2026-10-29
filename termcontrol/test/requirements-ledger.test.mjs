@@ -247,7 +247,8 @@ test('failure 5: approved work regressed and nothing re-checked it; now a later 
   const [strip] = captureMessage({ text: 'The faces fill the title strip and loop endlessly', project: 'pf', source: 's', msgId: 'a' }, { dir });
   addTopic([strip.id], 'title-strip', { dir });
   mark(dir, 'ready', strip.id, { evidence: `live link screenshot: strip full, loop seamless after 3 cycles ${SHOT_FILE}` });
-  record([{ e: 'lock', id: strip.id, by: 'Noam: works perfectly' }], { dir });
+  // Historical locks remain readable; new locks require a signed targeted receipt.
+  fs.appendFileSync(path.join(dir, 'ledger.jsonl'), `${JSON.stringify({ e: 'lock', id: strip.id, at: Date.now(), by: 'historical owner confirmation' })}\n`);
   const [change] = captureMessage({ text: 'Make the title strip taller', project: 'pf', source: 's', msgId: 'b' }, { dir });
   assert.deepEqual(change.topics, ['title-strip']);
   const refused = markItem({ status: 'ready', id: change.id, evidence: `screenshot shows the strip is 120px tall now ${SHOT_FILE}` }, { dir });
@@ -266,8 +267,8 @@ test('failure 5 through the command: lock needs Noam\'s confirmation and a deliv
   assert.match(cli(['lock', 'R-1'], env).message, /Noam confirming it works/);
   assert.match(cli(['lock', 'R-1', '--noam-said', 'works'], env).message, /not marked ready or done with evidence yet/);
   assert.equal(cli(['ready', 'R-1', '--evidence', `screenshot shows all 12 portraits in colour ${SHOT_FILE}`], env).ok, true);
-  assert.equal(cli(['lock', 'R-1', '--noam-said', 'מעולה, עובד'], env).ok, true);
-  assert.equal(loadLedger({ dir }).items.get('R-1').locked, true);
+  assert.equal(cli(['lock', 'R-1', '--noam-said', 'מעולה, עובד'], env).ok, false);
+  assert.equal(loadLedger({ dir }).items.get('R-1').locked, false);
 });
 
 test('failure 6: agents said "done" and it was relayed unchecked; now each item needs its own evidence in the ledger, and the reply stays plain', () => {
@@ -288,7 +289,10 @@ test('failure 6: agents said "done" and it was relayed unchecked; now each item 
   assert.deepEqual(handed, ['R-1', 'R-2']);
   assert.match(stopProblem({ source: 'worker-conv', briefed: handed, lastMessage: 'All done!' }, { dir }), /You were handed R-1, R-2 and have not marked them/);
   const shot = path.join(dir, 'strip.png'); fs.writeFileSync(shot, 'png');
-  assert.equal(cli(['ready', 'R-1', '--evidence', shot], env).ok, true);
+  // Bot delivery now also requires its owner-facing Try instructions; a bare file
+  // cannot satisfy that newer guard. Seed the delivered state for the stop test below.
+  assert.match(cli(['ready', 'R-1', '--evidence', shot], env).message, /testing instructions/);
+  record([{ e: 'status', id: 'R-1', status: 'ready', evidence: shot }], { dir });
   assert.equal(cli(['partial', 'R-2', '--open', 'two portraits still grey'], env).ok, true);
   // Noam 2026-10-23 (R-353): the per-item table in replies "does not help". Evidence lives in the
   // ledger; the reply is a few plain sentences with no item ids and no table.
@@ -412,7 +416,7 @@ test('link validation: ready/done must include a working link', async (t) => {
   // A tailnet link nothing serves is rejected
   process.env.TERMFLEET_TAILSCALE_SERVE_JSON = '{"Web":{}}';
   t.after(() => { delete process.env.TERMFLEET_TAILSCALE_SERVE_JSON; });
-  assert.match(markItem({ status: 'ready', id: item.id, evidence: 'verified at https://endlessblink.tail07658e.ts.net:8445/page' }, { dir }).error, /not served by tailscale/);
+  assert.match(markItem({ status: 'ready', id: item.id, evidence: 'verified at https://workspace.example.ts.net:8445/page' }, { dir }).error, /not served by tailscale/);
 
   // A localhost link that opens passes; one where nothing runs does not
   assert.match(markItem({ status: 'ready', id: item.id, evidence: `http://localhost:${await deadPort()}/page works` }, { dir }).error, /does not open/);

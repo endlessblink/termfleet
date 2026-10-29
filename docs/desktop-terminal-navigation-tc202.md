@@ -95,7 +95,7 @@ check/create race; no rollback deletes or overwrites user content.
 ## Git reconciliation
 
 Canonical checkout is
-`/media/endlessblink/data/my-projects/ai-development/devops/termfleet`.
+`/opt/example/local-path`.
 It contains concurrent uncommitted TermControl/mobile work, including the shared
 plan, registry, and regression matrix. It was inspected read-only and never
 staged, reset, cleaned, or edited by this candidate.

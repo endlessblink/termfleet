@@ -2,26 +2,26 @@
 .pane-context-panel { display:flex; flex-wrap:wrap; row-gap:10px; min-width:0; font-family:var(--font-ui); padding:12px 0 8px; }
 /* Column spacing collapses to 0 on a very narrow card (padding % follows the panel width),
    and the divider is an inset shadow, so neither can push a column past the edge. */
-.pane-context-row { flex:1 1 160px; min-width:0; display:flex; flex-direction:column; gap:4px; padding-inline:clamp(0px, calc((100% - 320px) * 1000), 20px); box-sizing:border-box; box-shadow:inset 1px 0 0 var(--border-subtle); }
-[dir="rtl"] .pane-context-row { box-shadow:inset -1px 0 0 var(--border-subtle); }
+.pane-context-row { flex:1 1 160px; min-width:0; display:flex; flex-direction:column; gap:4px; padding-inline:clamp(0px, calc((100% - 320px) * 1000), 20px); box-sizing:border-box; box-shadow:var(--elev-pane-context-divider); }
+[dir="rtl"] .pane-context-row { box-shadow:var(--elev-pane-context-divider-rtl); }
 .pane-context-goal { flex:1.3 1 200px; }
 .pane-context-two .pane-context-goal { flex:2 1 220px; }
 .pane-context-row:first-child, [dir="rtl"] .pane-context-row:first-child { padding-inline-start:0; box-shadow:none; }
 .pane-context-label { color:var(--text-secondary); font-size:var(--label-caps-size); line-height:16px; font-weight:500; text-transform:uppercase; letter-spacing:var(--label-caps-tracking); }
 .pane-context-task .pane-context-label::after, .pane-context-now .pane-context-label::after { content:" →"; }
-.pane-context-value { min-width:0; color:var(--text-primary); font-size:15px; line-height:22px; font-weight:400; }
+.pane-context-value { min-width:0; color:var(--text-primary); font-size:var(--font-size-ui-body-emphasis); line-height:22px; font-weight:400; }
 .pane-context-goal .pane-context-value { font-size:16px; line-height:23px; font-weight:500; }
-.pane-context-two .pane-context-goal .pane-context-value { font-size:18px; line-height:26px; }
+.pane-context-two .pane-context-goal .pane-context-value { font-size:var(--font-size-ui-heading); line-height:26px; }
 .pane-context-now .pane-context-value { color:var(--text-secondary); }
 .pane-context-details { min-width:0; }
 .pane-context-details summary { cursor:pointer; list-style:none; border-radius:3px; }
 .pane-context-details summary::-webkit-details-marker { display:none; }
 /* Fixed two-line box: the band keeps one height while text changes (no card jiggle). */
-.pane-context-details summary > span { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; min-height:44px; }
+.pane-context-details summary > span { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; min-height:2lh; }
 .pane-context-details[open] summary > span { display:block; -webkit-line-clamp:unset; overflow:visible; }
 .pane-context-details summary:focus-visible { outline:var(--focus-ring-width) solid var(--focus-ring-color); outline-offset:var(--focus-ring-offset); }
 /* Where the goal came from stays readable to assistive tech and on hover (label title), not as visible noise. */
 .pane-context-provenance { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 
 .pane-context-compact { padding:6px 0 4px; }
-.pane-context-compact .pane-context-details summary > span { min-height:22px; -webkit-line-clamp:1; }
+.pane-context-compact .pane-context-details summary > span { min-height:1lh; -webkit-line-clamp:1; }

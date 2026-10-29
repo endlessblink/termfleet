@@ -5,6 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { snapshotGoal } from "../src/components/CockpitSnapshotProbe";
 
+type ContextPanelTestWindow = Window & {
+  __renderContextPanel: (goal: string, task: string, compact?: boolean) => void;
+};
+
 test("snapshot keeps a specific pane-owned plan explanation as Goal", () => {
   expect(snapshotGoal({
     paneId: "plan-pane",
@@ -679,28 +683,41 @@ test("hydrated terminal map cards preserve their exact saved pane", () => {
   expect(normalization).toContain("recovery identity, not a view");
 });
 
-test("map terminal task row keeps its reserved height when live text changes", () => {
-  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
-  const nodeView =
-    source.match(
-      /function CanvasNodeViewImpl[\s\S]*?(?=const CanvasNodeView = memo)/,
-    )?.[0] ?? "";
-
-  // The row must exist for every card and must not be mounted behind a
-  // condition: a row that appears and disappears resizes the terminal under it
-  // (the up/down shove the operator reported).
-  expect(nodeView).toContain('data-testid="canvas-terminal-node-task-row"');
-  expect(nodeView).not.toMatch(
-    /\{[^\n]*&&\s*\(\s*\n\s*<div[\s\S]{0,400}?data-testid="canvas-terminal-node-task-row"/,
-  );
-
-  // And its box height is fixed rather than derived from the text, so a short
-  // task and a two-line task occupy exactly the same space.
-  const source2 = readFileSync("src/components/MagicCanvas.tsx", "utf8");
-  const titleStyle =
-    source2.match(/terminalStatusTitle: \{[\s\S]*?\n  \},/)?.[0] ?? "";
-  expect(titleStyle).toMatch(/\n\s*height: \d+,/);
-  expect(titleStyle).not.toMatch(/\n\s*minHeight:/);
+test("map terminal task row keeps its reserved height when live text changes", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "networkidle" });
+  // Exercise the real shared component and production styles without PTY polling.
+  await page.evaluate(async () => {
+    const componentUrl = "/src/components/PaneContextPanel.tsx";
+    const reactUrl = "/node_modules/.vite/deps/react.js";
+    const domUrl = "/node_modules/.vite/deps/react-dom_client.js";
+    const [{ PaneContextPanel }, { default: React }, { default: ReactDOM }] = await Promise.all([
+      import(/* @vite-ignore */ componentUrl), import(/* @vite-ignore */ reactUrl), import(/* @vite-ignore */ domUrl),
+    ]);
+    const host = document.createElement("div");
+    host.style.cssText = "position:fixed;inset:0;z-index:99999;background:white;width:820px";
+    document.body.append(host);
+    const root = ReactDOM.createRoot(host);
+    (window as ContextPanelTestWindow).__renderContextPanel = (goal: string, task: string, compact = false) => root.render(
+      React.createElement("div", { style: { display: "flex", flexDirection: "column", height: 460 } },
+        React.createElement(PaneContextPanel, { goal: { text: goal, kind: "explicit", source: "operator" }, task, now: "Checking the result", compact }),
+        React.createElement("div", { "data-testid": "panel-terminal-body", style: { flex: 1 } })),
+    );
+  });
+  for (const compact of [false, true]) {
+    await page.evaluate((compact) => (window as ContextPanelTestWindow).__renderContextPanel("Improve summaries", "Checking", compact), compact);
+    const body = page.getByTestId("panel-terminal-body");
+    await expect(page.getByTestId("canvas-terminal-node-task-row").locator("summary > span")).toHaveText("Checking");
+    const before = await body.boundingBox();
+    await page.evaluate((compact) => (window as ContextPanelTestWindow).__renderContextPanel(
+      "Improve terminal summaries with enough precise context to clearly explain the purpose of this pane",
+      "Checking the current terminal summary and its full explanation before continuing the work", compact), compact);
+    await expect(page.getByTestId("canvas-terminal-node-task-row")).toContainText("full explanation");
+    expect(await body.boundingBox()).toEqual(before);
+    await page.getByTestId("canvas-terminal-node-task-row").locator("summary").click();
+    await expect(page.getByTestId("canvas-terminal-node-task-row").locator("details")).toHaveAttribute("open", "");
+    await expect(page.getByTestId("canvas-terminal-node-task-row").locator("summary > span")).toHaveCSS("overflow", "visible");
+    await page.getByTestId("canvas-terminal-node-task-row").locator("summary").click();
+  }
 });
 
 test("workspace surface reconciles every durable pane while rendering the active tab", () => {
@@ -787,7 +804,7 @@ test("map terminal activation owns tab, pane, and focused terminal before paste"
   );
 });
 
-test("agent cards expose a direct terminal connection", () => {
+test("agent cards expose a direct terminal connection", async ({ page }) => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const connectButton = source.match(
     /data-testid=\"canvas-agent-connect-terminal\"[\s\S]*?<\/button>/,
@@ -799,7 +816,33 @@ test("agent cards expose a direct terminal connection", () => {
   expect(connectButton).toContain("onPointerDown");
   expect(connectButton).not.toContain("openLinkedTerminal()");
   expect(source).toContain('data-testid="canvas-terminal-connect-terminal"');
-  expect(source).toContain(">Connect terminal</span>");
+  await seedMapViewportScenario(page, { x: 0, y: 0, zoom: 1 });
+  const connect = page.getByTestId("canvas-terminal-connect-terminal");
+  await expect(connect).toHaveText("Connect terminal");
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore!;
+    const state = store.getState();
+    // The browser renderer uses this pane-derived identity (there is no native PTY).
+    store.setState({
+      tabs: state.tabs.map((tab) => ({ ...tab, terminals: tab.terminals.map((terminal) => ({ ...terminal, id: "terminal-viewport-preservation-tab-viewport-preservation-pane" })) })),
+      activeTerminalId: null,
+      canvasState: { ...state.canvasState, selectedNodeId: null, selectedNodeIds: [] },
+    });
+  });
+  await connect.click();
+  await expect.poll(() => page.evaluate(() => {
+    const state = window.__termfleetWorkspaceStore!.getState();
+    return { tab: state.activeTabId, terminal: state.activeTerminalId, pane: state.tabs[0].activePaneId, selected: state.canvasState.selectedNodeId, mode: state.workspaceUiState.workspaceMode };
+  })).toEqual({ tab: "viewport-preservation-tab", terminal: "terminal-viewport-preservation-tab-viewport-preservation-pane", pane: "viewport-preservation-pane", selected: "viewport-preservation-node", mode: "canvas" });
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore!;
+    const state = store.getState();
+    store.setState({ tabs: state.tabs.map((tab) => ({ ...tab, unstarted: true })) });
+  });
+  await expect(connect).toHaveText("Start terminal");
+  await connect.click();
+  await expect.poll(() => page.evaluate(() => window.__termfleetWorkspaceStore!.getState().tabs[0].unstarted)).toBeFalsy();
+  await expect(connect).toHaveText("Connect terminal");
 });
 
 test("map Connect terminal selects the pane without leaving the map", () => {
@@ -3357,13 +3400,15 @@ test("split terminal body fills the available pane height", async ({
       containerTopGap: Math.round(
         (containerRect?.top ?? 0) - (paneRect?.top ?? 0),
       ),
+      headerBottom: pane?.querySelector(".pane-context-panel")?.parentElement?.getBoundingClientRect().bottom ?? 0,
+      containerTop: containerRect?.top ?? 0,
     };
   });
 
   expect(dimensions.paneHeight).toBeGreaterThan(500);
-  expect(dimensions.containerHeight).toBeGreaterThan(
-    dimensions.paneHeight - 96,
-  );
+  // The body fills the space below the measured context band.
+  expect(Math.abs(dimensions.containerTop - dimensions.headerBottom)).toBeLessThanOrEqual(2);
+  expect(Math.abs(dimensions.containerHeight - (dimensions.paneHeight - dimensions.containerTopGap))).toBeLessThanOrEqual(2);
   expect(dimensions.containerBottomGap).toBeLessThanOrEqual(2);
   expect(dimensions.containerTopGap).toBeGreaterThanOrEqual(20);
 });
@@ -3960,12 +4005,22 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
     title: "Delete me",
     initialCwd: "/tmp/delete-me",
   });
-  if (restored.tab?.terminals.length) {
-    expect(restored.tab.terminals[0]).toMatchObject({
-      paneId: "pane-delete",
-      status: "reconnected",
-    });
-  }
+  // Undo deliberately drops the killed PTY. Wait for the replacement rather
+  // than skipping attachment assertions when the renderer has not mounted yet.
+  // A PTY created in this app run is running, not reconnected (ptyAttachStatus).
+  await expect.poll(() => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: { getState: () => {
+        tabs: Array<{ id: string; terminals: Array<{id: string; paneId: string; status: string}> }>;
+      } };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().tabs.find(tab => tab.id === "tab-delete")?.terminals
+      .map(({id,paneId,status}) => ({id,paneId,status}));
+  })).toEqual([{
+    id: "terminal-tab-delete-pane-delete",
+    paneId: "pane-delete",
+    status: "running",
+  }]);
   expect(restored.node).toMatchObject({
     id: "node-delete",
     terminalTabId: "tab-delete",
@@ -5480,17 +5535,17 @@ test("split shell header uses the same durable summary policy as the map", async
 
   // Same durable policy as the map (see "uses durable activity" above): the composed
   // durable line drives the visible summary; junk ("Search", unfinished prompt) never shows.
-  await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(
+  await expect(page.getByTestId("split-pane-task-row").locator("summary > span")).toHaveText(
      "Improve terminal status summaries",
   );
-  await expect(page.getByTestId("split-terminal-summary-path")).toContainText(
+  await expect(page.locator(".terminal-pane-frame").getByTitle("tests/agent-status-summary.spec.ts", { exact: true })).toContainText(
     "tests/agent-status-summary.spec.ts",
   );
-  await expect(page.getByTestId("split-terminal-summary-task")).not.toHaveText(
+  await expect(page.getByTestId("split-pane-task-row").locator("summary > span")).not.toHaveText(
     "Search",
   );
   await expect(
-    page.getByTestId("split-terminal-summary-now"),
+    page.getByTestId("split-pane-now-row").locator("summary > span"),
   ).not.toContainText("unfinished prompt");
 });
 
@@ -6286,7 +6341,7 @@ test("map sidebar filters operations nodes by visible work state", async ({
           {
             // Waiting is the pane's own badge (TF-044), not leftover workstream words.
             status: "running",
-            statusSummary: { status: "waiting", updatedAt: now },
+            statusSummary: { status: "waiting", provider: "codex", statedTask: "Review deploy error", updatedAt: now },
           },
           {
             kind: "agent",
@@ -6426,15 +6481,15 @@ test("map sidebar filters operations nodes by visible work state", async ({
   await expect(mapPanel.getByTestId("map-local-services")).toContainText(
     "1 detected",
   );
-  await expect(
-    mapPanel.getByTestId("map-local-services-toggle"),
-  ).toHaveAttribute("aria-expanded", "true");
-  await mapPanel.getByTestId("map-local-services-toggle").click();
-  await expect(
-    mapPanel.getByTestId("map-local-services-toggle"),
-  ).toHaveAttribute("aria-expanded", "false");
+  await expect(mapPanel.getByTestId("map-local-services-toggle")).toHaveAttribute("aria-expanded", "false");
   await expect(mapPanel.getByTestId("map-local-service-row")).toHaveCount(0);
   await mapPanel.getByTestId("map-local-services-toggle").click();
+  await expect(mapPanel.getByTestId("map-local-services-toggle")).toHaveAttribute("aria-expanded", "true");
+  await mapPanel.getByTestId("map-local-services-toggle").click();
+  await expect(mapPanel.getByTestId("map-local-services-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(mapPanel.getByTestId("map-local-service-row")).toHaveCount(0);
+  await mapPanel.getByTestId("map-local-services-toggle").click();
+  await expect(mapPanel.getByTestId("map-local-services-toggle")).toHaveAttribute("aria-expanded", "true");
   await expect(mapPanel.getByTestId("map-local-service-row")).toContainText(
     "localhost:5177",
   );

@@ -237,7 +237,7 @@ const styles: Record<string, CSSProperties> = {
   agentRow: { display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(220px, 0.8fr)", gap: 22, padding: "18px 0", borderBottom: "1px solid var(--border-default)" },
   agentMain: { border: 0, padding: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer", font: "inherit", minWidth: 0 },
   agentTitleLine: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
-  agentName: { fontSize: 15, fontWeight: 500 },
+  agentName: { fontSize: "var(--font-size-ui-body-emphasis)", fontWeight: 500 },
   goal: { marginTop: 9, fontSize: 14 },
   progress: { marginTop: 5, color: "var(--text-secondary)", fontSize: 12 },
   agentMeta: { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12, color: "var(--text-tertiary)", fontSize: 11 },

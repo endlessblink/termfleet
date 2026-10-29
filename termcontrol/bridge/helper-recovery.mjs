@@ -20,9 +20,9 @@ export async function recoverBotHelpers({ bots, panes, items, readAsk, readScree
       const pane = panes.find((p) => p.id === id);
       if (!pane?.alive || pane.sleeping || pane.attention || !pane.sessionId || !['codex', 'claude', 'opencode'].includes(pane.provider)) continue;
       const state = stateOf(pane);
-      if (!['idle', 'stuck'].includes(state)) continue;
+      if (state!=='idle'||pane.turn!=='idle'||pane.pendingTools===true||pane.producing) continue;
       const work = items.filter((item) => !item.locked && active.has(item.status) && item.source === `bot:${bot.id}` && item.assigned?.at(-1)?.pane === id);
-      if (!work.length && (state !== 'stuck' || !helper.task)) continue;
+      if (!work.length) continue;
       const last = lastAt(pane);
       const assignedAt = Math.max(...work.map((item) => Number(item.assigned.at(-1).at) || 0), Number(helper.at) || 0);
       if (!(last > 0) || !(assignedAt > 0) || now - Math.max(last, assignedAt) < RECOVERY_AFTER_MS) continue;

@@ -60,6 +60,7 @@ impl CaptureResourceOwner {
     // Called only by a private source host after authentic enrollment. Source
     // receipts include the exact head and every selected journal; snapshot paths
     // must be its owned immutable copies, never arbitrary caller-chosen docs.
+    #[cfg_attr(not(test), expect(dead_code, reason = "Reserved for trusted source enrollment; no public request may create resource authority"))]
     pub(crate) fn enroll(scope: Scope, directory: PathBuf, source: Vec<FrozenBytes>,
         snapshot_root: PathBuf, documents: Vec<FrozenBytes>) -> Result<Self, String> {
         let directory = actual_directory(&directory)?;

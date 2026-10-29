@@ -39,6 +39,24 @@ test('no media, a missing file, or a hidden folder: nothing is added', () => {
   assert.equal(mediaKind('https://x.y/page'), null);
 });
 
+test('standalone local image paths retain spaces, parentheses and Hebrew through signed delivery', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-media-spaces-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const folder = path.join(dir, 'MY PROJECTS', 'Book For (not) Kids', 'גרסה עדכנית');
+  fs.mkdirSync(folder, { recursive: true });
+  const file = path.join(folder, 'new image (v02).png'); fs.writeFileSync(file, 'image fixture');
+  for (const line of [file, `\`${file}\``, `"${file}"`, `![הגרסה העדכנית](${file})`, `[Open](<${file}>)`, `- ${file}`]) {
+    const shown = findMedia(`הנה הגרסה העדכנית:\n${line}\nהקובץ המקורי נשמר.`);
+    assert.equal(shown.media.length, 1, line);
+    assert.equal(shown.media[0].name, 'new image (v02).png');
+    assert.equal(resolveView(shown.media[0].href).file, file);
+    assert.equal(shown.text, 'הנה הגרסה העדכנית:\nהקובץ המקורי נשמר.');
+  }
+  assert.equal(findMedia(path.join(folder, 'missing image.png')).media.length, 0);
+  const hidden = path.join(folder, '.hidden image.png'); fs.writeFileSync(hidden, 'hidden');
+  assert.equal(findMedia(hidden).media.length, 0);
+});
+
 test('at most six media per message, each named once', () => {
   const dir = files();
   const many = Array.from({ length: 9 }, (_, i) => `https://example.com/${i}.png`).join('\n');

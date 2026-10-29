@@ -45,42 +45,48 @@ import {
 } from '../termcontrol/bridge/orchestrate.mjs';
 import { endFollows } from '../termcontrol/bridge/follows.mjs';
 import { resolveCaller } from './termfleet-child.mjs';
-import { explainProviderRoute } from './lib/task-router.mjs';
+import { assertProviderLaunch } from './lib/provider-launch-policy.mjs';
 import { findOwnerWords, recentOwnerWords } from '../termcontrol/bridge/owner-words.mjs';
 import { Routines, describeDays } from '../termcontrol/bridge/routines.mjs';
 import { screenOf } from '../termcontrol/bridge/liveness.mjs';
 import { appendFileSync, existsSync, writeFileSync as writeFile } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import os from 'node:os';
+import { resolveBotCaller } from './lib/bot-caller.mjs';
+import { paneSidecarPath } from './lib/agent-status-paths.mjs';
 
 /** Inside a bot (TF-096 part 6): its chat shows what it handed over and to whom. */
-function botFolder(env = process.env) {
-  const id = String(env.TERMFLEET_BOT_ID || '');
-  if (!/^[0-9a-f]{12}$/.test(id)) return null;
-  const dir = join(env.TC_CONFIG_DIR || join(os.homedir(), '.config', 'termcontrol'), 'bots', id);
+function botFolder(env = process.env, callerOptions = {}) {
+  const caller = resolveBotCaller(env, callerOptions);
+  if (!caller) return null;
+  const dir = caller.botFolder;
   return existsSync(dir) ? dir : null;
 }
-export function recordInBot(entry, env = process.env) {
-  const dir = botFolder(env);
+export function recordInBot(entry, env = process.env, callerOptions = {}) {
+  const dir = botFolder(env, callerOptions);
   if (!dir) return false;
   try { appendFileSync(join(dir, 'chat.jsonl'), JSON.stringify({ id: randomBytes(6).toString('hex'), at: Date.now(), ...entry }) + '\n', { mode: 0o600 }); return true; } catch { return false; }
 }
-export function recordHelper(helper, env = process.env) {
-  const dir = botFolder(env);
+export function recordHelper(helper, env = process.env, callerOptions = {}) {
+  const dir = botFolder(env, callerOptions);
   if (!dir) return false;
   const file = join(dir, 'helpers.json');
   let list = [];
   try { list = JSON.parse(readFileSync(file, 'utf8')); } catch { list = []; }
-  list.push({ ...helper, at: Date.now() });
+  const at = Date.now();
+  const completionEnrollment = helper.completionEnrollment || (helper.provider === 'codex'
+    ? adapterFor(helper).completionEnrollment(helper, at) : null);
+  list.push({ ...helper, at, ...(completionEnrollment ? { completionEnrollment } : {}) });
   try { writeFile(file, JSON.stringify(list.slice(-50), null, 1), { mode: 0o600 }); return true; } catch { return false; }
 }
 import { requestDaemon, defaultDaemonSocket } from './termfleetctl.mjs';
 import { briefItems, briefBlock, newDeliveryId, normId, idsIn, record as recordRequirement, loadLedger } from '../termcontrol/bridge/requirements.mjs';
 import { confirmReceipt, confirmStarted, trustDecision } from '../termcontrol/bridge/delivery.mjs';
+import { recordActionEvidence } from '../termcontrol/bridge/events-db.mjs';
+import { recordTeamDelivery } from '../termcontrol/bridge/action-evidence.mjs';
 import { adapterFor } from '../termcontrol/bridge/feed.mjs';
-import { PATHS } from '../termcontrol/bridge/paths.mjs';
 import { mkdirSync } from 'node:fs';
-import { botTerminalLimit, liveBotTerminals } from './lib/spawn-guards.mjs';
+import { botTerminalLimit, liveBotTerminals, startFolderProblem } from './lib/spawn-guards.mjs';
 
 /** How the receipt checks see the fleet (real daemon and records; tests pass their own). */
 export const receiptDeps = () => ({
@@ -97,7 +103,7 @@ export function untakenItems({ env = process.env, selfId = null } = {}) {
   if (/^[0-9a-f]{12}$/.test(String(env.TERMFLEET_BOT_ID || ''))) return items.filter((it) => it.source === `bot:${env.TERMFLEET_BOT_ID}` && it.status === 'new');
   if (!selfId) return [];
   let session = '';
-  try { session = String(JSON.parse(readFileSync(join(PATHS.agentStatus, `pane-${selfId}.json`), 'utf8'))?.sessionId || ''); } catch { session = ''; }
+  try { session = String(JSON.parse(readFileSync(paneSidecarPath(selfId), 'utf8'))?.sessionId || ''); } catch { session = ''; }
   return session ? items.filter((it) => it.status === 'new' && String(it.source).includes(session)) : [];
 }
 
@@ -160,9 +166,10 @@ export function terminalName(given, task) {
   const pick = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   if (pick(given)) return pick(given).slice(0, 40);
   for (let line of String(task || '').split('\n')) {
-    line = line.replace(/^\s*\[(?:Message from|Noam's|delivery)[^\]]*\]\s*/i, '').replace(/^\s*(?:Goal|Task|#+)\s*:?\s*/i, '').trim();
+    line = line.replace(/^\s*\[(?:Message from|Noam's|delivery)[^\]]*\]\s*/i, '').replace(/^\s*(?:Goal|Task|#+)\s*:?\s*/i, '').replace(/^\s*Noam\s*:\s*/i, '').trim();
     if (!line || /^read \S+ and carry out/i.test(line) || /^\(/.test(line) || /^\[/.test(line)) continue;
-    const sentence = line.split(/(?<=[.!?:;])\s/)[0].replace(/[.!?:;,]+$/, '');
+    // Cut at a sentence end only: a colon or semicolon cut "Noam: the sounds are bad" down to "Noam".
+    const sentence = line.split(/(?<=[.!?])\s/)[0].replace(/[.!?:;,]+$/, '');
     const words = sentence.split(' ');
     let out = '';
     for (const w of words) { if ((out + ' ' + w).trim().length > 40) break; out = (out + ' ' + w).trim(); }
@@ -211,6 +218,12 @@ async function main(argv) {
   const [command, ...rest] = argv;
   const { positional, flags } = parseArgs(rest);
   const caller = resolveCaller();
+  if (caller.kind === 'bot' && flags.from !== undefined) fail('A bot cannot choose a terminal caller with --from.', 2);
+  if (flags.from !== undefined && flags.from !== caller.paneId) fail('The requested sender does not match this terminal caller.', 2);
+  if (caller.kind === 'bot') {
+    process.env.TERMFLEET_BOT_ID = caller.botId;
+    process.env.TERMFLEET_BOT_NAME = caller.name;
+  }
   const selfId = typeof flags.from === 'string' ? flags.from : caller.paneId || null;
   const json = flags.json === true;
 
@@ -286,7 +299,7 @@ async function main(argv) {
     // as commands is a safety bug. Refuse the send entirely.
     if (pane.provider === 'shell') fail(`Cannot send to ${pane.profile?.name || pane.project || pane.id} (${pane.id}): it is a plain shell with no agent. Text typed into it would run as commands. Hand it over first, or start an agent in it.`);
     // A bot runs outside the terminals; its messages say which bot sent them.
-    const bot = process.env.TERMFLEET_BOT_NAME && !caller.paneId ? { id: `bot:${process.env.TERMFLEET_BOT_ID || ''}`, bot: process.env.TERMFLEET_BOT_NAME } : null;
+    const bot = caller.kind === 'bot' ? { id: `bot:${caller.botId}`, bot: caller.name } : null;
     const from = bot || panes.find((p) => p.id === selfId) || (selfId ? { id: selfId } : null);
     if (flags.interrupt === true) {
       // Esc stops the running turn in Claude, Codex and OpenCode; the message then
@@ -310,13 +323,17 @@ async function main(argv) {
     const since = Date.now();
     const wasBusy = pane.turn === 'working' || pane.producing === true;
     const sent = await delegate(pane, text, { from, ownerWords, requirements, delivery });
-    if (sent.error) fail(sent.message || sent.error);
+    if (sent.error) {
+      recordTeamDelivery(recordActionEvidence, { bot_id: process.env.TERMFLEET_BOT_ID, terminal_id: pane.id, session_id: pane.sessionId || null, delivery, request_ids: reqs.ids, state: 'failed' });
+      fail(sent.message || sent.error);
+    }
     // Delivered means received: the mark is in its conversation, or it started a turn. A message
     // held for a busy Codex agent goes in, with any others, the moment its turn ends.
     const receipt = sent.held
       ? { received: false, queued: true, notes: [], message: 'it is in the middle of a turn, so the message is held and handed to it, together with any others, as soon as that turn ends.' }
       : await confirmReceipt(pane, { token: `[delivery ${delivery}]`, wasBusy, timeoutMs: (Number(flags['receipt-timeout']) || 25) * 1000, deps: receiptDeps() });
     for (const note of receipt.notes) out(note);
+    recordTeamDelivery(recordActionEvidence, { bot_id: process.env.TERMFLEET_BOT_ID, terminal_id: pane.id, session_id: pane.sessionId || null, delivery, request_ids: reqs.ids, state: receipt.received ? 'received' : receipt.queued ? 'queued' : 'failed' });
     const name = pane.profile?.name || pane.project;
     if (!receipt.received && !receipt.queued) {
       recordInBot({ role: 'handoff', pane: pane.id, to: name, text: `NOT delivered: ${receipt.message}`.slice(0, 600) });
@@ -324,7 +341,7 @@ async function main(argv) {
     }
     if (reqs.ids.length) recordRequirement(reqs.ids.map((id) => ({ e: 'assign', id, pane: pane.id, delivery: receipt.queued ? `${delivery}:queued` : delivery, by: from?.id || selfId || null })));
     recordInBot({ role: 'handoff', pane: pane.id, to: name, text: text.trim().slice(0, 600) });
-    if (receipt.queued && botFolder()) recordHelper({ paneId: pane.id, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
+    if (receipt.queued && botFolder()) recordHelper({ paneId: pane.id, sessionId: pane.sessionId || null, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
     const items = reqs.ids.length ? ` with Noam's items ${reqs.ids.join(', ')}` : '';
     if (command === 'send') return out(json ? JSON.stringify({ ok: true, id: pane.id, received: receipt.received, queued: Boolean(receipt.queued), delivery, items: reqs.ids }) : receipt.received
       ? `Sent to ${name} (${pane.id})${items}; it received it.`
@@ -337,7 +354,7 @@ async function main(argv) {
     const limit = inBot ? Math.min(Number(flags.timeout) || BOT_WAIT_S, BOT_WAIT_S) : Number(flags.timeout) || 600;
     const result = await waitForReply(pane.id, { since, timeoutMs: limit * 1000 });
     if (inBot && result.error && /time/i.test(`${result.error} ${result.note || ''}`)) {
-      recordHelper({ paneId: pane.id, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
+      recordHelper({ paneId: pane.id, sessionId: pane.sessionId || null, provider: pane.provider || null, task: String(text).trim().slice(0, 200), cwd: pane.cwd || null, followed: true });
       return out(`${pane.profile?.name || pane.project} is still working after ${limit} seconds. You are now following it and will be woken when it finishes its turn. Tell Noam in one plain sentence that it is in progress, then end your turn.`);
     }
     if (json) return out(JSON.stringify(result.error ? result : { state: result.state, reply: result.reply, note: result.note || null }, null, 2));
@@ -352,7 +369,7 @@ async function main(argv) {
     const waitLimit = inBotWait ? Math.min(Number(flags.timeout) || BOT_WAIT_S, BOT_WAIT_S) : Number(flags.timeout) || 600;
     const result = await waitForReply(pane.id, { since: 0, timeoutMs: waitLimit * 1000 });
     if (inBotWait && result.error && /time/i.test(`${result.error} ${result.note || ''}`)) {
-      recordHelper({ paneId: pane.id, provider: pane.provider || null, task: pane.title || pane.project || '', cwd: pane.cwd || null, followed: true });
+      recordHelper({ paneId: pane.id, sessionId: pane.sessionId || null, provider: pane.provider || null, task: pane.title || pane.project || '', cwd: pane.cwd || null, followed: true });
       return out(`${pane.profile?.name || pane.project} is still working after ${waitLimit} seconds. You are now following it and will be woken when it finishes. Tell Noam it is in progress, then end your turn.`);
     }
     if (json) return out(JSON.stringify(result, null, 2));
@@ -371,6 +388,12 @@ async function main(argv) {
       const running = liveBotTerminals(helpers, await fleetPanes());
       if (running.length >= limit) fail(`Not started: you already run ${running.length} terminals (${running.join(', ')}) and the limit is ${limit}. Close one you are done with (termfleet-team close <who>) or wait for one to finish, then start again.`, 4);
     }
+    // A bot never starts a terminal in the home folder, the root, or a folder with no project in it.
+    if (ownDir) {
+      const where = typeof flags.cwd === 'string' && flags.cwd ? flags.cwd : process.cwd();
+      const problem = startFolderProblem(where, { botsHome: process.env.TC_BOTS_HOME || join(process.env.HOME || '', 'TermFleet', 'bots') });
+      if (problem) fail(`Not started: ${problem} Use the real project folder (the one with its code), for example the folder named in the request or its repository, and run termfleet-team start again with --cwd <that folder>. If you do not know which, tell Noam you need the project folder instead of guessing.`, 2);
+    }
     // TF-102: the task carries Noam's items in his words and a receipt mark, so the start is
     // confirmed only once the new agent has really begun (not stuck on a startup prompt).
     const startPictures = pictureFlags(flags);
@@ -378,19 +401,15 @@ async function main(argv) {
     // Every terminal gets a plain name: on its map card and in TermControl's list (complaint #17).
     const startName = terminalName(flags.name, taskText);
     if (startName && typeof flags.title !== 'string') flags.title = startName;
-    // Codex unless the task itself needs Claude (Noam 2026-10-26, complaint #19: 41 of 43 bot helpers
-    // in three days were started in Claude by a bare --provider claude the router would not pick).
-    if (ownDir && flags.provider === 'claude') {
-      const route = explainProviderRoute(taskText);
-      if (route.provider !== 'claude') {
-        flags.provider = 'codex';
-        out('Starting in Codex: new terminals run in Codex unless the task needs Claude. If it does, say so in the task (for example "use Claude: it handles a conversation").');
-      }
-    }
+    // Reject explicitly; silently rewriting a prohibited choice hides the denial.
+    try { assertProviderLaunch(flags.provider, { surface: 'team-start' }); }
+    catch (error) { fail(error.message, 4); }
     const reqs = taskText ? requirementIds(flags, taskText, { selfId }) : { ids: [] };
     if (reqs.error) fail(reqs.error);
     const delivery = taskText ? newDeliveryId() : null;
     if (taskText) {
+      // A new agent can read what earlier sessions in its folder said and decided (complaint #6).
+      taskText = `${taskText.trim()}\n\nEarlier agent sessions in this folder (what was said and decided before): run \`termfleet-session-digest recent\`, or \`termfleet-session-digest search <words>\`, before asking Noam to repeat anything. Never run a headed (visible) browser or test, or open a window on Noam's screen, unless he approves it with a button question in the app: use headless runs or xvfb-run.`;
       if (reqs.ids.length) { const brief = briefItems(reqs.ids); if (brief.error) fail(brief.error); taskText = `${taskText.trim()}\n\n${briefBlock(brief, { delivery })}`; }
       else taskText = `${taskText.trim()}\n\n[delivery ${delivery}]`;
     }
@@ -403,6 +422,7 @@ async function main(argv) {
       writeFile(file, taskText, { mode: 0o600 });
       args.push('--task-file', file);
     }
+    const enrollmentStartedAt = Date.now();
     const run = spawnSync(process.execPath, [join(here, 'termfleet-child.mjs'), ...args], { stdio: ['inherit', 'pipe', 'inherit'], encoding: 'utf8' });
     process.stdout.write(run.stdout || '');
     let made = {};
@@ -414,16 +434,19 @@ async function main(argv) {
           if (!profiles.get(made.childPaneId)?.name) profiles.save(made.childPaneId, { ...(profiles.get(made.childPaneId) || {}), name: startName });
         } catch { /* the card title still carries the name */ }
       }
-      recordHelper({ paneId: made.childPaneId, provider: flags.provider || null, task: String(flags.task || flags.title || '').slice(0, 300), cwd: flags.cwd || null });
+      const registered = recordHelper({ paneId: made.childPaneId, provider: flags.provider || null, task: String(flags.task || flags.title || '').slice(0, 300), cwd: flags.cwd || null,
+        completionEnrollment: { kind: 'new-session', registeredAt: enrollmentStartedAt } });
+      if (ownDir && !registered) fail(`Terminal ${made.childPaneId} was created, but its bot ownership receipt could not be saved. Do not start another worker; inspect this linkage first.`, 3);
       recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: String(flags.task || flags.title || '').slice(0, 600) });
       if (taskText && flags['no-wait'] !== true) {
         const started = await confirmStarted(made.childPaneId, { token: `[delivery ${delivery}]`, timeoutMs: (Number(flags['start-timeout']) || 90) * 1000, deps: receiptDeps() });
         for (const note of started.notes) out(note);
+        recordTeamDelivery(recordActionEvidence, { bot_id: process.env.TERMFLEET_BOT_ID, terminal_id: made.childPaneId, delivery, request_ids: reqs.ids, state: started.started ? 'received' : 'failed', started: started.started });
         if (!started.started) {
           recordInBot({ role: 'handoff', pane: made.childPaneId, to: 'a new terminal agent', text: `NOT started: ${started.message}`.slice(0, 600) });
           fail(`The new terminal (${made.childPaneId}) did NOT start its task. ${started.message}`, 3);
         }
-        if (reqs.ids.length) recordRequirement(reqs.ids.map((id) => ({ e: 'assign', id, pane: made.childPaneId, delivery, by: selfId || null })));
+        if (reqs.ids.length) recordRequirement(reqs.ids.map((id) => ({ e: 'assign', id, pane: made.childPaneId, delivery, by: caller.kind === 'bot' ? `bot:${caller.botId}` : selfId || null })));
         out(`It started its task${reqs.ids.length ? ` with Noam's items ${reqs.ids.join(', ')}` : ''}.`);
         // The task file cannot carry a picture; once it is running, each one is pasted in on its own.
         if (startPictures.length) {
@@ -443,7 +466,7 @@ async function main(argv) {
     if (!botFolder()) fail('Following works inside a bot.');
     const { pane } = await target(positional[0], null);
     const why = String(flags.why || pane.title || pane.project || '').slice(0, 300);
-    recordHelper({ paneId: pane.id, provider: pane.provider || null, task: why, cwd: pane.cwd || null, followed: true });
+    if (!recordHelper({ paneId: pane.id, sessionId: pane.sessionId || null, provider: pane.provider || null, task: why, cwd: pane.cwd || null, followed: true })) fail('The observation receipt could not be saved; following was not confirmed.', 3);
     return out(`Following ${pane.profile?.name || pane.project} (${pane.id}): you will be woken when it finishes its turn.`);
   }
 

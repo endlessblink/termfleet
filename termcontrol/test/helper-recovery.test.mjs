@@ -22,10 +22,13 @@ test('shared stuck detection plus polling intervenes inside ten minutes', () => 
   assert.ok(stalledFor({ turn: 'working' }, { producing: false }, 1, 1 + STALL_AFTER_MS, 1) > 0);
 });
 
-for (const state of ['idle', 'stuck']) test(`${state} helper with assigned work gets one nudge and its owning bot gets a receipt`, async () => {
+for (const state of ['idle', 'stuck']) test(`${state} helper: only an idle turn with assigned work receives one recovery nudge`, async () => {
   const f = fixture(state === 'stuck' ? { turn: 'working', stalledForMs: 11 * minute } : {});
   const first = await recoverBotHelpers(f.options);
   await recoverBotHelpers(f.options);
+  if(state==='stuck'){
+    assert.equal(f.nudges.length,0);assert.equal(f.wakes.length,0);assert.equal(first.length,0);return;
+  }
   assert.equal(f.nudges.length, 1);
   assert.equal(f.wakes.length, 1);
   assert.equal(first[0].delivered, true);
@@ -89,13 +92,12 @@ test('persisted receipt survives monitor recreation and item reassignment gets a
   assert.equal(f.nudges.length, 2);
 });
 
-test('shared-stuck bot task is nudged even without a numbered request assignment', async () => {
+test('shared-stuck bot task is retained without typing into its working turn', async () => {
   const f = fixture({ turn: 'working', stalledForMs: 11 * minute });
   f.options.items = [];
   f.bot.helpers[0].task = 'Finish checking the game';
   await recoverBotHelpers(f.options);
-  assert.equal(f.nudges.length, 1);
-  assert.match(f.nudges[0].text, /Finish checking the game/);
+  assert.equal(f.nudges.length, 0);assert.equal(f.messages.length,0);
 });
 
 test('a fresh ownership or assignment recheck can veto delivery', async () => {

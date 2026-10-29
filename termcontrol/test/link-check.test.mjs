@@ -11,6 +11,13 @@ import { startLinkServer, deadPort } from './helpers/link-server.mjs';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'link-check-'));
 
+test('large binary response preserves the actual HTTP outcome across the probe child pipe', async (t) => {
+  const srv = await startLinkServer();
+  t.after(() => srv.stop());
+  assert.equal(linkProblem(srv.url('/large-image')), null, 'a reachable image must not become a fabricated timeout');
+  assert.match(linkProblem(srv.url('/large-forbidden')), /answered 403/, 'large bodies cannot hide auth denial');
+});
+
 test('a dead port is refused, a 404 is refused, an error page is refused, a working page passes', async (t) => {
   const srv = await startLinkServer();
   t.after(() => srv.stop());

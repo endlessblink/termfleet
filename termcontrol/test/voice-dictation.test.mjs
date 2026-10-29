@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -82,6 +83,7 @@ test('the microphone button records, sends the clip, and puts the words in the m
     });
     const pane = { id: 'p1', project: 'demo', provider: 'claude', cwd: '/x', task: 'Demo', turn: 'idle', updatedAt: Date.now() };
     await page.route('https://termcontrol.design/**', async (route) => {
+  if(await serveAppModule(route))return;
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
       if (url.pathname === '/api/panes') return route.fulfill({ json: { panes: [pane], groups: [{ project: 'demo', panes: [pane] }], daemon: true, view: 'projects' } });

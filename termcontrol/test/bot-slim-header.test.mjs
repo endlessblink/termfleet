@@ -27,12 +27,12 @@ test('a bot chat opens with a one-line header and a menu that keeps every option
     await p.evaluate((bid) => { location.hash = 'bot:' + bid; }, id);
     await p.waitForSelector('.bot-menu-button', { timeout: 15000 });
     await wait(800);
-    const head = await p.evaluate(() => ({ h: Math.round(document.querySelector('header[role=banner]').getBoundingClientRect().height), name: document.querySelector('#title .bot-names bdi')?.textContent, brain: document.querySelector('#title .bot-brain')?.textContent, options: getComputedStyle(document.querySelector('#chat-status')).display, theme: getComputedStyle(document.querySelector('header>.theme-toggle')).display, chipHidden: document.querySelector('.bot-asks-chip').hidden, overflow: document.documentElement.scrollWidth > innerWidth }));
+    const head = await p.evaluate(() => ({ h: Math.round(document.querySelector('header[role=banner]').getBoundingClientRect().height), name: document.querySelector('#title .bot-names bdi')?.textContent, brain: document.querySelector('#title .bot-brain')?.textContent, options: getComputedStyle(document.querySelector('#chat-status')).display, theme: getComputedStyle(document.querySelector('header>.theme-toggle')).display, chipHidden: !document.querySelector('.bot-asks-chip'), overflow: document.documentElement.scrollWidth > innerWidth }));
     assert.ok(head.h <= 60, `header is ${head.h}px tall`);
     assert.equal(head.name, 'Slim test');
     assert.match(head.brain, /Claude/);
     assert.equal(head.options, 'none'); assert.equal(head.theme, 'none');
-    assert.equal(head.chipHidden, true, 'no requests yet, so no 25/30 button');
+    assert.equal(head.chipHidden, true, 'request counter removed');
     assert.equal(head.overflow, false);
 
     await p.click('.bot-menu-button');

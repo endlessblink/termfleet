@@ -24,7 +24,7 @@ import {
   resolvePaneTaskLine,
   type PaneTaskLine,
 } from "./taskLine";
-import { briefFileGoal, briefPointerPath, opensAsRequest } from "./sessionTranscript";
+import { briefFileGoal, briefOpeningGoal, briefPointerPath, opensAsRequest } from "./sessionTranscript";
 import { selectPlanPurpose } from "./taskPurpose";
 import { stripComposerChrome } from "./terminalHeaderQuality";
 import { qualityCheckGoalLabel } from "./terminalHeaderQuality";
@@ -701,12 +701,14 @@ async function resolveTaskLineFor(
   // A helper started from a brief file: the session title was written before the agent
   // read the brief, so it describes the launch boilerplate, not the work. The brief's own
   // goal replaces both the title and the empty opening request.
-  const briefPath = isTauriRuntime()
-    ? briefPointerPath(typeof sidecar?.userTask === "string" ? sidecar.userTask : undefined)
-    : undefined;
+  // The pointer is in the sidecar's last prompt, or (Codex helpers) only in the session's opening request.
+  const pointerText = [sidecar?.userTask, facts?.openingRequest].find(
+    (text): text is string => typeof text === "string" && Boolean(briefPointerPath(text)),
+  );
+  const briefPath = isTauriRuntime() ? briefPointerPath(pointerText) : undefined;
   let briefGoal: string | undefined;
   if (facts && briefPath) {
-    briefGoal = await briefGoalFor(briefPath);
+    briefGoal = briefOpeningGoal(pointerText) ?? (await briefGoalFor(briefPath));
     facts = {
       ...facts,
       title: undefined,

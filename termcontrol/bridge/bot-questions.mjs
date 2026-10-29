@@ -88,8 +88,12 @@ export function markWithdrawnQuestions(messages) {
       if (e.role === 'bot' && e.question) out[j] = { ...out[j], withdrawn: true };
     }
     // ...and the same card re-attached to the message that takes it back.
-    const before = messages.slice(0, i).filter((e) => e.role === 'bot' && e.question);
-    if (m.question && before.some((e) => sameQuestion(e.question, m.question))) out[i] = { ...out[i], withdrawn: true };
+    if (m.question) {
+      for (let j = 0; j < i; j++) {
+        const earlier = messages[j];
+        if (earlier.role === 'bot' && sameQuestion(earlier.question, m.question)) { out[i] = { ...out[i], withdrawn: true }; break; }
+      }
+    }
   });
   return out;
 }
@@ -119,12 +123,38 @@ export function sameQuestion(a, b) {
 export function markRepeatedQuestions(messages) {
   return messages.map((m, i) => {
     if (m.role !== 'bot' || !m.question) return m;
-    for (const later of messages.slice(i + 1)) {
+    for (let j = i + 1; j < messages.length; j++) {
+      const later = messages[j];
       if (later.role === 'operator') break;
       if (later.role === 'bot' && sameQuestion(later.question, m.question)) return { ...m, repeated: true };
     }
     return m;
   });
+}
+
+/** Reconcile durable answers before trimming history. Legacy choice buttons sent
+ * the exact option as the next operator message without an answerTo field.
+ * Unrelated free text, routed messages and cancelled answers remain ambiguous.
+ */
+export function markQuestionResolutions(messages) {
+  const resolutions = new Map();
+  let latest = null;
+  for (const m of messages) {
+    if (m.role !== 'operator') latest = null;
+    if (m.role === 'bot' && m.question) latest = m;
+    if (m.role === 'question-resolution' && m.resolution === 'answered')
+      resolutions.set(m.questionId, { state: 'answered', source: 'owner', id: m.id, text: '' });
+    if (m.role !== 'operator') continue;
+    if (m.deleted?.cancelled !== true) {
+      if (m.answerTo) resolutions.set(m.answerTo, { state: 'answered', source: 'answerTo', id: m.id, text: m.text });
+      else if (latest && !m.from && !m.replyTo && !m.goAheadTo && !m.listTo &&
+        latest.question.options?.includes(m.text))
+        resolutions.set(latest.id, { state: 'answered', source: 'legacy-exact-choice', id: m.id, text: m.text });
+    }
+    latest = null;
+  }
+  return messages.map(m => m.role === 'bot' && m.question && resolutions.has(m.id)
+    ? { ...m, questionResolution: resolutions.get(m.id) } : m);
 }
 
 /**
@@ -165,7 +195,15 @@ export function mediaKind(href) {
 }
 export function findMedia(text, linkOpts) {
   const media = [], seen = new Set(), shown = new Set();
-  for (const raw of String(text || '').match(MEDIA_FIND) || []) {
+  const own = (line) => line.trim().replace(/^[-*•]\s+/, '').replace(/^([`"'])(.*)\1$/, '$2').replace(/^!?\[[^\]]*\]\(\s*<?(.+?)>?\s*\)$/, '$1').trim();
+  // A whole path on its own line may contain spaces, parentheses or non-Latin
+  // names. Do not tokenize it at whitespace; cardLink still checks the real
+  // file, allowed roots and hidden-folder restrictions before signing it.
+  const candidates = String(text || '').split('\n').flatMap(line => {
+    const full = own(line);
+    return [ ...(/^(?:~?\/)/.test(full) && mediaKind(full) ? [full] : []), ...(line.match(MEDIA_FIND) || []) ];
+  });
+  for (const raw of candidates) {
     const href = cardLink(raw, linkOpts);
     if (!href) continue;
     shown.add(raw);
@@ -175,7 +213,6 @@ export function findMedia(text, linkOpts) {
     try { name = decodeURIComponent(name); } catch { /* as written */ }
     media.push({ kind: mediaKind(raw), href, name });
   }
-  const own = (line) => line.trim().replace(/^[-*•]\s+/, '').replace(/^`(.*)`$/, '$1').replace(/^!?\[[^\]]*\]\(\s*<?([^\s<>()]+)>?\s*\)$/, '$1').trim();
   const rest = String(text || '').split('\n').filter((line) => !shown.has(own(line))).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   return { text: media.length ? rest : String(text || ''), media };
 }

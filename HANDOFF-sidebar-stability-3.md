@@ -28,4 +28,4 @@ Group rule = "Folder it started in (Recommended)": a card stays in the project i
 Patch .ts/.tsx with node script files (Edit/Write reformat whole file and break source verifiers). Not mine, leave alone: docs/issue-registry.json, baseline PNGs, scripts/verify-clipboard-paste.sh, .kilo/, HANDOFF-feature-64.md, tests/scratch-eval.spec.ts. Use lean-ctx ctx_* tools (load via ToolSearch select:mcp__lean-ctx__ctx_shell,mcp__lean-ctx__ctx_read,mcp__lean-ctx__ctx_search); heredoc python is blocked — write a script file to the scratchpad and run it. Declare a plain cockpit task. Final answer: 1-4 plain sentences + Next steps. Never tmux. Work on main.
 
 ## First command
-`cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && git status --short && git log --oneline -3 && npx playwright test tests/project-reconciliation.spec.ts 2>&1 | tail -20`
+`cd /opt/example/local-path && git status --short && git log --oneline -3 && npx playwright test tests/project-reconciliation.spec.ts 2>&1 | tail -20`

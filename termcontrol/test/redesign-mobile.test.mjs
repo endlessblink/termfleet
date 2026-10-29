@@ -1,3 +1,4 @@
+import { serveAppModule } from './helpers/app-module-route.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -12,6 +13,7 @@ test('dense local themes, stable avatar nodes, map grouping and wide chat surviv
   const context=await browser.newContext({viewport:{width,height:844},locale:'he-IL',isMobile:width<600,hasTouch:width<600});const page=await context.newPage();await page.clock.install();let reads=0,sends=0;
   await page.addInitScript(theme=>{localStorage.setItem('termcontrol-theme',theme);},theme);
   await page.route('**/*',async route=>{
+  if(await serveAppModule(route))return;
    const url=new URL(route.request().url());assert.equal(url.origin,'http://redesign.synthetic','all requests stay on the current origin');
    if(url.pathname==='/')return route.fulfill({body:html,contentType:'text/html'});
    let data={};

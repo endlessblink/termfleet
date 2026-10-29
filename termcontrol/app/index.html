@@ -823,7 +823,7 @@ body.chat main .busytext{font-size:14px;font-weight:400;color:var(--muted);backg
 .room-last{color:var(--muted);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 dialog.room-dialog{border:0;border-radius:16px;background:var(--surface);color:var(--text);padding:0;max-width:min(480px,calc(100vw - 32px));box-shadow:0 12px 40px rgba(0,0,0,.4)}
 dialog.room-dialog::backdrop{background:rgba(0,0,0,.5)}
-dialog.room-dialog form{display:grid;gap:0;padding:0;margin:0}
+dialog.room-dialog form{display:grid;grid-template-columns:minmax(0,1fr);gap:0;padding:0;margin:0}
 dialog.room-dialog h2{margin:0;padding:20px 20px 0;font-size:18px;font-weight:600;line-height:1.3}
 dialog.room-dialog .room-field{display:block;padding:16px 20px 0;margin:0;border:0}
 dialog.room-dialog .room-field span{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:6px}
@@ -884,6 +884,7 @@ dialog.room-dialog .room-create:disabled{opacity:.5;cursor:default}
 #side-asks .rail-dropped .st::before{content:'–'}
 #side-asks .rail-ready .st::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--ready)}
 #side-asks li:has(.rail-x){grid-template-columns:12px minmax(0,1fr) 22px}
+.ask-verdict{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;grid-column:2;font-size:12.5px;color:var(--muted)}.ask-verdict button{min-height:32px;padding:0 12px;border-radius:16px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font:inherit;cursor:pointer}.ask-verdict .verdict-ok{border-color:var(--working,var(--line))}.ask-verdict .verdict-no{border-color:var(--accent)}.ask-verdict button:disabled{opacity:.5}.ask-verdict.done{display:block}
 #side-asks .rail-x{grid-column:3;grid-row:1;align-self:center;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:none;color:var(--muted);font:inherit;font-size:15px;line-height:1;cursor:pointer;opacity:.35}
 #side-asks li:hover .rail-x,#side-asks .rail-x:focus-visible{opacity:1}#side-asks .rail-x:hover{background:var(--surface-2);color:var(--text)}
 #side-asks .rail-x:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -897,7 +898,7 @@ dialog.room-dialog .room-create:disabled{opacity:.5;cursor:default}
 #side-asks .rail-more button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 @media(prefers-reduced-motion:reduce){#side-asks .rail-working .st::before{animation:none}#side-asks summary::after{transition:none}}
 .asks-chip{margin-top:4px;font-size:13px}.asks-chip summary{cursor:pointer;color:var(--muted);list-style:none}.asks-chip summary::-webkit-details-marker{display:none}.asks-chip ol{margin:6px 0 0;padding-inline-start:22px;display:grid;gap:6px;max-height:40vh;overflow:auto}.asks-chip li{line-height:1.45}.asks-chip .ask-status{font-size:11.5px;border-radius:8px;padding:1px 6px;margin-inline-end:6px;border:1px solid var(--line)}.asks-chip .ask-done{color:var(--working)}.asks-chip .ask-partial{color:var(--waiting)}.asks-chip .ask-open{color:var(--accent)}.asks-chip .ask-note{display:block;color:var(--muted);font-size:12px}.reply-details{margin:-18px 0 24px;font-size:13px;color:var(--muted)}.reply-details>summary{display:inline-flex;align-items:center;gap:6px;min-height:44px;cursor:pointer;list-style:none}.reply-details>summary::-webkit-details-marker{display:none}.reply-details>summary::after{content:'›';font-size:16px}.reply-details[open]>summary::after{content:'⌄'}.reply-details ul{list-style:none;margin:0;padding:0;display:grid;gap:12px}.reply-details li{display:grid;gap:3px;line-height:1.45;min-width:0;overflow-wrap:anywhere}.reply-details .rd-words{color:var(--text);font-size:14px}.reply-details .ask-status{justify-self:start;font-size:11.5px;border-radius:8px;padding:1px 6px;border:1px solid var(--line)}.reply-details .ask-done,.reply-details .ask-ready,.reply-details .ask-locked{color:var(--working)}.reply-details .ask-partial,.reply-details .ask-waiting{color:var(--waiting)}.ask-parts{margin:4px 0 0;padding-inline-start:16px;display:grid;gap:4px;font-size:12.5px}
-.skill-picker{display:grid;gap:2px;max-height:220px;overflow:auto;margin:0 0 6px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg))}.bot-composer .skill-picker{position:absolute;left:12px;right:12px;bottom:calc(100% + 4px);margin:0;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.25)}.skill-picker[hidden]{display:none}.skill-picker button{display:grid;gap:2px;text-align:start;padding:8px 10px;border:0;border-radius:9px;background:none;color:inherit;font:inherit;cursor:pointer}.skill-picker button:hover,.skill-picker button:focus-visible{background:var(--line)}.skill-picker b{font-weight:500;font-size:14px}.skill-picker span{font-size:12.5px;color:var(--muted);line-height:1.35}.skill-preview{white-space:pre-wrap;font-size:12.5px;color:var(--muted);margin:4px 0 0;max-height:180px;overflow:auto}
+.skill-picker{display:grid;gap:2px;max-height:220px;overflow:auto;margin:0 0 6px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel,var(--bg))}.bot-composer .skill-picker{position:absolute;left:12px;right:12px;bottom:calc(100% + 4px);margin:0;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.25)}.skill-picker[hidden]{display:none}.skill-picker button{display:grid;gap:2px;text-align:start;min-height:44px;padding:8px 10px;border:0;border-radius:9px;background:none;color:inherit;font:inherit;cursor:pointer;overflow-wrap:anywhere}.skill-picker button:hover,.skill-picker button:focus-visible,.skill-picker button[aria-selected=true]{background:var(--line)}.skill-picker b{font-weight:500;font-size:14px}.skill-picker span{font-size:12.5px;color:var(--muted);line-height:1.35}.skill-preview{white-space:pre-wrap;font-size:12.5px;color:var(--muted);margin:4px 0 0;max-height:180px;overflow:auto}
 .browser-dialog{width:min(560px,calc(100vw - 32px))}.browser-shot{display:block;width:100%;border:1px solid var(--line);border-radius:12px;background:#fff;min-height:120px;object-fit:contain}.browser-page{font-size:13px;color:var(--muted);margin:6px 0 10px;overflow-wrap:anywhere}.bw-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}.bw-tab{font:inherit;font-size:13px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:transparent;color:inherit}.bw-tab[aria-pressed=true]{border-color:currentColor;font-weight:500}.bw-tab.bw-needs{border-color:#e5484d}.bw-state{font-size:14px;margin:4px 0 8px}.bw-note{display:block;width:100%;box-sizing:border-box;margin:0 0 8px;font:inherit;font-size:14px}.teach-live{display:flex;align-items:center;gap:8px;font-size:14px;margin:8px 0}.teach-live::before{content:'';width:9px;height:9px;border-radius:50%;background:#e5484d;animation:teachPulse 1.4s ease-in-out infinite}@keyframes teachPulse{50%{opacity:.35}}@media (prefers-reduced-motion:reduce){.teach-live::before{animation:none}}
 .fleet-tabs{display:grid;grid-template-columns:1fr 1fr auto;gap:4px;padding:4px;margin:0 0 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}.fleet-tabs button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:0;border-radius:10px;background:none;color:var(--muted);font:inherit;font-size:15px;font-weight:500;cursor:pointer}.fleet-tabs button[aria-selected=true]{background:var(--line);color:var(--text)}.fleet-tabs .tab-count{font-size:12px;font-weight:400;color:var(--muted);opacity:.7}.fleet-tabs .tab-need-term{background:var(--terminals);color:#141312}.tab-need{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;display:inline-grid;place-items:center}
 .bots-home{display:grid;gap:22px;margin:4px 0 24px}.bots-actions{display:flex;flex-wrap:wrap;gap:8px}.bots-actions .new-bot{font-weight:500}.bots-actions .new-room{margin:0}.bots-list{display:grid;gap:8px}.bots-home .bot-row{min-height:72px;padding:12px 10px;border-radius:14px;gap:12px}.bots-home .bot-avatar,.bots-home .bot-avatar svg{width:48px;height:48px}.bots-home .room-name{font-size:16px;font-weight:500}.bots-home .room-last{font-size:14px}.bots-home .bot-row{display:flex;align-items:center;width:100%;text-align:start}.bots-home .room-copy{flex:1;min-width:0;display:grid;gap:3px}.bots-home .room-last{min-width:0;overflow:hidden}.bots-home .room-last>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bot-unread{flex:none;min-width:22px;height:22px;border-radius:11px;background:var(--accent);color:var(--bg);font-size:12.5px;font-weight:500;display:grid;place-items:center;padding:0 7px;font-variant-numeric:tabular-nums;align-self:center}.bots-home .bot-row:not(.unread) .room-name{font-weight:400}.bot-row.unread .room-name{color:var(--text);font-weight:500}.bot-row.unread .room-last{color:var(--text)}.bot-row.unread .bot-when{color:var(--accent)}.bot-top{display:flex;align-items:baseline;gap:8px;min-width:0}.bot-top .room-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bot-when{flex:none;font-size:12.5px;color:var(--muted)}.bots-intro{padding:22px 18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);display:grid;gap:10px}.bots-intro h2{margin:0;font-size:18px;font-weight:500}.bots-intro p{margin:0;color:var(--muted);line-height:1.5}
@@ -943,7 +944,7 @@ body main .message-menu-panel .copy-status{margin:0 12px;font-size:13px;color:va
 .act-row.unapproved{border-color:#e5484d;background:rgba(229,72,77,.10)}.act-row.unapproved .act-what::before{background:#e5484d}.act-row.unapproved .act-approval{color:#ff8a8d;font-weight:500}
 .mem-list{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px}.mem-row{display:grid;gap:6px;padding:10px;border:1px solid var(--line);border-radius:12px;font-size:14px;line-height:1.45}.mem-row .ask-status{justify-self:start;font-size:11.5px;border-radius:8px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
 .bot-health{flex:none;width:9px;height:9px;border-radius:50%;background:var(--idle);align-self:center}.bot-health-ok{background:var(--working)}.bot-health-busy{background:var(--working);animation:busy-fade 1.6s infinite}.bot-health-warn{background:var(--waiting)}.bot-health-bad{background:var(--accent)}.bot-needs{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:10px}.bot-needs p{margin:0;line-height:1.5}
-.term-ask-pinned{position:sticky;bottom:0;z-index:3;max-height:35vh;overflow-y:auto;flex-shrink:0;background:var(--bg);padding:4px 0 2px;box-shadow:0 -6px 12px -8px rgba(0,0,0,.35)}.term-ask-pinned .bot-term-ask{background:var(--bg)}
+.term-ask-pinned{position:sticky;bottom:0;z-index:3;max-height:50vh;overflow-y:auto;flex-shrink:0;background:var(--bg);padding:0;box-shadow:0 -6px 12px -8px rgba(0,0,0,.35)}.term-ask-pinned>summary{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 12px;cursor:pointer;list-style:none;font-size:13px;border-top:1px solid var(--waiting,var(--accent))}.term-ask-pinned>summary::-webkit-details-marker{display:none}.term-ask-pinned .pin-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.term-ask-pinned .pin-go{color:var(--accent);font-weight:500}.term-ask-pinned .pin-go::after{content:' ▴'}.term-ask-pinned[open] .pin-go::after{content:' ▾'}.term-ask-pinned .bot-term-ask{background:var(--bg)}
 .bot-term-ask{border:1px solid var(--accent);border-radius:14px;padding:12px 14px;margin:8px 4px;display:grid;gap:8px;max-width:100%;box-sizing:border-box}
 .bot-term-ask p{margin:0;line-height:1.5;overflow-wrap:anywhere}
 .bot-term-ask .term-ask-from{font-size:12px;color:var(--muted)}
@@ -1167,6 +1168,15 @@ body.bot-view header .bot-avatar.head svg{width:30px;height:30px}
 .bot-names .bot-brain{font-size:12.5px;font-weight:400;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
 .bot-names .bot-brain:empty{display:none}
 body.bot-view header .sub,body.bot-view header .chatstatus,body.bot-view header .routinesline,body.bot-view header>.theme-toggle{display:none!important}
+.bot-unanswered{flex:1 0 100%;min-width:0;border-bottom:1px solid var(--line);font-size:13px}
+.bot-unanswered[hidden]{display:none}
+.bot-unanswered>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:0 10px;cursor:pointer;color:var(--text);list-style:none}
+.bot-unanswered>summary::-webkit-details-marker{display:none}
+.bot-unanswered>summary bdi{color:var(--accent);font-weight:500}
+.bot-unanswered nav{max-height:min(32dvh,240px);overflow:auto;display:grid;padding:0 4px 6px}
+.bot-unanswered nav button{min-height:44px;width:100%;border:0;border-top:1px solid var(--line);background:none;color:var(--text);text-align:start;font:inherit;padding:10px 6px;overflow-wrap:anywhere;cursor:pointer}
+.bot-unanswered nav button:hover{background:var(--surface-2)}
+.bot-unanswered :focus-visible,.bot-question:focus-visible,.bot-term-ask:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .bot-head-actions{display:contents}
 body:not(.bot-view) .bot-head-actions{display:none}
 .bot-asks-chip{flex:none;display:flex;align-items:center;gap:6px;height:32px;min-width:44px;padding:0 11px;border:0;border-radius:16px;background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;font-variant-numeric:tabular-nums;cursor:pointer;position:relative}
@@ -1294,11 +1304,33 @@ ul.sheet-list{list-style:none;padding-inline-start:12px}
 .q-now{font-size:12px;color:var(--accent)}
 .inbox-detail{margin:-4px 0 12px;color:var(--muted);font-size:14px;line-height:1.5}
 body.chat main .qform .q-opt{border:1px solid var(--line);border-radius:14px;min-height:56px;padding:12px 14px}
+.bot-composer .skill-picker:not(.mention-picker) span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 </style>
 </head>
 <body>
 <aside id="fleet-side" aria-label="Agents"><div class="side-heading">TermControl <span class="side-count"></span></div><div class="side-content"></div></aside>
 <aside id="side-asks" hidden aria-label="Your requests"></aside>
+<aside id="work-dashboard" hidden dir="rtl" lang="he" aria-label="תמונת מצב העבודה"></aside>
+<style>
+#work-dashboard{display:none;box-sizing:border-box;background:var(--bg);color:var(--text);border-inline-start:1px solid var(--line);padding:20px;overflow:auto;overscroll-behavior:contain}
+body.bot-view #work-dashboard.expanded:not([hidden]){display:block;position:fixed;inset:56px 0 0 auto;width:100%;z-index:30}
+.work-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.work-heading h2{font-size:18px;font-weight:500;margin:0}.work-heading button,.work-toggle{min-height:44px;min-width:44px;border:0;border-radius:10px;background:transparent;color:var(--text);font:inherit;cursor:pointer}.work-heading button{font-size:24px}.work-toggle{padding:0 10px;font-size:13px;white-space:nowrap}.work-toggle:hover,.work-heading button:hover{background:var(--surface)}
+#work-dashboard :is(button,a):focus-visible,.work-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.work-fresh,.work-category,.work-empty{font-size:13px;line-height:1.6;color:var(--muted)}.work-fresh{margin:4px 0 24px}
+#work-dashboard{--waiting:#e0a458;--working:#7aa2a0;--idle:#63625d;--dim:#8b8a85}
+.work-group{margin-bottom:16px}.work-group-label{font-size:12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.04em;padding:0 4px;margin:0 0 8px}
+#work-dashboard .work-item{position:relative;padding:12px 4px 12px 19px}#work-dashboard .work-item:before{content:"";position:absolute;left:4px;top:12px;bottom:12px;width:3px;min-height:32px;border-radius:2px;background:var(--work-tone,var(--idle))}
+#work-dashboard .waiting{--work-tone:var(--waiting);--work-tint:rgba(224,164,88,.15)}#work-dashboard .ready{--work-tone:var(--accent);--work-tint:rgba(217,119,87,.12)}#work-dashboard .working{--work-tone:var(--working);--work-tint:rgba(122,162,160,.12)}#work-dashboard .new{--work-tone:var(--dim);--work-tint:rgba(99,98,93,.15)}#work-dashboard .work-item.new:before{background:var(--idle)}
+.work-status{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;line-height:1.6;color:var(--work-tone);background:var(--work-tint)}
+#work-dashboard .work-terminal{display:flex;align-items:flex-start;gap:10px;padding:12px 4px}.work-body{flex:1;min-width:0}.work-terminal>.work-status{flex:none;max-width:85px;text-align:center}.work-dot{width:8px;height:8px;border-radius:50%;flex:none;margin-top:9px;background:var(--work-tone)}.working>.work-dot{animation:work-pulse 1.8s ease-out infinite}.waiting>.work-dot{box-shadow:0 0 0 3px rgba(224,164,88,.15)}
+#work-dashboard .work-item p{margin:0 0 4px;line-height:1.5}#work-dashboard .work-terminal .work-update{font-size:13px;color:var(--muted);margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#work-dashboard li:last-child{border-bottom:0}#work-dashboard .work-terminal a{min-height:0;font-weight:500;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@keyframes work-pulse{0%,100%{box-shadow:0 0 0 0 rgba(122,162,160,.55)}70%{box-shadow:0 0 0 6px rgba(122,162,160,0)}}@media(prefers-reduced-motion:reduce){.working>.work-dot{animation:none}}
+#work-dashboard section+section{margin-top:28px}#work-dashboard h3{font-size:15px;font-weight:500;margin:0 0 8px}#work-dashboard ul{list-style:none;padding:0;margin:0}#work-dashboard li{padding:14px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}#work-dashboard li p{font-size:14px;line-height:1.65;margin:4px 0 8px;white-space:pre-wrap}#work-dashboard a{display:block;min-height:32px;align-content:center;font-size:14px;color:var(--text);text-underline-offset:4px}
+#work-dashboard [data-work]{max-height:30dvh;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding-inline-end:8px}#work-dashboard [data-work]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}#work-dashboard details{font-size:13px;line-height:1.6;margin-top:8px;color:var(--muted)}#work-dashboard summary{cursor:pointer;min-height:44px;align-content:center}
+@media(min-width:1000px) and (max-width:1439px){body.bot-view #work-dashboard.expanded:not([hidden]){width:calc(100% - 360px)}}
+@media(min-width:1440px){body.chat.bot-view{grid-template-columns:360px minmax(0,1fr) 320px}body.bot-view #work-dashboard:not([hidden]),body.bot-view #work-dashboard.expanded:not([hidden]){display:block;position:static;grid-column:3;grid-row:1/-1;width:auto;z-index:auto}.work-toggle,.work-heading button{display:none}}
+@media(max-width:390px){.work-toggle{font-size:12px;padding-inline:4px}}
+</style>
 <div class="blank-pane"><div><h2>TermControl</h2><p>Select an agent to open the conversation.</p></div></div>
 <style>
 /* Close a terminal (Noam 2026-10-20: "צריך להיות מסוגל להרוג טרמינל מהתצוגה הזו בפלאפון ובמחשב"). */
@@ -1324,7 +1356,7 @@ body.chat main .qform .q-opt{border:1px solid var(--line);border-radius:14px;min
 .pane-menu button{display:flex;width:100%;min-height:44px;align-items:center;padding:0 12px;border:0;border-radius:8px;background:none;color:var(--text);font:inherit;text-align:start;cursor:pointer}
 .pane-menu button:hover,.pane-menu button:focus-visible{background:var(--control)}
 .pane-menu .danger{color:#e5484d}
-.folder-group>.projhead .folder-icon,.archive-group>.projhead .folder-icon,.hidden-folder-row .folder-icon{width:15px;height:15px;flex:none;color:var(--muted)}.folder-group>.projhead .count,.archive-group>.projhead .count{margin-inline-start:auto;font-variant-numeric:tabular-nums}.folder-group>.projhead>.folder-icon,.archive-group>.projhead>.folder-icon{display:block}.folder-group>.projhead .count,.archive-group>.projhead .count{display:inline}.list-more{flex:none;min-width:40px;min-height:40px;margin-inline-end:-6px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:17px;line-height:1;cursor:pointer}.list-more:hover,.list-more:focus-visible{background:var(--surface-2);color:var(--text)}.new-folder-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;margin:4px 0 12px;padding:0 14px;border:1.5px dashed var(--accent);border-radius:12px;background:transparent;color:var(--accent);font:inherit;font-size:15px;font-weight:500;text-align:start;cursor:pointer;touch-action:manipulation}.new-folder-plus{font-size:22px;line-height:1;font-weight:400}.new-folder-row:active{background:var(--surface-2)}.new-folder-row .folder-icon{width:18px;height:18px;flex:none;color:currentColor}.new-folder-row:hover,.new-folder-row:focus-visible{background:var(--surface-2);color:var(--accent)}.new-folder-hint{margin-inline-start:auto;font-size:13px;font-weight:400;color:var(--muted)}.folder-empty{padding:8px 8px 14px;color:var(--muted);font-size:12px;line-height:1.5}.floated{margin:2px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}.floated-head{display:flex;align-items:center;min-height:34px;padding:0 6px;color:var(--accent);font-size:12px;font-weight:500}.archive-group{margin-top:16px;padding-top:6px;border-top:1px solid var(--line)}.archive-group>.projhead{color:var(--text)}.archive-note{margin:0 6px 8px;max-width:46ch;color:var(--muted);font-size:12px;line-height:1.55}.archive-cat+.archive-cat{margin-top:6px}.archive-cat-head{display:flex;justify-content:space-between;gap:8px;padding:8px 6px 4px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.archive-group .pane .project{font-weight:400}.folder-drop{outline:1px dashed var(--accent);outline-offset:-2px;border-radius:10px;background:var(--surface-2)}.hidden-folder-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:0 6px;color:var(--muted);font-size:13px}.hidden-folder-row>span{display:flex;align-items:center;gap:8px;min-width:0}.list-show{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);font:inherit;font-size:12px;cursor:pointer}.list-sheet .sheet{max-height:min(640px,calc(100dvh - 32px));overflow:auto}.list-sheet .choices{display:grid}.list-sheet .choice{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px;width:100%;padding:8px 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font:inherit;font-size:14px;text-align:start;cursor:pointer}.list-sheet .choice:hover,.list-sheet .choice:focus-visible{background:var(--surface-2)}.list-sheet .choice>span:last-child{color:var(--muted);font-size:12px}.list-sheet .hint{font-size:12px}.list-sheet label{display:block;margin:6px 0 6px;color:var(--muted);font-size:12px}.list-sheet input,.list-sheet select{width:100%;min-height:44px;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}.list-sheet .sheet-form{display:grid;gap:8px;margin-top:4px}.list-sheet .sheet-primary{min-height:44px;border:0;border-radius:10px;background:var(--text);color:var(--bg);font:inherit;font-weight:500;cursor:pointer}.list-sheet .sheet-result:not(:empty){color:var(--waiting)}@media(prefers-reduced-motion:no-preference){.archive-group[open]>.archive-body,.folder-group[open]>.group-rows{animation:list-open .24s cubic-bezier(.16,1,.3,1)}@keyframes list-open{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}}
+.folder-group>.projhead .folder-icon,.archive-group>.projhead .folder-icon,.hidden-folder-row .folder-icon{width:15px;height:15px;flex:none;color:var(--muted)}.folder-group>.projhead .count,.archive-group>.projhead .count{margin-inline-start:auto;font-variant-numeric:tabular-nums}.folder-group>.projhead>.folder-icon,.archive-group>.projhead>.folder-icon{display:block}.folder-group>.projhead .count,.archive-group>.projhead .count{display:inline}.list-more{flex:none;min-width:44px;min-height:44px;margin-inline-end:-6px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:17px;line-height:1;cursor:pointer}.list-more:hover,.list-more:focus-visible{background:var(--surface-2);color:var(--text)}.new-folder-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;margin:4px 0 12px;padding:0 14px;border:1.5px dashed var(--accent);border-radius:12px;background:transparent;color:var(--accent);font:inherit;font-size:15px;font-weight:500;text-align:start;cursor:pointer;touch-action:manipulation}.new-folder-plus{font-size:22px;line-height:1;font-weight:400}.new-folder-row:active{background:var(--surface-2)}.new-folder-row .folder-icon{width:18px;height:18px;flex:none;color:currentColor}.new-folder-row:hover,.new-folder-row:focus-visible{background:var(--surface-2);color:var(--accent)}.new-folder-hint{margin-inline-start:auto;font-size:13px;font-weight:400;color:var(--muted)}.folder-empty{padding:8px 8px 14px;color:var(--muted);font-size:12px;line-height:1.5}.floated{margin:2px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}.floated-head{display:flex;align-items:center;min-height:34px;padding:0 6px;color:var(--accent);font-size:12px;font-weight:500}.archive-group{margin-top:16px;padding-top:6px;border-top:1px solid var(--line)}.archive-group>.projhead{color:var(--text)}.archive-note{margin:0 6px 8px;max-width:46ch;color:var(--muted);font-size:12px;line-height:1.55}.archive-cat+.archive-cat{margin-top:6px}.archive-cat-head{display:flex;justify-content:space-between;gap:8px;padding:8px 6px 4px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}.archive-group .pane .project{font-weight:400}.folder-drop{outline:1px dashed var(--accent);outline-offset:-2px;border-radius:10px;background:var(--surface-2)}.hidden-folder-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:0 6px;color:var(--muted);font-size:13px}.hidden-folder-row>span{display:flex;align-items:center;gap:8px;min-width:0}.list-show{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--text);font:inherit;font-size:12px;cursor:pointer}.list-sheet .sheet{max-height:min(640px,calc(100dvh - 32px));overflow:auto}.list-sheet .choices{display:grid}.list-sheet .choice{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px;width:100%;padding:8px 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--text);font:inherit;font-size:14px;text-align:start;cursor:pointer}.list-sheet .choice:hover,.list-sheet .choice:focus-visible{background:var(--surface-2)}.list-sheet .choice>span:last-child{color:var(--muted);font-size:12px}.list-sheet .hint{font-size:12px}.list-sheet label{display:block;margin:6px 0 6px;color:var(--muted);font-size:12px}.list-sheet input,.list-sheet select{width:100%;min-height:44px;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}.list-sheet .sheet-form{display:grid;gap:8px;margin-top:4px}.list-sheet .sheet-primary{min-height:44px;border:0;border-radius:10px;background:var(--text);color:var(--bg);font:inherit;font-weight:500;cursor:pointer}.list-sheet .sheet-result:not(:empty){color:var(--waiting)}@media(prefers-reduced-motion:no-preference){.archive-group[open]>.archive-body,.folder-group[open]>.group-rows{animation:list-open .24s cubic-bezier(.16,1,.3,1)}@keyframes list-open{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}}
 .close-sheet{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
 .close-sheet .sheet{width:min(380px,100%);box-sizing:border-box;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);display:grid;gap:10px}
 .close-sheet h2{margin:0;font-size:17px;font-weight:500;overflow-wrap:anywhere}
@@ -1337,8 +1369,10 @@ body.chat main .qform .q-opt{border:1px solid var(--line);border-radius:14px;min
 .word-fix-sheet .wf-row{display:grid;gap:4px}.word-fix-sheet label{font-size:13px;color:var(--muted)}.word-fix-sheet input{min-height:44px;box-sizing:border-box;width:100%;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:16px var(--ui)}
 .word-fix-sheet .sheet-actions .go{border-color:transparent;background:var(--text);color:var(--bg)}
 .word-fix-sheet .wf-list{display:grid;gap:2px;max-height:min(34vh,260px);overflow:auto;margin:0;padding:0;list-style:none}.word-fix-sheet .wf-list li{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 10px;border-radius:10px;background:var(--control)}.word-fix-sheet .wf-list bdi{flex:1;min-width:0;overflow-wrap:anywhere}.word-fix-sheet .wf-list s{color:var(--muted)}.word-fix-sheet .wf-list button{flex:none;width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--muted);font-size:18px;cursor:pointer}.word-fix-sheet .wf-list button:hover{color:var(--text)}
-.close-terminal-head{margin-inline-start:8px;padding:0 8px;min-height:24px;border:1px solid var(--line);border-radius:8px;background:none;color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
+.close-terminal-head{margin-inline-start:8px;padding:0 8px;min-height:44px;border:1px solid var(--line);border-radius:8px;background:none;color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
 .close-terminal-head:hover{color:var(--text)}
+body.chat:not(.bot-view) header .sub{white-space:normal;overflow:visible}
+@media(min-width:1000px){body.chat{grid-template-rows:minmax(56px,auto) minmax(0,1fr) auto}}
 @media (pointer:coarse){.close-terminal-head{min-height:44px;padding:0 14px;font-size:13px;vertical-align:middle}}
 .close-sheet .bot-close-warning{padding:10px 12px;border:1px solid #b3261e;border-radius:10px;color:var(--text);background:rgba(179,38,30,.12)}
 .close-sheet .bot-close-list{display:grid;gap:4px;max-height:min(52vh,420px);overflow:auto;margin:0;padding:0;list-style:none}
@@ -1378,20 +1412,20 @@ body:not(.chat):not(.bot-view) header{min-height:52px;padding-block:6px}
 .usage-chev{width:12px;height:12px;flex:none;margin-inline-start:auto;transition:transform .2s cubic-bezier(.16,1,.3,1)}
 .usage-line[open] .usage-chev{transform:rotate(180deg)}
 .usage-line .usagebar{margin:4px 0 0}
-.fleet-tabs{margin:0 0 8px;padding:3px;border-radius:12px}
-.fleet-tabs button{min-height:38px;font-size:14px;gap:6px;border-radius:9px}
+.fleet-tabs{margin:0 0 8px;padding:0;border-radius:12px}
+.fleet-tabs button{min-height:44px;font-size:14px;gap:6px;border-radius:9px}
 .fleet-tabs [data-tab=health]{padding:0 14px}
 .fleet-tools{display:flex;align-items:center;gap:8px;margin:0 0 10px}
-.fleet-search-open{flex:none;display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer;touch-action:manipulation}
+.fleet-search-open{flex:none;display:grid;place-items:center;width:44px;height:44px;padding:0;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer;touch-action:manipulation}
 .fleet-search-open svg{width:18px;height:18px}
 .fleet-search-open:hover,.fleet-search-open:focus-visible{background:var(--surface-2);color:var(--text)}
-.fleet-tools .fleet-search{display:none;flex:1;min-width:0;width:auto;height:40px;margin:0;padding:0 12px;border-radius:10px}
+.fleet-tools .fleet-search{display:none;flex:1;min-width:0;width:auto;height:44px;margin:0;padding:0 12px;border-radius:10px}
 .fleet-tools.searching .fleet-search-open{display:none}
 .fleet-tools.searching .fleet-search{display:block}
-.fleet-tools .new-folder-row{display:inline-flex;width:auto;min-height:40px;margin:0;margin-inline-start:auto;padding:0 12px;gap:6px;border:1px dashed color-mix(in srgb,var(--accent) 70%,transparent);border-radius:10px;font-size:13.5px;white-space:nowrap}
+.fleet-tools .new-folder-row{display:inline-flex;width:auto;min-height:44px;margin:0;margin-inline-start:auto;padding:0 12px;gap:6px;border:1px dashed color-mix(in srgb,var(--accent) 70%,transparent);border-radius:10px;font-size:13.5px;white-space:nowrap}
 .fleet-tools .new-folder-plus{font-size:17px}
 .fleet-tools .new-folder-row .folder-icon{width:16px;height:16px}
-.fleet-tools.searching .new-folder-row{padding:0;width:40px;justify-content:center;margin-inline-start:0}
+.fleet-tools.searching .new-folder-row{padding:0;width:44px;justify-content:center;margin-inline-start:0}
 .fleet-tools.searching .new-folder-row .new-folder-label,.fleet-tools.searching .new-folder-plus{display:none}
 .search-hits:empty{display:none}
 @media(max-width:999px){.fleetbar .new-folder{display:none}}   /* the labelled New folder button sits right above */
@@ -1411,6 +1445,8 @@ body:not(.chat):not(.bot-view) header{min-height:52px;padding-block:6px}
 <noscript><p style="padding:24px;text-align:center;color:#9a9993">TermControl needs JavaScript to show your terminals.</p></noscript>
 
 <script type="module">
+import { mountWorkDashboard } from '/app/work-dashboard.mjs';
+let releaseWorkDashboard=null;
 const main = document.getElementById('main');
 const routinesLine = document.getElementById('routines-line');
 const chromeLocale=localStorage.getItem('termcontrol-language') || (navigator.language.startsWith('he')?'he':'en');
@@ -1441,6 +1477,7 @@ function hasNewAnswer(p,active){
 }
 function rememberCurrentChat(){
   if(otherView==='bot' && openBotId && main.querySelector('.bot-feed')){const snapshot=main.cloneNode(true);snapshot.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));const memory=chatMemory(openBotId);memory.previewMarkup=snapshot.innerHTML;delete memory.scrollTop;}
+  releaseWorkDashboard?.();releaseWorkDashboard=null;
   document.body.classList.remove('bot-view');document.querySelector('.bot-head-actions')?.remove();document.querySelector('.bot-menu-sheet')?.remove();
   if(!focusedPane)return;markSeen(focusedPane);document.querySelector('.composer')?.saveDraft?.();saveChatView?.();
   // Capture once when leaving; never serialize the conversation on drag frames.
@@ -2233,16 +2270,28 @@ function showMediaFull(href,label){
 }
 let mediaPopSkip=false;
 document.addEventListener('click',event=>{const item=event.target.closest?.('[data-media-full]');if(!item)return;event.preventDefault();showMediaFull(item.dataset.mediaFull,item.querySelector('img')?.alt);});
+const botQuestionAnswer=(m,messages)=>m.questionResolution?.state==='answered'?m.questionResolution:messages.find(x=>x.role==='operator' && x.deleted?.cancelled!==true && x.answerTo===m.id);
+function unansweredChatQuestions(messages){
+  const seen=new Set(),open=[];
+  for(const m of messages){
+    if(!m.id || m.repeated || seen.has(m.id))continue;
+    if(m.role==='bot' && m.question && !m.withdrawn && !m.duplicate && !botQuestionAnswer(m,messages))open.push({id:m.id,kind:'bot',text:m.question.text});
+    else if(liveTermAsk(m))open.push({id:m.id,kind:'terminal',text:m.text});
+    seen.add(m.id);
+  }
+  return open;
+}
 function botQuestionHtml(m,messages){
   if(m.repeated)return '';
   // A card whose answers are things to look at carries "Open to compare" and a link per answer
   // (Noam 2026-10-24: "שתמיד יהיה לינק עם אופציות"); a card the bot took back shows "No longer needed".
-  const q=m.question,later=messages.find(x=>x.role==='operator' && x.answerTo===m.id) || messages.find(x=>x.role==='operator' && !x.answerTo && x.at>m.at && q.options.includes(x.text)),answered=Boolean(later),gone=Boolean(m.withdrawn) && !answered,off=answered || gone;
-  const own=answered && !q.options.includes(later.text)?`<p class="bot-q-mine" dir="auto">${ui('Your answer:','התשובה שלך:')} <bdi>${esc(later.text)}</bdi></p>`:'';
+  const q=m.question,later=botQuestionAnswer(m,messages),answered=Boolean(later),gone=Boolean(m.withdrawn) && !answered,off=answered || gone;
+  const own=answered && later.text && !q.options.includes(later.text)?`<p class="bot-q-mine" dir="auto">${ui('Your answer:','התשובה שלך:')} <bdi>${esc(later.text)}</bdi></p>`:'';
   const open=(href,cls,label,name)=>`<a class="msg-link ${cls}" href="${esc(href)}" target="_blank" rel="noopener noreferrer"${name?` aria-label="${esc(name)}"`:''}>${label}</a>`;
   const top=(q.link && mediaKindOf(q.link)?`<div class="bot-q-thumb">${mediaItemHtml({kind:mediaKindOf(q.link),href:q.link,name:q.text})}</div>`:'')+(q.link?open(q.link,'bot-q-link',`${ui('Open to compare','לפתוח להשוואה')} ↗`):'');
   const rows=q.options.map((o,i)=>`<div class="bot-q-row">${mediaKindOf(q.optionLinks?.[i])?`<div class="bot-q-thumb">${mediaItemHtml({kind:mediaKindOf(q.optionLinks[i]),href:q.optionLinks[i],name:o})}</div>`:''}<button type="button" dir="auto" data-answer="${esc(o)}"${q.recommended===i?' class="recommended"':''}${off?' disabled':''}${answered && later.text===o?' aria-pressed="true"':''}>${esc(o)}${q.recommended===i?`<small>${ui('recommended','מומלץ')}</small>`:''}</button>${q.optionLinks?.[i]?open(q.optionLinks[i],'bot-q-optlink',`${ui('Open','פתיחה')} ↗`,ui(`Open ${o}`,`לפתוח את ${o}`)):''}</div>`).join('');
-  return `<div class="bot-question${off?' answered':''}${gone?' withdrawn':''}" data-qid="${esc(m.id)}" data-card-reply="${esc(m.id)}" data-card-title="${esc(ui('Question','שאלה')+': '+q.text)}" role="group" aria-label="${ui('Question from the bot','שאלה מהבוט')}">${cardReplyButton()}<p dir="auto">${esc(q.text)}</p>${gone?`<p class="bot-q-gone" dir="auto">${ui('No longer needed: the bot took this question back.','כבר לא נחוץ: הבוט ביטל את השאלה הזו.')}</p>`:''}${top}<div class="bot-q-opts">${rows}</div>${own}${off?'':`<button type="button" class="bot-q-own" aria-expanded="false">${ui('Write my own answer','לכתוב תשובה משלי')}</button><form class="bot-q-write" hidden><textarea rows="2" dir="auto" enterkeyhint="send" aria-label="${ui('Your own answer','התשובה שלך')}" placeholder="${ui('Your own answer…','התשובה שלך…')}"></textarea><button type="submit" class="primary" disabled>${ui('Send answer','שליחת התשובה')}</button></form>`}</div>`;
+  const resolved=answered && later.source==='owner'?`<p class="bot-q-gone">${ui('Marked already answered.','סומנה כשאלה שכבר נענתה.')}</p>`:'';
+  return `<div class="bot-question${off?' answered':''}${gone?' withdrawn':''}" data-qid="${esc(m.id)}" data-card-reply="${esc(m.id)}" data-card-title="${esc(ui('Question','שאלה')+': '+q.text)}" role="group" aria-label="${ui('Question from the bot','שאלה מהבוט')}">${cardReplyButton()}<p dir="auto">${esc(q.text)}</p>${gone?`<p class="bot-q-gone" dir="auto">${ui('No longer needed: the bot took this question back.','כבר לא נחוץ: הבוט ביטל את השאלה הזו.')}</p>`:''}${top}<div class="bot-q-opts">${rows}</div>${own}${resolved}${off?'':`<button type="button" class="bot-q-own" aria-expanded="false">${ui('Write my own answer','לכתוב תשובה משלי')}</button><button type="button" class="bot-q-own" data-resolve-question>${ui('Already answered','כבר עניתי')}</button><form class="bot-q-write" hidden><textarea rows="2" dir="auto" enterkeyhint="send" aria-label="${ui('Your own answer','התשובה שלך')}" placeholder="${ui('Your own answer…','התשובה שלך…')}"></textarea><button type="submit" class="primary" disabled>${ui('Send answer','שליחת התשובה')}</button></form>`}</div>`;
 }
 // A bot that ends its reply waiting for Noam's go-ahead, with no question card, gets
 // "Go ahead" / "Not yet" under it (Noam 2026-10-21: "ה go ahead היה צריך להיות כפתור").
@@ -2981,6 +3030,7 @@ async function openInbox(){
 // The chat header is redrawn on every refresh, so the list remembers whether it was open.
 document.addEventListener('toggle',event=>{const d=event.target;if(d?.parentElement?.id==='side-asks' && d.tagName==='DETAILS'){try{localStorage.setItem('termcontrol-asks-rail',d.open?'open':'folded');}catch{}}},true);
 document.addEventListener('click',event=>{const b=event.target?.closest?.('.rail-toggle-retired');if(!b)return;const rail=b.closest('.asks-rail'),folded=!rail.classList.contains('folded');rail.classList.toggle('folded',folded);rail.querySelector('ul').hidden=folded;b.setAttribute('aria-expanded',String(!folded));b.lastElementChild.textContent=folded?'▸':'▾';document.body.classList.toggle('asks-folded',folded);try{localStorage.setItem('termcontrol-asks-rail',folded?'folded':'open');}catch{}});
+document.addEventListener('toggle',event=>{if(event.target?.classList?.contains('term-ask-pinned')){try{sessionStorage.setItem('termcontrol-pin-open',event.target.open?'open':'closed');}catch{}}},true);
 document.addEventListener('toggle',event=>{if(event.target?.classList?.contains('asks-chip')){try{sessionStorage.setItem('termcontrol-asks-open',event.target.open?'open':'closed');}catch{}}},true);
 // The list is redrawn every few seconds: remember whether he scrolled up (null = stay at the newest).
 // A request as a short plain line: no attachment notes, file paths, relay wrappers or shell
@@ -3015,6 +3065,18 @@ async function removeAsk(n,row){
   catch{row?.classList.remove('removing');}
 }
 document.addEventListener('click',event=>{const b=event.target?.closest?.('#side-asks .rail-x');if(b)removeAsk(b.dataset.n,b.closest('li'));});
+// An agent says it is ready: two taps tell it whether it really works on his screen (2026-10-27, "a disconnect
+// between what I ask and what I get": ready items sat unchecked for days). Only items with a ledger id (R-n).
+const verdictHtml=a=>a && a.status==='ready' && /^R-\d+$/.test(String(a.id || ''))
+  ?`<span class="ask-verdict" role="group" aria-label="${esc(ui('Does it work for you?','זה עובד אצלך?'))}"><button type="button" class="verdict-ok" data-verdict="works" data-id="${esc(a.id)}">${esc(ui('✓ Works','✓ עובד'))}</button><button type="button" class="verdict-no" data-verdict="broken" data-id="${esc(a.id)}">${esc(ui('✗ Still broken','✗ עדיין שבור'))}</button></span>`:'';
+document.addEventListener('click',async event=>{
+  const b=event.target?.closest?.('.ask-verdict button');if(!b || b.disabled)return;
+  const box=b.closest('.ask-verdict');box.querySelectorAll('button').forEach(x=>x.disabled=true);
+  try{const r=await fetch('/api/ask/verdict',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.id,verdict:b.dataset.verdict}),signal:AbortSignal.timeout(8000)});
+    if(!r.ok)throw new Error((await r.json()).error);
+    box.textContent=b.dataset.verdict==='works'?ui('Closed. Thank you.','נסגר. תודה.'):ui('Reopened: the agent will see it again.','נפתח מחדש: הסוכן יראה את זה שוב.');box.classList.add('done');
+  }catch(e){box.querySelectorAll('button').forEach(x=>x.disabled=false);note(e.message || ui('That did not save.','השמירה נכשלה.'));}
+});
 window.addEventListener('resize',()=>placeSideAsks());
 if(window.ResizeObserver)new ResizeObserver(()=>placeSideAsks()).observe(document.documentElement);
 function clearSideAsks(){const el=document.getElementById('side-asks');if(el){el.hidden=true;el.replaceChildren();delete el.dataset.html;}}
@@ -3030,7 +3092,7 @@ function paintSideAsks(asks,current,liveText){
   const rows=sorted.map(a=>{
     const cur=a.n===current,st=state(a),title=railShort(a.title || a.text,80),what=cur&&liveText?liveText:title,note=cur&&liveText?railShort(a.title || a.text,60):'';
     const extra=st==='done' && ++doneSeen>SHOWN_DONE?' more-done':'',dir=dirOf(what),w=word(a);
-    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" dir="${dir}" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="${dirOf(note)}">${esc(note)}</span>`:''}${!a.id&&removable(st)?`<button type="button" class="rail-x" data-n="${a.n}" aria-label="${esc(ui('Remove from the list','להסיר מהרשימה'))}" title="${esc(ui('Remove from the list','להסיר מהרשימה'))}">×</button>`:''}</li>`;
+    return `<li class="rail-${esc(st)}${extra}" dir="${dir}"><span class="st" role="img" aria-label="${esc(w)}" title="${esc(w)}">${esc(w)}</span><span class="rail-what" dir="${dir}" title="${esc(railClean(cur&&liveText?live0:a.text))}">${esc(what)}</span>${note?`<span class="rail-note" dir="${dirOf(note)}">${esc(note)}</span>`:''}${verdictHtml(a)}${!a.id&&removable(st)?`<button type="button" class="rail-x" data-n="${a.n}" aria-label="${esc(ui('Remove from the list','להסיר מהרשימה'))}" title="${esc(ui('Remove from the list','להסיר מהרשימה'))}">×</button>`:''}</li>`;
   }).join('');
   const hiddenDone=Math.max(0,done-SHOWN_DONE),showAll=el.classList.contains('all-done');
   const more=hiddenDone?`<li class="rail-more"><button type="button" aria-expanded="${showAll}" data-more="${esc(ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}" data-less="${esc(ui('Show fewer','להציג פחות'))}">${esc(showAll?ui('Show fewer','להציג פחות'):ui(`+${hiddenDone} earlier done`,`+${hiddenDone} שבוצעו קודם`))}</button></li>`:'';
@@ -3057,6 +3119,8 @@ function visibleAsks(asks,scheduled=[]){
 }
 function asksHtml(asks,working,live,scheduled=[]){
   asks=visibleAsks(asks,scheduled);
+  // No requests, but a terminal agent is working for this bot: still show what it is doing (#24).
+  if((!asks || !asks.length) && working && live){live0=String(live);paintSideAsks([{n:0,id:'live',status:'open',title:String(live),text:String(live)}],0,railLive(live));return '';}
   if(!asks || !asks.length){clearSideAsks();return '';}
   const done=asks.filter(a=>a.status==='done').length,partial=asks.filter(a=>a.status==='partial').length,open=asks.filter(a=>a.status==='open').length;
   const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),ready:ui('ready to try','מוכן לבדיקה'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
@@ -3099,33 +3163,26 @@ function replyDetailsHtml(mid,list){
 const asksHebrew=asks=>{const list=(asks || []).map(a=>a.title || a.text || '');return chromeLocale==='he' || (list.length>0 && list.filter(t=>/[\u0590-\u05FF]/.test(t)).length*2>=list.length);};
 function asksSummary(asks,he=asksHebrew(asks)){
   const say=(en,h)=>he?h:en,list=asks || [],count=s=>list.filter(a=>a.status===s).length;
-  const ready=count('ready'),done=count('done')+ready,open=count('open')+count('partial'),total=done+open;
-  const text=say(`${done} done · ${open} open`,`${done} בוצעו · ${open} פתוחות`);
-  return {done,ready,open,total,text,full:text+(ready?say(` (${ready} ready for you to try)`,` (${ready} מוכנות לבדיקה שלך)`):'')};
-}
-function paintBotHead(state){
-  const box=document.querySelector('.bot-head-actions');if(!box)return;
-  const chip=box.querySelector('.bot-asks-chip'),bar=box.querySelector('.bot-progress'),sum=asksSummary(state.asks);
-  chip.hidden=bar.hidden=!sum.total;if(!sum.total)return;
-  chip.querySelector('span').textContent=sum.text;chip.classList.toggle('waiting',Boolean(sum.open));chip.dir=asksHebrew(state.asks)?'rtl':'auto';
-  chip.setAttribute('aria-label',asksHebrew(state.asks)?`הבקשות שלך: ${sum.full}`:`Your requests: ${sum.full}`);
-  bar.firstElementChild.style.transform=`scaleX(${(sum.done/sum.total).toFixed(3)})`;
+  // "Ready" is an agent's claim, not a result: it counts as "to check" until Noam taps Works (2026-10-27, the
+  // header said "2 done · 0 open" over two items that still read "Ready to try").
+  const ready=count('ready'),done=count('done'),open=count('open')+count('partial'),total=done+ready+open;
+  const text=ready?say(`${done} done · ${ready} to check · ${open} open`,`${done} בוצעו · ${ready} לבדיקה · ${open} פתוחות`):say(`${done} done · ${open} open`,`${done} בוצעו · ${open} פתוחות`);
+  return {done,ready,open,total,text,full:text};
 }
 const menuIcons={activity:'M3 12h4l3-7 4 14 3-7h4',asks:'M5 12l4 4L19 6',agents:'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h4',model:'M12 9a3 3 0 100 6 3 3 0 000-6z M12 3v3 M12 18v3 M3 12h3 M18 12h3',memory:'M6 4h12v16l-6-4-6 4z',schedule:'M12 4a8 8 0 100 16 8 8 0 000-16z M12 8v4l3 2',edit:'M4 20h4L19 9l-4-4L4 16z',theme:'M12 8a4 4 0 100 8 4 4 0 000-8z M12 3v2 M12 19v2 M3 12h2 M19 12h2',browser:'M4 5h16v14H4z M4 9h16',notify:'M6 16V11a6 6 0 0112 0v5l2 2H4z M10 20h4',pin:'M9 4h6l-1 6 3 3H7l3-3z M12 13v7',hide:'M3 12s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z M4 4l16 16',del:'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13'};
 function menuIcon(name){return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${menuIcons[name]}"/></svg>`;}
 // The bot menu: a sheet from the bottom (thumb reach) on a phone, a small panel on a wide window.
 // Items in the approved mockup's order; the remaining existing options follow so nothing is lost.
-function botMenu(id,bot,state,start='menu'){
+function botMenu(id,bot,state){
   document.querySelector('.bot-menu-sheet')?.remove();
   const he=asksHebrew(state.asks),ui=(en,h)=>he?h:en;   // the whole sheet speaks the requests' language
   const dialog=document.createElement('dialog');dialog.className='bot-menu-sheet';dialog.dir=he?'rtl':'ltr';dialog.lang=he?'he':'en';dialog.setAttribute('aria-label',ui('Bot menu','תפריט הבוט'));
   const close=()=>{dialog.close();dialog.remove();};
   const press=sel=>{close();document.querySelector(sel)?.click();};
-  const sum=asksSummary(state.asks,he),helpers=state.helpers || [];
+  const helpers=state.helpers || [];
   const item=(key,label,value='',cls='')=>`<button type="button" class="menu-item ${cls}" data-act="${key}">${menuIcon(key)}<span class="menu-label">${esc(label)}</span>${value?`<span class="menu-value" dir="auto">${esc(value)}</span>`:''}</button>`;
   const brain=p=>p==='codex'?'Codex':'Claude';
   const menu=()=>`<div class="sheet-grab" aria-hidden="true"></div>`
-    +(sum.total?item('asks',ui('Your requests','הבקשות שלך'),sum.text,'big'):'')
     +(helpers.length?item('agents',ui('Terminal agents it started','סוכני מסוף שהפעיל'),String(helpers.length),'big'):'')
     +item('activity',ui('Activity','פעילות'),ui('what it did','מה הוא עשה'))
     +'<div class="menu-sep"></div>'
@@ -3140,31 +3197,16 @@ function botMenu(id,bot,state,start='menu'){
     +item('pin',bot?.pinned?ui('Unpin','ביטול הצמדה'):ui('Pin','הצמדה'))
     +item('hide',bot?.hidden?ui('Show in list','הצגה ברשימה'):ui('Hide','הסתרה'))
     +item('del',ui('Delete bot','מחיקת הבוט'),'','danger');
-  const label={done:ui('done','בוצע'),partial:ui('partial','חלקי'),ready:ui('ready to try','מוכן לבדיקה'),open:ui('open','פתוח'),dropped:ui('dropped','בוטל')};
   const stateWord={working:ui('working','עובד'),idle:ui('finished or waiting','סיים או ממתין'),'needs-you':ui('needs you','נדרש מענה'),stuck:ui('stuck, likely crashed','תקוע, כנראה קרס'),closed:ui('closed','נסגר')};
   const back=`<button type="button" class="menu-item menu-back" data-act="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span class="menu-label">${ui('Bot menu','תפריט הבוט')}</span></button>`;
-  // Requests (Noam 2026-10-24: "לא ברור מה פתוח מה סגור"): open first, then ready for him to try,
-  // then done folded away. One short line of his own words each, newest first.
-  const short=t=>{t=String(t || '').replace(/\s+/g,' ').trim();return t.length>80?t.slice(0,79).trimEnd()+'…':t;};
-  const row=a=>{const t=a.title || a.text;const chip=['partial','dropped'].includes(a.status)?`<span class="ask-status ask-${esc(a.status)}">${esc(label[a.status])}</span>`:'';
-    return `<li class="ask-row ask-row-${esc(a.status)}" value="${a.n}"><span class="ask-copy">${chip}<bdi class="ask-words" dir="auto" title="${esc(t)}">${esc(short(t))}</bdi>${a.note?`<span class="ask-note" dir="auto">${esc(short(a.note))}</span>`:''}</span>${!a.id&&['partial','ready','open'].includes(a.status)?`<button type="button" class="ask-remove" data-act="ask-remove" data-n="${a.n}" aria-label="${esc(ui('Remove from list','הסרה מהרשימה'))}" title="${esc(ui('Remove from list','הסרה מהרשימה'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>`:''}</li>`;};
-  const group=(cls,title,list,fold=false)=>{if(!list.length)return '';const head=`<span class="asks-group-title">${esc(title)}</span><span class="asks-group-count">${list.length}</span>`;const items=`<ol class="sheet-list">${list.map(row).join('')}</ol>`;
-    return fold?`<details class="asks-group ${cls}"><summary>${head}</summary>${items}</details>`:`<section class="asks-group ${cls}"><h3>${head}</h3>${items}</section>`;};
-  const asksList=()=>{const newest=state.asks.slice().sort((x,y)=>y.n-x.n),of=(...st)=>newest.filter(a=>st.includes(a.status));
-    const pct=n=>sum.total?(n/sum.total*100).toFixed(1):0;
-    return `<div class="sheet-grab" aria-hidden="true"></div>${back}<div class="asks-summary"><h2 class="sheet-title">${esc(ui('Your requests','הבקשות שלך'))}</h2><p class="asks-counts" aria-label="${esc(sum.full)}"><span><b>${sum.done}</b> ${esc(ui('done','בוצעו'))}</span><span><b>${sum.open}</b> ${esc(ui('open','פתוחות'))}</span>${sum.ready?`<span><b>${sum.ready}</b> ${esc(ui('ready for you to try','מחכות לבדיקה שלך'))}</span>`:''}</p><div class="asks-meter" aria-hidden="true"><span class="m-done" style="width:${pct(sum.done-sum.ready)}%"></span><span class="m-ready" style="width:${pct(sum.ready)}%"></span></div></div>`
-      +(of('open','partial').length?group('asks-open',ui('Still open','עדיין פתוחות'),of('open','partial')):`<p class="asks-empty">${esc(ui('Nothing open right now.','אין כרגע בקשות פתוחות.'))}</p>`)
-      +group('asks-ready',ui('Ready for you to try','מוכנות לבדיקה שלך'),of('ready'))
-      +group('asks-done',ui('Done','בוצעו'),of('done','dropped'),true);};
   const agentsList=()=>`<div class="sheet-grab" aria-hidden="true"></div>${back}<h2 class="sheet-title">${esc(ui('Terminal agents it started','סוכני מסוף שהפעיל'))}</h2><ul class="sheet-list">${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul>`;
-  const show=view=>{dialog.innerHTML=view==='asks'?asksList():view==='agents'?agentsList():menu();dialog.querySelector('.menu-item')?.focus();};
+  const show=view=>{dialog.innerHTML=view==='agents'?agentsList():menu();dialog.querySelector('.menu-item')?.focus();};
   dialog.addEventListener('click',e=>{
     if(e.target===dialog)return close();
     if(e.target.closest('.sheet-list a'))return close();
     const act=e.target.closest('[data-act]')?.dataset.act;if(!act)return;
     if(act==='back')return show('menu');
-    if(act==='ask-remove'){const b=e.target.closest('[data-act]'),n=Number(b.dataset.n);state.asks=state.asks.filter(a=>a.n!==n);removeAsk(n,b.closest('li'));return;}
-    if(act==='asks' || act==='agents')return show(act);
+    if(act==='agents')return show(act);
     if(act==='activity'){close();return botActivityDialog(id,bot?.name || '');}
     if(act==='theme')return press('.theme-toggle');
     if(act==='schedule')return press('.bot-schedule');
@@ -3172,7 +3214,7 @@ function botMenu(id,bot,state,start='menu'){
     press({model:'.bot-model',memory:'.bot-memory',edit:'.bot-edit',browser:'.bot-browser',notify:'.bot-notify',pin:'.bot-pin',hide:'.bot-hide'}[act]);
   });
   dialog.addEventListener('close',()=>dialog.remove());
-  document.body.append(dialog);show(start);dialog.showModal();
+  document.body.append(dialog);show('menu');dialog.showModal();
 }
 
 // "Waiting for you" (Noam 2026-10-20: "a short summary that keeps itself up to date, with
@@ -3294,7 +3336,7 @@ function botsHomeHtml(data){
       :b.state==='needs-you'?['needs-you',ui('Needs you','נדרש מענה'),esc(b.blocked?.ask || '')]
       :b.helpersAsking?['needs-you',ui('Needs you','נדרש מענה'),ui('a terminal agent is asking you','סוכן בטרמינל שואל אותך')]
       :b.state==='failed'?['needs-you',ui('Something went wrong','משהו השתבש'),ui('open to see','פתחו לפרטים')]
-      :n?['agents',ui(`Waiting on ${n} agent${n>1?'s':''}`,n>1?`ממתין ל-${n} סוכנים`:'ממתין לסוכן'),'']
+      :n?['agents',ui(`Waiting on ${n} agent${n>1?'s':''}`,n>1?`ממתין ל-${n} סוכנים`:'ממתין לסוכן'),esc(b.helperNow || '')]
       :b.waitingForReset?['idle',ui('Waiting for a plan to reset','ממתין לאיפוס של תוכנית'),'']
       :b.openTasks?['pending',ui(`${b.openTasks} open task${b.openTasks>1?'s':''}`,b.openTasks===1?'משימה פתוחה אחת':`${b.openTasks} משימות פתוחות`),said]
       :unread?['done',ui('Done','הסתיים'),said]
@@ -3341,7 +3383,7 @@ function terminalHealthHtml(h){
   if(!h)return '';
   const words={alive:ui('Alive','חי'),stuck:ui('Stuck · still alive','תקוע · עדיין חי'),sleeping:ui('Sleeping','ישן'),unknown:ui('Cannot verify','לא ניתן לאמת'),checking:ui('Checking before recovery','בודק לפני שחזור'),dead:ui('Dead','מת'),recovering:ui('Restoring conversation','משחזר שיחה'),retired:ui('Closed · task finished','נסגר · המשימה הסתיימה'),blocked:ui('Recovery needs attention','השחזור דורש בדיקה')};
   const rows=h.terminals.map(p=>{const status=Object.hasOwn(words,p.status)?p.status:'unknown';return `<li data-health="${status}" data-key="health-${esc(p.id)}"><span class="terminal-health-name" dir="auto">${esc(p.project || ui('Terminal','מסוף'))}</span><span class="terminal-health-status">${words[status]}</span>${p.task?`<p dir="auto">${esc(p.task)}</p>`:''}${p.reason?`<p dir="auto">${esc(p.reason)}</p>`:''}${p.bot?.name?`<small dir="auto">${ui('Assigned bot','בוט אחראי')}: ${esc(p.bot.name)}</small>`:''}${p.lastActivityAt?`<small>${ui('Last recorded activity','פעילות אחרונה שנרשמה')}: ${esc(ago(p.lastActivityAt))}</small>`:''}${p.commits?.length?`<small>${ui(`${p.commits.length} recent commits preserved`,`${p.commits.length} שמירות עבודה אחרונות נשמרו`)}</small>`:''}</li>`;}).join('');
-  return `<section class="health-page terminal-health" data-key="terminal-health" aria-label="${ui('Terminal health','מצב המסופים')}"><h2>${ui('Terminal health','מצב המסופים')}</h2><p class="health-note">${ui('Recovery requires both a missing process and more than five minutes without recorded activity. A live but stuck terminal is kept open.','שחזור מחייב גם תהליך שאינו קיים וגם יותר מחמש דקות ללא פעילות רשומה. מסוף תקוע שעדיין חי נשאר פתוח.')}</p>${terminalHealthUnavailable?`<p class="health-note" role="status">${ui('The latest check is unavailable. These are the last recorded results.','הבדיקה העדכנית לא זמינה. אלה התוצאות האחרונות שנרשמו.')}</p>`:''}${!h.daemon?`<p class="health-note">${ui('The terminal service is unreachable. Automatic recovery is paused.','שירות המסופים לא זמין. השחזור האוטומטי מושהה.')}</p>`:''}<ul class="terminal-health-list">${rows || `<li><p>${ui('No terminals to check.','אין מסופים לבדיקה.')}</p></li>`}</ul>${h.checkedAt?`<p class="health-note">${ui('Last checked','נבדק לאחרונה')}: ${esc(ago(h.checkedAt))}</p>`:''}</section>`;
+  return `<section class="health-page terminal-health" data-key="terminal-health" aria-label="${ui('Terminal health','מצב המסופים')}"><h2>${ui('Terminal health','מצב המסופים')}</h2>${h.canary?`<p class="health-note" data-key="canary">${h.canary.ok?ui('Self-test passed','בדיקה עצמית עברה')+' · '+new Date(h.canary.checkedAt||h.canary.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):ui('Self-test failed: ','בדיקה עצמית נכשלה: ')+esc(h.canary.error||'')}</p>`:''}<p class="health-note">${ui('Recovery requires both a missing process and more than five minutes without recorded activity. A live but stuck terminal is kept open.','שחזור מחייב גם תהליך שאינו קיים וגם יותר מחמש דקות ללא פעילות רשומה. מסוף תקוע שעדיין חי נשאר פתוח.')}</p>${terminalHealthUnavailable?`<p class="health-note" role="status">${ui('The latest check is unavailable. These are the last recorded results.','הבדיקה העדכנית לא זמינה. אלה התוצאות האחרונות שנרשמו.')}</p>`:''}${!h.daemon?`<p class="health-note">${ui('The terminal service is unreachable. Automatic recovery is paused.','שירות המסופים לא זמין. השחזור האוטומטי מושהה.')}</p>`:''}<ul class="terminal-health-list">${rows || `<li><p>${ui('No terminals to check.','אין מסופים לבדיקה.')}</p></li>`}</ul>${h.checkedAt?`<p class="health-note">${ui('Last checked','נבדק לאחרונה')}: ${esc(ago(h.checkedAt))}</p>`:''}</section>`;
 }
 function healthCardHtml(h,asPage=false){
   if(!h || !h.days?.some(d=>d.said))return asPage?`<section class="health-page" data-key="health-page"><p class="health-note">${ui('Counting… this takes a few minutes the first time.','סופר… בפעם הראשונה זה לוקח כמה דקות.')}</p></section>`:'';
@@ -3640,6 +3682,7 @@ async function botMemoryDialog(id,name){
 }
 
 async function openBot(id,{motion=null}={}){
+  releaseWorkDashboard?.();
   loadBotModels();paintOpenBot();clearSideAsks();
   rememberCurrentChat();saveChatView=null;clearChatGesture(Boolean(motion && chatGesture===motion));
   if(!motion || !botOrder.some(b=>b.id===id))freezeBotOrder(id);
@@ -3653,13 +3696,14 @@ async function openBot(id,{motion=null}={}){
   fleetTimer=setInterval(()=>{if(otherView==='bot')fleet(true);},15000);setTimeout(()=>{if(otherView==='bot')fleet(true);},0);
   document.body.classList.add('chat','bot-view');
   // One slim line (Noam 2026-10-20: "the top part takes far too much space"; picked option B
-  // and the menu): back, icon + name with its brain, a requests button, and one menu.
+  // and the menu): back, icon + name with its brain, and one menu.
   const headActions=document.createElement('div');headActions.className='bot-head-actions';
-  headActions.innerHTML=`<button type="button" class="bot-asks-chip" hidden aria-haspopup="dialog"><i aria-hidden="true"></i><span></span></button><button type="button" class="bot-menu-button" aria-haspopup="dialog" aria-label="${ui('Bot menu','תפריט הבוט')}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="18.5" r="1.4"/></svg></button><span class="bot-progress" hidden aria-hidden="true"><span></span></span>`;
+  headActions.innerHTML=`<button type="button" class="bot-menu-button" aria-haspopup="dialog" aria-label="${ui('Bot menu','תפריט הבוט')}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="18.5" r="1.4"/></svg></button>`;
   document.querySelector('header[role=banner]').append(headActions);
+  const workButton=document.createElement('button');workButton.type='button';workButton.className='work-toggle';workButton.textContent='תמונת מצב';workButton.setAttribute('aria-controls','work-dashboard');workButton.setAttribute('aria-expanded','false');headActions.prepend(workButton);
+  releaseWorkDashboard=mountWorkDashboard({host:document.getElementById('work-dashboard'),button:workButton,botId:id,isCurrent:()=>mine===view && otherView==='bot'});
   const headState={asks:[],helpers:[],schedules:[]};
   headActions.querySelector('.bot-menu-button').onclick=()=>botMenu(id,current,headState);
-  headActions.querySelector('.bot-asks-chip').onclick=()=>botMenu(id,current,headState,'asks');
   nav.innerHTML=`<button class="back" aria-label="${ui('All agents','כל הסוכנים')}">${icon('back')}</button>`;
   // Opened from the list: step back to it, so the list returns to where the bot was.
   nav.querySelector('.back').onclick=()=>{if(history.state?.openedFromAgents){history.back();}else{history.pushState({},'',location.pathname);fleet();}};
@@ -3677,12 +3721,47 @@ async function openBot(id,{motion=null}={}){
   const bar=document.createElement('div');bar.className='composer room-composer bot-composer';
   bar.innerHTML=`<div class="skill-picker" role="listbox" hidden></div><div class="skill-picker mention-picker" role="listbox" hidden></div><div class="bot-pics" hidden></div><div class="stack"><button type="button" class="bot-attach" aria-label="${ui('Add pictures','הוספת תמונות')}">${icon('attach')}</button><input type="file" accept="image/*" multiple hidden class="bot-files"><button type="button" class="bot-paste" aria-label="${ui('Paste picture','הדבקת תמונה')}" title="${ui('Paste picture','הדבקת תמונה')}">${icon('paste')}</button><button type="button" class="bot-mic" aria-label="${ui('Dictate in Hebrew or English','הקלדה בקול בעברית או באנגלית')}">${icon('mic')}</button><textarea rows="1" dir="auto" enterkeyhint="send" aria-label="${ui('Message the bot','הודעה לבוט')}" placeholder="${ui('Message the bot… (/ for skills)','הודעה לבוט… (/ לסקילים)')}"></textarea><button type="button" class="send" aria-label="${ui('Send','שליחה')}">${icon('send')}</button></div>`;
   document.body.append(bar);
+  const unanswered=document.createElement('details');unanswered.className='bot-unanswered';unanswered.hidden=true;bar.prepend(unanswered);
+  const showUnanswered=messages=>{
+    const open=unansweredChatQuestions(messages);
+    unanswered.hidden=!open.length;
+    const html=open.length?`<summary><span>${esc(ui('Unanswered questions','שאלות שממתינות לתשובה'))}</span><bdi>${open.length}</bdi></summary><nav aria-label="${esc(ui('Jump to an unanswered question','מעבר לשאלה שממתינה לתשובה'))}">${open.map(q=>`<button type="button" data-question-jump="${esc(q.id)}" data-question-kind="${q.kind}" dir="auto">${esc(q.text)}</button>`).join('')}</nav>`:'';
+    if(unanswered.dataset.signature!==html){unanswered.dataset.signature=html;unanswered.innerHTML=html;}
+    if(!open.length)unanswered.open=false;
+  };
+  unanswered.onclick=event=>{
+    const button=event.target.closest('[data-question-jump]');if(!button)return;
+    const qid=button.dataset.questionJump,isTerminal=button.dataset.questionKind==='terminal';
+    const card=[...main.querySelectorAll(isTerminal?'[data-term-ask]':'[data-qid]')].find(el=>(isTerminal?el.dataset.termAsk:el.dataset.qid)===qid);
+    if(!card || card.matches('.answered,.ended,.withdrawn'))return;
+    const pin=card.closest('.term-ask-pinned');if(pin)pin.open=true;
+    unanswered.open=false;following=false;card.tabIndex=-1;
+    card.focus({preventScroll:true});card.scrollIntoView({block:'center',behavior:'instant'});
+    const place=chatPlace(main,false);heldPlace=place.row?{...place,after:main.scrollTop}:null;
+  };
   const field=bar.querySelector('textarea'),send=bar.querySelector('.send'),draftKey='tc-bot-draft:'+id;
   try{field.value=sessionStorage.getItem(draftKey) || '';}catch{}
   const grow=()=>{field.style.height='auto';field.style.height=Math.min(field.scrollHeight,160)+'px';send.disabled=(!field.value.trim() && !(bar.querySelector('.bot-pics .bot-pic'))) || bar.dataset.sending==='true';try{sessionStorage.setItem(draftKey,field.value);}catch{}};
-   // Typing "/" at the start lists the approved skills; picking one writes
-  // "Use the <name> skill: " so the bot follows it.
-  const picker=bar.querySelector('.skill-picker');let skillList=null,providerPicking=false;
+  // Complete the slash token at the cursor, keeping the rest of the draft.
+  const picker=bar.querySelector('.skill-picker');let skillList=null,skillLoad=null,providerPicking=false,pickerVersion=0,activeSkill=0;
+  picker.id='bot-skill-picker';picker.setAttribute('aria-label',ui('Commands and skills','פקודות וסקילים'));
+  field.setAttribute('aria-controls',picker.id);field.setAttribute('aria-autocomplete','list');
+  const slashToken=()=>{
+    if(field.selectionStart!==field.selectionEnd)return null;
+    const at=field.selectionStart,m=/(?:^|\s)\/([a-z0-9-]*)$/i.exec(field.value.slice(0,at));
+    if(!m)return null;
+    const end=at+(/^[a-z0-9-]*/i.exec(field.value.slice(at))?.[0].length || 0);
+    if(end<field.value.length && !/[\s.,!?;:)\]]/.test(field.value[end]))return null;
+    return {start:at-m[1].length-1,end,query:m[1].toLowerCase()};
+  };
+  const hidePicker=()=>{pickerVersion++;picker.hidden=true;field.setAttribute('aria-expanded','false');field.removeAttribute('aria-activedescendant');};
+  const selectSkill=index=>{
+    const buttons=[...picker.querySelectorAll('button:not(:disabled)')];
+    activeSkill=(index+buttons.length)%Math.max(1,buttons.length);
+    buttons.forEach((button,i)=>{button.id=`bot-skill-option-${i}`;button.setAttribute('aria-selected',String(i===activeSkill));});
+    if(buttons[activeSkill]){field.setAttribute('aria-activedescendant',buttons[activeSkill].id);buttons[activeSkill].scrollIntoView({block:'nearest'});}
+  };
+  picker.onpointerdown=event=>{if(event.target.closest('button'))event.preventDefault();};
   const showProviders=(error='')=>{
     providerPicking=true;picker.hidden=false;
     picker.innerHTML=`<p class="rooms-empty" role="status">${esc(error || ui('Choose the bot’s provider','בחירת ספק לבוט'))}</p>`+['claude','codex'].map(p=>`<button type="button" role="option" data-provider="${p}"><b dir="ltr">${p==='codex'?'Codex':'Claude'}</b><span>${ui('Start a fresh brain with the conversation handover','התחלת שיחה חדשה עם סיכום השיחה הקודמת')}</span></button>`).join('');
@@ -3697,22 +3776,32 @@ async function openBot(id,{motion=null}={}){
   };
   const showPicker=async()=>{
     providerPicking=false;
-    const m=/^\/(\S*)$/.exec(field.value);if(!m){picker.hidden=true;return;}
+    const token=slashToken();if(!token){hidePicker();return;}
+    const version=++pickerVersion;
     const draw=()=>{
-      const q=m[1].toLowerCase(),builtin='provider'.includes(q),hits=(skillList || []).filter(k=>k.name!=='provider' && (k.name.includes(q) || k.description.toLowerCase().includes(q))).slice(0,30);
-      picker.innerHTML=(builtin?`<button type="button" role="option" data-provider-command><b dir="ltr">/provider</b><span>${ui('Switch between Claude and Codex','החלפה בין Claude ל-Codex')}</span></button>`:'')+hits.map(k=>`<button type="button" role="option" data-name="${esc(k.name)}"><b>${esc(k.name)}</b><span>${esc(k.description)}</span></button>`).join('') || `<p class="rooms-empty">${ui('No command or skill matches.','אין פקודה או סקיל מתאימים.')}</p>`;
-      picker.hidden=false;
-      const command=picker.querySelector('[data-provider-command]');if(command)command.onclick=()=>{field.value='/provider';grow();showProviders();};
-      picker.querySelectorAll('[data-name]').forEach(b=>{b.onclick=()=>{field.value=`Use the ${b.dataset.name} skill: `;picker.hidden=true;grow();field.focus();};});
+      const q=token.query,builtin=token.start===0 && token.end===field.value.length && 'provider'.includes(q),hits=(skillList || []).filter(k=>k.name!=='provider' && `${k.name} ${k.description} ${k.family || ''}`.toLowerCase().includes(q));
+      if(q){const rank=k=>k.name.startsWith(q)?0:(k.family || '').toLowerCase().includes(q)?1:2;hits.sort((a,b)=>rank(a)-rank(b));}
+      picker.innerHTML=(builtin?`<button type="button" role="option" data-provider-command><b dir="ltr">/provider</b><span>${ui('Switch between Claude and Codex','החלפה בין Claude ל-Codex')}</span></button>`:'')+hits.map(k=>`<button type="button" role="option" data-name="${esc(k.name)}"><b dir="ltr">/${esc(k.name)}</b><span>${esc(k.description)}</span></button>`).join('') || `<p class="rooms-empty" role="status">${skillList?ui('No command or skill matches.','אין פקודה או סקיל מתאימים.'):ui('Loading skills…','טוען סקילים…')}</p>`;
+      picker.hidden=false;field.setAttribute('aria-expanded','true');selectSkill(0);
+      const command=picker.querySelector('[data-provider-command]');if(command)command.onclick=()=>{pickerVersion++;field.value='/provider';grow();showProviders();};
+      picker.querySelectorAll('[data-name]').forEach(b=>{b.onclick=()=>{
+        const suffix=field.value.slice(token.end),insert=`/${b.dataset.name}${/^\s/.test(suffix)?'':' '}`;
+        field.setRangeText(insert,token.start,token.end,'end');hidePicker();grow();field.focus();
+      };});
     };
     draw();
-    if(!skillList){try{const r=await fetch('/api/skills',{signal:AbortSignal.timeout(8000)});skillList=(await r.json()).skills.filter(k=>k.status==='approved');}catch{skillList=[];}}
-    if(providerPicking)return;
-    if(field.value!==m[0]){picker.hidden=!/^\/(\S*)$/.test(field.value);return;}
+    if(!skillList){
+      skillLoad ||= fetch('/api/skills',{signal:AbortSignal.timeout(8000)}).then(async r=>{if(!r.ok)throw new Error('skills');return (await r.json()).skills.filter(k=>k.status==='approved');}).finally(()=>{skillLoad=null;});
+      try{skillList=await skillLoad;}catch{if(version===pickerVersion && !providerPicking){picker.querySelector('[role=status]')?.remove();picker.insertAdjacentHTML('beforeend',`<p class="rooms-empty" role="status">${ui('Could not load skills. Type / again to retry.','לא ניתן לטעון סקילים. הקלידו / שוב לניסיון נוסף.')}</p>`);}return;}
+    }
+    if(version!==pickerVersion || providerPicking || !bar.isConnected)return;
     draw();
   };
   const tags=mentionPicker(field,bar.querySelector('.mention-picker'),{bots:async()=>(await tagBots()).filter(b=>b.id!==id),after:grow});tagBots().then(()=>{signature='';render?.();});
   field.oninput=()=>{grow();showPicker();tags.update();};grow();
+  field.onclick=()=>{showPicker();tags.update();};
+  field.onkeyup=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){showPicker();tags.update();}};
+  field.onblur=event=>{if(!picker.contains(event.relatedTarget) && !providerPicking)hidePicker();};
   // Reply to one message (Noam 2026-10-21: "אני צריך להיות מסוגל להגיב להודעה הזו מכאן"): the
   // message's menu sets it; a quoted preview with × sits above the box and is kept with the draft.
   const replyBox=document.createElement('div');replyBox.className='reply-preview';replyBox.hidden=true;bar.prepend(replyBox);
@@ -3806,12 +3895,14 @@ async function openBot(id,{motion=null}={}){
     await deliver(entry);
   };
   send.onclick=post;
-  field.onkeydown=event=>{if(tags.key(event))return;if(event.key==='Escape' && !picker.hidden){event.preventDefault();picker.hidden=true;return;}if(event.key==='Enter' && !picker.hidden){const first=picker.querySelector('button:not(:disabled)');if(first){event.preventDefault();first.click();return;}}if(event.key==='Enter' && !event.shiftKey && !event.isComposing && !matchMedia('(pointer:coarse)').matches){event.preventDefault();post();}};
+  field.onkeydown=event=>{if(event.isComposing)return;if(tags.key(event))return;if(event.key==='Escape' && !picker.hidden){event.preventDefault();hidePicker();return;}if(!picker.hidden && ['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();selectSkill(activeSkill+(event.key==='ArrowDown'?1:-1));return;}if(!event.shiftKey && ['Enter','Tab'].includes(event.key) && !picker.hidden){const selected=picker.querySelectorAll('button:not(:disabled)')[activeSkill];if(selected){event.preventDefault();selected.click();return;}}if(event.key==='Enter' && !event.shiftKey && !matchMedia('(pointer:coarse)').matches){event.preventDefault();post();}};
+  let renderRevision=0;
   const render=async()=>{
+    const revision=++renderRevision;
     let data;
     try{const response=await fetch(`/api/bot?id=${encodeURIComponent(id)}${document.visibilityState==='visible'?'&read=1':''}`,{signal:AbortSignal.timeout(10000)});data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error),{gone:response.status===404});}
-    catch(e){if(mine!==view)return;if(signature && !e.gone){chatStatus.innerHTML=`<span class="connection-note" role="status">${ui('Reconnecting…','מתחבר מחדש…')}</span>`;return;}main.innerHTML=`<div class="empty">${esc(e.message || ui('Could not open the bot.','לא ניתן לפתוח את הבוט.'))}</div>`;bar.remove();return;}
-    if(mine!==view)return;
+    catch(e){if(mine!==view || revision!==renderRevision)return;unanswered.hidden=true;unanswered.open=false;if(signature && !e.gone){chatStatus.innerHTML=`<span class="connection-note" role="status">${ui('Reconnecting…','מתחבר מחדש…')}</span>`;return;}main.innerHTML=`<div class="empty">${esc(e.message || ui('Could not open the bot.','לא ניתן לפתוח את הבוט.'))}</div>`;bar.remove();return;}
+    if(mine!==view || revision!==renderRevision)return;
     for(const e of pendingSends.slice())if(e.sendId && !e.delivering && data.messages.some(m=>m.sendId===e.sendId)){pendingSends.splice(pendingSends.indexOf(e),1);if(e.listTo)forgetBotListDraft(e.listTo);}
     const bot=data.bot;current=bot;
     if(!title.querySelector('.bot-avatar.head'))title.innerHTML=`${botAvatar(bot,30,true)}<span class="bot-names"><bdi dir="auto"></bdi><small class="bot-brain" dir="auto"></small></span>`;
@@ -3823,7 +3914,7 @@ async function openBot(id,{motion=null}={}){
       :brainName(bot.provider)+(bot.model?` · ${((botModels)?.[bot.provider] || []).find(m=>m.id===bot.model)?.label || bot.model}`:'')+(bot.fallback?ui(` (backup: ${brainName(bot.fallback)})`,` (גיבוי: ${brainName(bot.fallback)})`):'');
     sub.textContent=[bot.job,plan].filter(Boolean).join(' · ');const brain=title.querySelector('.bot-brain');if(brain)brain.textContent=plan;
     if(!chatStatus.querySelector('.bot-actions')){
-      chatStatus.innerHTML=`<details class="bot-more"><summary>${ui('Bot options','אפשרויות הבוט')}</summary><span class="bot-actions"><button type="button" class="bot-memory">${ui('Memory','זיכרון')}<span class="bot-memory-count"></span></button><button type="button" class="bot-browser">${ui('Browser','דפדפן')}</button><button type="button" class="bot-model">${ui('Model and plan','מודל ותוכנית')}</button><button type="button" class="bot-edit">${ui('Name, job and rules','שם, תפקיד וכללים')}</button><button type="button" class="bot-notify"></button><button type="button" class="bot-pin"></button><button type="button" class="bot-hide"></button><button type="button" class="bot-schedule-menu">${ui('Add a schedule','הוספת תזמון')}</button><button type="button" class="bot-delete">${ui('Delete bot','מחיקת הבוט')}</button></span></details>`;
+      chatStatus.innerHTML=`<details class="bot-more"><summary>${ui('Bot options','אפשרויות הבוט')}</summary><span class="bot-actions"><button type="button" class="bot-memory">${ui('Memory','זיכרון')}<span class="bot-memory-count"></span></button><button type="button" class="bot-browser">${ui('Browser','דפדפן')}</button><button type="button" class="bot-model">${ui('Model and plan','מודל ותוכנית')}</button><button type="button" class="bot-edit">${ui('Name, job and rules','שם, תפקיד וכללים')}</button><button type="button" class="bot-notify"></button><button type="button" class="bot-limit"></button><button type="button" class="bot-pin"></button><button type="button" class="bot-hide"></button><button type="button" class="bot-schedule-menu">${ui('Add a schedule','הוספת תזמון')}</button><button type="button" class="bot-delete">${ui('Delete bot','מחיקת הבוט')}</button></span></details>`;
       const more=chatStatus.querySelector('.bot-more');more.addEventListener('click',e=>{if(e.target.closest('.bot-actions button') && !e.target.closest('.bot-delete'))more.open=false;});
       document.addEventListener('pointerdown',e=>{if(more.isConnected && more.open && !more.contains(e.target))more.open=false;});
       chatStatus.querySelector('.bot-schedule-menu').onclick=()=>document.querySelector('.bot-schedule')?.click();
@@ -3832,6 +3923,7 @@ async function openBot(id,{motion=null}={}){
       const flip=async(key)=>{try{const r=await fetch('/api/bot/update',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,[key]:!current[key]}),signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error((await r.json()).error);}catch(e){note(e.message || ui('That did not work.','זה לא הצליח.'),true);}render();};
       chatStatus.querySelector('.bot-pin').onclick=()=>flip('pinned');
       chatStatus.querySelector('.bot-notify').onclick=()=>flip('notify');
+      chatStatus.querySelector('.bot-limit').onclick=async()=>{const steps=[2,3,5,8],now=Number(current.maxTerminals) || 3,next=steps.find(n=>n>now) || steps[0];try{const r=await fetch('/api/bot/update',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,maxTerminals:next}),signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error((await r.json()).error);}catch(e){note(e.message || ui('That did not save.','השמירה נכשלה.'));}};
       chatStatus.querySelector('.bot-hide').onclick=()=>flip('hidden');
       chatStatus.querySelector('.bot-memory').onclick=()=>botMemoryDialog(id,current.name);
       chatStatus.querySelector('.bot-browser').onclick=()=>browserDialog();
@@ -3839,6 +3931,7 @@ async function openBot(id,{motion=null}={}){
       del.onclick=async()=>{if(del.dataset.armed!=='true'){del.dataset.armed='true';del.textContent=ui('Tap again to delete','הקישו שוב למחיקה');setTimeout(()=>{if(del.isConnected){del.dataset.armed='false';del.textContent=ui('Delete bot','מחיקת הבוט');}},4000);return;}
         const response=await fetch('/api/bot/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})});if(response.ok){history.pushState({},'',location.pathname);fleet();}else note(ui('The bot could not be deleted.','לא ניתן למחוק את הבוט.'),true);};
     }
+    const limitButton=chatStatus.querySelector('.bot-limit');if(limitButton){const n=Number(bot.maxTerminals) || 3;limitButton.textContent=ui(`Terminals at once: ${n} (tap to change)`,`טרמינלים במקביל: ${n} (הקשה לשינוי)`);}
     const notifyButton=chatStatus.querySelector('.bot-notify');if(notifyButton)notifyButton.textContent=bot.notify?ui('🔔 Notifications on','🔔 התראות פעילות'):ui('🔕 Notifications off','🔕 התראות כבויות');
     const pinButton=chatStatus.querySelector('.bot-pin');if(pinButton)pinButton.textContent=bot.pinned?ui('Unpin','ביטול הצמדה'):ui('Pin','הצמדה');
     const hideButton=chatStatus.querySelector('.bot-hide');if(hideButton)hideButton.textContent=bot.hidden?ui('Show in list','הצגה ברשימה'):ui('Hide','הסתרה');
@@ -3847,11 +3940,13 @@ async function openBot(id,{motion=null}={}){
     const active=helpers.filter(h=>h.state==='working' || h.state==='needs-you').length;
     const helpersMarkup=helpers.length?`<details class="helpers-chip"><summary>${esc(ui(`Terminal agents it started: ${helpers.length}${active?` (${active} working)`:''}`,`סוכני מסוף שהפעיל: ${helpers.length}${active?` (${active} עובדים)`:''}`))} ▾</summary><ul>${helpers.slice().reverse().map(h=>`<li><a href="#${esc(h.paneId)}" dir="auto">${esc(h.title || h.task || h.paneId)}</a><span class="helper-state">${esc(stateWord[h.state] || h.state || '')}</span></li>`).join('')}</ul></details>`:'';
     let schedules=[];try{const r=await fetch(`/api/routines?pane=${encodeURIComponent('bot:'+id)}`,{signal:AbortSignal.timeout(6000)});if(r.ok)schedules=(await r.json()).routines || [];}catch{}
-    if(mine!==view)return;   // left this chat while the schedules loaded: never paint over the list
+    if(mine!==view || revision!==renderRevision)return;   // left this chat while the schedules loaded: never paint over the list
     const schedulesMarkup=`<span class="routinesline">${schedules.map(r=>`<span class="routine-pill">${icon('clock')}<span dir="auto">${esc(r.label)} ${esc(r.time)} · ${esc(r.text.length>40?r.text.slice(0,38)+'…':r.text)}</span></span>`).join('')}<button type="button" class="bot-schedule routine-pill">${icon('clock')}${ui('Schedule','תזמון')}</button></span>`;
-    const lastTalk=data.messages.filter(m=>m.role==='activity' || m.role==='operator').pop(),busyHelper=helpers.filter(h=>h.state==='working').pop(),helperLive=busyHelper?`${busyHelper.title || ui('Terminal agent','סוכן מסוף')}: ${busyHelper.live || shortTask(busyHelper.task) || ui('working','עובד')}`:'',botLive=helperLive || (bot.state==='working' && lastTalk?.role==='activity'?String(lastTalk.text).split(':')[0]:'');
-    const asksMarkup=asksHtml(data.asks,bot.state==='working' || Boolean(busyHelper),botLive,schedules.map(r=>r.text))+requirementsHtml(data.requirements)+helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
-    Object.assign(headState,{asks:visibleAsks(data.asks,schedules.map(r=>r.text)),helpers,schedules});paintBotHead(headState);
+    // Owner removed Requests from bot chats; keep ledger data and reply Details.
+    clearSideAsks();
+    const asksMarkup=helpersMarkup+schedulesMarkup;if(routinesLine.dataset.asks!==asksMarkup){routinesLine.dataset.asks=asksMarkup;routinesLine.innerHTML=asksMarkup;}
+    Object.assign(headState,{asks:visibleAsks(data.asks,schedules.map(r=>r.text)),helpers,schedules});
+    showUnanswered(data.messages);
     // The same hand-off sent to several terminals in a row is one line with a count (Noam 2026-10-24:
     // "הודעות סתם חוזרות על עצמן וממלאות את המסך": one message to 6 politic-fighter terminals showed 6 times).
     const handoffCount=new Map(),handoffSkip=new Set();
@@ -3871,7 +3966,7 @@ async function openBot(id,{motion=null}={}){
       if(m.role==='handoff')return `<a class="bot-handoff" href="#${esc(m.pane || '')}" dir="auto">↪ <b>${esc(ui(`Handed to ${m.to || 'a terminal agent'}`,`הועבר אל ${m.to || 'סוכן מסוף'}`))}${handoffCount.get(m.id)?esc(ui(` (${handoffCount.get(m.id)} terminals)`,` (${handoffCount.get(m.id)} מסופים)`)):''}</b>${m.text?`: ${esc(m.text.length>220?m.text.slice(0,219)+'…':m.text)}`:''}</a>`;
       if(m.role==='error')return `<div class="bot-error" role="alert" dir="auto">${esc(ui('The bot could not answer: ','הבוט לא הצליח לענות: ')+m.text)}</div>`;
       if(m.role==='terminal-ask')return liveTermAsk(m)?'':termAskHtml(m);
-      if(m.role==='reminder' || m.role==='stuck'){const jumpCard=m.role==='reminder'&&m.card?` <a href="#" class="reminder-jump" onclick="this.closest('#main')?.querySelector('.term-ask-pinned [data-term-ask=&quot;${esc(m.card)}&quot;]')?.scrollIntoView({behavior:'smooth',block:'center'})||this.closest('#main')?.scrollTo({top:this.closest('#main').scrollHeight,behavior:'smooth'});return false">${ui('↓ Answer','↓ לענות')}</a>`:'';return `<div class="bot-note bot-event bot-${m.role}" role="${m.role==='stuck'?'alert':'note'}" dir="auto">${m.role==='stuck'?'⚠️':'⏰'} ${esc(m.text)}${jumpCard}${when?` · <bdi>${esc(when)}</bdi>`:''}</div>`;}
+      if(m.role==='reminder' || m.role==='stuck'){const jumpCard=m.role==='reminder'&&m.card&&data.messages.some(c=>c.id===m.card&&liveTermAsk(c))?` <a href="#" class="reminder-jump" onclick="const pin=document.querySelector('.term-ask-pinned');if(pin)pin.open=true;this.closest('#main')?.querySelector('.term-ask-pinned [data-term-ask=&quot;${esc(m.card)}&quot;]')?.scrollIntoView({behavior:'smooth',block:'center'})||this.closest('#main')?.scrollTo({top:this.closest('#main').scrollHeight,behavior:'smooth'});return false">${ui('↓ Answer','↓ לענות')}</a>`:'';return `<div class="bot-note bot-event bot-${m.role}" role="${m.role==='stuck'?'alert':'note'}" dir="auto">${m.role==='stuck'?'⚠️':'⏰'} ${esc(m.text)}${jumpCard}${when?` · <bdi>${esc(when)}</bdi>`:''}</div>`;}
       if(m.role==='needs-you')return `<div class="bot-needs" role="alert"><p dir="auto">${esc(m.text)}</p>${bot.blocked && m.at>=bot.blocked.at?`<button type="button" class="bot-retry">${ui('Retry','לנסות שוב')}</button>`:''}</div>`;
       return `<div class="bot-note" dir="auto">${esc(m.text)}</div>`;
     }).join('')+pinnedTermAsks(data.messages)+(bot.proposedProfile?`<div class="bot-suggest" role="status"><p>${esc(ui(`${bot.name} suggests its job and rules, from your chat:`,`${bot.name} מציע תפקיד וכללים, מתוך השיחה:`))}</p><p dir="auto"><b>${esc(ui('Job: ','תפקיד: '))}</b>${esc(bot.proposedProfile.job)}</p>${bot.proposedProfile.rules?`<p dir="auto" style="white-space:pre-line"><b>${esc(ui('Rules: ','כללים: '))}</b>${esc(bot.proposedProfile.rules)}</p>`:''}<span class="bot-actions"><button type="button" class="primary" data-profile="accept">${ui('Use these','להשתמש בהם')}</button><button type="button" data-profile="edit">${ui('Edit','עריכה')}</button><button type="button" data-profile="dismiss">${ui('Not now','לא עכשיו')}</button></span></div>`:'')+pendingSends.map((e,i)=>`<div class="${e.state==='failed'?'bot-failed-send':'bot-pending'}" data-pending="${i}">${messageHtml('user',e.text,ui('You','אתה'),'',' mine','','',{of:e.replyTo || null})}<div class="pending-delivery" role="status" dir="auto">${e.state==='failed'?`${esc(ui('Not sent','לא נשלח')+(e.error?` (${e.error})`:''))}<button type="button" data-resend>${ui('Resend','שליחה חוזרת')}</button>${e.images?.length || e.files?.length || e.answerTo || e.listTo?'':`<button type="button" data-edit>${ui('Edit','עריכה')}</button>`}<button type="button" data-discard>${ui('Discard','ביטול')}</button>`:esc(ui('Sending…','שולח…'))}</div></div>`).join('')+`<div class="busyline${bot.state==='working'?'':' idle'}" role="status"${bot.state==='working'?'':' aria-hidden="true"'}><span class="busyorb" aria-hidden="true"><i></i><i></i><i></i></span><span class="busytext">${bot.state==='working'?esc(bot.activity || ui('Thinking','חושב'))+stepFor(bot.activitySince):''}</span></div>`;
@@ -3890,9 +3985,14 @@ async function openBot(id,{motion=null}={}){
       applyBotLists(main,[...data.messages,...pendingSends.filter(e=>e.listTo && e.state!=='failed').map(e=>({role:'operator',listTo:e.listTo,listChoices:e.choices}))],entry=>{following=true;pendingSends.push(entry);deliver(entry);});
       // The bots' question card: a tap is sent as Noam's answer; "write my own" opens the box.
       main.querySelectorAll('.bot-question:not(.answered) [data-answer]').forEach(b=>{b.onclick=()=>{const card=b.closest('.bot-question');card.querySelectorAll('button').forEach(x=>x.disabled=true);following=true;const entry={text:b.dataset.answer,images:[],state:'sending',answerTo:card.dataset.qid};pendingSends.push(entry);deliver(entry);};});
+      main.querySelectorAll('[data-resolve-question]').forEach(b=>{b.onclick=async()=>{
+        b.disabled=true;
+        try{const response=await fetch('/api/bot/question/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,questionId:b.closest('[data-qid]').dataset.qid}),signal:AbortSignal.timeout(8000)});const result=await response.json();if(!response.ok)throw new Error(result.error);await render();}
+        catch(e){b.disabled=false;note(e.message || ui('That did not work.','זה לא הצליח.'),true);}
+      };});
       // Go ahead / Not yet: sent once as his own message; the pending send keeps it settled.
       main.querySelectorAll('.bot-goahead:not(.answered) [data-go]').forEach(b=>{b.onclick=()=>{const group=b.closest('.bot-goahead');if(group.dataset.sent)return;group.dataset.sent='1';group.querySelectorAll('button').forEach(x=>x.disabled=true);b.setAttribute('aria-pressed','true');following=true;const entry={text:b.textContent.trim(),images:[],state:'sending',goAheadTo:group.dataset.gid};goAheadTapped.set(entry.goAheadTo,entry.text);pendingSends.push(entry);deliver(entry);};});
-      main.querySelectorAll('.bot-question:not(.answered) .bot-q-own').forEach(b=>{const card=b.closest('.bot-question'),form=card.querySelector('.bot-q-write'),box=form.querySelector('textarea'),go=form.querySelector('[type=submit]');
+      main.querySelectorAll('.bot-question:not(.answered) .bot-q-own:not([data-resolve-question])').forEach(b=>{const card=b.closest('.bot-question'),form=card.querySelector('.bot-q-write'),box=form.querySelector('textarea'),go=form.querySelector('[type=submit]');
         b.onclick=()=>{form.hidden=false;b.hidden=true;b.setAttribute('aria-expanded','true');box.focus();box.scrollIntoView({block:'nearest'});};
         box.oninput=()=>{go.disabled=!box.value.trim();box.style.height='auto';box.style.height=Math.min(box.scrollHeight,200)+'px';};
         box.onkeydown=e=>{if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();form.requestSubmit();}else if(e.key==='Escape' && !box.value.trim()){form.hidden=true;b.hidden=false;b.setAttribute('aria-expanded','false');}};
@@ -5076,6 +5176,8 @@ const askFromTermCard=m=>({id:m.askId,kind:m.kind,title:m.text,header:m.header,l
 // terminal's own choices, and a tap goes to that terminal as if pressed at the PC.
 // The bridge re-checks that the same prompt is still open before it sends anything.
 const termAskDone={};
+const termAskDoneIds={};
+const termAskResult=m=>termAskDoneIds[m.id]===m.askId?termAskDone[m.id]:null;
 const termAskCards={};
 // Links a terminal's question carries (in the question or an answer's description; a button
 // cannot hold a link), shown as "Open to compare" / "Open <answer>" above the answers, in chat
@@ -5087,14 +5189,20 @@ function qLinksHtml(ask){
 // A terminal's prompt still waiting for Noam stays pinned at the bottom of the chat until he answers
 // (Noam 2026-10-25: "שהכפתור תמיד יופיע כאן", after an "Allow Edit?" card scrolled away under a busy chat
 // and sat for an hour). Its place in the timeline is left empty so it never shows twice.
-const liveTermAsk=m=>m.role==='terminal-ask' && !m.settled && !m.terminalClosed && !m.repeated && !termAskDone[m.id];
+const liveTermAsk=m=>m.role==='terminal-ask' && !m.settled && !m.terminalClosed && m.promptState!=='unknown' && !m.repeated && !termAskResult(m);
 function pinnedTermAsks(messages){
   const live=messages.filter(liveTermAsk);
-  return live.length?`<div class="term-ask-pinned" role="region" aria-label="${esc(ui('Waiting for your answer','ממתין לתשובה שלך'))}">${live.map(termAskHtml).join('')}</div>`:'';
+  if(!live.length)return '';
+  // Collapsed to one line by default (Noam 2026-10-27, screenshot: the open question covered the chat on a phone);
+  // one tap opens the full card, and it stays visible as a bar so an approval never scrolls away.
+  let open=false;try{open=sessionStorage.getItem('termcontrol-pin-open')==='open';}catch{}
+  const first=String(live[0].text||'').replace(/\s+/g,' ').trim(),more=live.length>1?ui(` (+${live.length-1})`,` (+${live.length-1})`):'';
+  return `<details class="term-ask-pinned"${open?' open':''} role="region" aria-label="${esc(ui('Waiting for your answer','ממתין לתשובה שלך'))}"><summary><span class="pin-warn" aria-hidden="true">⚠</span><span class="pin-text" dir="auto">${esc(ui('Waiting for your answer: ','ממתין לתשובה שלך: '))}${esc(first.length>70?first.slice(0,69)+'…':first)}${esc(more)}</span><span class="pin-go">${esc(ui('Answer','לענות'))}</span></summary>${live.map(termAskHtml).join('')}</details>`;
 }
 function termAskHtml(m){
-  const done=termAskDone[m.id],options=m.options || [];termAskCards[m.id]=m;
+  const done=termAskResult(m),options=m.options || [];termAskCards[m.id]=m;
   if(m.terminalClosed || m.settled)return `<div class="bot-note ended" data-term-ask="${esc(m.id)}" dir="auto">${esc(m.terminalClosed?ui('That terminal has been closed.','המסוף הזה נסגר.'):ui('No longer open in the terminal.','כבר לא פתוח במסוף.'))}</div>`;
+  if(m.promptState==='unknown')return `<div class="bot-note" data-term-ask="${esc(m.id)}" dir="auto">${esc(ui('Checking whether this terminal question is still open.','בודקים אם השאלה הזו עדיין פתוחה במסוף.'))}</div>`;
   if(m.kind==='question' && options.length)return `<div class="bot-term-ask" data-term-ask="${esc(m.id)}" data-pane="${esc(m.pane)}" data-ask="${esc(m.askId)}" role="group" aria-label="${esc(ui('A terminal is waiting for you','מסוף ממתין לך'))}"><p class="term-ask-from" dir="auto">${esc(ui(`Terminal "${m.label || 'agent'}" is asking you`,`המסוף "${m.label || 'סוכן'}" שואל אותך`))}</p><p class="q-title" dir="auto"><b>${inlineRich(m.text)}</b></p>${m.detail?`<p dir="auto">${inlineRich(m.detail)}</p>`:''}${qFormHtml(askFromTermCard(m),{key:'card:'+m.id})}</div>`;
   // A card the terminal has moved on from never looks answerable (Noam 2026-10-24: dead buttons on an empty card).
   const ended=!done && m.settled,off=done || ended;
@@ -5107,11 +5215,22 @@ async function answerTermAsk(button){
   let r;try{const sent=await fetch('/api/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pane:box.dataset.pane,askId:box.dataset.ask,choice:button.dataset.termChoice}),signal:AbortSignal.timeout(10000)});r=await sent.json();}
   catch{r={error:ui('Delivery is unconfirmed. Check the terminal before trying again.','המסירה לא אושרה. בדקו במסוף לפני ניסיון נוסף.'),uncertain:true};}
   delete box.dataset.sending;
-  if(r.ok){termAskDone[box.dataset.termAsk]=ui(`Sent "${label}" to the terminal.`,`"${label}" נשלח למסוף.`);out.textContent=termAskDone[box.dataset.termAsk];return;}
-  // Out of date: the same prompt asked again is followed (tap again); anything else ends this card.
-  if(r.stale){const card=termAskCards[box.dataset.termAsk],keys=[...box.querySelectorAll('[data-term-choice]')].map(x=>x.dataset.termChoice);
-    if(r.current && card && r.current.kind===card.kind && r.current.title===card.text && r.current.options.join('|')===keys.join('|')){box.dataset.ask=r.current.id;card.askId=r.current.id;out.textContent=ui('The terminal asked this again. Tap your answer again.','המסוף שאל שוב. לחצו שוב על התשובה.');box.querySelectorAll('[data-term-choice]').forEach(x=>x.disabled=false);return;}
-    box.classList.add('ended');out.textContent=r.current?ui('The terminal is asking something else now; it shows below in a moment.','המסוף שואל עכשיו משהו אחר; זה יופיע למטה עוד רגע.'):ui('No longer open in the terminal.','כבר לא פתוח במסוף.');return;}
+  if(r.ok){termAskDoneIds[box.dataset.termAsk]=box.dataset.ask;termAskDone[box.dataset.termAsk]=ui(`Sent "${label}" to the terminal.`,`"${label}" נשלח למסוף.`);out.textContent=termAskDone[box.dataset.termAsk];return;}
+  // The terminal is gone: the card cannot be answered and must not stay pinned over the chat with an error
+  // (Noam 2026-10-27, screenshot: a box reading "That terminal has been closed." sat on top of the conversation).
+  if(r.error && /terminal has been closed/i.test(r.error)){
+    termAskDoneIds[box.dataset.termAsk]=box.dataset.ask;
+    termAskDone[box.dataset.termAsk]=ui('That terminal has been closed.','המסוף הזה נסגר.');
+    const pin=box.closest('.term-ask-pinned');box.remove();if(pin && !pin.querySelector('.bot-term-ask'))pin.remove();return;
+  }
+  // Never retarget old buttons to a new prompt ID, even if its short title and
+  // option keys happen to match. The fresh poll owns rendering its full context.
+  if(r.stale){const card=termAskCards[box.dataset.termAsk];
+    termAskDoneIds[box.dataset.termAsk]=box.dataset.ask;
+    termAskDone[box.dataset.termAsk]=r.current?ui('The terminal is asking something else now.','המסוף שואל עכשיו משהו אחר.'):ui('No longer open in the terminal.','כבר לא פתוח במסוף.');
+    if(card)card.settled=true;
+    const pin=box.closest('.term-ask-pinned');box.classList.add('ended');out.textContent=termAskDone[box.dataset.termAsk];
+    if(pin){box.remove();if(!pin.querySelector('.bot-term-ask'))pin.remove();}return;}
   out.textContent=r.error || ui('The terminal did not confirm it.','המסוף לא אישר.');
   if(!r.uncertain)box.querySelectorAll('[data-term-choice]').forEach(x=>x.disabled=false);
 }

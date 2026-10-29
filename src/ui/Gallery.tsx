@@ -144,7 +144,7 @@ export default function Gallery() {
         <Field size={28} placeholder="Field 28" aria-label="Field 28" />
         <Field size={30} placeholder="Field 30" aria-label="Field 30" />
         <Field size={32} placeholder="Field 32" aria-label="Field 32" />
-        <Field size={28} mono defaultValue="/home/demo/projects" aria-label="Mono field" />
+        <Field size={28} mono defaultValue="/home/example/projects" aria-label="Mono field" />
         <Field size={28} disabled placeholder="Disabled" aria-label="Disabled field" />
       </div>
 

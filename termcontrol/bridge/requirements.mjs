@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { findOwnerWords } from './owner-words.mjs';
 import { stripOpenRequestReminder } from './bot-request-panel.mjs';
 import { testingInstructions } from './testing-instructions.mjs';
+import { replyStructureProblem } from './readable-replies.mjs';
 
 /**
  * Owner requirements ledger (TF-102). Noam 2026-10-23: "ותבנה מערכת שתבטיח ב100% שאתה לא
@@ -49,6 +50,21 @@ export function isVisualTopic(topic, topicMeta = new Map()) {
 export function ownerConfirmation(msgId, { base } = {}) {
   if (!msgId) return null;
   try { return findOwnerWords(String(msgId), base ? { base } : {}) || null; } catch { return null; }
+}
+// Authenticity alone does not establish what the owner confirmed. Keep topic metadata's
+// signature check separate from this deliberately narrow, request-bound confirmation.
+export function itemOwnerConfirmation(it, msgId, { base } = {}) {
+  const ow = ownerConfirmation(msgId, { base });
+  const deliveredAt = Math.max(it.statusAt || 0, it.statusRecordedAt || 0);
+  if (!ow || !['ready', 'done'].includes(it.status) || !Number.isFinite(it.statusAt)
+    || !Number.isFinite(ow.at) || ow.at <= deliveredAt || ow.id === it.msgId) return null;
+  const text = String(ow.text || '').trim();
+  if (ow.botId === 'app') return text === `[Noam tapped "Works for me" on ${it.id}]` ? ow : null;
+  if (it.source?.startsWith('bot:') && ow.botId !== it.source.slice(4)) return null;
+  // No substring matching: quotes, questions, mixed targets and negative clauses remain
+  // unconfirmed. Generic "works" has no signed request binding; the targeted app button does.
+  const match = /^(R-\d+)\s*[:—-]?\s+(?:(?:it )?works(?: for me)?|fixed|verified|עובד|עובד אצלי|תקין)(?:[,.!]?\s*(?:thanks|thank you|תודה))?[.!]?$/i.exec(text);
+  return match && match[1].toUpperCase() === it.id ? ow : null;
 }
 const visualDoneProblem = (it) => `${it.id} is on a screen topic (${it.visualTopics.join(', ')}): an agent can mark it ready, never done. Only Noam seeing it work closes it: termfleet-asks ready ${it.id} --evidence "<screenshot>", then after his own message says it works, termfleet-asks lock ${it.id} --owner-words <his message id>.`;
 
@@ -187,7 +203,9 @@ function withLock(dir, fn) {
   const lock = path.join(dir, '.lock');
   const until = Date.now() + 5000;
   for (;;) {
-    try { fs.mkdirSync(lock); break; } catch {
+    try { fs.mkdirSync(lock); break; } catch (error) {
+      // Access/storage failures are not another writer; preserve their code and path.
+      if (error.code !== 'EEXIST') throw error;
       // A lock left by a crashed writer is stale after 10 s.
       try { if (Date.now() - fs.statSync(lock).mtimeMs > 10000) { fs.rmdirSync(lock); continue; } } catch { /* raced */ }
       if (Date.now() > until) throw new Error('The requirements ledger is busy; try again.');
@@ -235,8 +253,8 @@ function foldLedger(dir) {
     it.updatedAt = e.at;
     if (e.e === 'topic') { it.topics = [...new Set([...(e.replace ? [] : it.topics), ...(e.topics || [])])]; for (const t of e.topics || []) if (!topics.has(t)) topics.set(t, new Set()); }
     else if (e.e === 'assign') { it.assigned.push({ pane: e.pane, delivery: e.delivery || null, at: e.at, by: e.by || null }); if (!['ready', 'done', 'dropped'].includes(it.status)) it.status = 'assigned'; }
-    else if (e.e === 'status') { delete it.testing; it.statusAt = e.at; it.status = e.status; it.confirmedBy = e.status === 'done' ? e.ownerMsg || null : null; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
-    else if (e.e === 'testing-handoff') { it.testing = { link: e.link, tryText: e.tryText }; }
+    else if (e.e === 'status') { delete it.testing; if(e.testing)it.testing=e.testing; it.statusAt = e.at; it.statusRecordedAt = e.recordedAt ?? e.at; it.status = e.status; it.confirmedBy = e.status === 'done' ? e.ownerMsg || null : null; it.note = e.note || ''; if (e.evidence) it.evidence.push({ at: e.at, what: e.evidence, by: e.by || null }); it.open = e.open || []; }
+    else if (e.e === 'testing-handoff') { it.testing = { link: e.link, tryText: e.tryText, ...(e.expected?{expected:e.expected}:{}), ...(e.artifact?{artifact:e.artifact}:{}) }; }
     else if (e.e === 'lock') { it.locked = true; it.lockedAt = e.at; it.lockedBy = e.by || null; if (e.ownerMsg) it.confirmedBy = e.ownerMsg; }
     else if (e.e === 'unlock') { it.locked = false; }
     else if (e.e === 'reverify') it.reverified.push({ at: e.at, evidence: e.evidence, forId: e.forId || null });
@@ -308,16 +326,28 @@ export function record(events, { dir = ledgerDir(), ownerBase = undefined } = {}
   return withLock(dir, () => {
     const { items } = loadLedger({ dir });
     for (const e of events) if (e.id && !items.has(e.id)) throw new Error(`${e.id} is not in Noam's list. termfleet-asks items shows the ids.`);
-    // Every writer goes through here, so the screen guard holds for bots and scripts too.
+    // Every writer goes through here, including app verdicts and CLI batches. Validate
+    // against the pre-transaction delivery state, never readiness manufactured in this batch.
     for (const e of events) {
       const it = e.id && items.get(e.id);
-      if (!it?.visual) continue;
-      if ((e.e === 'status' && e.status === 'done') || (e.e === 'lock' && !it.locked)) {
-        if (!ownerConfirmation(e.ownerMsg, { base: ownerBase })) throw new Error(visualDoneProblem(it));
+      const confirms = e.e === 'lock' || (e.e === 'status' && e.status === 'done' && (it?.visual || e.ownerMsg));
+      if (!confirms) continue;
+      if (events.some(other => other.id === e.id && !(
+        other.ownerMsg === e.ownerMsg && (other.e === 'lock' || (other.e === 'status' && other.status === 'done'))
+      ))) throw new Error(`${it.id} confirmation cannot be combined with a delivery revision or another request mutation.`);
+      if (it.locked && e.ownerMsg && e.ownerMsg === it.confirmedBy) continue;
+      if (!itemOwnerConfirmation(it, e.ownerMsg, { base: ownerBase })) {
+        throw new Error(it.visual ? visualDoneProblem(it) : `${it.id} needs Noam's own recorded confirmation of this request, from its chat, after it was delivered. Agent-written --noam-said text is not confirmation.`);
       }
     }
     const at = Date.now();
-    append(dir, events.map((e) => ({ v: STORE_VERSION, at, ...e })));
+    const fresh = events.filter(e => {
+      const it = items.get(e.id);
+      return !(it?.locked && (e.e === 'lock' || (e.e === 'status' && e.status === 'done' && e.ownerMsg)));
+    });
+    // Caller-supplied historical at values cannot backdate when a new revision reached
+    // this writer. This is chronology validation, not protection against direct file edits.
+    if (fresh.length) append(dir, fresh.map((e) => ({ v: STORE_VERSION, at, ...e, recordedAt: at })));
     return true;
   });
 }
@@ -450,7 +480,7 @@ const one = async (url) => {
     return { url, status: res.status, body: body.slice(0, 65536) };
   } catch (e) { return { url, error: e?.name === 'TimeoutError' ? 'timeout' : (e?.cause?.code || e?.cause?.errors?.[0]?.code || e?.message || String(e)) }; }
 };
-Promise.all(urls.map(one)).then((r) => { process.stdout.write(JSON.stringify(r)); process.exit(0); });
+Promise.all(urls.map(one)).then((r) => { process.stdout.write(JSON.stringify(r), () => process.exit(0)); });
 `;
 
 /** Opens each URL (5 s each, redirects followed). Returns [{ url, status, body } | { url, error }]. */
@@ -497,12 +527,24 @@ export function linkProblem(evidence) {
     toOpen.push({ shown: link.url, target });
   }
 
-  for (const r of probeUrls([...new Set(toOpen.map((t) => t.target))])) {
-    const shown = toOpen.filter((t) => t.target === r.url).map((t) => t.shown).join(', ');
-    const via = shown === r.url ? '' : ` (opened on this PC as ${r.url})`;
+  const inspect = (r, shown, via = '') => {
     if (r.error) problems.push(`${shown}${via} does not open: ${plainNetError(r.error)}`);
     else if (r.status < 200 || r.status > 299) problems.push(`${shown}${via} answered ${r.status} instead of a working page`);
     else { const bad = bodyProblem(r.body); if (bad) problems.push(`${shown}${via}: ${bad}`); }
+  };
+  for (const r of probeUrls([...new Set(toOpen.map((t) => t.target))])) {
+    const matches = toOpen.filter((t) => t.target === r.url);
+    // Private Tailscale proxies require identity supplied by Serve itself. A
+    // direct loopback 401/403 cannot test that route; use the original HTTPS
+    // address with the same ordinary fetch, never invented identity headers.
+    if (!r.error && [401, 403].includes(r.status) && matches.length && matches.every((t) => t.shown !== t.target && t.shown.startsWith('https://'))) {
+      for (const original of probeUrls([...new Set(matches.map((t) => t.shown))])) {
+        inspect(original, original.url, ` (mapped local ${r.url} answered ${r.status}; checked original HTTPS address)`);
+      }
+      continue;
+    }
+    const shown = matches.map((t) => t.shown).join(', ');
+    inspect(r, shown, shown === r.url ? '' : ` (opened on this PC as ${r.url})`);
   }
 
   if (problems.length) return `has links that do not work, so it cannot be marked yet. Fix them or give a link that opens: ${problems.join('; ')}`;
@@ -554,15 +596,7 @@ export function messageProblem(text) {
 
 /** Detects bot replies with poor structure. Returns null if OK, or a string describing the problem. */
 export function structureProblem(text) {
-  const msg = String(text || '').trim();
-  if (!msg) return null;
-
-  // Not a problem if: message is under 200 chars, or contains newlines/bullets/headers
-  if (msg.length <= 200) return null;
-  if (/\n|[-*•▪◦]\s+|^#{1,6}\s+/m.test(msg)) return null;
-
-  // Poor structure: a message over 200 chars that is a single paragraph (no line breaks, no bullets, no formatting)
-  return 'the message is long but formatted as a single paragraph; use line breaks and bullets to separate ideas';
+  return replyStructureProblem(text);
 }
 
 /** Locked items on the same topics (same project) not yet re-checked for this delivery. */
@@ -579,20 +613,23 @@ export function lockedToReverify(item, items) {
  * done/ready: evidence required, and every locked item on its topics re-checked.
  * partial: must list exactly which parts are still open.
  */
-export function markItem({ status, id, note = '', evidence = '', open = [], by = null }, { dir = ledgerDir() } = {}) {
+export function markItem({ status, id, note = '', evidence = '', open = [], by = null, tryText = '', expected = '', artifact = '', testKind = 'experience' }, { dir = ledgerDir(), checkLinks = linkProblem } = {}) {
   const { items } = loadLedger({ dir });
   const it = items.get(id);
   if (!it) return { error: `${id} is not in Noam's list. termfleet-asks items shows the ids.` };
   if (!ITEM_STATUSES.includes(status)) return { error: `Unknown status "${status}".` };
   if (status === 'done' && it.visual) return { error: visualDoneProblem(it) };
+  const structured=Boolean(tryText || expected || artifact);
+  if(structured && (status!=='ready' || !tryText.trim() || !expected.trim() || !/^https?:\/\//i.test(artifact) || !['experience','choice','machine'].includes(testKind)))return {error:`${id} needs ready --try "<specific action>" --expected "<observable result>" --artifact "<working https://link>" and an experience, choice or machine test kind.`};
+  if(structured && !String(evidence).includes(artifact))return {error:`${id} evidence must describe the delivered result at its --artifact link.`};
   if (status === 'ready' && it.source?.startsWith('bot:')) {
-    const instructions = testingInstructions(note) || testingInstructions(evidence);
+    const instructions = structured?{link:artifact,tryText}:testingInstructions(note) || testingInstructions(evidence);
     if (!instructions?.link || instructions.tryText.length < 8 || instructions.tryText.split(/\s+/).length < 2) return { error: `${id} needs its own testing instructions: Try: <specific action> <working https://link> in --evidence or the note.` };
   }
   if (status === 'done' || status === 'ready') {
     const problem = evidenceProblem(evidence);
     if (problem) return { error: `${id} ${problem}.` };
-    const linkErr = linkProblem(evidence);
+    const linkErr = checkLinks(structured?`${evidence}\n${artifact}`:evidence);
     if (linkErr) return { error: `${id} ${linkErr}.` };
     const stale = lockedToReverify(it, items);
     if (stale.length) return { error: `${id} touches ${it.topics.join(', ')}, where Noam already approved ${stale.map((s) => s.id).join(', ')}. Re-check each one on the live result first: ${stale.map((s) => `termfleet-asks reverify ${s.id} --for ${id} --evidence "<screenshot or test output>" (${s.id}: "${clip(s.words, 70)}")`).join('; ')}` };
@@ -610,7 +647,9 @@ export function markItem({ status, id, note = '', evidence = '', open = [], by =
     const want = { waiting: 'what you are waiting for Noam to say', context: 'why it is background, not a request', dropped: 'why, and who decided' }[status];
     return { error: `Say ${want}.` };
   }
-  return { events: [{ e: 'status', id, status, note, evidence: evidence || null, by }] };
+  const at=Date.now();
+  return { events: [{ e: 'status', id, status, note, evidence: evidence || null, by, at,
+    ...(structured?{testing:{link:artifact,tryText,expected,artifact,kind:testKind,targetCheck:{reachable:true,checkedAt:at,method:'ready-link-check'}}}:{}) }] };
 }
 
 // ---------------------------------------------------------------------------------------

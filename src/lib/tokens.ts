@@ -7,6 +7,32 @@
 import { useEffect, useState } from "react";
 import type { RenderTheme } from "./gridRenderer";
 
+/** Browser xterm fallback palette. Preserve its legacy values independently of the canvas ANSI palette. */
+export const TERMINAL_THEME_FALLBACK = {
+  background: "#080c10",
+  foreground: "#d8dee7",
+  cursor: "#c4ccd2",
+  cursorAccent: "#080c10",
+  selectionBackground: "#2a3a50",
+  selectionForeground: "#f1f5f9",
+  black: "#0b0e12",
+  red: "#ef6f72",
+  green: "#7fc681",
+  yellow: "#dcb875",
+  blue: "#6ea8fe",
+  magenta: "#ad8fcb",
+  cyan: "#7dbac3",
+  white: "#d8dee7",
+  brightBlack: "#667383",
+  brightRed: "#f48b8d",
+  brightGreen: "#95d996",
+  brightYellow: "#dcb875",
+  brightBlue: "#8bb9ff",
+  brightMagenta: "#bea4d8",
+  brightCyan: "#91cbd2",
+  brightWhite: "#f1f5f9",
+} as const;
+
 /** Muted project/group identity colours (--identity-1..6). Persisted per group. */
 export const IDENTITY_COLORS = [
   "#86979c",

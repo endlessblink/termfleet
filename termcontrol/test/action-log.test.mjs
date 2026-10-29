@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { classifyTool, classifyCommand, botApproval, paneApproval, standingRule, approvalText, foldFiles, paneLogFile, appendAction, readActions } from '../bridge/action-log.mjs';
-import { Bots, brainToolUses, brainToolResults } from '../bridge/bots.mjs';
+import { Bots, runBrain, brainToolUses, brainToolResults } from '../bridge/bots.mjs';
 import { recordOwnerWords } from '../bridge/owner-words.mjs';
 import { handle } from '../../scripts/termfleet-action-log-hook.mjs';
 
@@ -147,21 +147,27 @@ test('brain output lines give every tool call and whether it succeeded, Claude a
 test('a bot action is recorded only once its tool call succeeded; denied or failed calls never happened', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-actlog-brain-'));
   const lines = [
-    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'mcp__browser__browser_navigate', input: { url: 'https://example.com' } }] } },
-    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1' }] } },
-    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'gh pr create --title x' } }] } },
-    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', is_error: true, content: 'This command requires approval' }] } },
-    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't3', name: 'Bash', input: { command: 'git push' } }] } },
-    { type: 'result', subtype: 'success', result: 'done' },
+    { type: 'thread.started', thread_id: 'fake-action-session' },
+    { type: 'item.started', item: { id: 't1', type: 'mcp_tool_call', server: 'browser', tool: 'browser_navigate', arguments: { url: 'https://example.com' } } },
+    { type: 'item.completed', item: { id: 't1', type: 'mcp_tool_call', status: 'completed' } },
+    { type: 'item.started', item: { id: 't2', type: 'command_execution', command: 'gh pr create --title x' } },
+    { type: 'item.completed', item: { id: 't2', type: 'command_execution', exit_code: 1, status: 'failed' } },
+    { type: 'item.started', item: { id: 't3', type: 'command_execution', command: 'git push' } },
+    { type: 'item.completed', item: { type: 'agent_message', text: 'done' } },
+    { type: 'turn.completed' },
   ];
-  const bin = path.join(dir, 'fake-claude.mjs');
+  const bin = path.join(dir, 'fake-codex.mjs');
   fs.writeFileSync(bin, `#!${process.execPath}\n${lines.map((l) => `console.log(${JSON.stringify(JSON.stringify(l))});`).join('\n')}\n`, { mode: 0o755 });
   try {
-    const bots = new Bots({ dir: path.join(dir, 'bots'), bins: { claude: bin, codex: bin }, fill: () => null, checks: { home: os.homedir() } });
-    const { bot } = bots.create({ name: 'Brainy', cwd: dir });
+    const evidence = [];
+    const bots = new Bots({ dir: path.join(dir, 'bots'), bins: { claude: bin, codex: bin }, fill: () => null, checks: { home: os.homedir() },
+      run: (bot, text, options) => runBrain(bot, text, { ...options, env: { ...process.env, TERMFLEET_GENTLE_BRAINS: '0' } }),
+      actionEvidence: { recordActionEvidence: event => evidence.push(event), queryActionEvidence: () => [] } });
+    const { bot } = bots.create({ name: 'Brainy', cwd: dir, provider: 'codex' });
     const r = await bots.turn(bot.id, 'go');
-    assert.equal(r.text, 'done');
+    assert.equal(r.text, 'done', r.error);
     assert.deepEqual(readActions(path.join(dir, 'bots', bot.id, 'actions.jsonl')).map((a) => a.text), ['Opened example.com']);
+    assert.deepEqual(evidence.filter(e => e.kind === 'tool').map(e => [e.action_id, e.state]), [['t1', 'started'], ['t1', 'succeeded'], ['t2', 'started'], ['t2', 'failed'], ['t3', 'started']]);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -127,37 +127,23 @@ test('a forced phone notification is sent even while a page is open', async () =
 });
 
 // The stalled-terminal watchdog (Agent-Manager 2026-10-25; Noam: "אמרת בעצמך שצריך watchdog").
-test('watchdog: a "working" terminal silent for 30 minutes is reported once in its bot\'s chat and on stderr', () => {
+// Chat notes were removed on 2026-10-25 (bd4ffe1: they flooded his chat); idle or closed
+// terminals were dropped in 15b217f. A finding goes to stderr and the lasting event log (#10).
+test('watchdog: a "working" terminal silent for 30 minutes is told once, on stderr and in the event log, never as a chat note', () => {
   const { bots, bot } = setup();
-  const flagged = new Map(), logs = [];
+  const flagged = new Map(), logs = [], saved = [];
   const panes = [{ id: 'terminal-h', turn: 'working', title: 'termfleet' }, { id: 'terminal-busy', turn: 'working', title: 'busy one' }];
   const lastAt = (p) => (p.id === 'terminal-h' ? T0 : T0 + SILENT_AFTER_MS);
-  const look = (now) => checkStalls({ bots, panes, items: [], now, flagged, lastAt, log: (l) => logs.push(l) });
+  const look = (now) => checkStalls({ bots, panes, items: [], now, flagged, lastAt, log: (l) => logs.push(l), record: (f, owners) => saved.push([f.kind, f.pane, owners]) });
   assert.deepEqual(look(T0 + SILENT_AFTER_MS - 60_000), []);
   const [found] = look(T0 + 41 * 60_000);
   assert.equal(found.kind, 'stalled');
-  const notes = bots.messages(bot.id).filter((m) => m.role === 'stuck');
-  assert.equal(notes.length, 1);
-  assert.match(notes[0].text, /Terminal "termfleet" has been silent for 41 minutes while marked working and may be stuck/);
-  assert.match(logs[0], /^\[watchdog\] Terminal "termfleet"/);
+  assert.match(logs[0], /^\[watchdog\] Terminal "termfleet" has been silent for 41 minutes/);
+  assert.deepEqual(saved, [['stalled', 'terminal-h', [bot.name]]], 'kept in the event log with the bot that owns it');
+  assert.equal(bots.messages(bot.id).filter((m) => m.role === 'stuck').length, 0, 'no chat flood');
   assert.deepEqual(look(T0 + 56 * 60_000), [], 'the same stall is told once');
   // It spoke again, then went quiet again: a new stall, told again.
   panes[0].turn = 'idle'; look(T0 + 57 * 60_000);
   panes[0].turn = 'working'; assert.equal(look(T0 + 58 * 60_000).length, 1);
-});
-
-test('watchdog: a request handed to a terminal that sat idle (or closed) for 30 minutes is flagged in the chat it came from', () => {
-  const { bots, bot } = setup();
-  const other = bots.create({ name: 'Agent-Manager', cwd: os.tmpdir() }).bot;
-  const item = (id, pane, extra = {}) => ({ id, words: 'שהכפתור תמיד יופיע כאן', status: 'assigned', source: `bot:${bot.id}`, assigned: [{ pane, at: T0, by: `bot:${bot.id}` }], ...extra });
-  const items = [item('R-1', 'terminal-idle'), item('R-2', 'terminal-gone'), item('R-3', 'terminal-working'), item('R-4', 'terminal-idle', { status: 'ready' }), item('R-5', 'terminal-idle', { source: 'terminal:x', assigned: [{ pane: 'terminal-idle', at: T0 }] })];
-  const panes = [{ id: 'terminal-idle', turn: 'idle', title: 'helper' }, { id: 'terminal-working', turn: 'working', title: 'busy' }];
-  const found = checkStalls({ bots, panes, items, now: T0 + 35 * 60_000, lastAt: (p) => (p.id === 'terminal-working' ? T0 + 34 * 60_000 : T0 + 60_000), log: () => {} });
-  assert.deepEqual(found.map((f) => f.item).sort(), ['R-1', 'R-2', 'R-5']);
-  const mine = bots.messages(bot.id).filter((m) => m.role === 'stuck').map((m) => m.text);
-  assert.equal(mine.length, 2);
-  assert.ok(mine.some((t) => /its terminal "helper" has been idle for 34 minutes/.test(t)));
-  assert.ok(mine.some((t) => /its terminal is gone/.test(t)));
-  const manager = bots.messages(other.id).filter((m) => m.role === 'stuck');
-  assert.equal(manager.length, 1, 'no bot owns R-5: the Agent Manager hears it');
+  assert.equal(saved.length, 2);
 });

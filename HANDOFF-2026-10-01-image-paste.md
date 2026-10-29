@@ -1,6 +1,6 @@
 # Handoff — 2026-10-01 — TermFleet image copy/paste "again not working well"
 
-You are continuing a long session in `/media/endlessblink/data/my-projects/ai-development/devops/termfleet` (branch `main`, work directly on main). The previous instance ran out of context. Read this whole file first, then `CLAUDE.md`, `docs/runtime-truth.md`, and memory `image-paste-mechanism.md` + `sluggish-cockpit-diagnosis.md`.
+You are continuing a long session in `/opt/example/local-path` (branch `main`, work directly on main). The previous instance ran out of context. Read this whole file first, then `CLAUDE.md`, `docs/runtime-truth.md`, and memory `image-paste-mechanism.md` + `sluggish-cockpit-diagnosis.md`.
 
 ## The current request (Noam's words)
 
@@ -44,10 +44,10 @@ Uncommitted files in the tree belong to OTHER agents (sidebar TF-069 work etc.) 
 - lean-ctx shell hook blocks python heredocs and sometimes reports "path escapes project root" for sed/cat while still running the command — verify file state after.
 - `pkill -f <name>` can kill your own shell; kill by PID.
 - Another agent may hold the release build lock ("Another TermFleet build is already running"); retry in a loop.
-- Real-app paint lab + probes live in the old session scratchpad (`/media/endlessblink/data/.dev-tmp/endlessblink/claude-1000/-media-endlessblink-data-my-projects-ai-development-devops-termfleet/52de3f5c-949b-486d-92f5-07201a6860f2/scratchpad/`: `real_app_lab.py`, `boot_smoke.py`, `hitches.mjs`, `drag_windows.py`).
+- Real-app paint lab + probes live in the old session scratchpad (`/opt/example/local-path`: `real_app_lab.py`, `boot_smoke.py`, `hitches.mjs`, `drag_windows.py`).
 
 ## First command to run
 
 ```bash
-cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet && grep -a -n "paste_shortcut\|backend.read" ~/.local/share/terminal-workspace/paste-debug.log | tail -30 && grep -n "read_in_flight\|clipboard_read_text" src/components/TerminalCanvas.tsx src-tauri/src/commands.rs | head -20
+cd /opt/example/local-path && grep -a -n "paste_shortcut\|backend.read" ~/.local/share/terminal-workspace/paste-debug.log | tail -30 && grep -n "read_in_flight\|clipboard_read_text" src/components/TerminalCanvas.tsx src-tauri/src/commands.rs | head -20
 ```
