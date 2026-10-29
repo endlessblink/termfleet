@@ -56,7 +56,7 @@ if [[ -z "$expected_frontend_sha" ]]; then
     fail "expected frontend dist is missing: $frontend_dist_dir"
   expected_frontend_sha="$(
     find "$frontend_dist_dir" -type f -print0 |
-      sort -z |
+      LC_ALL=C sort -z |
       xargs -0 sha256sum |
       sha256sum |
       awk '{print $1}'

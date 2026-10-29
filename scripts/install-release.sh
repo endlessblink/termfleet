@@ -272,7 +272,7 @@ run_background_build env VITE_TERMFLEET_RELEASE_ID="${source_revision:0:12}" npm
 # The bundled web assets can receive new hashed filenames on each frontend
 # build. Tell Cargo their completed tree checksum so build.rs always reruns the
 # embed step, even when the previous asset list has been replaced.
-frontend_sha="$(find "$APP_ROOT/dist" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+frontend_sha="$(find "$APP_ROOT/dist" -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
 
 printf 'Building safe TermFleet desktop release...\n'
 # The installed desktop entry runs the immutable binary directly. Building an AppImage

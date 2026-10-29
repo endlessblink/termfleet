@@ -1,4 +1,5 @@
 import hashlib
+import locale
 import os
 import pathlib
 import shutil
@@ -30,7 +31,10 @@ class InstalledReleaseTests(unittest.TestCase):
 
     def frontend_tree_sha(self, dist_dir: pathlib.Path) -> str:
         digest_input = b""
-        for path in sorted(path for path in dist_dir.rglob("*") if path.is_file()):
+        for path in sorted(
+            (path for path in dist_dir.rglob("*") if path.is_file()),
+            key=os.fsencode,
+        ):
             digest_input += hashlib.sha256(path.read_bytes()).hexdigest().encode()
             digest_input += f"  {path}\n".encode()
         return hashlib.sha256(digest_input).hexdigest()
@@ -93,11 +97,13 @@ class InstalledReleaseTests(unittest.TestCase):
         *,
         expected_frontend_root: pathlib.Path | None = None,
         expected_frontend_sha: str | None = None,
+        extra_env: dict[str, str] | None = None,
     ):
         return subprocess.run(
             ["bash", str(VERIFIER)],
             env={
                 **os.environ,
+                **(extra_env or {}),
                 "TERMFLEET_INSTALL_ROOT": str(install_root),
                 "TERMFLEET_COMMAND_PATH": str(command),
                 "TERMFLEET_DESKTOP_LAUNCHER": str(command.parent / "termfleet-desktop"),
@@ -145,6 +151,49 @@ class InstalledReleaseTests(unittest.TestCase):
             )
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("installed immutable resources failed verification", result.stderr)
+
+    def test_frontend_hash_producer_and_verifier_use_byte_order(self):
+        for script in (INSTALLER, VERIFIER):
+            with self.subTest(script=script.name):
+                self.assertIn("LC_ALL=C sort -z", script.read_text())
+
+    def test_frontend_hash_is_independent_of_caller_locale_and_rejects_tampering(self):
+        available = ["C"]
+        original = locale.setlocale(locale.LC_COLLATE)
+        try:
+            for candidate in ("C.UTF-8", "en_US.UTF-8", "en_US.utf8", "he_IL.UTF-8"):
+                try:
+                    locale.setlocale(locale.LC_COLLATE, candidate)
+                except locale.Error:
+                    continue
+                available.append(candidate)
+        finally:
+            locale.setlocale(locale.LC_COLLATE, original)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root, command, _, frontend_root, old_sha = self.make_release(pathlib.Path(tmp))
+            dist = frontend_root / "dist"
+            for filename in ("A.txt", "a.txt", "Z.txt", "ä.txt", "א.txt"):
+                (dist / filename).write_text(f"fixture content for {filename}")
+            frontend_sha = self.frontend_tree_sha(dist)
+            manifest = install_root / "current" / "manifest.env"
+            manifest.write_text(manifest.read_text().replace(old_sha, frontend_sha))
+
+            for caller_locale in available:
+                with self.subTest(locale=caller_locale):
+                    result = self.run_verifier(
+                        install_root, command, expected_frontend_root=frontend_root,
+                        extra_env={"LC_ALL": caller_locale},
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
+            (dist / "a.txt").write_text("tampered after frontend receipt")
+            result = self.run_verifier(
+                install_root, command, expected_frontend_root=frontend_root,
+                extra_env={"LC_ALL": available[-1]},
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("frontend checksum does not match the current build", result.stderr)
 
     def test_rejects_development_launcher(self):
         with tempfile.TemporaryDirectory() as tmp:
