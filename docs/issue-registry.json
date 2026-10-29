@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T20:56:15.054Z",
+  "updatedAt": "2026-10-29T08:48:41.297Z",
   "issues": [
     {
       "id": "TF-001",
@@ -16686,6 +16686,186 @@
           "type": "evidence",
           "kind": "browser-render",
           "note": "Final readback after concurrent row-click fix: /tmp/termfleet-attention-live.json HTML ec9ba0660d39c7a8f8c207f6fccef80b84f3ccd435de09bb76c233700f29d469; new11/11, preserved13/13 and29/29; public remains login. Doctor daemon visibility and older packaged desktop release do not prove bridge UI failure; both remain named limitations."
+        }
+      ]
+    },
+    {
+      "id": "TF-154",
+      "title": "Chat group card lacks reversible Close menu",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Right-click actual named bot chat group does not offer Close; individual bulk lifecycle is a different action.",
+      "rootCause": "",
+      "guard": "Exact group context keyboard mobile menu, escape cancel, local persistence reopen and no member or history mutations.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-29T08:48:29.946Z",
+          "note": "UI-only local group close/reopen and exact technical-status snapshot dismissal; questions/approvals cannot be dismissed; no backend changes."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-29T08:48:29.974Z",
+          "note": "/tmp/termfleet-chat-view-final.tap62/62 including local state7, UI2, attention11, dismissal13, group29. npm run build PASS."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-29T08:48:30.008Z",
+          "note": "/tmp/termfleet-chat-view-live.json actual named group f4ac38847b22 menu; no real close. Actual fine-tuned banner dismissed across reload in disposable context, unchanged source retained;390/1400 independent visual PASS. HTML1050b200ab49b56938608050925877d85b0228c6ee3ea11743f9763b8ceafe69."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Write red group view regression then add local reversible close on this device.",
+      "history": [
+        {
+          "at": "2026-10-29T08:39:53.132Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-29T08:48:29.780Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Exact owner screenshot and source boundary identified."
+        },
+        {
+          "at": "2026-10-29T08:48:29.818Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Group selector excludes actual group; status refresh has no dismissal."
+        },
+        {
+          "at": "2026-10-29T08:48:29.852Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Corrected fixture fails on original HEAD for missing group menu; status lacks dismissal. Initial fixture shape issue corrected before guard evidence."
+        },
+        {
+          "at": "2026-10-29T08:48:29.883Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Local presentation preferences only, explicit current-device scope, no service or bot changes."
+        },
+        {
+          "at": "2026-10-29T08:48:29.915Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "62focused checks pass; real authenticated390/1400 menu and status dismissal/reload, independent visual PASS; public auth and owner trial open."
+        },
+        {
+          "at": "2026-10-29T08:48:29.946Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "UI-only local group close/reopen and exact technical-status snapshot dismissal; questions/approvals cannot be dismissed; no backend changes."
+        },
+        {
+          "at": "2026-10-29T08:48:29.974Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "/tmp/termfleet-chat-view-final.tap62/62 including local state7, UI2, attention11, dismissal13, group29. npm run build PASS."
+        },
+        {
+          "at": "2026-10-29T08:48:30.008Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "/tmp/termfleet-chat-view-live.json actual named group f4ac38847b22 menu; no real close. Actual fine-tuned banner dismissed across reload in disposable context, unchanged source retained;390/1400 independent visual PASS. HTML1050b200ab49b56938608050925877d85b0228c6ee3ea11743f9763b8ceafe69."
+        }
+      ]
+    },
+    {
+      "id": "TF-155",
+      "title": "Nonblocking verification status stays above composer",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Update not verified remains above composer with no dismiss action although no owner question is attached.",
+      "rootCause": "",
+      "guard": "Dismiss exact status snapshot across reload; changed result recurs, real questions remain visible; no verification success invented.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-29T08:48:30.198Z",
+          "note": "UI-only local group close/reopen and exact technical-status snapshot dismissal; questions/approvals cannot be dismissed; no backend changes."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-29T08:48:30.233Z",
+          "note": "/tmp/termfleet-chat-view-final.tap62/62 including local state7, UI2, attention11, dismissal13, group29. npm run build PASS."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-29T08:48:30.268Z",
+          "note": "/tmp/termfleet-chat-view-live.json actual named group f4ac38847b22 menu; no real close. Actual fine-tuned banner dismissed across reload in disposable context, unchanged source retained;390/1400 independent visual PASS. HTML1050b200ab49b56938608050925877d85b0228c6ee3ea11743f9763b8ceafe69."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Write red dismissal regression then add local snapshot dismissal without changing actual verification.",
+      "history": [
+        {
+          "at": "2026-10-29T08:39:53.173Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-29T08:48:30.037Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Exact owner screenshot and source boundary identified."
+        },
+        {
+          "at": "2026-10-29T08:48:30.069Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Group selector excludes actual group; status refresh has no dismissal."
+        },
+        {
+          "at": "2026-10-29T08:48:30.099Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Corrected fixture fails on original HEAD for missing group menu; status lacks dismissal. Initial fixture shape issue corrected before guard evidence."
+        },
+        {
+          "at": "2026-10-29T08:48:30.132Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Local presentation preferences only, explicit current-device scope, no service or bot changes."
+        },
+        {
+          "at": "2026-10-29T08:48:30.163Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "62focused checks pass; real authenticated390/1400 menu and status dismissal/reload, independent visual PASS; public auth and owner trial open."
+        },
+        {
+          "at": "2026-10-29T08:48:30.199Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "UI-only local group close/reopen and exact technical-status snapshot dismissal; questions/approvals cannot be dismissed; no backend changes."
+        },
+        {
+          "at": "2026-10-29T08:48:30.233Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "/tmp/termfleet-chat-view-final.tap62/62 including local state7, UI2, attention11, dismissal13, group29. npm run build PASS."
+        },
+        {
+          "at": "2026-10-29T08:48:30.268Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "/tmp/termfleet-chat-view-live.json actual named group f4ac38847b22 menu; no real close. Actual fine-tuned banner dismissed across reload in disposable context, unchanged source retained;390/1400 independent visual PASS. HTML1050b200ab49b56938608050925877d85b0228c6ee3ea11743f9763b8ceafe69."
         }
       ]
     }

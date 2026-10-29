@@ -1319,6 +1319,16 @@ body.chat main .qform .q-opt{border:1px solid var(--line);border-radius:14px;min
 .bot-attention button{border:0;background:transparent;color:var(--accent);font:inherit;padding:4px 0;text-align:start}
 .bot-attention details{font-size:12px;color:var(--muted)}
 .bot-attention:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+.chat-group-entry{display:flex;align-items:center;min-width:0}
+.chat-group-entry>.group-row{flex:1;min-width:0;width:calc(100% - 44px)}
+.chat-group-entry>.list-more{flex:0 0 44px;min-height:44px;margin:0}
+.closed-chat-groups{margin:12px 0;color:var(--muted)}
+.closed-chat-groups>summary{min-height:44px;cursor:pointer;padding:10px 4px}
+.closed-chat-groups>p{font-size:12px;overflow-wrap:anywhere;padding:0 8px}
+.pane-menu>p{font-size:12px;line-height:1.4;white-space:normal;max-width:28ch;padding:0 12px;color:var(--muted)}
+.pane-menu>b{display:block;padding:8px 12px;overflow-wrap:anywhere;max-width:28ch}
+.bot-attention [data-help-dismiss]{float:inline-end;margin-inline-start:12px;min-height:44px}
 </style>
 </head>
 <body>
@@ -1457,6 +1467,7 @@ body:not(.chat):not(.bot-view) header{min-height:52px;padding-block:6px}
 <noscript><p style="padding:24px;text-align:center;color:#9a9993">TermControl needs JavaScript to show your terminals.</p></noscript>
 
 <script type="module">
+import { closedChatGroups, setChatGroupClosed, attentionStatusKey, dismissedAttention, dismissAttention, resetDismissedAttention } from '/app/chat-view-state.mjs';
 import { botAttention } from '/app/bot-attention.mjs';
 import { mountWorkDashboard } from '/app/work-dashboard.mjs';
 let releaseWorkDashboard=null;
@@ -2896,7 +2907,7 @@ async function fleet(background=false,{fromCache=false}={}) {
   const newBotButton=container.querySelector('.new-bot');if(newBotButton)newBotButton.onclick=()=>botDialog(null,botsData);
   // Bot-group rows only: a project group (details[data-group]) holds chats, and a tap on one of them
   // must open that chat, not a bot group (since 2026-10-21 both fired and the chat raced a "not found").
-  container.querySelectorAll('.group-row[data-group]').forEach(el=>{el.onclick=()=>{history.pushState({group:el.dataset.group},'','#group:'+el.dataset.group);openGroup(el.dataset.group);};});
+  container.querySelectorAll('.group-row[data-group]').forEach(el=>{el.onclick=()=>{if(el.hasAttribute('data-chat-closed')){try{setChatGroupClosed(localStorage,el.dataset.group,false);}catch(e){note(e.message,true);return;}}history.pushState({group:el.dataset.group},'','#group:'+el.dataset.group);openGroup(el.dataset.group);};});
   const newGroupButton=container.querySelector('.new-group');if(newGroupButton)newGroupButton.onclick=()=>groupDialog(null);
   const skillsButton=container.querySelector('.open-skills');if(skillsButton)skillsButton.onclick=()=>skillsDialog();
   const browserButton=container.querySelector('.open-browser');if(browserButton)browserButton.onclick=()=>browserDialog();
@@ -3421,9 +3432,11 @@ function botsHomeHtml(data){
   if(botSelectionScope!=='all' && !groups.some(g=>g.id===botSelectionScope))botSelectionScope='all';
   for(const id of botSelection)if(!byId.has(id))botSelection.delete(id);
   const bulk=data?.botBatch===true && bots.length?`<div class="bot-selection" data-key="bot-selection"><div class="bots-actions"><button type="button" data-bot-select aria-pressed="${botSelectionMode}">${botSelectionMode?ui('Done selecting','סיום בחירה'):ui('Select bots','בחירת בוטים')}</button>${botSelectionMode?`<label>${ui('Group','קבוצה')} <select data-bot-scope aria-label="${ui('Bot group','קבוצת בוטים')}"><option value="all">${ui('All bots','כל הבוטים')}</option>${groups.map(g=>`<option value="${esc(g.id)}"${g.id===botSelectionScope?' selected':''}>${esc(g.name)}</option>`).join('')}</select></label>`:''}</div>${botSelectionMode?`<div class="bots-actions"><button type="button" data-bot-select-all>${ui('Select all shown','בחירת כל המוצגים')}</button><button type="button" data-bot-selection-clear>${ui('Clear selection','ניקוי הבחירה')}</button><span data-bot-selected-count role="status" aria-live="polite"></span></div><div class="bots-actions"><button type="button" data-bot-batch="close">${ui('Close selected…','סגירת הנבחרים…')}</button><button type="button" data-bot-batch="remove">${ui('Remove selected…','הסרת הנבחרים…')}</button></div>`:''}</div>`:'';
+  const closedGroups=new Set(closedChatGroups(localStorage));
   const groupRow=g=>{const members=g.members.map(id=>byId.get(id)).filter(Boolean),at=Number(g.lastAt || 0),said=g.last?`${g.last.who?esc(g.last.who)+': ':g.last.role==='operator'?ui('You: ','אתה: '):''}${esc(g.last.text)}`:esc(members.map(b=>b.name).join(', '));
-    return `<button type="button" class="room-row bot-row group-row" data-group="${esc(g.id)}" data-key="group:${esc(g.id)}" aria-label="${esc(ui(`Group ${g.name}`,`קבוצה ${g.name}`))}">${groupFaces(members)}<span class="room-copy"><span class="bot-top"><span class="room-name" dir="auto">${esc(g.name)}</span>${at?`<span class="bot-when">${shortWhen(at)}</span>`:''}</span><span class="room-last"><span dir="auto">${said}</span></span></span></button>`;};
-  const groupsHtml=groups.length?`<div class="bots-groups"><h3>${ui('Groups','קבוצות')}</h3>${groups.map(groupRow).join('')}</div>`:'';
+    return `<div class="chat-group-entry" data-key="group:${esc(g.id)}"><button type="button" class="room-row bot-row group-row" data-group="${esc(g.id)}"${closedGroups.has(g.id)?' data-chat-closed="1"':''} aria-haspopup="menu" aria-label="${esc(ui(`Group ${g.name}`,`קבוצה ${g.name}`))}">${groupFaces(members)}<span class="room-copy"><span class="bot-top"><span class="room-name" dir="auto">${esc(g.name)}</span>${at?`<span class="bot-when">${shortWhen(at)}</span>`:''}</span><span class="room-last"><span dir="auto">${said}</span></span></span></button><button type="button" class="list-more" data-group-more="${esc(g.id)}" aria-haspopup="menu" aria-label="${esc(ui(`Options for group ${g.name}`,`אפשרויות לקבוצה ${g.name}`))}">⋯</button></div>`;};
+  const visibleGroups=groups.filter(g=>!closedGroups.has(g.id)),closedList=groups.filter(g=>closedGroups.has(g.id));
+  const groupsHtml=groups.length?`<div class="bots-groups"><h3>${ui('Groups','קבוצות')}</h3>${visibleGroups.map(groupRow).join('')}${closedList.length?`<details class="closed-chat-groups" data-key="closed-chat-groups"><summary>${ui(`Closed groups (${closedList.length})`,`קבוצות שנסגרו (${closedList.length})`)}</summary><p>${ui('Hidden on this device. Bots, conversations and work keep running.','מוסתרות במכשיר הזה. הבוטים, השיחות והעבודה ממשיכים כרגיל.')}</p>${closedList.map(groupRow).join('')}</details>`:''}</div>`:'';
   const quiet=[
     data?.skillsWaiting?`<button type="button" class="bots-quiet open-skills">${ui(`${data.skillsWaiting} skill${data.skillsWaiting===1?'':'s'} waiting for your OK`,`${data.skillsWaiting} סקילים ממתינים לאישור`)}</button>`:'',
     pushSignedUp?'':`<button type="button" class="bots-quiet enable-push">${ui('Turn on phone notifications','הפעלת התראות בטלפון')}</button>`,
@@ -3795,7 +3808,7 @@ async function openBot(id,{motion=null,attention=false}={}){
   document.body.append(bar);
   const unanswered=document.createElement('details');unanswered.className='bot-unanswered';unanswered.hidden=true;bar.prepend(unanswered);
   const help=document.createElement('section');help.className='bot-attention';help.hidden=true;help.tabIndex=-1;bar.prepend(help);
-  let currentAttention=null;
+  let currentAttention=null,currentStatusKey=null;
   const openAttention=()=>{
     const target=currentAttention?.target;
     const selector=target?.kind==='terminal'?'[data-term-ask]':target?.kind==='blocked'?'[data-help-block]':'[data-qid]';
@@ -3805,11 +3818,13 @@ async function openBot(id,{motion=null,attention=false}={}){
     if(card){const pin=card.closest('.term-ask-pinned');if(pin)pin.open=true;card.tabIndex=-1;card.focus({preventScroll:true});card.scrollIntoView({block:'center',behavior:'instant'});const place=chatPlace(main,false);heldPlace=place.row?{...place,after:main.scrollTop}:null;}
     else{const details=help.querySelector('details');if(details)details.open=true;help.focus({preventScroll:true});help.scrollIntoView({block:'nearest',behavior:'instant'});}
   };
-  help.onclick=event=>{if(event.target.closest('[data-help-open]'))openAttention();};
+  help.onclick=event=>{if(event.target.closest('[data-help-dismiss]')){try{dismissAttention(localStorage,id,currentStatusKey);help.hidden=true;}catch(e){note(ui('Could not save this preference. ','לא ניתן לשמור את ההעדפה. ')+e.message,true);}return;}if(event.target.closest('[data-help-open]'))openAttention();};
   const showAttention=(bot,messages)=>{
     currentAttention=botAttention(bot,{questions:unansweredChatQuestions(messages),messages,full:true});
-    help.hidden=!currentAttention;if(!currentAttention){help.innerHTML='';help.dataset.signature='';return;}
-    const a=currentAttention,html=`<strong>${esc(ui(...a.label))}</strong><p dir="auto">${esc(ui(...a.text))}</p>${a.target?`<button type="button" data-help-open>${esc(ui(...a.action))}</button>`:''}${a.details.length?`<details><summary>${esc(ui('Status details','פרטי המצב'))}</summary>${a.details.map(detail=>`<p dir="auto">${esc(detail)}</p>`).join('')}</details>`:''}`;
+    currentStatusKey=attentionStatusKey(bot,currentAttention);
+    if(!currentStatusKey){try{resetDismissedAttention(localStorage,id);}catch{}}
+    help.hidden=!currentAttention || Boolean(currentStatusKey && dismissedAttention(localStorage,id,currentStatusKey));if(!currentAttention){help.innerHTML='';help.dataset.signature='';return;}
+    const a=currentAttention,html=`<strong>${esc(ui(...a.label))}</strong>${currentStatusKey?`<button type="button" data-help-dismiss>${esc(ui('Hide this update','הסתרת העדכון'))}</button>`:''}<p dir="auto">${esc(ui(...a.text))}</p>${a.target?`<button type="button" data-help-open>${esc(ui(...a.action))}</button>`:''}${a.details.length?`<details><summary>${esc(ui('Status details','פרטי המצב'))}</summary>${a.details.map(detail=>`<p dir="auto">${esc(detail)}</p>`).join('')}</details>`:''}`;
     if(help.dataset.signature!==html){help.dataset.signature=html;help.innerHTML=html;}
   };
   let dismissingQuestions=false;
@@ -4121,7 +4136,7 @@ async function openBot(id,{motion=null,attention=false}={}){
       const retry=main.querySelector('.bot-retry');
       if(retry)retry.onclick=async()=>{retry.disabled=true;try{const r=await fetch('/api/bot/retry',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id}),signal:AbortSignal.timeout(10000)});const d=await r.json();if(!r.ok)throw new Error(d.error);}catch(e){note(e.message || ui('Could not retry.','לא ניתן לנסות שוב.'),true);retry.disabled=false;}render();};
     }
-    if(attentionRequested && currentAttention){attentionRequested=false;openAttention();}
+    if(attentionRequested && currentAttention){attentionRequested=false;help.hidden=false;openAttention();}
   };
   await render();
   requestAnimationFrame(()=>{chatHandoff?.remove();chatHandoff=null;});
@@ -4503,8 +4518,9 @@ async function openGroup(id){
     title.innerHTML=`${groupFaces(members,true)}<bdi dir="auto">${esc(group.name)}</bdi>`;
     sub.innerHTML=members.map(m=>`<a class="group-member" href="#bot:${esc(m.id)}">${botAvatar(m,18)}<bdi dir="auto">${esc(m.name)}</bdi></a>`).join('');
     if(!chatStatus.querySelector('.group-tools')){
-      chatStatus.innerHTML=`<span class="group-tools"><button type="button" class="group-edit">${ui('Name and members','שם וחברים')}</button><button type="button" class="group-delete">${ui('Delete group','מחיקת הקבוצה')}</button></span>`;
+      chatStatus.innerHTML=`<span class="group-tools"><button type="button" class="group-edit">${ui('Name and members','שם וחברים')}</button><button type="button" class="group-view-close">${ui('Close group on this device','סגירת הקבוצה במכשיר הזה')}</button><button type="button" class="group-delete">${ui('Delete group','מחיקת הקבוצה')}</button></span>`;
       chatStatus.querySelector('.group-edit').onclick=()=>groupDialog(group);
+      chatStatus.querySelector('.group-view-close').onclick=()=>closeChatGroup(id);
       const del=chatStatus.querySelector('.group-delete');
       del.onclick=async()=>{if(del.dataset.armed!=='true'){del.dataset.armed='true';del.textContent=ui('Tap again to delete','הקישו שוב למחיקה');setTimeout(()=>{if(del.isConnected){del.dataset.armed='false';del.textContent=ui('Delete group','מחיקת הקבוצה');}},4000);return;}
         const response=await fetch('/api/bot-group/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})});if(response.ok){history.pushState({},'',location.pathname);fleet();}else note(ui('The group could not be deleted.','לא ניתן למחוק את הקבוצה.'),true);};
@@ -4703,7 +4719,22 @@ function confirmClose(id,name,returnFocus){
     cancel.disabled=false;go.disabled=Boolean(r.uncertain);
   };
 }
-function openRowMenu(row,x,y){if(row.matches('.bot-row'))openBotMenu(row,x,y);else openPaneMenu(row,x,y);}
+function openRowMenu(row,x,y){if(row.matches('.group-row[data-group]')){openChatGroupMenu(row,x,y);return;}if(row.matches('.bot-row'))openBotMenu(row,x,y);else openPaneMenu(row,x,y);}
+function closeChatGroup(id){
+  try{setChatGroupClosed(localStorage,id,true);}catch(e){note(ui('Could not close this view. ','לא ניתן לסגור את התצוגה. ')+e.message,true);return;}
+  if(location.hash==='#group:'+id){history.pushState({},'',location.pathname);fleet();}else fleet(otherView==='bot' || otherView==='group' || Boolean(focusedPane));
+  note(ui('Group hidden on this device. Reopen it under Closed groups. Bots keep working.','הקבוצה הוסתרה במכשיר הזה. ניתן לפתוח אותה בקבוצות שנסגרו. הבוטים ממשיכים לעבוד.'));
+}
+function openChatGroupMenu(row,x,y){
+  closePaneMenu();const id=row.dataset.group,name=row.querySelector('.room-name')?.textContent || ui('Group','קבוצה'),closed=row.hasAttribute('data-chat-closed');
+  const menu=document.createElement('div');menu.className='pane-menu';menu.setAttribute('role','menu');
+  menu.innerHTML=`<b dir="auto">${esc(name)}</b><p>${ui('This device only. Bots and their work stay running.','במכשיר הזה בלבד. הבוטים והעבודה שלהם ממשיכים כרגיל.')}</p><button type="button" role="menuitem" data-chat-group-open>${ui('Open group','פתיחת הקבוצה')}</button><button type="button" role="menuitem" ${closed?'data-chat-group-reopen':'data-chat-group-close'}>${closed?ui('Reopen group','פתיחת הקבוצה מחדש'):ui('Close group','סגירת הקבוצה')}</button>`;
+  document.body.append(menu);const r=menu.getBoundingClientRect();menu.style.left=Math.max(12,Math.min(x,innerWidth-r.width-12))+'px';menu.style.top=Math.max(12,Math.min(y,innerHeight-r.height-12))+'px';
+  menu.querySelector('[data-chat-group-open]').onclick=()=>{closePaneMenu();row.click();};
+  menu.querySelector('[data-chat-group-close],[data-chat-group-reopen]').onclick=()=>{closePaneMenu();if(!closed){closeChatGroup(id);return;}try{setChatGroupClosed(localStorage,id,false);fleet(otherView==='bot' || otherView==='group' || Boolean(focusedPane));}catch(e){note(e.message,true);}};
+  menu.onkeydown=e=>{const buttons=[...menu.querySelectorAll('button')];if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closePaneMenu();row.focus();}else if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const at=buttons.indexOf(document.activeElement),next=e.key==='Home'?0:e.key==='End'?buttons.length-1:(at+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;buttons[next].focus();}};
+  menu.querySelector('button').focus();
+}
 function openBotMenu(row,x,y){
   closePaneMenu();
   const id=row.dataset.bot,name=row.querySelector('.room-name')?.textContent || ui('this bot','הבוט הזה');
@@ -4824,11 +4855,11 @@ async function confirmBotClose(id,name,returnFocus){
   };
 }
 let pressTimer=null,pressAt=null,swallowClick=false;
-document.addEventListener('contextmenu',e=>{const row=e.target.closest?.('.pane[data-id],.bot-row[data-bot]');if(!row)return;e.preventDefault();clearTimeout(pressTimer);const r=row.getBoundingClientRect();openRowMenu(row,e.clientX || r.left+16,e.clientY || r.bottom);});
+document.addEventListener('contextmenu',e=>{const row=e.target.closest?.('.pane[data-id],.bot-row[data-bot],.group-row[data-group]');if(!row)return;e.preventDefault();clearTimeout(pressTimer);const r=row.getBoundingClientRect();openRowMenu(row,e.clientX || r.left+16,e.clientY || r.bottom);});
 document.addEventListener('pointerdown',e=>{
   if(!e.target.closest?.('.pane-menu'))closePaneMenu();
-  const row=e.target.closest?.('.pane[data-id],.bot-row[data-bot]');if(!row || e.pointerType==='mouse')return;
-  const sel=row.dataset.bot?`.bot-row[data-bot="${CSS.escape(row.dataset.bot)}"]`:`.pane[data-id="${CSS.escape(row.dataset.id)}"]`;
+  const row=e.target.closest?.('.pane[data-id],.bot-row[data-bot],.group-row[data-group]');if(!row || e.pointerType==='mouse')return;
+  const sel=row.dataset.group?`.group-row[data-group="${CSS.escape(row.dataset.group)}"]`:row.dataset.bot?`.bot-row[data-bot="${CSS.escape(row.dataset.bot)}"]`:`.pane[data-id="${CSS.escape(row.dataset.id)}"]`;
   pressAt={x:e.clientX,y:e.clientY,sel,top:row.getBoundingClientRect().top};clearTimeout(pressTimer);
   pressTimer=setTimeout(()=>{const now=document.querySelector(pressAt.sel);if(!now)return;swallowClick=true;navigator.vibrate?.(15);openRowMenu(now,pressAt.x,pressAt.y);},550);
 });
@@ -4836,14 +4867,15 @@ document.addEventListener('pointermove',e=>{if(pressAt && Math.hypot(e.clientX-p
 for(const type of ['pointerup','pointercancel'])document.addEventListener(type,()=>clearTimeout(pressTimer),true);
 document.addEventListener('scroll',()=>{const now=pressAt && document.querySelector(pressAt.sel);if(!now || Math.abs(now.getBoundingClientRect().top-pressAt.top)>10)clearTimeout(pressTimer);},true);
 document.addEventListener('click',e=>{
-  if(swallowClick && e.target.closest?.('.pane[data-id],.bot-row[data-bot]')){e.preventDefault();e.stopPropagation();swallowClick=false;return;}
+  if(swallowClick && e.target.closest?.('.pane[data-id],.bot-row[data-bot],.group-row[data-group]')){e.preventDefault();e.stopPropagation();swallowClick=false;return;}
   swallowClick=false;
+  const groupMore=e.target.closest?.('[data-group-more]');if(groupMore){e.preventDefault();e.stopPropagation();const row=groupMore.closest('.chat-group-entry')?.querySelector('.group-row'),r=groupMore.getBoundingClientRect();if(row)openChatGroupMenu(row,r.left,r.bottom);return;}
   const more=e.target.closest?.('.pane-more');
   if(more){e.preventDefault();e.stopPropagation();const row=more.closest('.pane[data-id]'),r=more.getBoundingClientRect();openPaneMenu(row,r.left,r.bottom+4);return;}
   const head=e.target.closest?.('[data-close-pane]');
   if(head){e.preventDefault();e.stopPropagation();confirmClose(head.dataset.closePane,head.dataset.closeName,head);}
 },true);
-document.addEventListener('keydown',e=>{if(e.key==='Escape' && document.querySelector('.pane-menu')){closePaneMenu();}});
+document.addEventListener('keydown',e=>{if((e.key==='ContextMenu' || (e.shiftKey && e.key==='F10')) && e.target.closest?.('.group-row[data-group]')){e.preventDefault();const row=e.target.closest('.group-row'),r=row.getBoundingClientRect();openChatGroupMenu(row,r.left,r.bottom);return;}if(e.key==='Escape' && document.querySelector('.pane-menu')){closePaneMenu();}});
 
 async function chat(id,{motion=null,initialFeed=null}={}) {
   otherView=null;

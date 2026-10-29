@@ -853,3 +853,8 @@ Guard: `node --test termcontrol/test/bot-batch.test.mjs termcontrol/test/bot-bat
 ### TF-153 actionable bot attention
 
 Root: helper verification errors set needs-you with blocked=null while the UI displayed only blocked.ask. Guard: node --test termcontrol/test/bot-attention.test.mjs termcontrol/test/bot-attention-ui.test.mjs (11/11). Real reconciled question and exact blocked request target; dismissed/answered/ready exclusion; helper-source technical detail; stale/missing explicit fallback; concurrent row-click navigation; mobile wrapping. Actual authenticated bridge390/1400 /tmp/termfleet-attention-live.json and independent screenshots PASS,0pending0undefined0overflow; GET-only no bot effects. Public authenticated/physical-phone acceptance still unverified (public private-headless login); TF-153 remains verifying. Existing skills source-regex failure proven unchanged on HEAD, doctor daemon visibility/older packaged release outside this UI fix.
+
+
+### TF-154/155 local chat view controls
+
+Root: context selector excluded actual data-group rows; technical status refreshed without dismissal. Guard: chat-view-state7 and chat-view-ui2; all relevant62/62. Exact group, another-group boundary, context/cancel/keyboard/mobile, reload/reopen, no writes/member changes; exact status dismissal, changed result/reset recurrence, real questions never dismissible. Installed authenticated390/1400 /tmp/termfleet-chat-view-live.json independent visual PASS, menu only no real group close, local status preference only. Local-device scope explicit; no backend result identity for identical repeated errors, public authenticated/physical acceptance still open.
