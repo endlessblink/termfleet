@@ -4005,12 +4005,22 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
     title: "Delete me",
     initialCwd: "/tmp/delete-me",
   });
-  if (restored.tab?.terminals.length) {
-    expect(restored.tab.terminals[0]).toMatchObject({
-      paneId: "pane-delete",
-      status: "reconnected",
-    });
-  }
+  // Undo deliberately drops the killed PTY. Wait for the replacement rather
+  // than skipping attachment assertions when the renderer has not mounted yet.
+  // A PTY created in this app run is running, not reconnected (ptyAttachStatus).
+  await expect.poll(() => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: { getState: () => {
+        tabs: Array<{ id: string; terminals: Array<{id: string; paneId: string; status: string}> }>;
+      } };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().tabs.find(tab => tab.id === "tab-delete")?.terminals
+      .map(({id,paneId,status}) => ({id,paneId,status}));
+  })).toEqual([{
+    id: "terminal-tab-delete-pane-delete",
+    paneId: "pane-delete",
+    status: "running",
+  }]);
   expect(restored.node).toMatchObject({
     id: "node-delete",
     terminalTabId: "tab-delete",
