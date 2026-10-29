@@ -1,6 +1,7 @@
 import hashlib
 import os
 import pathlib
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -15,6 +16,7 @@ DESKTOP_LAUNCHER = ROOT / "scripts" / "termfleet-desktop-launcher.sh"
 RESTART_SMOKE = ROOT / "scripts" / "verify-installed-restart-smoke.sh"
 PROCESS_TREE = ROOT / "scripts" / "restart-smoke-process-tree.sh"
 DOCTOR = ROOT / "scripts" / "termfleet-doctor.mjs"
+RESOURCE_TOOL = ROOT / "scripts" / "release-resources.py"
 
 
 class InstalledReleaseTests(unittest.TestCase):
@@ -46,9 +48,20 @@ class InstalledReleaseTests(unittest.TestCase):
         binary.write_bytes(b"stable-termfleet-release")
         binary.chmod(0o755)
         checksum = hashlib.sha256(binary.read_bytes()).hexdigest()
+        resources = frontend_root / "src-tauri"
+        resources.mkdir()
+        (resources / "fixture.txt").write_text("public release resource")
+        (resources / "tauri.conf.json").write_text(
+            '{"bundle":{"resources":{"fixture.txt":"support/fixture.txt"}}}'
+        )
+        staged = subprocess.run(
+            ["python3", str(RESOURCE_TOOL), "stage", str(frontend_root), str(release_dir)],
+            capture_output=True, text=True, check=True,
+        )
         (release_dir / "manifest.env").write_text(
             f"TERMFLEET_BINARY_SHA256={checksum}\n"
             f"TERMFLEET_FRONTEND_SHA256={frontend_sha}\n"
+            f"TERMFLEET_RESOURCES_SHA256={staged.stdout.strip()}\n"
         )
         (install_root / "current").symlink_to("releases/release-1")
         command = home / "bin" / "termfleet"
@@ -122,6 +135,17 @@ class InstalledReleaseTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("TERMFLEET_INSTALLED_RELEASE_OK", result.stdout)
 
+    def test_rejects_tampered_installed_resource(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root, command, _, _, frontend_sha = self.make_release(pathlib.Path(tmp))
+            resource = install_root / "current" / "support" / "fixture.txt"
+            resource.write_text("changed after promotion")
+            result = self.run_verifier(
+                install_root, command, expected_frontend_sha=frontend_sha,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("installed immutable resources failed verification", result.stderr)
+
     def test_rejects_development_launcher(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = pathlib.Path(tmp)
@@ -172,7 +196,6 @@ class InstalledReleaseTests(unittest.TestCase):
             "AGENTS.md": "Normal operator use and acceptance testing are dock-only.",
             "CLAUDE.md": "Normal operator use and acceptance testing are dock-only.",
             "README.md": "Install the current source build, then launch TermFleet from the desktop dock:",
-            "HANDOFF.md": "Normal operator use and acceptance are dock-only.",
         }
         for relative_path, statement in required.items():
             with self.subTest(relative_path=relative_path):
@@ -238,30 +261,33 @@ class InstalledReleaseTests(unittest.TestCase):
         self.assertIn('TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS:-25000', launcher)
         self.assertNotIn('TERMFLEET_OLLAMA_URL:-http://127.0.0.1:9', launcher)
 
-    def test_release_installer_hashes_frontend_after_tauri_embeds_it(self):
+    def test_release_installer_embeds_the_completed_frontend_without_rebuilding_it(self):
         installer = INSTALLER.read_text()
-        tauri_build = installer.index('npm run tauri build -- --no-bundle')
+        frontend_build = installer.index('npm run build')
         frontend_sha = installer.index('frontend_sha="$(find "$APP_ROOT/dist"')
-        self.assertLess(tauri_build, frontend_sha)
-        self.assertIn("beforeBuildCommand rebuilds dist", installer)
+        cargo_build = installer.index('cargo build')
+        self.assertLess(frontend_build, frontend_sha)
+        self.assertLess(frontend_sha, cargo_build)
+        self.assertIn('--features tauri/custom-protocol --release', installer)
+        self.assertNotIn('npm run tauri build', installer)
 
     def test_dock_starts_the_daemon_before_the_saved_panes_mount(self):
         launcher = DESKTOP_LAUNCHER.read_text()
-        app_start = launcher.index('"$TERMFLEET_CMD" &')
+        app_start = launcher.index('"$TERMFLEET_CMD" >>"$APP_LOG_FILE" 2>&1 &')
         daemon_wait = launcher.index('daemon_socket=')
         self.assertLess(daemon_wait, app_start)
         self.assertIn('[[ -S "$daemon_socket" ]]', launcher)
 
     def test_dock_startup_has_a_hard_daemon_gate_before_the_window(self):
         launcher = DESKTOP_LAUNCHER.read_text()
-        app_start = launcher.index('"$TERMFLEET_CMD" &')
+        app_start = launcher.index('"$TERMFLEET_CMD" >>"$APP_LOG_FILE" 2>&1 &')
         gate = launcher.index('refusing to launch cockpit: daemon socket did not appear')
         self.assertLess(gate, app_start)
         self.assertIn('nohup "$TERMFLEET_CMD" --terminal-workspace-daemon', launcher)
 
     def test_crash_restart_leaves_exact_provider_restore_to_the_saved_pane_daemon_path(self):
         launcher = DESKTOP_LAUNCHER.read_text()
-        app_start = launcher.index('"$TERMFLEET_CMD" &')
+        app_start = launcher.index('"$TERMFLEET_CMD" >>"$APP_LOG_FILE" 2>&1 &')
         pre_start = launcher[:app_start]
         self.assertIn('--terminal-workspace-daemon', pre_start)
         self.assertIn('[[ ! -S "$daemon_socket" ]]', pre_start)
@@ -374,15 +400,21 @@ class InstalledReleaseTests(unittest.TestCase):
             installer = scripts / "install-release.sh"
             installer.write_text(INSTALLER.read_text())
             installer.chmod(0o755)
+            shutil.copy2(RESOURCE_TOOL, scripts / RESOURCE_TOOL.name)
+            (app / "src-tauri" / "tauri.conf.json").write_text(
+                '{"bundle":{"resources":{"../public/brand/termfleet-vessel-master.svg":"brand/icon.svg"}}}'
+            )
             desktop_launcher = scripts / "termfleet-desktop-launcher.sh"
             desktop_launcher.write_text("#!/usr/bin/env bash\nexit 0\n")
             desktop_launcher.chmod(0o755)
             (scripts / "monitor-cockpit-pane-screens.mjs").write_text("#!/usr/bin/env node\n")
+            (scripts / "monitor-cockpit-pane-health.mjs").write_text("#!/usr/bin/env node\n")
             for support_name in (
                 "filter-termfleet-restore.py",
                 "termfleet-pressure-watchdog.sh",
                 "termfleet-load-shed.sh",
                 "termfleet-incident-log.sh",
+                "termfleet-capture-desktop-incident.sh",
             ):
                 support = scripts / support_name
                 support.write_text("#!/usr/bin/env bash\n")
@@ -395,7 +427,12 @@ class InstalledReleaseTests(unittest.TestCase):
             (release_target / "terminal-workspace").write_bytes(b"new-release")
             (release_target / "terminal-workspace").chmod(0o755)
             verifier = scripts / "verify-installed-release.sh"
-            verifier.write_text("#!/usr/bin/env bash\nexit 23\n")
+            verifier.write_text(
+                "#!/usr/bin/env bash\n"
+                'if [[ "$(readlink "$TERMFLEET_INSTALL_ROOT/current")" == releases/old ]]; then exit 0; fi\n'
+                'printf "post-promotion fixture rejection\\n" >&2\n'
+                "exit 23\n"
+            )
             verifier.chmod(0o755)
 
             install_root = root / "installed"
@@ -403,6 +440,10 @@ class InstalledReleaseTests(unittest.TestCase):
             old_release.mkdir(parents=True)
             (old_release / "termfleet").write_bytes(b"old-release")
             (old_release / "termfleet").chmod(0o755)
+            (old_release / "manifest.env").write_text(
+                f"TERMFLEET_BINARY_SHA256={hashlib.sha256(b'old-release').hexdigest()}\n"
+                f"TERMFLEET_FRONTEND_SHA256={self.frontend_tree_sha(app / 'dist')}\n"
+            )
             (install_root / "current").symlink_to("releases/old")
             bin_dir = root / "bin"
             bin_dir.mkdir()
@@ -413,6 +454,10 @@ class InstalledReleaseTests(unittest.TestCase):
             npm = fake_bin / "npm"
             npm.write_text("#!/usr/bin/env bash\nexit 0\n")
             npm.chmod(0o755)
+            for name in ("cargo", "update-desktop-database", "kbuildsycoca6", "kbuildsycoca5", "qdbus6", "systemctl"):
+                stub = fake_bin / name
+                stub.write_text("#!/usr/bin/env bash\nexit 0\n")
+                stub.chmod(0o755)
             git = fake_bin / "git"
             git.write_text(
                 "#!/usr/bin/env bash\n"
@@ -427,10 +472,13 @@ class InstalledReleaseTests(unittest.TestCase):
                     "PATH": f"{fake_bin}:{os.environ['PATH']}",
                     "TERMFLEET_INSTALL_ROOT": str(install_root),
                     "TERMFLEET_BIN_DIR": str(bin_dir),
+                    "TERMFLEET_LOAD_SHED_PATH": str(bin_dir / "termfleet-load-shed"),
                     "TERMFLEET_APPLICATIONS_DIR": str(root / "applications"),
                     "TERMFLEET_ICON_DIR": str(root / "icons"),
                     "TERMFLEET_PLASMA_ICON_DIR": str(root / "plasma-icons"),
                     "XDG_CONFIG_HOME": str(root / "config"),
+                    "XDG_RUNTIME_DIR": str(root / "runtime"),
+                    "TERMFLEET_BUILD_LOCK_FILE": str(root / "build.lock"),
                 },
                 capture_output=True,
                 text=True,
@@ -440,7 +488,10 @@ class InstalledReleaseTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual((install_root / "current").readlink(), pathlib.Path("releases/old"))
             self.assertEqual((bin_dir / "termfleet").resolve().read_bytes(), b"old-release")
-            self.assertIn("restored the last-known-good release", result.stderr)
+            self.assertIn("post-promotion fixture rejection", result.stderr)
+            self.assertIn("restored pre-promotion file state", result.stderr)
+            self.assertFalse((bin_dir / "termfleet-desktop").exists())
+            self.assertFalse((root / "applications" / "termfleet.desktop").exists())
 
     def test_restart_smoke_uses_isolated_desktop_restore_path(self):
         source = RESTART_SMOKE.read_text()
@@ -476,11 +527,15 @@ class InstalledReleaseTests(unittest.TestCase):
         self.assertIn('const fixtures = {', source)
         self.assertIn('const fixture = fixtures[path.basename(process.cwd())]', source)
         self.assertIn('terminals.length === 4', source)
-        self.assertIn('new Set(terminals.map((entry) => entry.task)).size === 4', source)
+        self.assertIn('new Set(terminals.map((entry) => entry.context)).size === 4', source)
         self.assertIn('terminals.every((entry) =>', source)
-        self.assertIn('validTasks.has(entry.task)', source)
+        self.assertIn('validGoals.has(entry.context)', source)
+        self.assertIn('entry.context !== entry.task', source)
+        self.assertIn('Boolean(entry.task)', source)
         self.assertIn('split("installed-restart-root", "vertical"', source)
-        self.assertIn('panes.flatMap((pane) => [pane?.paneId, pane?.terminalId])', source)
+        self.assertIn('panes.map((pane) => pane?.paneId || pane?.terminalId).filter(Boolean)', source)
+        self.assertIn('const runtimePaneId = `terminal-installed-restart-tab-${statusPaneId}`', source)
+        self.assertIn('for (const lookupPaneId of [statusPaneId, runtimePaneId])', source)
         self.assertIn('TERMFLEET_PANE_CAPTURE_EXPECTED_COUNT=4', source)
 
     def test_restart_fixture_rejects_generic_single_pane_snapshot(self):
@@ -488,7 +543,7 @@ class InstalledReleaseTests(unittest.TestCase):
         self.assertNotIn('mainTask: "Make Endlessblink work clear and dependable', source)
         self.assertNotIn('userTask: "Continue the assigned work in this terminal pane"', source)
         self.assertIn('terminals.length === 4', source)
-        self.assertIn('new Set(terminals.map((entry) => entry.task)).size === 4', source)
+        self.assertIn('new Set(terminals.map((entry) => entry.context)).size === 4', source)
 
     def test_restart_fixture_declares_four_pane_truthful_metadata(self):
         source = RESTART_SMOKE.read_text()
