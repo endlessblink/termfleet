@@ -107,3 +107,6 @@ jobs:
 
       - name: Design tokens + contrast (node-only, no server)
         run: npm run verify:design
+
+      - name: Mobile fleet targets and conversation behavior
+        run: node --test termcontrol/test/experience-mobile.test.mjs termcontrol/test/desk-mobile.test.mjs termcontrol/test/list-folders.test.mjs termcontrol/test/bot-folder-dialog.test.mjs

@@ -1,3 +1,9 @@
+## 2026-10-29 — TF-159: Safe GitHub integration touch-target repair (VERIFYING)
+
+Isolated PR10 repair restores44px fleet/search/list controls while preserving the existing compact46px tab wrapper and all actions. Close remains visible in narrow subtitles, desktop headers reserve their height, and the folder-dialog form fits its content without hidden overflow. Existing guards remain intact; new search and header geometry guards failed before the fix. The four affected browser suites are now included in CI.
+
+Validation: `node --test termcontrol/test/experience-mobile.test.mjs termcontrol/test/desk-mobile.test.mjs termcontrol/test/list-folders.test.mjs termcontrol/test/bot-folder-dialog.test.mjs`; related navigation, picker, themes, dictation and reply-detail tests; `npm run verify:termcontrol-mobile`; `npm run build`; `npm run verify:design-ratchet`; public audit and diff checks. Synthetic captures under `.captures/termcontrol-mobile/dark` receive independent visual review. GitHub merge is a separate gate from runtime delivery: the shared checkout, installed release and services remain unchanged.
+
 ## 2026-10-27 — TF-122: Dashboard inside existing bot chat (VERIFYING)
 
 Open Tasks and Active Terminals are integrated in the existing chat shell using its tokens, with Hebrew statuses, exact source disclosures, per-bot/project grouping, complete lists beyond300, and one shared live terminal snapshot. Canonical stale updates are withheld; legacy declarations retained. Invalid/unavailable sources display unknown and recover on polling. Existing chat, composer, menu and original request-removal protections remain.

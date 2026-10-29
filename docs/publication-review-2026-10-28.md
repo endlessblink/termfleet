@@ -62,3 +62,11 @@ product-failure or success claim.
 This PR is a draft, not a release. It does not establish installed-runtime,
 phone-behavior or measured-token-savings acceptance. Merge remains pending
 required checks and any resulting corrections.
+
+## 2026-10-29 merge follow-up
+
+GitHub CI run40740432039 passed both jobs for exact published head00a2eb0. Current GitHub maina772f7f remains its ancestor; no whole-file deletions or diff-check errors were found. Original owner commit/push/merge authorization was verified, and the installed-release owner acknowledged GitHub-only integration without changing the frozen runtime.
+
+Fresh isolated checks cleared the earlier dictation concern but reproduced the44px mobile target failure on both published head and current main. A minimal layout repair restores the targets while retaining the existing compact<=46px tab wrapper, keeps Close visible and reserves header height, and constrains the folder form grid without hiding overflow. New search-collapse and header-bounds guards failed before repair. Existing assertions remain intact; all four affected browser suites are now in CI.
+
+Final local checks: affected CI command11/11; related navigation/picker/theme8/8; chat navigation4/4; dictation/day/conversation/details9/9; canonical mobile parity31/31; TypeScript/Vite build, design ratchet, public audit and machine-path checks pass. Independent source review approves the repair delta; independent synthetic visual review confirms fleet/header layout at320/1280 and folder horizontal containment. Real isolated dialog create/edit interactions pass. This does not supersede the earlier broader Node-suite limitations or establish installed/physical-phone delivery. Exact resulting-head CI and merge read-back remain the final GitHub gates.

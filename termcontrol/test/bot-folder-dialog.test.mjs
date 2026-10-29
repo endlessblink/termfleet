@@ -67,7 +67,11 @@ for (const [label, context] of [['phone', { ...devices['Pixel 7'] }], ['pc', { v
       assert.equal(await p.inputValue('input[name=cwd]'), second);
       assert.equal(await p.textContent('.folder-now'), 'second-app');
       const overflow = await p.evaluate(() => document.querySelector('dialog.room-dialog').scrollWidth > document.querySelector('dialog.room-dialog').clientWidth + 1);
-      assert.equal(overflow, false, 'nothing sticks out sideways');
+      const oversized = overflow ? await p.evaluate(() => {
+        const dialog=document.querySelector('dialog.room-dialog'),edge=dialog.getBoundingClientRect().right;
+        return [...dialog.querySelectorAll('*')].filter(el=>el.getBoundingClientRect().right>edge+1).map(el=>({tag:el.tagName,class:el.className,width:el.getBoundingClientRect().width}));
+      }) : [];
+      assert.equal(overflow, false, `nothing sticks out sideways: ${JSON.stringify(oversized)}`);
       if (shots) await p.screenshot({ path: path.join(shots, `${label}-3-picked.png`) });
       await p.click('.room-create');
       await p.waitForFunction(() => location.hash.startsWith('#bot:'), null, { timeout: 15000 });

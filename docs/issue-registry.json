@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-10-28T15:30:25.842Z",
+  "updatedAt": "2026-10-29T14:12:22.621Z",
   "issues": [
     {
       "id": "TF-001",
@@ -16142,6 +16142,110 @@
           "type": "evidence",
           "kind": "source",
           "note": "39223b2 activated2026-10-28T15:21:30.550Z PID2040585 digest a96b5a46949a19e9233a548109f0c65f8655bda9ae6ea1340e3b4cd85e62e044. Own hold released, daemon2068834 and exact cutover terminal/conversation identities/chat prefixes retained. Real authenticated panel15:29:14Z shows8 from original9; known exact legacy answer excluded. Eight ambiguous retained, Already answered action present8 times. Screenshot /tmp/termfleet-question-panel-installed.png SHA4eab725e940ce973685ecdff402f67c33c8ccb83fbf715d36158bbf8dba17648; independent visual count8/legible/no horizontal clipping, lower4 rows outside crop."
+        }
+      ]
+    },
+    {
+      "id": "TF-159",
+      "title": "Compact fleet controls lose minimum touch targets",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [
+        "TF-159"
+      ],
+      "symptom": "Fleet tabs and search, new-folder and list actions shrink below 44px, including the collapsed new-folder action during search.",
+      "rootCause": "Late compact fleet overrides shrink controls below44px. Enlarged Close needs a wrapping subtitle and intrinsic header row. Dialog form automatic grid minimum exceeds the dialog width.",
+      "guard": "node --test termcontrol/test/experience-mobile.test.mjs",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-10-29T14:12:22.168Z",
+          "note": "Only layout dimensions/tracks/wrapping changed. Original actions, authorities, design baselines and acceptance assertions preserved. CI now includes four affected suites."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-10-29T14:12:22.381Z",
+          "note": "GREEN: exact final CI command11/11; navigation/picker/theme8/8 and related chat/dictation/details9/9; canonical mobile parity31/31. RED baseline and new search/header assertions failed before repair. Compact list-folder guard remains <=46px and passes."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-10-29T14:12:22.621Z",
+          "note": "Independent synthetic visual review:320px fleet fits; Close visible at320/1280, clean header/message boundary, dialog horizontal containment. New DOM bounds assertions and real isolated dialog create/edit flows2/2 pass. No installed runtime or physical-phone claim."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Complete isolated browser and independent visual review, then integrate approved GitHub candidate; keep runtime delivery unclaimed while installed source is frozen.",
+      "history": [
+        {
+          "at": "2026-10-29T14:06:09.849Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-10-29T14:06:19.747Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Compact fleet CSS overrides earlier 44px controls with 38px and 40px dimensions; current GitHub main has the same defect."
+        },
+        {
+          "at": "2026-10-29T14:06:19.996Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Existing experience-mobile test and new search-state guard reproduce undersized visible controls in an isolated headless browser before repair."
+        },
+        {
+          "at": "2026-10-29T14:06:20.241Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "RED: exact published head fails existing mobile experience guard; added search-state guard also fails before repair on six 38/40px fleet controls. Main HTML reproduces identical geometry."
+        },
+        {
+          "at": "2026-10-29T14:06:20.454Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Existing 44px minimum and overflow assertions retained; new guard exercises opened search and collapsed folder action at 320,390,430,1280 widths."
+        },
+        {
+          "at": "2026-10-29T14:06:20.681Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Change only fleet control dimensions from 38/40px to existing 44px minimum; preserve handlers, spacing and design tokens."
+        },
+        {
+          "at": "2026-10-29T14:06:54.603Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Valid RED confirmed: new fleet/search guard renders all three panes and fails at six visible 38/40px controls before repair; an earlier empty-groups fixture attempt was corrected before using this result."
+        },
+        {
+          "at": "2026-10-29T14:10:59.662Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Minimum dimensions restored, compact tab wrapper retains <=46px, header now reserves its full height and wraps Close instead of clipping. Dialog form uses shrinkable grid track rather than intrinsic overflow. Browser regressions are being verified without weaker assertions."
+        },
+        {
+          "at": "2026-10-29T14:12:22.169Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Only layout dimensions/tracks/wrapping changed. Original actions, authorities, design baselines and acceptance assertions preserved. CI now includes four affected suites."
+        },
+        {
+          "at": "2026-10-29T14:12:22.382Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "GREEN: exact final CI command11/11; navigation/picker/theme8/8 and related chat/dictation/details9/9; canonical mobile parity31/31. RED baseline and new search/header assertions failed before repair. Compact list-folder guard remains <=46px and passes."
+        },
+        {
+          "at": "2026-10-29T14:12:22.621Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Independent synthetic visual review:320px fleet fits; Close visible at320/1280, clean header/message boundary, dialog horizontal containment. New DOM bounds assertions and real isolated dialog create/edit flows2/2 pass. No installed runtime or physical-phone claim."
         }
       ]
     }
